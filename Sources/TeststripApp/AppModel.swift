@@ -9288,11 +9288,15 @@ public final class AppModel {
         if previewURL(for: assetID, levels: [request.level]) != nil {
             return
         }
-        if [.offline, .missing].contains(try refreshAvailability(for: assetID)) {
+        if [.offline, .missing, .stale].contains(try refreshAvailability(for: assetID)) {
             return
         }
-        if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil {
+        if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil,
+           try !previewGenerationAttemptsExhausted(assetID: assetID, level: .medium) {
             try requestPreview(assetID: assetID, level: .medium, placement: .front)
+        }
+        guard try !previewGenerationAttemptsExhausted(assetID: assetID, level: request.level) else {
+            return
         }
         try requestPreview(assetID: assetID, level: request.level, placement: .front)
     }
@@ -9305,13 +9309,30 @@ public final class AppModel {
         guard let index = assets.firstIndex(where: { $0.id == assetID }) else { return }
         for neighborIndex in [index + 1, index - 1] where assets.indices.contains(neighborIndex) {
             let neighbor = assets[neighborIndex]
-            guard !neighbor.availability.requiresCachedPreviewOnly else { continue }
+            guard !neighbor.availability.requiresCachedPreviewOnly, neighbor.availability != .stale else { continue }
             let request = PreviewScheduler().request(
                 assetID: neighbor.id,
                 context: .loupe(isVisible: false, requestedFullResolution: false)
             )
+            guard try !previewGenerationAttemptsExhausted(assetID: neighbor.id, level: request.level) else { continue }
             try requestPreview(assetID: request.assetID, level: request.level, placement: .back)
         }
+    }
+
+    // Mirrors the automatic background scan's cap
+    // (`pendingPreviewGenerationItems(maximumAttemptCount:)`): an asset/level
+    // pair that has already burned its automatic attempts must not be
+    // re-requested by these on-demand loupe navigation paths either, or
+    // every visit dispatches a fresh guaranteed-to-fail worker round-trip
+    // (kata #15 residual). Manual retry (`retrySelectedPreviewGenerationFailures`)
+    // deliberately bypasses this -- it exists precisely to force another
+    // attempt once the automatic cap is reached.
+    private func previewGenerationAttemptsExhausted(assetID: AssetID, level: PreviewLevel) throws -> Bool {
+        guard let catalog else { return false }
+        guard let state = try catalog.repository.previewGenerationQueueState(assetID: assetID, level: level) else {
+            return false
+        }
+        return state.attemptCount >= Self.previewGenerationMaximumAutomaticAttempts
     }
 
     // Escalates the zoomed loupe frame to an original-resolution render when

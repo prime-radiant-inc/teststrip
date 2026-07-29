@@ -11153,6 +11153,119 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    // Regression for the kata #15 residual: the automatic background scan
+    // (enqueuePendingPreviewGeneration) excludes .stale, but ordinary loupe
+    // navigation dispatches through a separate path
+    // (requestVisibleLoupePreview) that didn't. A stale asset must not be
+    // offered to the worker here either -- it is guaranteed to fail.
+    func testRequestVisibleLoupePreviewSkipsStaleVisibleAsset() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-visible-stale",
+            assetCount: 3,
+            workerSupervisor: supervisor,
+            availabilityForIndex: { index in index == 1 ? .stale : .online }
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[2].id.rawValue)-large",
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    func testRequestVisibleLoupePreviewSkipsStaleNeighborPrefetch() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-neighbor-prefetch-stale",
+            assetCount: 3,
+            workerSupervisor: supervisor,
+            availabilityForIndex: { index in index == 2 ? .stale : .online }
+        )
+        try writePreviewPlaceholder(
+            to: fixture.previewCache.url(for: PreviewCacheKey(assetID: fixture.assets[1].id, level: .large))
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    // Regression for the kata #15 residual: an asset/level pair that has
+    // already burned its 3 automatic attempts must not be re-requested by
+    // ordinary loupe navigation -- requestPreview only dedupes against a
+    // currently *active* queue item, never against exhausted-retry history.
+    func testRequestVisibleLoupePreviewSkipsVisibleAssetAtRetryCap() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-visible-retry-cap",
+            assetCount: 3,
+            workerSupervisor: supervisor
+        )
+        let visibleAsset = fixture.assets[1]
+        for level: PreviewLevel in [.medium, .large] {
+            for _ in 0..<3 {
+                try fixture.repository.recordPreviewGenerationFailure(
+                    assetID: visibleAsset.id,
+                    level: level,
+                    errorMessage: "boom"
+                )
+            }
+        }
+
+        try fixture.model.requestVisibleLoupePreview(assetID: visibleAsset.id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[2].id.rawValue)-large",
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    func testRequestVisibleLoupePreviewSkipsNeighborPrefetchAtRetryCap() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-neighbor-retry-cap",
+            assetCount: 3,
+            workerSupervisor: supervisor
+        )
+        let exhaustedNeighbor = fixture.assets[2]
+        for _ in 0..<3 {
+            try fixture.repository.recordPreviewGenerationFailure(
+                assetID: exhaustedNeighbor.id,
+                level: .large,
+                errorMessage: "boom"
+            )
+        }
+        try writePreviewPlaceholder(
+            to: fixture.previewCache.url(for: PreviewCacheKey(assetID: fixture.assets[1].id, level: .large))
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
     func testLoadEnqueuesPendingPreviewGenerationWithWorker() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -18488,6 +18601,7 @@ final class AppModelTests: XCTestCase {
 
     private struct LoupeCullingFixture {
         var model: AppModel
+        var repository: CatalogRepository
         var previewCache: PreviewCache
         var assets: [Asset]
     }
@@ -18510,14 +18624,21 @@ final class AppModelTests: XCTestCase {
         var assets: [Asset] = []
         for index in 0..<assetCount {
             let availability = availabilityForIndex(index)
-            let originalURL = availability == .online
+            // .stale needs a real file present on disk whose fingerprint
+            // mismatches the catalog's recorded one -- unlike
+            // .offline/.missing, the original is reachable, just changed.
+            let originalURL = availability == .online || availability == .stale
                 ? originalsDirectory.appendingPathComponent("frame-\(index).jpg")
                 : URL(fileURLWithPath: "/Volumes/Archive/\(name)/frame-\(index).jpg")
             let fingerprint: FileFingerprint
-            if availability == .online {
+            switch availability {
+            case .online:
                 try Data("original".utf8).write(to: originalURL)
                 fingerprint = try fileFingerprint(for: originalURL)
-            } else {
+            case .stale:
+                try Data("original".utf8).write(to: originalURL)
+                fingerprint = FileFingerprint(size: 999_999, modificationDate: Date(timeIntervalSince1970: 1))
+            case .offline, .missing, .moved:
                 fingerprint = FileFingerprint(
                     size: Int64(index + 1),
                     modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))
@@ -18537,7 +18658,12 @@ final class AppModelTests: XCTestCase {
             assets: assets,
             workerSupervisor: workerSupervisor
         )
-        return LoupeCullingFixture(model: result.model, previewCache: result.previewCache, assets: assets)
+        return LoupeCullingFixture(
+            model: result.model,
+            repository: result.repository,
+            previewCache: result.previewCache,
+            assets: assets
+        )
     }
 
     private func makeAsset(
