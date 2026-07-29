@@ -296,23 +296,47 @@ later card in the same session that needs the pristine baseline.
    else — and the standalone triple counter.** From `smoke-4`, continue
    pressing `Space` (decision-free) until `smoke-16.jpg` is selected,
    polling the HUD filename at each step and confirming strict catalog
-   order (`smoke-5`, `smoke-6`, …, `smoke-16`). On arrival, confirm the
-   triple counter now reads `"... · stack 6 of 8"` with **no** trailing
-   `"frame"` segment (a standalone stop — the mirror of Step 4's
-   multi-frame check). Continue `Space` once more to `smoke-17.jpg` (the
-   last catalog asset). This forward walk from `smoke-0` through
-   `smoke-17` (Steps 1, 5, 6 together) means every one of the 18 assets has
-   been individually selected at least once in this run, which is what
-   `neverViewed` counts (`AppModel.swift`'s `selectAssetID` records
-   `recordViewed` on every selection, per `Sources/TeststripApp/
-   CullRunTracker.swift`).
+   order (`smoke-5`, `smoke-6`, …, `smoke-16`) — **live correction (traced
+   2026-07-28)**: this strict one-at-a-time order does not actually survive
+   Step 5's `P` keypress; see the note below and the Sharp edges bullet.
+   On arrival, confirm the triple counter now reads `"... · stack 7 of 8"`
+   (**live correction**: the card originally said `"stack 6 of 8"` — a hand-
+   counting error; `smoke-16` is the 7th stop in capture order — group1,
+   group2, group3, group4, `smoke-14`, `smoke-15`, `smoke-16`, `smoke-17` —
+   confirmed live via the full triple-counter text `"17 of 18 · stack 7 of
+   8"`) with **no** trailing `"frame"` segment (a standalone stop — the
+   mirror of Step 4's multi-frame check). Continue `Space` once more to
+   `smoke-17.jpg` (the last catalog asset). **Live correction**: the
+   original claim that this walk (Steps 1, 5, 6 together) "means every one
+   of the 18 assets has been individually selected at least once" is false
+   in general — Step 5's `P` on `smoke-4` triggers the same auto-advance
+   this card's Hard-won context already flags, which does not land on the
+   flat next asset (`smoke-5`) but jumps straight to the next asset that
+   still needs a decision; when that next-undecided asset lives in a
+   *different* stack (as here — `smoke-4` was the only undecided member
+   left in its own 4-frame stack, so auto-advance jumped to the next
+   stack's landing frame, `smoke-7`), the never-individually-selected
+   remainder of the vacated stack (`smoke-5`, `smoke-6`, both already
+   baseline-decided) is silently skipped. `neverViewed` counts exactly this
+   — see Step 9's traced value and the Sharp edges bullet for the full
+   mechanism (`AppModel.swift`'s `selectAssetID` records `recordViewed` on
+   every selection, per `Sources/TeststripApp/CullRunTracker.swift`, and
+   only the asset actually landed on is recorded — passing frames within a
+   stack are not).
 7. **Decide every remaining undecided frame.** The 9 still-undecided
    assets after Steps 5-6 are `smoke-1, smoke-2, smoke-7, smoke-8,
    smoke-11, smoke-13, smoke-14, smoke-16, smoke-17` (everything not
    already confirmed at seed time or decided in Step 5) — cross-check this
    list against `script/vm_scenario_run.sh sql burst "SELECT id FROM assets
-   WHERE json_extract(metadata_json,'\$.flag') IS NULL ORDER BY id;"`
-   before starting. For each: click its run-strip stop (`ax_drive.sh press
+   WHERE json_extract(metadata_json,'\$.flag') IS NULL OR EXISTS (SELECT 1
+   FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE
+   value='flag') ORDER BY id;"` before starting (**live correction**: the
+   original bare `flag IS NULL` predicate under-reports by one — `smoke-16`
+   carries a non-`NULL` raw `flag` value, 'pick', from the Pre-state seed,
+   so it's excluded by a plain `IS NULL` check despite being logically
+   undecided via its tentative marker; confirmed live, the bare query
+   returns only 8 rows, missing `smoke-16`, while the corrected query above
+   returns the full 9). For each: click its run-strip stop (`ax_drive.sh press
    --role AXButton --contains "<label substring>"`) if not already the
    current stop, step within a multi-frame stop with `J` to reach the
    specific undecided member (its chip shows no pick/reject overlay yet —
@@ -356,11 +380,20 @@ later card in the same session that needs the pristine baseline.
    ```bash
    script/vm_scenario_run.sh ax find --role AXStaticText --contains "AI suggestions awaiting review"
    ```
-   Expect it to read exactly `"0 skipped · 0 never viewed · 0 AI
-   suggestions awaiting review"`. `neverViewed = 0` is Steps 1+6's
-   deliberate full walk's *predicted* (not structurally guaranteed) outcome
-   — if it comes back nonzero, report the observed number rather than
-   treating it as an automatic fail (see Sharp edges). `sparkleAwaiting`
+   **Live-traced result (2026-07-28, settling the prior predicted-not-traced
+   status): the line reads exactly `"0 skipped · 2 never viewed · 0 AI
+   suggestions awaiting review"`** — `neverViewed = 2`, not the originally
+   hoped-for 0. This is not a fixture-independent guarantee (see Step 6's
+   live correction and the Sharp edges bullet for the exact mechanism):
+   `smoke-5` and `smoke-6` — both already baseline-decided, both siblings of
+   `smoke-4` in group2 — are never individually selected in this run's
+   navigation, because Step 5's `P` on `smoke-4` (the last undecided member
+   of group2) triggers auto-advance straight to the next stack's landing
+   frame (`smoke-7`) rather than the flat next asset (`smoke-5`), and no
+   later step re-enters group2. Per the card's own Sharp edges caveat,
+   `neverViewed` nonzero here is reportable, not a fail — the Steps 1/6 walk
+   was not skipped, it simply doesn't achieve full coverage the way the
+   original prose assumed. `sparkleAwaiting`
    not reading exactly `0` **is** a fail for THIS fixture — this is the live
    demonstration of the kind-aware filter's FLAG-proposal half (Source's
    kind-aware contract): deciding `smoke-4`/`smoke-16` directly (Steps 5/7)
@@ -470,7 +503,11 @@ all.
   auto-committed/dismissed them — the filter must not touch the proposal
   rows). `neverViewed` nonzero is reportable-not-fatal (see Sharp edges)
   unless the Step 1/6 walk was skipped, in which case investigate before
-  dismissing it.
+  dismissing it. **Traced live (2026-07-28): `neverViewed = 2`** (`smoke-5`,
+  `smoke-6` — see Step 6's live correction and Sharp edges for the exact
+  auto-advance mechanism); the Step 1/6 walk was run in full, so this is the
+  settled, reportable value for this exact navigation, not an investigation
+  trigger.
 - Step 10: **Fails if** "Save Picks as Set" is missing despite having real
   work to do, if "Review AI Suggestions" is present (it must not be, for
   THIS fixture — both proposal-bearing assets are already user-decided and
@@ -495,18 +532,51 @@ Run once per leg (separate launches); quit each instance before the next.
 ## Sharp edges
 - **`neverViewed`'s exact value depends on this card's specific navigation
   path**, unlike `skipped` (which is a hard structural guarantee
-  independent of driving). Steps 1+6's deliberate full forward walk is
-  designed to make it provably 0, but if a driver deviates from that exact
-  sequence (e.g., uses stop-clicks instead of `Space` for the initial
-  walk-through, which *also* records a view — fine — or skips Step 6
-  outright), a nonzero `neverViewed` is expected and should be reported as
-  observed, not treated as a card failure on its own.
+  independent of driving). **Traced live 2026-07-28: even following Steps
+  1, 5, 6, 7 exactly as originally written, `neverViewed` comes back `2`,
+  not `0`** — the original "Steps 1+6 make it provably 0" theory was wrong,
+  not just fragile. Root cause: `recordViewed` (`AppModel.swift`'s
+  `selectAssetID`, the single choke point for every navigation path) only
+  marks the *one* asset actually landed on — it does not mark every member
+  of the stack currently on stage. Step 5's `P` on `smoke-4` is the last
+  undecided member of its 4-frame stack (group2: `smoke-3..6`), so the
+  post-decision auto-advance (already documented in this card's Hard-won
+  context as "on by default") does not step to the flat next asset
+  (`smoke-5`) — it jumps straight to the next asset anywhere in the catalog
+  that still needs a decision, landing on the next stack's (group3's)
+  landing frame, `smoke-7`. `smoke-4`'s two siblings that were already
+  baseline-decided before this run even started, `smoke-5` and `smoke-6`,
+  are never individually selected by anything in this card's sequence, so
+  they're never recorded as viewed — hence `neverViewed = 2` at completion.
+  This is deterministic for this exact fixture/sequence (not flaky), but it
+  is still **path-dependent** in the sense the original bullet meant: a
+  driver taking a different route (e.g., deciding `smoke-4` *last* in its
+  stack instead of first, or visiting `smoke-5`/`smoke-6` directly via
+  stop-clicks before Step 5) would get a different, possibly-zero count. Do
+  not treat a nonzero `neverViewed` as a failure on its own; do treat `2` as
+  this card's own settled, reproducible value for its documented sequence,
+  not a fixture quirk to explain away.
 - **A plain autopilot banner may appear early**, above the stage, once
   `reconstructAutopilotStateAfterLoad()` sees this card's hand-seeded
   `autopilot_proposals` rows at launch — it doesn't distinguish a real
   Autopilot run from a seeded one. This is expected, not a bug; it doesn't
   interfere with any assertion here, and its own "Review"/"Undo all"
   buttons are `cull-017-autopilot-review.md`'s territory, not re-driven.
+  **Confirmed live**: the banner read "Autopilot reviewed 2 frames · 1
+  keepers · 1 rejects · dupe…" and sat above the completion stage
+  throughout, with no interference with any assertion.
+- **`saveCullingPicksAsSet()`'s ad-hoc branch calls `saveAndSelect(...)`
+  (`AppModel.swift:5681`), which immediately applies the new set as the
+  active library scope/selection** — the very next render is that new set's
+  *own* freshly-recomputed completion state (a different, smaller
+  population), not the original session's. Confirmed live: a screenshot
+  taken right after pressing "Save Picks as Set" showed `"14 of 14 · stack
+  7 of 7"`, `"14 picks · 0 rejects"`, `"1 never viewed"` — all different
+  from the original 18-asset session's numbers this card actually asserts
+  on (which were captured via `ax find`/SQL *before* the press, per Step
+  10, and are unaffected). Capture any completion-stage screenshot for this
+  card *before* pressing "Save Picks as Set", not after, or you'll
+  document the wrong session's numbers.
 - **The run strip's stop labels embed a capture-time string** (`"HH:MM
   AM/PM"`) computed from `Date()` at seed time, not a fixed epoch — this
   card never matches on the time portion of a label, only on the filename
@@ -539,10 +609,18 @@ Run once per leg (separate launches); quit each instance before the next.
   awaiting review"` — a live runner should expect and report this exact
   disagreement, not flag it as a test failure. The chip's semantics here are
   an open product decision, not a bug pinned down by this card (tracked on
-  the kata board).
+  the kata board). **Confirmed live**: both stops still read `"1
+  suggestion"` at completion (verified via `ax find --role AXButton
+  --contains "1 suggestion"` returning exactly the `smoke-3–6` and
+  `smoke-16` stops) while the completion line read `0` — exactly the
+  predicted disagreement, not a bug.
 
 ## Run status
-NOT RUN — authored 2026-07-16, source-cited against the working tree by
+RUN 2026-07-28 (app 878f1939) — PASS-WITH-CARD-FIXES, no app bugs. See the
+dated entry at the end of this section for the full live-run summary.
+
+Original authoring note (superseded by the live run above, kept for
+history) — authored 2026-07-16, source-cited against the working tree by
 directly reading `CullRunStripPresentation.swift`, `CullCompletionPresentation.swift`,
 `LibraryGridView.swift` (`runStrip`/`runStripStop`/`runStripStackThumb`/
 `runStripStandaloneThumb`/`runStripThumbnailFace`/`cullCompletionStage`/`cullCompletionActionButton`),
@@ -599,3 +677,60 @@ strip's ✨ chip (kind-blind, flag-blind) and the completion stage's
 fixture — not a new finding, just making explicit something this card's
 Leg A already exercises without calling it out. No other prose or behavior
 claims changed. Still NOT RUN.
+
+**LIVE RUN — 2026-07-28, app `878f1939`, Tart VM `teststrip-e2e`: PASS-WITH-
+CARD-FIXES, no app bugs.** Both legs driven end-to-end. Leg A (`burst`,
+18 assets, hand-seeded tentative flags + `autopilot_proposals` rows per
+Pre-state): Steps 1-5, 7-10 all passed exactly as documented (seed landed;
+confirmed-only pick/reject split 4/4 with matching HUD; ✨ chips landed on
+exactly `smoke-3–6` and `smoke-16` and no other stop; multi-frame triple
+counter `"1 of 18 · stack 1 of 8 · frame 1 of 3"`; the isolated-progress
+check moved the HUD from `4 picks, 4 rejects` to `5 picks, 4 rejects` by
+exactly one, only after `P`; the 9-asset undecided sweep landed on `14
+picks · 4 rejects` matching the SQL cross-check exactly, two rows only,
+no `NULL`/tentative survivors; `0 skipped`/`0 sparkleAwaiting`/2 pending
+`autopilot_proposals` rows untouched; "Save Picks as Set" present, "Review
+AI Suggestions" absent, and the saved `"Catalog Picks"` set's 14-id
+membership matched the confirmed-picks list exactly). Two things did not
+match the card's predictions and are now fixed in place (not app bugs —
+both traced to the app doing exactly what its own source says, the card's
+prior text being wrong): (1) Step 6's `"stack 6 of 8"` was an off-by-one —
+live is `"stack 7 of 8"` (`smoke-16` is the 7th of 8 stops in capture
+order). (2) The card's central load-bearing claim that Steps 1+5+6+7
+"means every one of the 18 assets has been individually selected" is false
+in general and was false in this exact live run: `neverViewed` traced to
+`2`, not `0`. Root cause fully traced to source: `AppModel.swift`'s
+`selectAssetID` (`recordViewed`'s only call site besides session-start) is
+a single-asset choke point, and Step 5's `P` decision on `smoke-4` (the
+last undecided member of its own 4-frame stack) triggers the
+already-documented auto-advance, which — with no undecided sibling left in
+the current stack — jumps straight to the *next stack's* landing frame
+(`smoke-7`) rather than the flat next asset (`smoke-5`). `smoke-4`'s two
+already-baseline-decided siblings, `smoke-5`/`smoke-6`, are consequently
+never individually selected by anything else in the documented sequence,
+so `neverViewed = 2` at completion — settling the card's own
+predicted-not-traced flag with a traced, reproducible value (see Step 6,
+Step 9, and the rewritten Sharp edges bullet for the full mechanism and
+citations). Leg B (`smoke`, 24 standalone assets, windowing): all of Steps
+11-15 passed exactly as written with zero card fixes needed — start-
+clamped (`0..<12`), centered (`4..<16`, single `"Current"` match), and
+end-clamped (`12..<24`) windows all matched `CullStripWindowing`'s
+documented formula exactly on live spot-checks, and the standalone-only
+triple counter read exactly `"24 of 24 · stack 24 of 24"` with no trailing
+`"frame"` segment. One incidental discovery worth a permanent Sharp-edges
+entry (not a bug): `saveCullingPicksAsSet()`'s ad-hoc branch calls
+`saveAndSelect(...)`, which immediately swaps the active scope to the new
+set, so any post-press screenshot shows that set's own completion numbers,
+not the original session's — confirmed live via a screenshot taken just
+after the press. Card commit: see the commit introducing this Run status
+update, branch `fix/scenario-card-runs`.
+
+**Cleanup note**: the local `burst` seed template
+(`$TMPDIR/teststrip-vm-seeds/burst/Teststrip`) and the VM's matching
+`isolated/burst/Teststrip` remain in the Leg-A-mutated (tentative-flag-
+seeded) state after this run — the card's own Cleanup step
+(`rm -rf ".../burst/Teststrip"`) was blocked by this runner's sandbox
+policy requiring explicit human authorization for `rm -rf`, and was not
+force-run. Any later card in this VM session that needs a pristine `burst`
+fixture must reset this local template (and re-push it, or re-run
+`sync burst`) before relying on it.
