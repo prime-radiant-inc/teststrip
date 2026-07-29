@@ -14285,13 +14285,22 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             availability: .missing
         )
+        // kata #15 residual: the worker always refuses a stale original, so
+        // compare must not offer it either.
+        let stale = makeAsset(
+            id: "stale-compare",
+            path: "/Photos/stale-compare.jpg",
+            rating: 0,
+            availability: .stale
+        )
         let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "compare-unavailable-originals",
-            assets: [offline, missing],
+            assets: [offline, missing, stale],
             workerSupervisor: supervisor
         )
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: offline.id, level: .grid)))
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: missing.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: stale.id, level: .grid)))
 
         try model.requestVisibleComparePreviews()
 
@@ -14299,6 +14308,67 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
         XCTAssertEqual(model.loupePreviewURL(for: offline.id), previewCache.url(for: PreviewCacheKey(assetID: offline.id, level: .grid)))
         XCTAssertEqual(model.loupePreviewURL(for: missing.id), previewCache.url(for: PreviewCacheKey(assetID: missing.id, level: .grid)))
+        XCTAssertEqual(model.loupePreviewURL(for: stale.id), previewCache.url(for: PreviewCacheKey(assetID: stale.id, level: .grid)))
+    }
+
+    // Regression for the kata #15 residual: an asset/level pair that has
+    // already burned its 3 automatic attempts must not be re-requested by
+    // the compare view's per-asset medium-preview dispatch either.
+    func testVisibleComparePreviewsSkipsWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let first = makeAsset(id: "compare-retry-cap-first", path: "/Photos/compare-retry-cap-first.jpg", rating: 0)
+        let second = makeAsset(id: "compare-retry-cap-second", path: "/Photos/compare-retry-cap-second.jpg", rating: 0)
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "compare-retry-cap",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+        for asset in [first, second] {
+            for _ in 0..<3 {
+                try result.repository.recordPreviewGenerationFailure(assetID: asset.id, level: .medium, errorMessage: "boom")
+            }
+        }
+
+        try result.model.requestVisibleComparePreviews()
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(result.model.backgroundWorkQueue.items, [])
+    }
+
+    // Same regression, for the selected asset's .large promotion branch
+    // specifically (a separate code path from the per-asset .medium loop
+    // above, gated independently).
+    func testVisibleComparePreviewsSkipsSelectedAssetLargePromotionWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let first = makeAsset(id: "compare-retry-cap-large-first", path: "/Photos/compare-retry-cap-large-first.jpg", rating: 0)
+        let second = makeAsset(id: "compare-retry-cap-large-second", path: "/Photos/compare-retry-cap-large-second.jpg", rating: 0)
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "compare-retry-cap-large",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+        result.model.selectedAssetID = first.id
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: first.id, level: .medium)))
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: second.id, level: .medium)))
+        for _ in 0..<3 {
+            try result.repository.recordPreviewGenerationFailure(assetID: first.id, level: .large, errorMessage: "boom")
+        }
+
+        try result.model.requestVisibleComparePreviews()
+
+        // first's medium is cached (so its .medium loop iteration is a
+        // no-op) and its .large promotion is at cap; second's medium is
+        // also cached. Nothing should dispatch.
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(result.model.backgroundWorkQueue.items, [])
     }
 
     @MainActor
@@ -14374,7 +14444,9 @@ final class AppModelTests: XCTestCase {
     }
 
     func testVisibleGridPreviewDoesNotDispatchForKnownUnavailableOriginals() throws {
-        for availability in [SourceAvailability.offline, .missing, .moved] {
+        // .stale included: kata #15 residual -- the worker always refuses a
+        // stale original, so it must not be offered here either.
+        for availability in [SourceAvailability.offline, .missing, .moved, .stale] {
             let transport = RecordingWorkerTransport()
             let supervisor = WorkerSupervisor(
                 queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -14400,6 +14472,31 @@ final class AppModelTests: XCTestCase {
             XCTAssertEqual(try transport.commands(), [], "unexpected grid preview command for \(availability.rawValue) asset")
             XCTAssertEqual(model.backgroundWorkQueue.items, [], "unexpected grid preview work for \(availability.rawValue) asset")
         }
+    }
+
+    // Regression for the kata #15 residual: an asset/level pair that has
+    // already burned its 3 automatic attempts must not be re-requested by
+    // the grid's visible-preview dispatch path either.
+    func testVisibleGridPreviewSkipsWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "grid-retry-cap", path: "/Photos/grid-retry-cap.jpg", rating: 0)
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "grid-retry-cap",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        for _ in 0..<3 {
+            try result.repository.recordPreviewGenerationFailure(assetID: asset.id, level: .grid, errorMessage: "boom")
+        }
+
+        try result.model.requestVisibleGridPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(result.model.backgroundWorkQueue.items, [])
     }
 
     @MainActor
