@@ -75,24 +75,35 @@ fresh grep, not carried over from any older card):
   `.accessibilityValue(readsPresentation.emptyState ?? readsPresentation
   .verdictText ?? readsPresentation.earlyReadCaveat ?? "")` (`:4087-4092`)
   — extended from the old two-way `emptyState ?? verdictText ?? ""` by
-  fix/cull-followups Task 2 (2026-07-28) so the container's value doesn't
+  fix/cull-followups Task 2 (2026-07-28) so the *source-level* value doesn't
   collapse to `""` for a PARTIAL read — set directly from the presentation
-  struct, independent of which inner view branch actually renders. This
-  mirrors `cull-021`'s own lesson about the rail's `✦` (assert the
-  deliberate accessibility override, not an incidentally matching inner
-  `Text`): for the pre-evaluation state match `--label "Reads" --contains
-  "No read yet"`; for a PARTIAL read match `--label "Reads" --contains
-  "early read — 1 signal"` (per `script/ax_drive.sh`'s matching rule, both
-  `--label`'s exact title/description/value match and `--contains`'s
-  substring search over title/description/value/placeholder are ANDed, so
-  this pins the container whose title is exactly "Reads" AND whose value
-  contains the target substring — `script/ax_drive.sh:169-187`). Because
-  `.contain` (not `.combine`) is used, the inner `Text` for whichever branch
-  is active — `emptyState` (`LibraryGridView.swift:4182-4185`, the
-  `readsCard` empty-state branch) or the caveat (`:4192-4195`) — is *also*
-  independently AX-findable as its own element; either match should agree.
-  This card treats the container-level value as authoritative since it's
-  the deliberate override, not an incidental match.
+  struct, independent of which inner view branch actually renders, at the
+  Swift call-site. **This card previously claimed (unverified against a live
+  run) that `--label "Reads" --contains "..."` pins this container and
+  should be treated as authoritative — live-driving this run disproved that
+  claim.** A direct `AXUIElementCopyAttributeNames` dump of the container
+  confirmed `AXValue` is entirely absent from its attribute list in every
+  state (empty/partial/full); the string set via `.accessibilityValue(...)`
+  is exposed only under `AXValueDescription`, an attribute
+  `script/ax_drive.sh`'s `--contains` search never inspects (it hays over
+  title/description/value/placeholder only, `script/ax_drive.sh:169-187`).
+  So `--label "Reads" --contains X` fails to match for *every* X, in every
+  state — not just the already-known Mixed/full-read `""` hole. Contrast
+  with a native `AXButton` (the rail chip): its `.accessibilityValue`
+  (`"Selected"`/`"Recommended"`/`"Not selected"`) *does* map straight to
+  `AXValue` (confirmed live), so this is a role-dependent SwiftUI→AX
+  bridging quirk specific to a plain `.accessibilityElement(children:
+  .contain)` view, not a universal one. Because `.contain` (not `.combine`)
+  is used, the inner `Text` for whichever branch is active — `emptyState`
+  (`LibraryGridView.swift:4182-4185`, the `readsCard` empty-state branch),
+  the verdict, or the caveat (`:4192-4195`) — is independently AX-findable
+  as its own element; **treat the bare `ax find --contains "..."` match
+  against that inner `Text` as authoritative, not the container-label
+  match**, which this run showed is structurally dead as a test technique
+  on this build (macOS 26 Tahoe). This doesn't mean the presentation logic
+  is wrong — the correct string is still genuinely computed and exposed to
+  assistive tech via `AXValueDescription`, just not via the attribute
+  `ax_drive.sh` checks.
 - **Rail tie suppression**, `CullingStackRailPresentation.init`
   (`LibraryGridView.swift:6326-6462`): computes `tiedLeaderIDs` via
   `CullingStackRecommendation.tiedLeaderIDs` (call site `:6397-6400`,
@@ -137,21 +148,39 @@ script/vm_scenario_run.sh ax wait-vended
 ```
 
 ## Steps
-1. `ax wait-vended`; ⌘1 for Cull; `S` to cycle scope to "All frames". Select
-   a frame that belongs to a multi-frame stack (`ax find --role AXButton
+1. `ax wait-vended`; ⌘1 for Cull. **Do not press `S`.** A fresh `burst`
+   launch's `cullScope` already defaults to `.all` (`AppModel.swift:2189`,
+   the same finding `cull-021` established and confirmed live again this
+   run) — the "Cull filter" chip only renders for `!= .all`
+   (`LibraryGridView.swift:4554-4555`), so its absence confirms scope
+   without cycling. Pressing `S` on a fresh launch cycles *away* from "All
+   frames" (confirmed live this run: one `S` press left the scope reading
+   "Cull filter: Unrated," per `CullScope`'s cycle order,
+   `AppModel.swift:301,316-360`) — this card's prior wording had the cycle
+   direction backwards. Harmless to this card's own assertions
+   (`requestVisibleAssetEvaluations`, `AppModel.swift:9434-9447`, iterates
+   the loaded `assets` list directly, not the cull-scope-filtered queue, so
+   Step 3's 18/18 evaluation coverage was unaffected when this run hit the
+   mistake) but confusing and unnecessary — leave scope alone. Select a
+   frame that belongs to a multi-frame stack (`ax find --role AXButton
    --contains "Stack frame 1"` confirms one is visible; if none ever appears,
    stop and report this card untestable-without-fixture rather than
    fabricating a stack, per `cull-021`'s caution).
 2. **Pre-evaluation: "No read yet" is honest, not a placeholder bug.**
    Confirm zero `evaluation_signals` rows (Source above). Assert the Reads
-   panel's container reads exactly this empty state:
+   panel shows exactly this empty state via its inner `Text`:
    ```bash
-   script/vm_scenario_run.sh ax find --label "Reads" --contains "No read yet"
+   script/vm_scenario_run.sh ax find --contains "No read yet"
    ```
-   and separately confirm no rail chip claims a read it doesn't have: `ax
-   find --role AXButton --contains "Recommended"` must fail to match, and no
-   chip shows a flaw badge (`EYES CLOSED`/`SOFT` — `ax find --contains "EYES
-   CLOSED"` and `--contains "SOFT"` must both fail). Also confirm no
+   **Not** `--label "Reads" --contains "..."` — confirmed live this run
+   (direct `AXUIElementCopyAttributeNames` dump) that the combined match
+   never succeeds on the container, in any of the three states; see Sharp
+   edges for the root cause. The bare `--contains` match against the inner
+   `Text` is the reliable one. Separately confirm no rail chip claims a read
+   it doesn't have: `ax find --role AXButton --contains "Recommended"` must
+   fail to match, and no chip shows a flaw badge (`EYES CLOSED`/`SOFT` —
+   `ax find --contains "EYES CLOSED"` and `--contains "SOFT"` must both
+   fail). Also confirm no
    too-close-to-call banner renders yet — there's nothing to be too close
    about: `ax find --contains "too close to call"` must fail to match.
 3. **Trigger evaluation** so the rest of this card means something: Culling
@@ -173,20 +202,24 @@ script/vm_scenario_run.sh ax wait-vended
    `CullingQualityScore.qualityComponent`, `CullingQualityScore.swift:9-31`)
    are present with a `.score` value — this count is exactly
    `normalizedQualityRead`'s `kindCount` (`LibraryGridView.swift:6633-6639`).
-   Branch on the count — three honest outcomes, not two:
-   - **Zero**: assert the Reads panel still reads "No read yet" (`ax find
-     --label "Reads" --contains "No read yet"`) even though evaluation has
-     run — the honest empty state, not a stale one — with no verdict and no
-     rows.
+   Branch on the count — three honest outcomes, not two. **Use the bare
+   `ax find --contains "..."` form throughout this step, never `--label
+   "Reads" --contains "..."`** — confirmed live this run that the combined
+   container-label match never succeeds regardless of state (Sharp edges);
+   the bare match against the inner `Text` is the one that actually tracks
+   the branch:
+   - **Zero**: assert the Reads panel still reads "No read yet"
+     (`ax find --contains "No read yet"`) even though evaluation has run —
+     the honest empty state, not a stale one — with no verdict and no rows.
    - **Exactly one**: this count doesn't distinguish *which* kind — split
      further on whether that lone kind is one of the four whole-photo
      canonical kinds or one of the three face-specific ones
      (`faceQuality`/`eyeSharpness`/`eyesOpen`):
-     - **Whole-photo kind (a PARTIAL read)**: assert `ax find --label
-       "Reads" --contains "No read yet"` now fails to match — the card has
+     - **Whole-photo kind (a PARTIAL read)**: assert
+       `ax find --contains "No read yet"` now fails to match — the card has
        left the empty state — and instead assert the exact early-read
-       caveat renders in place of a verdict: `ax find --label "Reads"
-       --contains "early read — 1 signal"` (exact copy,
+       caveat renders in place of a verdict:
+       `ax find --contains "early read — 1 signal"` (exact copy,
        `CullReadsCardPresentation.swift:86`). Assert **no** `AXStaticText`
        reads exactly `"Keep"` or `"Toss"` — a partial read never computes a
        verdict (`CullingAssistPresentation.verdict` is not consulted in
@@ -196,15 +229,14 @@ script/vm_scenario_run.sh ax wait-vended
        of the four canonical kinds — Focus, Motion blur, Framing,
        Aesthetics — actually has the signal).
      - **Face-specific kind**: assert the Reads panel still reads "No read
-       yet" (`ax find --label "Reads" --contains "No read yet"`) — a lone
-       face-specific signal has zero renderable whole-photo rows, so this
-       card honestly falls back to the empty state rather than showing a
-       caveat with nothing to show for it
-       (`CullReadsCardPresentation.swift:70-78`); that signal's own read
-       lives on the close-ups rail instead (`cull-012-closeups-panel.md`),
-       not this card.
-   - **Two or more (a FULL read)**: assert `ax find --label "Reads"
-     --contains "No read yet"` fails to match, then independently compute
+       yet" (`ax find --contains "No read yet"`) — a lone face-specific
+       signal has zero renderable whole-photo rows, so this card honestly
+       falls back to the empty state rather than showing a caveat with
+       nothing to show for it (`CullReadsCardPresentation.swift:70-78`);
+       that signal's own read lives on the close-ups rail instead
+       (`cull-012-closeups-panel.md`), not this card.
+   - **Two or more (a FULL read)**: assert
+     `ax find --contains "No read yet"` fails to match, then independently compute
      `normalizedQualityRead` (confidence-weighted mean of the best component
      per whole-photo/face kind) and compare it against
      `CullingAssistPresentation`'s thresholds (Keep >= 0.7, Toss <= 0.5) to
@@ -312,6 +344,33 @@ script/vm_scenario_run.sh ax wait-vended
 ```
 
 ## Sharp edges
+- **The Reads panel's container-level `.accessibilityValue` never surfaces
+  via `AXValue`, in any of the three states — confirmed live 2026-07-28,
+  not just theorized.** A direct `AXUIElementCopyAttributeNames` dump of the
+  `cullFacesReadsPanel` `AXGroup` (`.accessibilityElement(children:
+  .contain)`) shows `AXValue` entirely absent from its attribute list; the
+  string passed to `.accessibilityValue(...)` lands only under
+  `AXValueDescription`, which `script/ax_drive.sh`'s `--contains` search
+  never inspects. This means `ax find --label "Reads" --contains "..."`
+  fails to match *unconditionally* — a prior version of this card (and the
+  fix/cull-followups Task 2 branch that touched this code) assumed it would
+  work for the empty/partial states and only documented a narrower hole for
+  the Mixed full-read case (source-level `?? ""` fallback); that narrower
+  theory is now superseded — the mechanism is a role-dependent SwiftUI→AX
+  bridging quirk (a plain accessibility-element `AXGroup`'s String value
+  goes to `AXValueDescription`, not `AXValue`), not a per-state gap. A
+  native `AXButton` (the rail's stack chips) does *not* have this problem —
+  its `.accessibilityValue` maps straight to `AXValue`, confirmed live via
+  the same dump technique (`"Stack frame 1"`'s chip: `AXValue = "Selected"`).
+  **Use the bare `ax find --contains "..."` match against the inner `Text`
+  for every Reads-panel assertion in this card**, never the
+  `--label "Reads" --contains "..."` combined form. This is a
+  `script/ax_drive.sh` / SwiftUI-AX-bridging limitation, not a
+  `CullReadsCardPresentation` defect — the correct string is still genuinely
+  computed and would reach VoiceOver via `AXValueDescription`; fixing
+  `ax_drive.sh` to also hay over `AXValueDescription` would make the
+  container-level match usable again, but that's shared infra outside this
+  card's scope to change.
 - **This card's honest-branch steps (5-6) may all be no-ops on a given
   run** if `burst`'s synthetic rectangles produce a clean winner every time,
   or never produce 2+ scored kinds on any frame — that is a legitimate
@@ -413,3 +472,72 @@ citation in this card — every one shifted by exactly +7 (e.g.
 re-verified by directly reading each cited symbol. `AppModel.swift` and
 `CullReadsCardPresentation.swift` citations are untouched (neither file
 changed). No prose or behavior claims changed. Still NOT RUN.
+
+**LIVE RUN 2026-07-28, app 878f1939 (merged main, includes the three-state
+code), `teststrip-e2e` VM, fresh `burst` launch.** Verdict:
+**PASS-WITH-CARD-FIXES, no app bugs.** Selected Stack 1 of 4 (`smoke-0`,
+frame 1 of 3). This fixture's evaluator scores every one of the 18 assets
+with exactly the same four whole-photo kinds (`focus`/`motionBlur`/
+`framing`/`aesthetics`, confirmed via `SELECT kind, count(*) FROM
+evaluation_signals GROUP BY kind` = 18 for all four) and zero face-specific
+signals anywhere (`eyesOpen`/`faceQuality`/`eyeSharpness` = 0 rows total) —
+every frame's `kindCount` is uniformly 4, never 1. Steps 1-5 exercised
+against live data; Step 6 (the kindCount==1 divergence check) is a
+structural no-op on this fixture — no frame anywhere ever reaches
+`kindCount == 1`, so neither divergence variant is reachable, matching this
+card's own "don't manufacture it" guidance. Not a bug.
+  - Step 2 (pre-eval): zero `evaluation_signals` rows confirmed; Reads panel
+    read "No read yet" (bare inner-`Text` match); no "Recommended" chip, no
+    "EYES CLOSED"/"SOFT" badge, no "too close to call" banner. **PASS.**
+  - Step 3: ⇧⌘E covered all 18 assets in one poll. **PASS.**
+  - Step 4: `smoke-0` scored all 4 whole-photo kinds (a FULL read).
+    Independently computed `normalizedQualityRead` = 41.4986/196.5 ≈ 0.2112
+    (well under the 0.5 Toss threshold) → predicted decisive **Toss**; live
+    AX showed exactly "Toss" (no "Keep", no "No read yet"), with 4 signal
+    rows (8%/8%/81%/29% for Focus/Motion blur/Framing/Aesthetics). **PASS.**
+  - Step 5: independently computed all 3 frames' `normalizedQualityRead`
+    (`smoke-0`≈0.2112, `smoke-1`≈0.2325, `smoke-2`≈0.2487) — top is
+    `smoke-2`; `smoke-1` is 0.0162 away (tied, within the 0.03 margin),
+    `smoke-0` is 0.0375 away (excluded) → predicted `tiedLeaderIDs =
+    [smoke-1, smoke-2]`, banner "too close to call — 2·3", no "Recommended"
+    chip. Live matched exactly (`ax find --contains "too close to call"` →
+    "too close to call — 2·3"; `--role AXButton --contains "Recommended"` →
+    no match). Screenshot captured corroborating Reads card + rail banner
+    simultaneously. **PASS.**
+  - Step 6: skipped, no-op per above (no `kindCount == 1` frame exists in
+    this fixture).
+
+  **Card bugs found and fixed in this commit** (all documentation/procedure,
+  no app-behavior claim was wrong):
+  1. **Step 1's `S`-to-cycle-scope instruction was backwards.** A fresh
+     `burst` launch already defaults to `cullScope = .all`
+     (`AppModel.swift:2189`) — `cull-021` established this and it reproduced
+     live again here: pressing `S` moved scope *to* "Unrated," not to "All
+     frames." Confirmed harmless to this run's results
+     (`requestVisibleAssetEvaluations` iterates the loaded `assets` list
+     directly, not the scope-filtered queue — Step 3's 18/18 coverage was
+     identical either way) but the instruction itself was wrong and is now
+     fixed to tell the runner to leave scope alone.
+  2. **The container-level `--label "Reads" --contains "..."` assertion
+     methodology never works, in any state — a bigger hole than the single
+     previously-known "Mixed full-read → `""`" gap.** Verified via a direct
+     `AXUIElementCopyAttributeNames` dump of the `cullFacesReadsPanel`
+     `AXGroup`: `AXValue` is absent from its attribute list entirely in
+     every state; the accessibilityValue string lands only under
+     `AXValueDescription`, which `ax_drive.sh` never inspects. This is a
+     role-dependent SwiftUI→AX bridging behavior (confirmed a native
+     `AXButton`'s `.accessibilityValue`, e.g. the rail chip's "Selected",
+     *does* map to `AXValue` correctly) — not a `CullReadsCardPresentation`
+     defect; the right string is still genuinely computed and set. Every
+     Reads-panel assertion in Steps 2 and 4, plus the Source section's
+     claim that the container match is authoritative, rewritten to use the
+     bare `ax find --contains "..."` match against the inner `Text`
+     instead, with the mechanism documented in Sharp edges. This affects
+     any future card driving this same panel, not just this run.
+
+  **No app bugs.** The three-state contract itself — "No read yet" pre-eval,
+  a FULL read's verdict math (Keep/Toss thresholds against
+  `normalizedQualityRead`), and the rail's tie suppression — all matched
+  independent hand computation exactly, live. The only divergences found
+  were in this card's own AX-driving methodology and a stale scope-cycling
+  instruction, both fixed above.
