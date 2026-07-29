@@ -4526,12 +4526,10 @@ private struct LoupeView: View {
             frameNumberOffset: 0,
             totalFrameCount: isUnscopedWindow ? model.totalAssetCount : nil
         )
-        let pendingSparkleAssetIDs = Set(model.pendingAutopilotProposals.map(\.assetID))
         let (stops, _) = CullRunStripPresentation.stops(
             assets: scopedAssets,
             stacks: stacks,
-            selectedAssetID: model.selectedAssetID,
-            pendingSparkleAssetIDs: pendingSparkleAssetIDs
+            selectedAssetID: model.selectedAssetID
         )
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 7) {
@@ -4621,22 +4619,16 @@ private struct LoupeView: View {
         if stop.isCurrent { segments.append("Current") }
         if stop.isDone { segments.append("Done") }
         segments.append("\(stop.assetIDs.count) \(stop.assetIDs.count == 1 ? "frame" : "frames")")
-        if stop.sparkleCount > 0 {
-            segments.append("\(stop.sparkleCount) \(stop.sparkleCount == 1 ? "suggestion" : "suggestions")")
-        }
         return segments.joined(separator: ", ")
     }
 
     private static let runStripThumbSize = CGSize(width: 64, height: 44)
 
     // The photo-card content shared by a standalone stop and a stack's front
-    // card: preview image, sparkle badge, done checkmark, and the
-    // current-stop selection ring. Factored out so the two stop shapes below
-    // can never drift apart on how the frame itself renders. The sparkle
-    // badge shows a bare icon for a standalone (0 or 1 possible) but the
-    // pending count for a stack, where 2+ members can each carry a pending
-    // AI suggestion — same distinction the old pill/thumb pair made.
-    private func runStripThumbnailFace(_ stop: CullRunStripPresentation.Stop, sparkleShowsCount: Bool) -> some View {
+    // card: preview image, done checkmark, and the current-stop selection
+    // ring. Factored out so the two stop shapes below can never drift apart
+    // on how the frame itself renders.
+    private func runStripThumbnailFace(_ stop: CullRunStripPresentation.Stop) -> some View {
         ZStack(alignment: .topTrailing) {
             RoundedRectangle(cornerRadius: 5)
                 .fill(Color.black.opacity(0.55))
@@ -4651,20 +4643,6 @@ private struct LoupeView: View {
                 Image(systemName: "photo")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-            if stop.sparkleCount > 0 {
-                Group {
-                    if sparkleShowsCount {
-                        Label("\(stop.sparkleCount)", systemImage: DesignGlyph.ai.symbolName)
-                            .labelStyle(.titleAndIcon)
-                    } else {
-                        Image(systemName: DesignGlyph.ai.symbolName)
-                    }
-                }
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(.orange)
-                .padding(3)
-                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
             }
         }
         .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
@@ -4685,7 +4663,7 @@ private struct LoupeView: View {
     }
 
     private func runStripStandaloneThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
-        runStripThumbnailFace(stop, sparkleShowsCount: false)
+        runStripThumbnailFace(stop)
     }
 
     // A multi-frame stop renders as a small photo stack — the lead frame's
@@ -4710,10 +4688,11 @@ private struct LoupeView: View {
             // accepts an unbounded size proposal balloons the whole ZStack
             // to fill the run strip's HStack, scattering the thumbnail and
             // badge to the corners of the ballooned box (kata #16).
-            // Bottom-trailing, not top-trailing: the sparkle badge already
-            // owns the frame's top-right corner, and this reads naturally
-            // where the offset layers behind peek out.
-            runStripThumbnailFace(stop, sparkleShowsCount: true)
+            // Bottom-trailing, not top-trailing: this is where the offset
+            // layers behind already peek out, so the count badge reads
+            // naturally as "this pile has N frames" rather than floating
+            // disconnected from the stack visual.
+            runStripThumbnailFace(stop)
                 .overlay(alignment: .bottomTrailing) {
                     Text("\(stop.assetIDs.count)")
                         .font(.caption2.weight(.bold))

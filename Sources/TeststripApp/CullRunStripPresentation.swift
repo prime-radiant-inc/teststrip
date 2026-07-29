@@ -14,7 +14,6 @@ struct CullRunStripPresentation {
         var label: String
         var isCurrent: Bool
         var isDone: Bool
-        var sparkleCount: Int
         var isStandalone: Bool
         var leadAssetID: AssetID
     }
@@ -27,7 +26,6 @@ struct CullRunStripPresentation {
         assets: [Asset],
         stacks: [AssetStack],
         selectedAssetID: AssetID?,
-        pendingSparkleAssetIDs: Set<AssetID>,
         visibleLimit: Int = defaultVisibleLimit
     ) -> (stops: [Stop], windowStart: Int) {
         let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
@@ -37,14 +35,12 @@ struct CullRunStripPresentation {
             guard !stackAssets.isEmpty else { return nil }
             let isCurrent = selectedAssetID.map { stack.assetIDs.contains($0) } ?? false
             let isDone = stackAssets.allSatisfy { $0.metadata.confirmedProjection.flag != nil }
-            let sparkleCount = stack.assetIDs.filter { pendingSparkleAssetIDs.contains($0) }.count
             return Stop(
                 id: leadAssetID,
                 assetIDs: stack.assetIDs,
                 label: CullStackLabelPresentation.label(for: stackAssets),
                 isCurrent: isCurrent,
                 isDone: isDone,
-                sparkleCount: sparkleCount,
                 isStandalone: stack.assetIDs.count <= 1,
                 leadAssetID: leadAssetID
             )
