@@ -39,7 +39,13 @@ Source (re-verified against the working tree on this branch):
   `presentation.actions.dropFirst()` is non-empty, an `ellipsis.circle`
   `Menu` labeled "More stack actions" (`:4785-4803`) wrapping the secondary
   actions. Placed leftmost in the loupe's middle `HStack`, shown only when
-  `presentation.showsCullChrome` — `:3869-3872`.
+  `presentation.showsCullChrome` — `:3869-3872`. **AX role note (verified
+  live 2026-07-28):** the primary Keep `Button` is `AXButton` as expected,
+  but SwiftUI's `Menu` control AX-exposes as **`AXMenuButton`**, not
+  `AXButton` — `--role AXButton --help "More stack actions"` matches
+  nothing live; drive it with `--role AXMenuButton` (label `"More"`, the
+  `ellipsis.circle` SF Symbol's default accessibility label, or `--help
+  "More stack actions"`).
 - **Per-frame cells** (the "chips" of the old description; now thumbnail
   cells): `cullStackRailCell(_:)`, `LibraryGridView.swift:4817-4868` — each
   cell renders a `CachedPreviewImage` thumbnail, a decision overlay
@@ -169,7 +175,9 @@ script/vm_scenario_run.sh ax wait-vended
    `cull-pass-scope-and-undo.md`'s established Return-gesture undo semantics
    (one ⌘Z reverts the whole pick+reject-siblings transaction as a unit).
 5. Re-select a frame in the stack, then open the rail's ellipsis menu
-   (`script/ax_drive.sh press --role AXButton --help "More stack actions"`)
+   (`script/ax_drive.sh press --role AXMenuButton --help "More stack actions"`
+   — verified live 2026-07-28 that the SwiftUI `Menu` control AX-exposes as
+   `AXMenuButton`, not `AXButton`; `--role AXButton` matches nothing)
    and click the **secondary** "Keep recommended N" / "Keep top 2" menu item
    (`script/ax_drive.sh press --role AXMenuItem --contains "Keep recommended"`
    or `"Keep top 2"`, whichever `rankedAction` produced — see step 2's
@@ -188,14 +196,24 @@ script/vm_scenario_run.sh ax wait-vended
    ```
    (cell accessibility label is `"Stack frame \(label)"`,
    `LibraryGridView.swift:4866`; value carries Selected/Recommended + each
-   flaw badge's text per `stackChipAccessibilityValue`, `:4897-4901`; the
-   flaw marks themselves are separate `AXStaticText` children below the
-   thumbnail, `:4859-4861` — independently AX-findable by their text, e.g.
-   `find --role AXStaticText --contains "SOFT"`, unlike the `✦` marker. As
-   of 2026-07-17 the flaw mark itself renders as quiet, secondary-colored
-   caption text — not a filled pill — but its text ("SOFT"/"EYES CLOSED",
-   not lowercased) and AX-findability are unchanged, so this assertion
-   still holds).
+   flaw badge's text per `stackChipAccessibilityValue`, `:4897-4901`).
+   **Correction (verified live 2026-07-28): the flaw marks are NOT
+   separate `AXStaticText` children.** The `Text(badge.text)` built by
+   `compareDecisionBadge(_:)` (`:4859-4861` calls `compareDecisionBadges`,
+   which renders each badge via `compareDecisionBadge` at `:5942`) lives
+   inside the `cullStackRailCell` `Button`'s label closure, and SwiftUI
+   collapses a `Button`'s label subtree into the single accessibility
+   element carrying `.accessibilityLabel`/`.accessibilityValue` — exactly
+   the same conflation the card already correctly documents for the `✦`
+   marker. Live probing confirmed `find --role AXStaticText --contains
+   "SOFT"` matches **nothing**, while `find --contains "SOFT"` (any role)
+   and `find --role AXButton --label "Stack frame N" --contains "SOFT"`
+   both match the cell's `AXButton`, same as the `Recommended`/`Selected`
+   check. Drive flaw-badge assertions the same way as the `✦` check, not
+   via a standalone `AXStaticText` query. (The badge's visual rendering —
+   quiet, secondary-colored caption text, no filled pill, text unchanged
+   since 2026-07-17 — is otherwise as previously documented and still
+   holds.)
 
 ## Expected
 - Step 3: **Fails if** the primary button kept the recommended frame instead
@@ -210,10 +228,11 @@ script/vm_scenario_run.sh ax wait-vended
   ranking read in step 2, or if it also affects frames outside the current
   stack.
 - Step 6: **Fails if** the cell count != stack member count, the `✦`
-  (accessibility "Recommended") is on the wrong cell, or a cell with known
-  flaws (per `evaluation_signals`) shows no flaw mark — or shows the old
-  single-red-dot rendering, or a bold filled-red pill (pre-2026-07-17),
-  instead of one quiet mark per flaw kind.
+  (accessibility "Recommended") is on the wrong cell (when a fixture
+  actually produces one — `burst` doesn't, see Sharp edges), or a cell
+  with known flaws (per `evaluation_signals`) shows no flaw mark — or shows
+  the old single-red-dot rendering, or a bold filled-red pill
+  (pre-2026-07-17), instead of one quiet mark per flaw kind.
 
 ## Cleanup
 ```bash
@@ -224,11 +243,52 @@ script/vm_scenario_run.sh ax wait-vended
 - **This card shares the evaluation-signal fixture gap** documented in
   `cull-021-stack-rail-nav.md`: `burst`'s synthetic frames are flat colored
   rectangles with no faces, so `.eyesOpen`-derived flaw badges can
-  structurally never fire, and whether `.focus`-derived `SOFT` fires on
-  synthetic content, or whether any frame gets a rankable score at all
-  (making a recommendation/secondary-action possible), is not established
-  here — steps 2/5/6 must assert whichever branch the live evaluation
-  actually produces, not a forced outcome.
+  structurally never fire. **Resolved live 2026-07-28 (no longer
+  hypothetical):** every frame in all 4 `burst` stacks scores focus in the
+  0.08–0.18 range — always under the `.4` `softFocusBadgeThreshold` — so
+  **every single cell in every stack carries the `SOFT` badge**; there is
+  no fixture asset that lacks it, so the negative case ("a cell with no
+  flaws shows no mark") has no live counter-example to check against
+  (the positive case is fully covered instead: 18/18 assets confirmed
+  `SOFT`).
+- **All four `burst` auto-stacks hit `tiedLeaderIDs` (confirmed
+  exhaustively 2026-07-28), so `isRecommended` is never true anywhere in
+  this fixture and the `✦` marker never renders.** Exact tie banners
+  observed: stack 1 (`smoke-0..2`) "too close to call — 2·3", stack 2
+  (`smoke-3..6`) "too close to call — 1·2·3·4", stack 3 (`smoke-7..9`)
+  "too close to call — 2·3", stack 4 (`smoke-10..13`) "too close to call —
+  2·3·4". Probed every frame in every stack via `find --role AXButton
+  --label "Stack frame N" --contains "Recommended"` — zero matches
+  anywhere. Step 6's `✦`-placement assertion is untestable with this
+  fixture as constituted; report it as a confirmed fixture gap, not a
+  forced pass.
+- **"Keep recommended N" is structurally unreachable with this fixture
+  regardless of the tie finding above.** `rankedAction` (`:6494-6534`)
+  checks `stackAssetIDs.count > 2 && topTwo.count >= 2` *before* it looks
+  at `tiedLeaderIDs`, and returns `"Keep top 2"` whenever that holds. Every
+  `burst` stack has 3 or 4 frames (never exactly 2), and every asset gets a
+  rankable `qualityScore` once evaluated, so `topTwo.count` is always 2 —
+  the `.keepRecommended` branch can never fire here even on a hypothetical
+  future fixture revision that resolves the tie. Live-confirmed on stack 3
+  (3 frames): ellipsis menu showed exactly `"Keep top 2"` / `"Keep all 3"`,
+  never a `"Keep recommended"` item. Step 5 must always drive `"Keep top
+  2"` against `burst`; a card or fixture that wants to exercise
+  `"Keep recommended N"` needs a 2-frame stack, which no current seed
+  variant produces.
+- **Escape at the Loupe's top level exits the whole Cull workspace to
+  Library, not just the frontmost menu/sheet** (verified live 2026-07-28:
+  `key code 53` with no menu open switched the toolbar segment back to
+  "Library" and returned to Grid). Check whether a menu is actually open
+  before sending Escape to dismiss it, or use a targeted click instead.
+  Recovery is clean, though: clicking the session's entry under Library's
+  "Collections" sidebar (labeled with the cull session's name, e.g.
+  "Catalog Cull") resumes the Cull workspace at the exact frame/stack
+  position it was on before the Escape, with all catalog writes intact —
+  confirmed by resuming mid-run and finding both the pre-Escape asset
+  selection and the flags written in step 3 unchanged. Re-entering via the
+  toolbar's "Cull" segment instead pops a fresh "Start Culling" sheet
+  offering a new session — `Cancel` that and use the sidebar entry to
+  resume instead of starting a duplicate session.
 - **This card does not re-test rail navigation** (↓↑ within-stack, ←→
   across-stack, click-to-loupe) — see `cull-021-stack-rail-nav.md` for
   that; duplicating it here would drift the two cards apart again.
@@ -279,3 +339,20 @@ every citation in this card — every `LibraryGridView.swift` line number
 above shifted by exactly +7 (e.g. `cullingStackRail` `:4721-4808` →
 `:4728-4815`), re-verified by directly reading each cited symbol, not by
 assuming the offset. No prose or behavior claims changed.
+
+**Run 2026-07-28 (live VM, app 878f1939): PASS-WITH-CARD-FIXES for steps
+1-5; step 6 PASS on cell-count/flaw-badge, fixture-gap on `✦`.** All
+source citations re-verified accurate before driving. No app bugs found —
+`keepSelectedStackFrame()`'s selection-based write, the protected-pick
+guard in `promoteCurrentFrameAndRejectSiblings`, `⌘Z`'s atomic revert, and
+`keepTopRankedFramesInSelectedCullingStack`'s ranking-based write (verified
+against a hand-computed `CullingQualityScore` from live `evaluation_signals`)
+all matched the source reading exactly. Card fixes: (1) step 5's ellipsis
+menu role corrected `AXButton` → `AXMenuButton`; (2) step 6's flaw-badge
+AX-findability claim corrected — flaw marks are embedded in the cell's
+single `AXButton` value/help, not a separate `AXStaticText`; (3) Sharp
+edges expanded with the exhaustively-confirmed all-four-stacks-tied
+finding, the structural (tie-independent) unreachability of "Keep
+recommended N" against any `burst`-shaped stack, the Escape-exits-workspace
+gotcha, and the session-resume recovery path. Full run report:
+`.superpowers/card-runs/cull-014-run.md`.

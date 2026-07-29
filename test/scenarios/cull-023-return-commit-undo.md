@@ -175,12 +175,21 @@ baseline (zero tentative flags) should
    SRC_DIR=$(script/vm_scenario_run.sh sql burst "SELECT original_path FROM assets WHERE id='smoke-0';" | xargs dirname)
    script/vm_scenario_run.sh shell "find '$SRC_DIR' -name '*.xmp' | wc -l"           # expect 0
    ```
-   `ax wait-vended`; ⌘1 for Cull; `S` to cycle scope to "All frames"
-   (confirm via the HUD's scope chip being **absent** — `cullHUDScopeChip`
-   only renders `scope != .all`, `CullHUDPresentation.swift:44` — so no
-   `"Cull filter:"` element should match). Confirm the initial selection is
-   `smoke-0` (`ax find --role AXStaticText --contains "smoke-0.jpg"`); if it
-   isn't, press `Space`/navigate until it is before Step 2.
+   `ax wait-vended`; ⌘1 for Cull. **No `S` press needed**: `cullScope`
+   defaults to `.all` on every fresh `AppModel` (`AppModel.swift:2189`,
+   `public private(set) var cullScope: CullScope = .all`) with no
+   persistence across launches, so a freshly-launched instance is already
+   scoped to "All frames" — pressing `S` here actually *cycles away* from
+   `.all` (`CullScope.next()`, `:322-326`, cycles
+   `unrated → picks → rejects → all`), landing on "Unrated" first, not "All
+   frames" (confirmed live: one `S` press produced a `"Cull filter:
+   Unrated"` chip). Just confirm scope is already `.all` via the HUD's
+   scope chip being **absent** — `cullHUDScopeChip` only renders
+   `scope != .all`, `CullHUDPresentation.swift:44` — so no `"Cull filter:"`
+   element should match, with zero `S` presses. Confirm the initial
+   selection is `smoke-0` (`ax find --role AXStaticText --contains
+   "smoke-0.jpg"`); if it isn't, press `Space`/navigate until it is before
+   Step 2.
 
 2. **Force-flip leg (group1, standalone from group3 below).** With
    `smoke-0` selected, press Return
@@ -236,10 +245,18 @@ baseline (zero tentative flags) should
    done   # poll until neither reads 'pending'
    for id in smoke-7 smoke-8; do
      SRC=$(script/vm_scenario_run.sh sql burst "SELECT original_path FROM assets WHERE id='$id';")
-     SIDECAR="$(dirname "$SRC")/$(basename "$SRC" .jpg).xmp"
+     SIDECAR="${SRC}.xmp"
      script/vm_scenario_run.sh shell "grep -o 'ts:Pick=\"[^\"]*\"' '$SIDECAR'"
    done
    ```
+   (Sidecar naming is `originalPath + ".xmp"`, i.e. `smoke-7.jpg.xmp` —
+   `XMPSidecarStore.defaultSidecarURL`,
+   `Sources/TeststripCore/Metadata/XMPSidecarStore.swift:21-22`,
+   `originalURL.appendingPathExtension("xmp")`. The stripped-extension form
+   `smoke-7.xmp` is the "Adobe-style" fallback the store only *reads* if it
+   already exists on disk — a freshly-written sidecar always uses the
+   append form; confirmed live, the extension-preserving path is the one
+   that actually exists.)
    Expect both read `ts:Pick="reject"` (smoke-7) / `ts:Pick="pick"`
    (smoke-8). Confirm **no** `metadata_sync_state` row (and no `.xmp`) for
    `smoke-9` — its write was skipped, so it was never even enqueued:
@@ -271,9 +288,19 @@ baseline (zero tentative flags) should
 
 6. **Standalone no-op.** Press `Space` repeatedly, polling the HUD filename,
    until `smoke-16.jpg` is selected (a single, no multi-frame stack —
-   confirm no stack rail renders: `ax find --role AXButton --contains
-   "Stack frame"` should fail to match). Record a whole-catalog write
-   signal before:
+   confirm via the rail's **title text**, not a cell-label probe: `ax find
+   --role AXStaticText --contains "Standalone"` should match, and `ax find
+   --role AXStaticText --contains "Stack 1 of"` should fail to match.
+   `titleText` is set to exactly `"Standalone"` for a single-asset stack
+   scope, vs. `"Stack \(stackIndex) of \(stackCount)"` otherwise
+   (`LibraryGridView.swift:6423-6436`). Do **not** probe `ax find --role
+   AXButton --contains "Stack frame"` — that matches the per-cell
+   accessibility label (`.accessibilityLabel("Stack frame \(item.label)")`,
+   `LibraryGridView.swift:4866`), which renders for *every* rail stop
+   including a standalone one (confirmed live: it matched "Stack frame 1"
+   on `smoke-16`'s own one-cell rail) — this is the same "Stack frame"
+   probe defect `cull-021`/`cull-022` already found and documented).
+   Record a whole-catalog write signal before:
    ```bash
    SUMGEN_BEFORE=$(script/vm_scenario_run.sh sql burst "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;")
    ```
@@ -379,15 +406,53 @@ Quit the launched instance before deleting.
   rather than assuming a fixed starting position.
 
 ## Run status
-NOT RUN — authored 2026-07-16, source-cited against the working tree by
+**PASS-WITH-CARD-FIXES** — run live 2026-07-28 against app build `878f1939`
+in the `teststrip-e2e` Tart VM (`burst` fixture, patched per Pre-state).
+Steps 1-6 all PASS on both the toast text and SQL/sidecar ground truth,
+exactly as specified once three card bugs were fixed (below); Step 7
+confirmed live as not executable — `.large` previews exist on disk for
+every `burst` asset (`smoke-5`, `smoke-12`, etc.) before the app ever
+launches, exactly as the Sharp Edges investigation predicted. No app bugs
+found — every defect was in the card's own driving instructions, not the
+app.
+
+Card bugs found and fixed:
+- **Step 1's `S`-to-cycle instruction was backwards.** `cullScope` defaults
+  to `.all` on every fresh launch with no cross-launch persistence
+  (`AppModel.swift:2189`); pressing `S` from that default state cycles
+  *away* from `.all` (to "Unrated" — confirmed live), not toward it. Fixed
+  to skip the `S` press entirely and just assert the chip is already
+  absent. (Caught by actually driving it: the first live `S` press produced
+  a `"Cull filter: Unrated"` chip instead of the expected absence, which
+  also knocked the selection off `smoke-0`, requiring a fresh relaunch to
+  recover a known-clean state rather than fighting stack-relative
+  navigation back to it — there's no key bound to `.previousPhoto` in
+  `CullingKeyCaptureView.swift`'s `init(event:)`.)
+- **Step 4's sidecar path construction stripped the wrong thing.**
+  `$(basename "$SRC" .jpg).xmp` produces `smoke-7.xmp`, but the sidecar
+  store's default/write path is `originalPath + ".xmp"`
+  (`XMPSidecarStore.swift:21-22`) — `smoke-7.jpg.xmp`. The stripped form is
+  only the store's "Adobe-style" *read* fallback for a sidecar that already
+  exists; a freshly-written one never uses it. Fixed to `"${SRC}.xmp"`.
+- **Step 6's standalone probe matched the wrong AX element.** `ax find
+  --role AXButton --contains "Stack frame"` was expected to fail to match
+  on a standalone stop, but the per-cell accessibility label
+  `"Stack frame N"` (`LibraryGridView.swift:4866`) renders for every rail
+  stop, standalone included (confirmed live: it matched "Stack frame 1" on
+  `smoke-16`'s own one-cell rail) — the same probe-can't-distinguish defect
+  `cull-021`/`cull-022` already found for this exact AX pattern. Fixed to
+  assert on the rail's title text instead (`"Standalone"` present /
+  `"Stack N of "` absent), which does carry the distinction
+  (`LibraryGridView.swift:6423-6436`).
+
+Originally authored 2026-07-16, source-cited against the working tree by
 directly reading `AppModel.swift` (`promoteCurrentFrameAndRejectSiblings`,
 `promoteDecisionFeedback`, `applyCullingStackDecision`,
 `recordMetadataChangeGroup`/`undoMetadataChange`, `previewURL`,
 `applyMetadataSnapshot`/`syncMetadataSidecar`),
 `CullFilmstripPresentation.swift` (`CullDecisionToastPresentation`),
 `XMPPacket.swift`, `CatalogMigrations.swift`, `CullingKeyCaptureView.swift`,
-and `SmokeCatalogSeeder.swift`/`BurstFixtureLayout`, not carried over from
-any older card; pending live VM execution per `test/scenarios/README.md`.
-The render-gate leg (Step 7) is additionally cross-checked against
+and `SmokeCatalogSeeder.swift`/`BurstFixtureLayout`.
+The render-gate leg (Step 7) was additionally cross-checked against
 `cull-004-stack-promote-return.md`'s independent investigation of
 `DuplicateFixtureSeeder`'s missing EXIF timestamps.
