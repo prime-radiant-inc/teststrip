@@ -11008,6 +11008,65 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [])
     }
 
+    // Regression for the kata #15 residual, same-class gap as
+    // requestVisibleLoupeAssetPreview/prefetchLoupeNeighborLargePreviews: a
+    // stale original is guaranteed to fail full-resolution render too, so
+    // zooming into one must not dispatch a worker round-trip.
+    func testRequestLoupeFullResolutionPreviewSkipsWhenOriginalIsStale() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res-stale",
+            path: "/Photos/full-res-stale.jpg",
+            rating: 0,
+            availability: .stale,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-stale",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
+    // Regression for the kata #15 residual: an asset whose .original render
+    // has already burned its 3 automatic attempts must not be re-requested
+    // by a zoom action either.
+    func testRequestLoupeFullResolutionPreviewSkipsWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res-retry-cap",
+            path: "/Photos/full-res-retry-cap.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-retry-cap",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        for _ in 0..<3 {
+            try result.repository.recordPreviewGenerationFailure(assetID: asset.id, level: .original, errorMessage: "boom")
+        }
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
     func testLoupeZoomFullResolutionStatusReportsSatisfiedLoadingAndUnavailable() throws {
         let originalCached = makeAsset(
             id: "status-original",
@@ -11142,6 +11201,119 @@ final class AppModelTests: XCTestCase {
             workerSupervisor: supervisor,
             availabilityForIndex: { index in index == 2 ? .offline : .online }
         )
+        try writePreviewPlaceholder(
+            to: fixture.previewCache.url(for: PreviewCacheKey(assetID: fixture.assets[1].id, level: .large))
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    // Regression for the kata #15 residual: the automatic background scan
+    // (enqueuePendingPreviewGeneration) excludes .stale, but ordinary loupe
+    // navigation dispatches through a separate path
+    // (requestVisibleLoupePreview) that didn't. A stale asset must not be
+    // offered to the worker here either -- it is guaranteed to fail.
+    func testRequestVisibleLoupePreviewSkipsStaleVisibleAsset() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-visible-stale",
+            assetCount: 3,
+            workerSupervisor: supervisor,
+            availabilityForIndex: { index in index == 1 ? .stale : .online }
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[2].id.rawValue)-large",
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    func testRequestVisibleLoupePreviewSkipsStaleNeighborPrefetch() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-neighbor-prefetch-stale",
+            assetCount: 3,
+            workerSupervisor: supervisor,
+            availabilityForIndex: { index in index == 2 ? .stale : .online }
+        )
+        try writePreviewPlaceholder(
+            to: fixture.previewCache.url(for: PreviewCacheKey(assetID: fixture.assets[1].id, level: .large))
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    // Regression for the kata #15 residual: an asset/level pair that has
+    // already burned its 3 automatic attempts must not be re-requested by
+    // ordinary loupe navigation -- requestPreview only dedupes against a
+    // currently *active* queue item, never against exhausted-retry history.
+    func testRequestVisibleLoupePreviewSkipsVisibleAssetAtRetryCap() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-visible-retry-cap",
+            assetCount: 3,
+            workerSupervisor: supervisor
+        )
+        let visibleAsset = fixture.assets[1]
+        for level: PreviewLevel in [.medium, .large] {
+            for _ in 0..<3 {
+                try fixture.repository.recordPreviewGenerationFailure(
+                    assetID: visibleAsset.id,
+                    level: level,
+                    errorMessage: "boom"
+                )
+            }
+        }
+
+        try fixture.model.requestVisibleLoupePreview(assetID: visibleAsset.id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[2].id.rawValue)-large",
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    func testRequestVisibleLoupePreviewSkipsNeighborPrefetchAtRetryCap() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-neighbor-retry-cap",
+            assetCount: 3,
+            workerSupervisor: supervisor
+        )
+        let exhaustedNeighbor = fixture.assets[2]
+        for _ in 0..<3 {
+            try fixture.repository.recordPreviewGenerationFailure(
+                assetID: exhaustedNeighbor.id,
+                level: .large,
+                errorMessage: "boom"
+            )
+        }
         try writePreviewPlaceholder(
             to: fixture.previewCache.url(for: PreviewCacheKey(assetID: fixture.assets[1].id, level: .large))
         )
@@ -14113,13 +14285,22 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             availability: .missing
         )
+        // kata #15 residual: the worker always refuses a stale original, so
+        // compare must not offer it either.
+        let stale = makeAsset(
+            id: "stale-compare",
+            path: "/Photos/stale-compare.jpg",
+            rating: 0,
+            availability: .stale
+        )
         let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "compare-unavailable-originals",
-            assets: [offline, missing],
+            assets: [offline, missing, stale],
             workerSupervisor: supervisor
         )
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: offline.id, level: .grid)))
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: missing.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: stale.id, level: .grid)))
 
         try model.requestVisibleComparePreviews()
 
@@ -14127,6 +14308,67 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
         XCTAssertEqual(model.loupePreviewURL(for: offline.id), previewCache.url(for: PreviewCacheKey(assetID: offline.id, level: .grid)))
         XCTAssertEqual(model.loupePreviewURL(for: missing.id), previewCache.url(for: PreviewCacheKey(assetID: missing.id, level: .grid)))
+        XCTAssertEqual(model.loupePreviewURL(for: stale.id), previewCache.url(for: PreviewCacheKey(assetID: stale.id, level: .grid)))
+    }
+
+    // Regression for the kata #15 residual: an asset/level pair that has
+    // already burned its 3 automatic attempts must not be re-requested by
+    // the compare view's per-asset medium-preview dispatch either.
+    func testVisibleComparePreviewsSkipsWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let first = makeAsset(id: "compare-retry-cap-first", path: "/Photos/compare-retry-cap-first.jpg", rating: 0)
+        let second = makeAsset(id: "compare-retry-cap-second", path: "/Photos/compare-retry-cap-second.jpg", rating: 0)
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "compare-retry-cap",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+        for asset in [first, second] {
+            for _ in 0..<3 {
+                try result.repository.recordPreviewGenerationFailure(assetID: asset.id, level: .medium, errorMessage: "boom")
+            }
+        }
+
+        try result.model.requestVisibleComparePreviews()
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(result.model.backgroundWorkQueue.items, [])
+    }
+
+    // Same regression, for the selected asset's .large promotion branch
+    // specifically (a separate code path from the per-asset .medium loop
+    // above, gated independently).
+    func testVisibleComparePreviewsSkipsSelectedAssetLargePromotionWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let first = makeAsset(id: "compare-retry-cap-large-first", path: "/Photos/compare-retry-cap-large-first.jpg", rating: 0)
+        let second = makeAsset(id: "compare-retry-cap-large-second", path: "/Photos/compare-retry-cap-large-second.jpg", rating: 0)
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "compare-retry-cap-large",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+        result.model.selectedAssetID = first.id
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: first.id, level: .medium)))
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: second.id, level: .medium)))
+        for _ in 0..<3 {
+            try result.repository.recordPreviewGenerationFailure(assetID: first.id, level: .large, errorMessage: "boom")
+        }
+
+        try result.model.requestVisibleComparePreviews()
+
+        // first's medium is cached (so its .medium loop iteration is a
+        // no-op) and its .large promotion is at cap; second's medium is
+        // also cached. Nothing should dispatch.
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(result.model.backgroundWorkQueue.items, [])
     }
 
     @MainActor
@@ -14202,7 +14444,9 @@ final class AppModelTests: XCTestCase {
     }
 
     func testVisibleGridPreviewDoesNotDispatchForKnownUnavailableOriginals() throws {
-        for availability in [SourceAvailability.offline, .missing, .moved] {
+        // .stale included: kata #15 residual -- the worker always refuses a
+        // stale original, so it must not be offered here either.
+        for availability in [SourceAvailability.offline, .missing, .moved, .stale] {
             let transport = RecordingWorkerTransport()
             let supervisor = WorkerSupervisor(
                 queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -14228,6 +14472,31 @@ final class AppModelTests: XCTestCase {
             XCTAssertEqual(try transport.commands(), [], "unexpected grid preview command for \(availability.rawValue) asset")
             XCTAssertEqual(model.backgroundWorkQueue.items, [], "unexpected grid preview work for \(availability.rawValue) asset")
         }
+    }
+
+    // Regression for the kata #15 residual: an asset/level pair that has
+    // already burned its 3 automatic attempts must not be re-requested by
+    // the grid's visible-preview dispatch path either.
+    func testVisibleGridPreviewSkipsWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "grid-retry-cap", path: "/Photos/grid-retry-cap.jpg", rating: 0)
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "grid-retry-cap",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        for _ in 0..<3 {
+            try result.repository.recordPreviewGenerationFailure(assetID: asset.id, level: .grid, errorMessage: "boom")
+        }
+
+        try result.model.requestVisibleGridPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(result.model.backgroundWorkQueue.items, [])
     }
 
     @MainActor
@@ -18488,6 +18757,7 @@ final class AppModelTests: XCTestCase {
 
     private struct LoupeCullingFixture {
         var model: AppModel
+        var repository: CatalogRepository
         var previewCache: PreviewCache
         var assets: [Asset]
     }
@@ -18510,14 +18780,21 @@ final class AppModelTests: XCTestCase {
         var assets: [Asset] = []
         for index in 0..<assetCount {
             let availability = availabilityForIndex(index)
-            let originalURL = availability == .online
+            // .stale needs a real file present on disk whose fingerprint
+            // mismatches the catalog's recorded one -- unlike
+            // .offline/.missing, the original is reachable, just changed.
+            let originalURL = availability == .online || availability == .stale
                 ? originalsDirectory.appendingPathComponent("frame-\(index).jpg")
                 : URL(fileURLWithPath: "/Volumes/Archive/\(name)/frame-\(index).jpg")
             let fingerprint: FileFingerprint
-            if availability == .online {
+            switch availability {
+            case .online:
                 try Data("original".utf8).write(to: originalURL)
                 fingerprint = try fileFingerprint(for: originalURL)
-            } else {
+            case .stale:
+                try Data("original".utf8).write(to: originalURL)
+                fingerprint = FileFingerprint(size: 999_999, modificationDate: Date(timeIntervalSince1970: 1))
+            case .offline, .missing, .moved:
                 fingerprint = FileFingerprint(
                     size: Int64(index + 1),
                     modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))
@@ -18537,7 +18814,12 @@ final class AppModelTests: XCTestCase {
             assets: assets,
             workerSupervisor: workerSupervisor
         )
-        return LoupeCullingFixture(model: result.model, previewCache: result.previewCache, assets: assets)
+        return LoupeCullingFixture(
+            model: result.model,
+            repository: result.repository,
+            previewCache: result.previewCache,
+            assets: assets
+        )
     }
 
     private func makeAsset(

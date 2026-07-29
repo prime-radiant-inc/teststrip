@@ -9256,7 +9256,7 @@ public final class AppModel {
 
     public func requestVisibleGridPreview(assetID: AssetID) throws {
         if let asset = assets.first(where: { $0.id == assetID }),
-           asset.availability.requiresCachedPreviewOnly {
+           !asset.availability.isAvailableForPreviewGeneration {
             return
         }
 
@@ -9264,6 +9264,9 @@ public final class AppModel {
             assetID: assetID,
             context: .grid(distanceFromViewport: 0)
         )
+        guard try !previewGenerationAttemptsExhausted(assetID: assetID, level: request.level) else {
+            return
+        }
         try requestPreview(assetID: request.assetID, level: request.level, placement: .front)
     }
 
@@ -9288,11 +9291,15 @@ public final class AppModel {
         if previewURL(for: assetID, levels: [request.level]) != nil {
             return
         }
-        if [.offline, .missing].contains(try refreshAvailability(for: assetID)) {
+        guard try refreshAvailability(for: assetID).isAvailableForPreviewGeneration else {
             return
         }
-        if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil {
+        if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil,
+           try !previewGenerationAttemptsExhausted(assetID: assetID, level: .medium) {
             try requestPreview(assetID: assetID, level: .medium, placement: .front)
+        }
+        guard try !previewGenerationAttemptsExhausted(assetID: assetID, level: request.level) else {
+            return
         }
         try requestPreview(assetID: assetID, level: request.level, placement: .front)
     }
@@ -9305,13 +9312,30 @@ public final class AppModel {
         guard let index = assets.firstIndex(where: { $0.id == assetID }) else { return }
         for neighborIndex in [index + 1, index - 1] where assets.indices.contains(neighborIndex) {
             let neighbor = assets[neighborIndex]
-            guard !neighbor.availability.requiresCachedPreviewOnly else { continue }
+            guard neighbor.availability.isAvailableForPreviewGeneration else { continue }
             let request = PreviewScheduler().request(
                 assetID: neighbor.id,
                 context: .loupe(isVisible: false, requestedFullResolution: false)
             )
+            guard try !previewGenerationAttemptsExhausted(assetID: neighbor.id, level: request.level) else { continue }
             try requestPreview(assetID: request.assetID, level: request.level, placement: .back)
         }
+    }
+
+    // Mirrors the automatic background scan's cap
+    // (`pendingPreviewGenerationItems(maximumAttemptCount:)`): an asset/level
+    // pair that has already burned its automatic attempts must not be
+    // re-requested by these on-demand loupe navigation paths either, or
+    // every visit dispatches a fresh guaranteed-to-fail worker round-trip
+    // (kata #15 residual). Manual retry (`retrySelectedPreviewGenerationFailures`)
+    // deliberately bypasses this -- it exists precisely to force another
+    // attempt once the automatic cap is reached.
+    private func previewGenerationAttemptsExhausted(assetID: AssetID, level: PreviewLevel) throws -> Bool {
+        guard let catalog else { return false }
+        guard let state = try catalog.repository.previewGenerationQueueState(assetID: assetID, level: level) else {
+            return false
+        }
+        return state.attemptCount >= Self.previewGenerationMaximumAutomaticAttempts
     }
 
     // Escalates the zoomed loupe frame to an original-resolution render when
@@ -9326,13 +9350,16 @@ public final class AppModel {
             return
         }
         guard let asset = assets.first(where: { $0.id == assetID }),
-              !asset.availability.requiresCachedPreviewOnly else {
+              asset.availability.isAvailableForPreviewGeneration else {
             return
         }
         let request = PreviewScheduler().request(
             assetID: assetID,
             context: .loupe(isVisible: true, requestedFullResolution: true)
         )
+        guard try !previewGenerationAttemptsExhausted(assetID: assetID, level: request.level) else {
+            return
+        }
         try requestPreview(assetID: request.assetID, level: request.level, placement: .front)
     }
 
@@ -9364,13 +9391,15 @@ public final class AppModel {
     public func requestVisibleComparePreviews() throws {
         let compareAssets = compareAssets()
         if let selectedAssetID,
-           compareAssets.contains(where: { $0.id == selectedAssetID && !$0.availability.requiresCachedPreviewOnly }),
-           previewURL(for: selectedAssetID, levels: [.medium]) != nil {
+           compareAssets.contains(where: { $0.id == selectedAssetID && $0.availability.isAvailableForPreviewGeneration }),
+           previewURL(for: selectedAssetID, levels: [.medium]) != nil,
+           try !previewGenerationAttemptsExhausted(assetID: selectedAssetID, level: .large) {
             try requestPreview(assetID: selectedAssetID, level: .large, placement: .front)
         }
 
         for asset in compareAssets {
-            guard !asset.availability.requiresCachedPreviewOnly else { continue }
+            guard asset.availability.isAvailableForPreviewGeneration else { continue }
+            guard try !previewGenerationAttemptsExhausted(assetID: asset.id, level: .medium) else { continue }
             try requestPreview(assetID: asset.id, level: .medium, placement: .front)
         }
     }
@@ -14427,6 +14456,18 @@ extension SourceAvailability {
         case .online, .stale:
             return false
         }
+    }
+
+    // The one state in which the worker will actually render a preview.
+    // `requiresCachedPreviewOnly` alone under-covers `.stale` (it's `false`
+    // there, since a stale original can still serve its existing cached
+    // preview) -- but a `.stale` original is just as guaranteed to fail
+    // preview *generation* as `.offline`/`.missing`/`.moved`. Every
+    // on-demand preview-request dispatch path (grid, compare, and the three
+    // loupe paths) gates on this single normalized shape instead of each
+    // spelling out its own exclusion list (kata #15).
+    var isAvailableForPreviewGeneration: Bool {
+        self == .online
     }
 }
 

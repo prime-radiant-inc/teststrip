@@ -2359,7 +2359,7 @@ public final class CatalogRepository {
     }
 
     public func updateAvailability(assetID: AssetID, availability: SourceAvailability) throws {
-        _ = try asset(id: assetID)
+        let previousAvailability = try asset(id: assetID).availability
         let now = "\(Date().timeIntervalSince1970)"
         try database.execute(
             """
@@ -2373,6 +2373,29 @@ public final class CatalogRepository {
                 now,
                 assetID.rawValue
             ]
+        )
+        // The automatic preview-generation retry cap (attempt_count) exists
+        // to stop offering work a blocked original is guaranteed to refuse.
+        // Once the original recovers, that history is stale: reset it here,
+        // on the blocking -> non-blocking transition only, so automatic
+        // generation resumes instead of staying capped forever (kata #15).
+        if previousAvailability.blocksPreviewGeneration, !availability.blocksPreviewGeneration {
+            try resetPreviewGenerationAttempts(assetID: assetID)
+        }
+    }
+
+    private func resetPreviewGenerationAttempts(assetID: AssetID) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            UPDATE preview_generation_queue
+            SET attempt_count = 0,
+                last_error = NULL,
+                last_attempted_at = NULL,
+                updated_at = ?
+            WHERE asset_id = ?
+            """,
+            bindings: [now, assetID.rawValue]
         )
     }
 
@@ -2641,10 +2664,11 @@ public final class CatalogRepository {
             bindings.append("\(maximumAttemptCount)")
         }
         if requiresAvailableOriginal {
-            clauses.append("assets.availability NOT IN (?, ?, ?)")
+            clauses.append("assets.availability NOT IN (?, ?, ?, ?)")
             bindings.append(SourceAvailability.offline.rawValue)
             bindings.append(SourceAvailability.missing.rawValue)
             bindings.append(SourceAvailability.moved.rawValue)
+            bindings.append(SourceAvailability.stale.rawValue)
         }
         if !clauses.isEmpty {
             sql += "\nWHERE \(clauses.joined(separator: " AND "))"

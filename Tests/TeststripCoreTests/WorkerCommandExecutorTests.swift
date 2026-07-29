@@ -119,7 +119,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         ])
     }
 
-    func testGeneratePreviewCommandMarksOfflineOriginalWithoutBurningPreviewAttempt() throws {
+    func testGeneratePreviewCommandMarksOfflineOriginalAndRecordsPreviewFailure() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-offline-source")
         let source = URL(fileURLWithPath: "/Volumes/TeststripOffline-\(UUID().uuidString)/Job/source.jpg")
         let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
@@ -143,15 +143,18 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
 
         XCTAssertEqual(try repository.asset(id: asset.id).availability, .offline)
+        // Blocked-by-availability is still a failed attempt: it must burn
+        // toward the 3-attempt cap (kata #15), or an unreachable original
+        // gets offered back to the worker forever.
         let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
-        XCTAssertEqual(state.attemptCount, 0)
-        XCTAssertNil(state.lastAttemptedAt)
+        XCTAssertEqual(state.attemptCount, 1)
+        XCTAssertNotNil(state.lastAttemptedAt)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
     }
 
-    func testGeneratePreviewCommandMarksMissingOriginalWithoutBurningPreviewAttempt() throws {
+    func testGeneratePreviewCommandMarksMissingOriginalAndRecordsPreviewFailure() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-missing-source")
         let source = root.appendingPathComponent("missing-source.jpg")
         let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
@@ -176,14 +179,14 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         XCTAssertEqual(try repository.asset(id: asset.id).availability, .missing)
         let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
-        XCTAssertEqual(state.attemptCount, 0)
-        XCTAssertNil(state.lastAttemptedAt)
+        XCTAssertEqual(state.attemptCount, 1)
+        XCTAssertNotNil(state.lastAttemptedAt)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
     }
 
-    func testGeneratePreviewCommandMarksStaleOriginalWithoutClearingPendingPreview() throws {
+    func testGeneratePreviewCommandMarksStaleOriginalAndRecordsPreviewFailureWithoutClearingPendingPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-stale-source")
         let source = root.appendingPathComponent("stale-source.jpg")
         try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
@@ -207,14 +210,54 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         XCTAssertEqual(try repository.asset(id: asset.id).availability, .stale)
         let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
-        XCTAssertEqual(state.attemptCount, 0)
-        XCTAssertNil(state.lastAttemptedAt)
+        XCTAssertEqual(state.attemptCount, 1)
+        XCTAssertNotNil(state.lastAttemptedAt)
+        // Still pending (not cleared) after a single failed attempt — it only
+        // drops out once pendingPreviewGenerationItems(maximumAttemptCount:)
+        // sees the cap reached (see the retry-cap test below).
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(
             for: PreviewCacheKey(assetID: asset.id, level: .grid)
         ).path))
+    }
+
+    func testGeneratePreviewCommandAvailabilityBlockedFailuresCountTowardRetryCap() throws {
+        // Regression for kata #15: a worker that always refuses a stale
+        // original (or any availability-blocked original) must still burn
+        // attempts, so the existing 3-attempt cap
+        // (pendingPreviewGenerationItems(maximumAttemptCount:)) eventually
+        // stops offering the item back — otherwise it retries forever,
+        // pegging a core on repeated full-catalog reloads.
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-stale-retry-cap")
+        let source = root.appendingPathComponent("stale-source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+
+        for attempt in 1...3 {
+            XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+            let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
+            XCTAssertEqual(state.attemptCount, attempt)
+        }
+
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(maximumAttemptCount: 3), [])
     }
 
     func testRefreshAvailabilityCommandUpdatesCatalogSourceState() throws {
