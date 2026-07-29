@@ -1096,6 +1096,63 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertNil(pendingState.lastErrorMessage)
     }
 
+    // Regression for the kata #15 cap-is-permanent gap: before the queue-side
+    // fix, a stale asset retried forever and self-healed the moment it
+    // recovered (attempt_count never meaningfully capped it). After the fix
+    // capped attempts, nothing ever reset them back, so a genuinely-recovered
+    // asset stayed excluded from automatic preview generation forever --
+    // only the manual Inspector retry affordance could reach it again.
+    func testUpdateAvailabilityResetsPreviewGenerationAttemptsOnRecoveryFromBlockingState() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-availability-recovery-resets-attempts")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Photos/recovers.jpg", rating: 0)
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .large))
+        for _ in 0..<3 {
+            try repository.recordPreviewGenerationFailure(assetID: asset.id, level: .large, errorMessage: "boom")
+        }
+        try repository.updateAvailability(assetID: asset.id, availability: .stale)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(maximumAttemptCount: 3), [])
+
+        try repository.updateAvailability(assetID: asset.id, availability: .online)
+
+        let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .large))
+        XCTAssertEqual(state.attemptCount, 0)
+        XCTAssertNil(state.lastErrorMessage)
+        XCTAssertNil(state.lastAttemptedAt)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(maximumAttemptCount: 3), [
+            PreviewGenerationItem(assetID: asset.id, level: .large)
+        ])
+    }
+
+    // Guards the "reset on the blocking -> non-blocking transition only"
+    // requirement: a genuine render failure unrelated to availability must
+    // not be wiped out by an unrelated availability write, and staying
+    // blocked (even under a different blocking reason) is not a recovery.
+    func testUpdateAvailabilityDoesNotResetPreviewGenerationAttemptsWithoutABlockingRecoveryTransition() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-availability-no-reset-without-transition")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Photos/no-transition.jpg", rating: 0)
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .large))
+        try repository.recordPreviewGenerationFailure(assetID: asset.id, level: .large, errorMessage: "render failed")
+
+        // online -> online: no transition at all.
+        try repository.updateAvailability(assetID: asset.id, availability: .online)
+        var state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .large))
+        XCTAssertEqual(state.attemptCount, 1)
+
+        // offline -> missing: blocking on both sides, not a recovery.
+        try repository.updateAvailability(assetID: asset.id, availability: .offline)
+        try repository.updateAvailability(assetID: asset.id, availability: .missing)
+        state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .large))
+        XCTAssertEqual(state.attemptCount, 1)
+    }
+
     func testMigrationAddsPreviewGenerationFailureStateToExistingQueue() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-failure-migration")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
