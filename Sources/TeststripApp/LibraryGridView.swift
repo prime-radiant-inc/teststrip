@@ -3789,6 +3789,17 @@ private struct LoupeCloseUpCrop {
     var sharpnessTone: CloseUpFacesPresentation.SharpnessTone?
 }
 
+// Identifies what the cull loupe's content task should be running for: the
+// asset alone isn't enough. Cull loupe -> Library grid -> Library loupe ->
+// back to Cull keeps the same `LoupeView` identity (Cull and Library loupe
+// share a mount point) with the same asset selected, so a task keyed only on
+// the asset never restarts and `refreshCloseUps` never re-fires, leaving the
+// close-ups rail stuck on whatever (or nothing) it last held (kata #17).
+private struct LoupeContentKey: Equatable {
+    var assetID: String
+    var showsCullChrome: Bool
+}
+
 private struct LoupeView: View {
     var model: AppModel
     var beginExport: () -> Void
@@ -3880,7 +3891,7 @@ private struct LoupeView: View {
                                 cullFacesReadsPanel
                             }
                         }
-                        .task(id: asset.id.rawValue) {
+                        .task(id: LoupeContentKey(assetID: asset.id.rawValue, showsCullChrome: presentation.showsCullChrome)) {
                             do {
                                 try model.requestVisibleLoupePreview(assetID: asset.id)
                             } catch {
