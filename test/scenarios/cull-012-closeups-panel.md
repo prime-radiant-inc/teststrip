@@ -70,13 +70,21 @@ script/ax_drive.sh wait-vended Teststrip
    missing; cached previews only" will never produce observations (that
    combination is what stalled run-cull-iter2 at 0 rows for 95s).
    Then find a `--faces`-seeded asset with 2+ detected faces (verified live
-   2026-07-10: 11 observations landed within ~10s of Evaluate Matches):
+   2026-07-10: 11 observations landed within ~10s of Evaluate Matches).
+   **Fixture-gap correction (verified live 2026-07-28, app 878f1939): the
+   current `sample-data/photos/faces` corpus has no such asset** — all 11
+   assets are single-subject portraits and each yields exactly 1
+   `face_observations` row (confirmed both by SQL `GROUP BY asset_id` and by
+   viewing four of the source JPEGs directly). If the loop below finds
+   nothing after the full budget, fall back to any single-face asset (e.g.
+   `commons-glenn-senator-portrait.jpg`) for steps 2–4, and skip step 5's
+   2+-crop/no-sharpness-dot sub-case as untestable against this fixture:
    ```bash
    for i in $(seq 1 60); do
      n=$(sqlite3 "$DB" "SELECT asset_id FROM face_observations GROUP BY asset_id HAVING count(*) >= 2 LIMIT 1;")
      [ -n "$n" ] && break; sleep 2
    done
-   echo "$n"   # target asset id
+   echo "$n"   # target asset id (empty if the fixture-gap above applies)
    sqlite3 "$DB" "SELECT count(*) FROM person_assets;"   # PA0, expect 0 (nothing confirmed yet)
    sqlite3 "$DB" "SELECT count(*) FROM person_faces;"    # PF0, expect 0
    sqlite3 "$DB" "SELECT count(*) FROM dismissed_faces;" # DF0, expect 0
@@ -183,7 +191,25 @@ script/ax_drive.sh wait-vended Teststrip
   by driving) — inspect the AX tree first before locking the `find` query.
 
 ## Run status
-UNRUN — needs human-present execution per test/scenarios/README.md.
+**2026-07-28, live run, app 878f1939, VM `teststrip-e2e`, seed `faces`.
+Verdict: PARTIAL PASS.** Steps 1 (with a fixture-gap substitution), 2, 3,
+and 5 pass on their literal assertions; step 4's negative-write assertion
+(`person_assets`/`person_faces`/`dismissed_faces` stay `0/0/0`) passes
+cleanly, but its "re-select the asset, wait for the panel again" sub-step
+hit a real, precisely-reproduced app bug: after Cull→Library→Cull on the
+*same* asset, the rail got stuck at the "No faces" empty state for 3+
+minutes (never self-resolving), even though the identical asset had just
+rendered correctly, and plain next/prev navigation within Cull continued to
+repopulate the rail correctly for other assets throughout. Two further app
+bugs were found and documented with screenshot/`sample`/SQL evidence: (a)
+sustained ~95-99% single-core CPU pegging in a SwiftUI `SystemSegmentedControl`
+relayout thrash that persists across workspace/view switches and degrades
+every `ax find`/`ax press` call to 5-20+ minutes; (b) a persistent orphaned
+face-crop image (a different, never-selected asset's content) rendered
+floating outside the rail's frame for the entire ~40-minute session. No app
+code was changed. Full report:
+`.superpowers/card-runs/cull-012-run.md`.
+
 Reconciled 2026-07-16: the card carried two "Source" paragraphs from
 successive revisions (a stale one citing `closeUpsPanel` at
 `LibraryGridView.swift:3705-3730` gated only on `showsCullChrome`, and an
