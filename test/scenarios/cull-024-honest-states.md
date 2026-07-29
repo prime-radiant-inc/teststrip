@@ -186,14 +186,18 @@ script/vm_scenario_run.sh ax wait-vended
 1. `ax wait-vended`; ⌘1 for Cull. **Do not press `S`.** A fresh `burst`
    launch's `cullScope` already defaults to `.all` (`AppModel.swift:2189`,
    the same finding `cull-021` established and confirmed live again this
-   run) — the "Cull filter" chip only renders for `!= .all`
-   (`LibraryGridView.swift:4554-4555`), so its absence confirms scope
+   run) — the "Cull filter" chip only renders when
+   `CullHUDPresentation.showsScopeChip` is true (`scope != .all`,
+   `Sources/TeststripApp/CullHUDPresentation.swift:44`; that gate moved out
+   of `LibraryGridView.swift` and into its own presentation struct since
+   this card's citation was last checked, gating the `cullHUDScopeChip` call
+   at `LibraryGridView.swift:4320-4322`), so its absence confirms scope
    without cycling. Pressing `S` on a fresh launch cycles *away* from "All
    frames" (confirmed live this run: one `S` press left the scope reading
    "Cull filter: Unrated," per `CullScope`'s cycle order,
-   `AppModel.swift:301,316-360`) — this card's prior wording had the cycle
+   `AppModel.swift:301,316-356`) — this card's prior wording had the cycle
    direction backwards. Harmless to this card's own assertions
-   (`requestVisibleAssetEvaluations`, `AppModel.swift:9434-9447`, iterates
+   (`requestVisibleAssetEvaluations`, `AppModel.swift:9463-9476`, iterates
    the loaded `assets` list directly, not the cull-scope-filtered queue, so
    Step 3's 18/18 evaluation coverage was unaffected when this run hit the
    mistake) but confusing and unnecessary — leave scope alone. Select a
@@ -220,7 +224,7 @@ script/vm_scenario_run.sh ax wait-vended
    about: `ax find --contains "too close to call"` must fail to match.
 3. **Trigger evaluation** so the rest of this card means something: Culling
    ▸ "Evaluate Visible" (⇧⌘E, `requestVisibleAssetEvaluations`,
-   `AppModel.swift:9434`) — wait for cached previews first if needed, then
+   `AppModel.swift:9463`) — wait for cached previews first if needed, then
    poll (staying frontmost via `wait-vended` each poll, per
    `test/scenarios/README.md`'s idle-wedge caution):
    ```bash
