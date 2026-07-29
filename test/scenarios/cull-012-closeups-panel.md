@@ -285,3 +285,27 @@ deleted the stale one, and refreshed its line numbers (drifted ~26 lines
 since that paragraph was last written) plus two other citations of the same
 gate/panel that had gone stale alongside it (Expected step 3, Sharp edges).
 No other content changed.
+
+**Reconciled 2026-07-29 (reads-card glyph-line, docs-only, not a live
+run)**: grepped this card for "No read yet", "early read", "Reads", and
+per-kind percentage probes — this card makes **no** assertions about the
+Reads card's own state; it only cites `readsCard` as a layout fact (the
+faces+reads panel is an `HStack` of `readsCard` + `closeUpsRail`, Source
+above) and never probes what the Reads card renders. That state-gating
+contract is fully owned by `cull-024-honest-states.md`. Flagging the one
+load-bearing interaction for whoever next drives this card live: the
+`faces` fixture's assets are single-subject portraits that yield **exactly
+one** `face_observations` row each (Source above), and once Step 1's
+Evaluate Matches pass runs, the same asset typically yields exactly one
+`faceQuality`/`eyeSharpness` `evaluation_signals` row too (the signal Step
+5 reads for the sharpness dot) — i.e. `kindCount == 1`, face-specific. As
+of the 2026-07-29 reads-card glyph-line change
+(`CullReadsCardPresentation.swift:84-96`), a lone signal of *any* rankable
+kind — face-specific included — is a genuine PARTIAL read (one glyph, e.g.
+`Face NN%`/`Eye sharp NN%` per `word(for:)`,
+`CullReadsCardPresentation.swift:37-48`, plus the `"early read — 1 signal"`
+caveat). The pre-2026-07-29 fallback to `"No read yet"` for a lone
+face-specific signal is retired. So the Reads card immediately to this
+rail's left will show that partial read for these assets during a live
+run, not `"No read yet"` — expected, not a regression, and still out of
+scope for this card's own assertions.
