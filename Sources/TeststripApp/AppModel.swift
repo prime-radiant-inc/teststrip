@@ -9347,13 +9347,16 @@ public final class AppModel {
             return
         }
         guard let asset = assets.first(where: { $0.id == assetID }),
-              !asset.availability.requiresCachedPreviewOnly else {
+              !asset.availability.requiresCachedPreviewOnly, asset.availability != .stale else {
             return
         }
         let request = PreviewScheduler().request(
             assetID: assetID,
             context: .loupe(isVisible: true, requestedFullResolution: true)
         )
+        guard try !previewGenerationAttemptsExhausted(assetID: assetID, level: request.level) else {
+            return
+        }
         try requestPreview(assetID: request.assetID, level: request.level, placement: .front)
     }
 

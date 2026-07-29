@@ -11008,6 +11008,65 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [])
     }
 
+    // Regression for the kata #15 residual, same-class gap as
+    // requestVisibleLoupeAssetPreview/prefetchLoupeNeighborLargePreviews: a
+    // stale original is guaranteed to fail full-resolution render too, so
+    // zooming into one must not dispatch a worker round-trip.
+    func testRequestLoupeFullResolutionPreviewSkipsWhenOriginalIsStale() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res-stale",
+            path: "/Photos/full-res-stale.jpg",
+            rating: 0,
+            availability: .stale,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-stale",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
+    // Regression for the kata #15 residual: an asset whose .original render
+    // has already burned its 3 automatic attempts must not be re-requested
+    // by a zoom action either.
+    func testRequestLoupeFullResolutionPreviewSkipsWhenRetryCapReached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res-retry-cap",
+            path: "/Photos/full-res-retry-cap.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-retry-cap",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        for _ in 0..<3 {
+            try result.repository.recordPreviewGenerationFailure(assetID: asset.id, level: .original, errorMessage: "boom")
+        }
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
     func testLoupeZoomFullResolutionStatusReportsSatisfiedLoadingAndUnavailable() throws {
         let originalCached = makeAsset(
             id: "status-original",
