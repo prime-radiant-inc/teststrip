@@ -309,3 +309,101 @@ face-specific signal is retired. So the Reads card immediately to this
 rail's left will show that partial read for these assets during a live
 run, not `"No read yet"` — expected, not a regression, and still out of
 scope for this card's own assertions.
+
+**LIVE RUN 2026-07-29, app `4b2c6db6` (reads-card glyph-line build),
+`teststrip-e2e` VM, fresh `launch faces`. Verdict: PASS on all 5 card
+steps; corrects a wrong prediction in the 2026-07-29 doc-only reconciliation
+just above; plus one Step 5 AX-methodology finding (a card-driving gap, not
+an app bug).** Same fixture gap as every prior run: no `faces` asset has 2+
+`face_observations` — substituted `commons-glenn-senator-portrait.jpg`
+(`3A228732-1A55-41E6-868E-F6676A956D9E`) for Steps 2-5, per the card's own
+fallback.
+- Step 1: `person_assets`/`person_faces`/`dismissed_faces` = 0/0/0
+  confirmed before any interaction (PA0/PF0/DF0 baseline).
+- Step 2: `ax wait --contains "CLOSE-UPS"` succeeded; `ax find --contains
+  "Face close-ups"` found; `ax find --contains "No faces"` did not match —
+  crop rendered. **PASS.**
+- Step 3: ⌘2 to Library, confirmed same asset in Library's plain Loupe
+  (`ax find --contains "Loupe"`/`"Library Loupe"`/`"senator-portrait"` all
+  matched); `ax find --contains "Face close-ups"` did not match — rail
+  absent. **PASS.**
+- Step 4 (+ kata #17 regression re-check): ⌘1 back to Cull — rail
+  immediately repopulated with the crop (`Face close-ups` found, `No faces`
+  not found) — no sticky-empty-state regression. Attempted the crop-click
+  gesture (`ax press --contains "Face close-ups"` succeeded, landing on the
+  rail section rather than a specific crop button — matches the card's own
+  prediction that `Image(decorative:)` carries no button/tap target).
+  `person_assets`/`person_faces`/`dismissed_faces` stayed 0/0/0 both before
+  and after. **PASS**, negative-write assertion holds.
+- Step 5: on-face marks for the one rendered crop (eye-open glyph, smile
+  glyph, green sharpness dot — visible in screenshot) matched ground truth:
+  `eyesOpen` = 1.0 (open, not closed); the source photo shows the subject
+  smiling; `faceQuality` = 0.6071 >= `faceQualityStrongThreshold` (0.45,
+  `LibraryGridView.swift:6137`) → Sharp (green dot). **PASS on
+  substance** — but see the AX-methodology finding below: the exact
+  accessibility value needed a raw attribute dump, not `ax_drive.sh find
+  --contains`.
+  - **AX-methodology finding (a card-driving gap, not an app bug):** the
+    crop cell's `.accessibilityElement(children: .combine)`
+    (`LibraryGridView.swift:4147-4149`) sets `.accessibilityLabel("Face")`
+    and `.accessibilityValue("Eyes open, Smiling, Sharp")` — `--label
+    "Face"` matches (Title carries the label), but `ax find --contains
+    "Eyes open"`/`"Smiling"`/`"Sharp"` all failed to match, exactly as this
+    card's own (previously unconfirmed) Sharp-edges caution anticipated. A
+    raw `AXUIElementCopyAttributeNames` dump of the matched element
+    confirmed why: the composed value lands on `AXValueDescription` (`=
+    "Eyes open, Smiling, Sharp"`, matching ground truth exactly), with
+    `AXValue` absent from the attribute list entirely and `AXRole =
+    AXUnknown` — the same SwiftUI-AX bridging quirk
+    `cull-024-honest-states.md`'s Sharp edges documented for the Reads
+    panel container's `.accessibilityElement(children: .contain)`, now
+    confirmed live on this card's `.combine`-children construction too.
+    `ax_drive.sh`'s `--contains` search never inspects `AXValueDescription`
+    (same root cause as cull-024). A future run of this card's Step 5 needs
+    a raw AX-attribute dump (or an `ax_drive.sh` enhancement to also hay
+    over `AXValueDescription`) to verify the marks' value text; `--label
+    "Face"` alone confirms the element exists but proves nothing about
+    which marks it carries.
+
+**Reads-leg finding (corrects the 2026-07-29 doc-only reconciliation just
+above — this is the task-4 brief's "load-bearing check"):** that
+reconciliation predicted Step 1's **Evaluate Matches** pass alone would
+leave this fixture's asset at `kindCount == 1` (face-specific only).
+**Live-verified false**: triggering Evaluate Matches on a fresh `launch
+faces` produced **all seven** rankable kinds simultaneously for every one
+of the 11 assets (confirmed via `GROUP BY asset_id`, `kindCount = 7`
+uniformly, catalog-wide) — tight SQL (0.5s) and AX (~1s) polling from the
+moment the menu item was pressed never caught an intermediate face-only
+state; whole-photo and face-specific signals land together under this
+trigger.
+
+The real, live-confirmed trigger for the face-only window is a
+**different** menu item: **People ▸ Scan for Faces**
+(`requestPeopleFaceScan()`, `main.swift:389-393`/`402-408` — apple-vision
+only, distinct from `evaluateCurrentScope()`/Evaluate Matches). On a fresh
+`launch faces`, selecting `commons-glenn-senator-portrait.jpg` and running
+Scan for Faces produced exactly one rankable signal (`faceQuality =
+0.60713`) and zero whole-photo or other face-specific signals (confirmed
+via SQL: only `faceCount`/`faceQuality`/`object`/`visualSimilarity` rows,
+`kindCount = 1`). Live AX matched the load-bearing prediction exactly:
+`"No read yet"` no longer matched, `"early read — 1 signal"` matched,
+exactly one glyph (`"Face 61%"`) matched, `"Keep"`/`"Toss"` did not match,
+and **none** of the other six kind-words (`Focus `/`Motion `/`Framing
+`/`Looks `/`Eyes `/`Eye sharp `) matched — confirming the retired-fallback
+change holds for a lone face-specific signal exactly as
+`cull-024-honest-states.md` describes. Screenshot evidence captured.
+Subsequently ran Evaluate Matches on the same asset (now `kindCount = 7`)
+and confirmed the face glyph joins the whole-photo glyphs as a second line:
+`Focus 60%`/`Motion 60%`/`Framing 60%`/`Looks 49%` on line one, `Eyes
+100%`/`Face 61%`/`Eye sharp 43%` on line two; independently computed
+`normalizedQualityRead ≈ 0.6464` (between the 0.5 Toss and 0.7 Keep
+thresholds) → predicted Mixed (no verdict text) → live confirmed neither
+`"Keep"` nor `"Toss"` matched. Screenshot evidence captured. The
+whole-photo line was truncated on screen the same way
+`cull-024-honest-states.md`'s Step-4 screenshot was (`Foc…`/`Mot…`/`Fra…`
+/`Loo…`) — same width-truncation finding, not re-litigated here. **This
+fully exercises the `kindCount == 1` face-specific PARTIAL-read branch that
+`cull-024-honest-states.md`'s own `burst` fixture cannot reach (see that
+card's LIVE RUN 2026-07-29 entry) — together the two runs are a live proof
+of the entire glyph-line change's three-state contract across both
+fixtures.**

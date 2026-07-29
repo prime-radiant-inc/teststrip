@@ -610,3 +610,53 @@ valid historical record of the three-state *gating* logic (unaffected by
 this commit) but not of the current glyph rendering — a future live run
 should re-verify the per-glyph `ax find --contains "<Word> "` probes this
 reconciliation introduces.
+
+**LIVE RUN 2026-07-29, app `4b2c6db6` (reads-card glyph-line build),
+`teststrip-e2e` VM, fresh `burst` launch. Verdict: PASS, no app bugs — plus
+one width-truncation finding (the plan's own sanctioned 2+2-fallback
+candidate, reported per instructions, not fixed here).** Mutated-template
+guard (`autopilot_proposals` count) read 0 on the freshly-launched instance,
+confirming an unpatched template. Selected Stack 1 of 4 (`smoke-0`, frame 1
+of 3) — identical fixture data to the 2026-07-28 run (`burst`'s synthetic
+evaluator is fully deterministic run to run).
+- Step 2 (pre-eval): zero `evaluation_signals` rows confirmed; bare-`Text`
+  match found "No read yet"; `--role AXButton --contains "Recommended"`,
+  `--contains "EYES CLOSED"`, `--contains "SOFT"`, and `--contains "too
+  close to call"` all correctly failed to match. **PASS.**
+- Step 3: ⇧⌘E covered all 18 assets in one poll. **PASS.**
+- Step 4: `smoke-0` scored the same 4 whole-photo kinds as the 2026-07-28
+  run (focus 0.08236/motionBlur 0.91764/framing 0.80711/aesthetics 0.29131
+  — byte-identical fixture) → FULL read, independently computed
+  `normalizedQualityRead ≈ 0.2112` → predicted decisive **Toss**. Live:
+  `ax find --contains "Toss"` matched, "Keep" and "No read yet" did not.
+  All four glyphs found via the new per-kind `<Word> <NN>%` labels: `Focus
+  8%`, `Motion 8%`, `Framing 81%`, `Looks 29%` — percentages match the
+  independent computation exactly. **PASS.** `kindCount` is uniformly 4
+  across all 18 assets (confirmed via `GROUP BY asset_id` over the 7
+  rankable kinds) — `burst` still cannot produce a `kindCount == 1` frame,
+  matching the 2026-07-28 run's finding. **See
+  `cull-012-closeups-panel.md`'s LIVE RUN 2026-07-29 entry for a
+  live-confirmed `kindCount == 1` face-specific PARTIAL read on a different
+  fixture** (`faces`, via `People ▸ Scan for Faces`), which exercises
+  exactly the branch this fixture structurally cannot reach.
+- Step 5: independently computed all 3 frames' reads (`smoke-0`≈0.2112,
+  `smoke-1`≈0.2325, `smoke-2`≈0.2487 — identical to 2026-07-28) → predicted
+  tie `[smoke-1, smoke-2]`, banner "too close to call — 2·3", no
+  "Recommended" chip. Live matched exactly. **PASS.**
+- Step 6: structural no-op, confirmed via `GROUP BY asset_id` that no asset
+  anywhere in this catalog reaches `kindCount == 1` (uniformly 4). Not a
+  bug — matches the card's own caution and the 2026-07-28 run.
+
+**Width-check finding:** captured a screenshot of Step 4's FULL read (4
+whole-photo glyphs on one line: Focus/Motion/Framing/Looks). The rendered
+line **is visually truncated** — each glyph's on-screen text is clipped to
+an ellipsis (`Foc…`, `Mot…`, `Fra…`, `Loo…`) rather than the full `Focus
+8%`/`Motion 8%`/`Framing 81%`/`Looks 29%` text. The accessibility layer is
+unaffected (AX labels carry the full untruncated text, confirmed by the
+`ax find --contains "<Word> "` matches above) — this is a visual/layout
+clipping issue in the reads-card glyph line at this window width, not a
+data or AX-contract defect. This reproduced again on `cull-012`'s FULL-read
+screenshot (a different asset, whole-photo line truncated the same way).
+Per the task brief this is the plan's own anticipated 2+2-fallback
+scenario; reporting per instructions, no code change made here. Screenshot
+evidence in `.superpowers/sdd/2026-07-29-reads-card-glyph-line/task-4-report.md`.
