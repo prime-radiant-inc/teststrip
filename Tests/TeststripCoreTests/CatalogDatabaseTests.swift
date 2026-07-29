@@ -1063,7 +1063,10 @@ final class CatalogDatabaseTests: XCTestCase {
 
         let runnableItems = try repository.pendingPreviewGenerationItems(requiresAvailableOriginal: true)
 
-        XCTAssertEqual(runnableItems.map(\.assetID), [online.id, stale.id])
+        // .stale is excluded too: the worker always refuses to render from a
+        // stale original (WorkerCommandExecutor.markPreviewBlockingAvailabilityIfNeeded),
+        // so offering it back is a guaranteed-failure retry loop (kata #15).
+        XCTAssertEqual(runnableItems.map(\.assetID), [online.id])
     }
 
     func testFetchesPreviewGenerationQueueStates() throws {

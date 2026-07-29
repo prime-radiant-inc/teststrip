@@ -209,7 +209,7 @@ public struct WorkerCommandExecutor {
         case .generatePreview(let assetID, let level):
             let asset = try repository.asset(id: assetID)
             if let availability = try markPreviewBlockingAvailabilityIfNeeded(asset) {
-                throw TeststripError.io("original is \(availability.rawValue) for \(Self.displayName(for: asset))")
+                try recordBlockedAvailabilityFailureAndThrow(availability, assetID: assetID, level: level, asset: asset)
             }
             do {
                 try renderer.render(
@@ -219,7 +219,7 @@ public struct WorkerCommandExecutor {
                 )
             } catch {
                 if let availability = try markPreviewBlockingAvailabilityIfNeeded(asset) {
-                    throw TeststripError.io("original is \(availability.rawValue) for \(Self.displayName(for: asset))")
+                    try recordBlockedAvailabilityFailureAndThrow(availability, assetID: assetID, level: level, asset: asset)
                 }
                 try repository.recordPreviewGenerationFailure(
                     assetID: assetID,
@@ -280,6 +280,21 @@ public struct WorkerCommandExecutor {
         case .online, .moved:
             return nil
         }
+    }
+
+    // An availability-blocked original is a guaranteed-failure attempt, not
+    // a no-op: it must still burn toward the 3-attempt retry cap
+    // (`pendingPreviewGenerationItems(maximumAttemptCount:)`), or the app
+    // keeps re-offering work the worker will refuse forever (kata #15).
+    private func recordBlockedAvailabilityFailureAndThrow(
+        _ availability: SourceAvailability,
+        assetID: AssetID,
+        level: PreviewLevel,
+        asset: Asset
+    ) throws -> Never {
+        let message = "original is \(availability.rawValue) for \(Self.displayName(for: asset))"
+        try repository.recordPreviewGenerationFailure(assetID: assetID, level: level, errorMessage: message)
+        throw TeststripError.io(message)
     }
 
     private func refreshAvailability(assetID: AssetID) throws -> WorkerCommandResult {

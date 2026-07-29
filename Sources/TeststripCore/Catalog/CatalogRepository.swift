@@ -2641,10 +2641,11 @@ public final class CatalogRepository {
             bindings.append("\(maximumAttemptCount)")
         }
         if requiresAvailableOriginal {
-            clauses.append("assets.availability NOT IN (?, ?, ?)")
+            clauses.append("assets.availability NOT IN (?, ?, ?, ?)")
             bindings.append(SourceAvailability.offline.rawValue)
             bindings.append(SourceAvailability.missing.rawValue)
             bindings.append(SourceAvailability.moved.rawValue)
+            bindings.append(SourceAvailability.stale.rawValue)
         }
         if !clauses.isEmpty {
             sql += "\nWHERE \(clauses.joined(separator: " AND "))"
