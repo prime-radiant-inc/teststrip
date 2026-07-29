@@ -140,26 +140,26 @@ fresh grep, not carried over from any older card):
   `AXValue`, which `ax_drive.sh`'s combined `--label`-plus-`--contains`
   check relies on.
 - **Rail tie suppression**, `CullingStackRailPresentation.init`
-  (`LibraryGridView.swift:6326-6462`): computes `tiedLeaderIDs` via
-  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6397-6400`,
-  defined at `:6647-6664` — leaders are every candidate whose
+  (`LibraryGridView.swift:6328-6464`): computes `tiedLeaderIDs` via
+  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6399-6402`,
+  defined at `:6649-6666` — leaders are every candidate whose
   `normalizedQualityRead` is within `tooCloseToCallMargin = 0.03` of the top
-  read, `:6645`, `nil` when fewer than 2 candidates qualify, `:6663`). "A
+  read, `:6647`, `nil` when fewer than 2 candidates qualify, `:6665`). "A
   tie can't defend a single winner, so the ✦ is suppressed entirely rather
-  than arbitrarily picking one tied leader to crown" (`:6401-6402`) —
+  than arbitrarily picking one tied leader to crown" (`:6403-6404`) —
   `recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil`
-  (`:6403`), so under a tie **no** rail chip's `isRecommended` is `true`
+  (`:6405`), so under a tie **no** rail chip's `isRecommended` is `true`
   and **no** chip's accessibility value contains `"Recommended"`
-  (`stackChipAccessibilityValue`, `:4897-4901`: `isSelected ? "Selected" :
+  (`stackChipAccessibilityValue`, `:4899-4903`: `isSelected ? "Selected" :
   (isRecommended ? "Recommended" : "Not selected")`). The banner:
   `tooCloseBanner = tiedLeaderIDs.map { "too close to call — <frame
-  labels·joined by ·>" }` (`:6417-6422`), rendered as an orange
+  labels·joined by ·>" }` (`:6419-6424`), rendered as an orange
   `Text(tooCloseBanner)` directly under the rail's title/position text
-  (`:4756-4761`) only when non-nil. The "Keep recommended N" secondary
+  (`:4758-4763`) only when non-nil. The "Keep recommended N" secondary
   action is suppressed the same way: the guard `tiedLeaderIDs == nil, let
   recommendation = rankedCandidates.first else { return nil }` inside
-  `Self.rankedAction` (`:6512-6516`; call site passing `tiedLeaderIDs` at
-  `:6448-6453`) — corrected from this card's stale `:6322-6326` citation,
+  `Self.rankedAction` (`:6514-6518`; call site passing `tiedLeaderIDs` at
+  `:6450-6455`) — corrected from this card's stale `:6322-6326` citation,
   which had drifted onto unrelated `stackScope`-resolution code — leaving
   only "Keep selected", "Keep top 2" (if 3+ frames), and "Keep all" — a tie
   removes the machine's naming of a winner from every surface it would
@@ -441,12 +441,12 @@ script/vm_scenario_run.sh ax wait-vended
   not by searching for the glyph. See `cull-021-stack-rail-nav.md`'s Sharp
   edges for the full explanation and the contrast with the Compare survey's
   independently-findable `"✦ BEST"` badge (a different, unrelated
-  mechanism — `LibraryGridView.swift:5814`, `CompareSurveyPresentation`,
+  mechanism — `LibraryGridView.swift:5816`, `CompareSurveyPresentation`,
   out of scope for this card).
 - **The Compare survey has its own, separate tie mechanism** — tied
   contenders render a `"tied"` rank badge instead of `"#N"`
   (`CompareSurveyPresentation.rankBadges(for:)`, `LibraryGridView.swift:
-  5779-5792`) — this is a different surface (Compare's contenders-only
+  5781-5794`) — this is a different surface (Compare's contenders-only
   mode) from the rail's `tooCloseBanner` this card exercises, and is not
   driven here.
 
