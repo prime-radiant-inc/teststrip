@@ -191,6 +191,71 @@ script/ax_drive.sh wait-vended Teststrip
   by driving) — inspect the AX tree first before locking the `find` query.
 
 ## Run status
+**2026-07-28 re-run, app `fix/cull012-bugs` @ `af4d104c`, VM `teststrip-e2e`
+(fresh `launch faces`), seed `faces`. Verdict: PARTIAL PASS — 2 of 3 prior
+bugs fully fixed, the CPU-storm fix is incomplete (narrower real gap found).**
+All 5 steps pass on their literal assertions (same fixture-gap substitution
+as before: no asset in this corpus has 2+ `face_observations`; additionally
+this run found `face_observations` empty for *all* assets because the
+AuraFace CoreML identity-embedding model wasn't present in this VM sync —
+an environment/packaging gap, not a regression, and irrelevant to the
+close-ups rail since it runs its own live `core-image-faces` detection pass
+independent of `face_observations`, confirmed still populated normally).
+
+**Kata #17 (sticky "No faces") — FIXED.** Drove the exact repro precisely:
+Cull loupe (crop renders) → ⌘2 explicitly through Library **Grid** (confirmed
+via screenshot, not skipped) → Library **Loupe** on the same asset (rail
+absent, confirmed) → ⌘1 back to Cull. The rail correctly repopulated the
+crop + marks immediately — no "No faces" stuck state. Matches the
+`LoupeContentKey(assetID:showsCullChrome:)` fix at `LibraryGridView.swift:3894`.
+
+**Kata #16 (ghost crop) — FIXED.** Screenshot of the run strip's 2-frame
+stack stop shows the count badge now rendering as a small dark circle
+directly on the bottom-right corner of the stack's own thumbnail — no
+floating ghost image outside the strip, no ballooned stop, normal row
+height. Matches the `.overlay`-based badge fix.
+
+**Kata #15 (CPU peg) — PARTIALLY FIXED; a real, narrower gap remains.** The
+dominant failure mode from the original run (95-99% CPU, continuous,
+non-recovering for 40+ minutes across *all* stale assets simultaneously) is
+gone: with the same live precondition reproduced (5/11 assets stale,
+`preview_generation_queue` populated), CPU repeatedly returned to a clean
+**0.0%** on both app and worker after each burst of activity, confirmed
+across three independent idle windows (a 2-min pure-SSH-only window with zero
+AX interaction, a 2-min window with periodic `ax wait-vended` polling, and a
+single isolated `wait-vended` check) — it never failed to settle. `attempt_count`
+also now advances instead of pinning at 0 (the headline fix), confirmed live.
+
+However: `attempt_count` for the currently-selected asset and its immediate
+run-strip neighbors climbed **0 → 7 → 9 with no ceiling** across four
+ordinary navigation events (select, ⌘2/⌘1 round-trip, arrow-key next/prev) —
+well past the stated 3-attempt cap, and CPU visibly spiked to 12-20% during
+each such burst before settling back to idle. Root cause (read from the exact
+deployed source, `.worktrees/cull012-bugs` @ `af4d104c`):
+`AppModel.requestVisibleLoupeAssetPreview`/`prefetchLoupeNeighborLargePreviews`
+(`AppModel.swift:9283-9315`) are a separate dispatch path from the one the
+kata #15 fix covers (`CatalogRepository.pendingPreviewGenerationItems`/
+`enqueuePendingPreviewGeneration`). They gate only on `.offline`/`.missing`
+(`refreshAvailability`, `:9291`) and `requiresCachedPreviewOnly`
+(`:14423-14430`, deliberately still `false` for `.stale` per the fix's own
+diagnosis, to preserve a manual retry affordance) — neither excludes
+`.stale`, and neither path checks `attempt_count` before calling
+`requestPreview` (`:8940-8982`, which only dedupes against an *active*
+in-flight item, not exhausted-retry history). The result: simply
+selecting/paging to/near a stale asset — ordinary use, not an explicit
+"retry" gesture — re-dispatches a guaranteed-to-fail worker request every
+time, unbounded. This does **not** reproduce the original symptom (it
+settles to idle between events, never pegs continuously) but it does violate
+the retry-cap invariant the fix's own unit tests assert, and it wastes a
+worker round-trip plus a reload-class UI refresh on every revisit. Evidence:
+`preview_generation_queue` attempt_count readings and `ps` CPU samples in
+`.superpowers/card-runs/cull-012-rerun.md`.
+
+No app code was changed (verification only, per instructions). Full report:
+`.superpowers/card-runs/cull-012-rerun.md`.
+
+---
+
 **2026-07-28, live run, app 878f1939, VM `teststrip-e2e`, seed `faces`.
 Verdict: PARTIAL PASS.** Steps 1 (with a fixture-gap substitution), 2, 3,
 and 5 pass on their literal assertions; step 4's negative-write assertion
