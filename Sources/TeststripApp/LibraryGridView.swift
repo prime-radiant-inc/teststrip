@@ -4694,18 +4694,24 @@ private struct LoupeView: View {
                 .fill(Color.black.opacity(0.42))
                 .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
                 .offset(x: 2, y: 2)
-            runStripThumbnailFace(stop, sparkleShowsCount: true)
+            // The count badge is an overlay on the already-sized thumbnail
+            // (not a ZStack sibling with a greedy frame): a sibling that
+            // accepts an unbounded size proposal balloons the whole ZStack
+            // to fill the run strip's HStack, scattering the thumbnail and
+            // badge to the corners of the ballooned box (kata #16).
             // Bottom-trailing, not top-trailing: the sparkle badge already
             // owns the frame's top-right corner, and this reads naturally
             // where the offset layers behind peek out.
-            Text("\(stop.assetIDs.count)")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(Capsule().fill(Color.black.opacity(0.7)))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .offset(x: 6, y: 6)
+            runStripThumbnailFace(stop, sparkleShowsCount: true)
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(stop.assetIDs.count)")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.black.opacity(0.7)))
+                        .offset(x: 6, y: 6)
+                }
         }
         .padding(.trailing, 6)
         .padding(.bottom, 6)
