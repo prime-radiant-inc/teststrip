@@ -799,3 +799,46 @@ directory is gitignored and machine-local (confirmed via `git check-ignore`),
 so no future reader could ever retrieve it; the finding is now described
 inline instead, noting the original screenshot was session-local. Still
 not re-run live against this exact commit.
+
+**LIVE RUN 2026-07-30, app `440fe7ee` (docs-only re-sweep; last code-touching
+commit `f32e55ce`, which the running build reflects), `teststrip-e2e` VM.**
+Targeted re-verification of the 2+2 width fix (`4b05b384`) plus the two
+2026-07-30 probe additions — a narrow gate check, not a full re-run of every
+step. Fresh `burst` launch; `autopilot_proposals`/`evaluation_signals` both 0
+pre-launch-check, confirming an unmutated template. ⌘1, selected Stack 1 of 4
+(`smoke-0`, frame 1 of 3) — ⇧⌘E covered all 18 assets in one poll.
+`smoke-0`'s raw signals were byte-identical to both prior runs (focus
+0.08236/motionBlur 0.91764/framing 0.80711/aesthetics 0.29131, zero
+face-specific rows anywhere in the catalog) → independently computed
+`normalizedQualityRead ≈ 0.21119`, `kindCount = 4` → predicted decisive
+**Toss**, `verdictHelp` = "Composed read 0.21 from 4 signals".
+
+- **Width (Step 4's FULL-read layout): PASS.** Screenshot of the Reads card
+  shows the 2+2 split rendering exactly as designed: row 1 "Focus"/"Motion",
+  row 2 "Framing"/"Looks", each word fully spelled out with its donut ring,
+  no ellipsis or clipping — the 2026-07-29 truncation (`Foc…`/`Mot…`/`Fra…`
+  /`Loo…`) is gone. (The donut ring's arc sweep carries the percentage
+  visually; only the bare word is printed on screen, so the word was the
+  only thing that could truncate, and it's now confirmed intact.)
+- **Falsifiable Face probe: untestable on this fixture, as every prior run
+  found — not faked.** `burst` still produces zero face-specific signals.
+  Ran the sanctioned whole-photo fallback instead: `ax find --contains
+  "Focus 8%"` matched (percentage independently computed from the SQL row
+  above).
+- **Verdict-help probe (the 2026-07-30 card addition): PASS both legs.**
+  Positive: `ax find --help "Composed read 0.21 from 4 signals"` matched the
+  "Toss" element on `smoke-0`'s FULL read. Falsification: this fixture has no
+  Mixed-range frame to test against (all 18 assets score 0.2112–0.3036, well
+  under the 0.5 Toss threshold — same finding as every prior run), so the
+  only genuinely reachable no-verdict state is pre-evaluation; relaunched a
+  fresh `burst` instance (`evaluation_signals` confirmed 0), selected Stack
+  frame 1, confirmed "No read yet", then ran the identical exact-match probe
+  — it correctly found no element (no verdict exists to attach `.help` to).
+
+**No app bugs.** The 2+2 fix, the whole-photo glyph probe, and the new
+verdict-help probe all behave exactly as the 2026-07-30 reconciliation
+predicted. Full report (SQL, computation detail):
+`.superpowers/sdd/2026-07-29-reads-card-glyph-line/width-verify-report.md`
+(gitignored, machine-local — not retrievable by a future reader; the
+essential findings are captured inline above, per this card's own
+convention for that directory).
