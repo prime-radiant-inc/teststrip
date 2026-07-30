@@ -303,7 +303,7 @@ Evaluate Matches pass runs, the same asset typically yields exactly one
 `faceQuality`/`eyeSharpness` `evaluation_signals` row too (the signal Step
 5 reads for the sharpness dot) — i.e. `kindCount == 1`, face-specific. As
 of the 2026-07-29 reads-card glyph-line change
-(`CullReadsCardPresentation.swift:84-96`), a lone signal of *any* rankable
+(`CullReadsCardPresentation.swift:86-98`), a lone signal of *any* rankable
 kind — face-specific included — is a genuine PARTIAL read (one glyph, e.g.
 `Face NN%`/`Eye sharp NN%` per `word(for:)`,
 `CullReadsCardPresentation.swift:37-48`, plus the `"early read — 1 signal"`
@@ -342,7 +342,7 @@ fallback.
   glyph, green sharpness dot — visible in screenshot) matched ground truth:
   `eyesOpen` = 1.0 (open, not closed); the source photo shows the subject
   smiling; `faceQuality` = 0.6071 >= `faceQualityStrongThreshold` (0.45,
-  `LibraryGridView.swift:6147`) → Sharp (green dot). **PASS on
+  `LibraryGridView.swift:6151`) → Sharp (green dot). **PASS on
   substance** — but see the AX-methodology finding below: the exact
   accessibility value needed a raw attribute dump, not `ax_drive.sh find
   --contains`.
@@ -437,5 +437,5 @@ changes since its 2026-07-17 re-verification, unrelated to this branch's
 own edits — every citation was re-verified by directly reading the cited
 lines at this branch's final HEAD (see the updated Source section above;
 the `faceQualityStrongThreshold` citation in the LIVE RUN 2026-07-29 entry
-was similarly fixed to `:6147`, previously `:6137`, in the prior commit).
+was similarly fixed to `:6151`, previously `:6137`, in the prior commit).
 Historical Run-status entries were otherwise left untouched.

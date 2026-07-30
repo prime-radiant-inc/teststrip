@@ -304,9 +304,8 @@ script/vm_scenario_run.sh ax wait-vended
      **decisive Keep/Toss** — assert an `AXStaticText` reading exactly
      `"Keep"` or `"Toss"` (no "read" suffix, no percentage, no caveat text)
      matching the predicted verdict. Also assert its AXHelp is present and
-     exact, so a regression can't silently drop
-     `.help(presentation.verdictHelp ?? "")` back to an empty string
-     (`LibraryGridView.swift:4209`): format the expected string yourself as
+     exact, so a regression can't silently drop the `.help(verdictHelp)`
+     modifier (`LibraryGridView.swift:4209`): format the expected string yourself as
      `"Composed read %.2f from %d signals"` from this same
      independently-computed `read.score`/`read.kindCount`, then run `ax
      find --help "Composed read <score> from <kindCount> signals"` —
@@ -457,9 +456,10 @@ script/vm_scenario_run.sh ax wait-vended
   card's scope to change. **The per-kind glyphs (2026-07-29 glyph-line
   change) are not subject to this quirk at all**: each `SignalGlyphView`'s
   `.accessibilityLabel` surfaces via `AXTitle`/`AXDescription`, which `ax
-  find --contains` *does* inspect — so `ax find --contains "Focus "`
+  find --contains` *does* inspect — so `ax find --contains "Focus 82%"`
   matches the glyph directly, no combined-match workaround needed (see the
-  AX-surface Source bullet above for the full mechanism).
+  AX-surface Source bullet above for the full mechanism, and the next bullet
+  for why the percentage suffix, not the bare word, is the form to use).
 - **`ax find --contains "Face "` is NOT a falsifiable probe for the
   `faceQuality` glyph — it always matches whenever the faces+reads panel is
   up, glyph rendered or not.** The close-ups rail carries its own
