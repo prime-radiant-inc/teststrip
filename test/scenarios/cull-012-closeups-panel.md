@@ -21,13 +21,16 @@ below). The 112px crop size, the Cull-chrome-only gate, and the
 display-only/nothing-persisted behavior are unchanged.
 
 **Source (re-verified 2026-07-17)**: `cullFacesReadsPanel` at
-`Sources/TeststripApp/LibraryGridView.swift:4027-4041` (now an `HStack` of
+`Sources/TeststripApp/LibraryGridView.swift:4085-4104` (an `HStack` of
 `readsCard` + `closeUpsRail`), gated into the loupe body only `if
-presentation.showsCullChrome && model.showsCullFacesPanel` at `:3832`;
-`closeUpsRail` at `:4043-4069`; per-crop rendering (`closeUpCropCell`,
-`closeUpMarks`) at `:4071-4104`; `refreshCloseUps(for:)` at `:4172-4204`;
+presentation.showsCullChrome && model.showsCullFacesPanel` at `:3890`;
+`closeUpsRail` at `:4106-4129`; per-crop rendering (`closeUpCropCell`,
+`closeUpMarks`) at `:4134-4167`; `refreshCloseUps(for:)` at `:4255-4293`;
 the marks themselves come from `CloseUpFacesPresentation.Crop` (`eyesState`,
 `isSmiling`, `sharpnessTone`) in `Sources/TeststripApp/CloseUpFacesPresentation.swift`.
+(Citations re-verified at this branch's final HEAD, 2026-07-30 — several
+had drifted well past the 2026-07-17 reconciliation from unrelated
+intervening changes; see Run status for the re-sweep note.)
 
 **Correction to the assumed source of truth**: `refreshCloseUps` does **not**
 read the catalog's `face_observations` table. It runs a fresh, synchronous,
@@ -177,7 +180,7 @@ script/ax_drive.sh wait-vended Teststrip
   fixture asset, not as an exact-match assertion on the rendered crop count.
 - Step 4's "click a crop" gesture was read from source as very likely a
   no-op (`Image(decorative:)` with no button/tap modifier at
-  `LibraryGridView.swift:4073-4078`) — if `ax_drive.sh find --role AXImage`
+  `LibraryGridView.swift:4136-4140`) — if `ax_drive.sh find --role AXImage`
   can't even locate a pressable target, that's expected; don't fabricate an
   interaction that doesn't exist in the source. The negative-write assertion
   still stands and is still worth capturing.
@@ -425,3 +428,14 @@ one face), not two, and the truncation that entry found is the same issue
 width-truncation fix...)" entry addressed for that card — see that entry
 for the fix's mechanism. Not re-verified live against this exact commit on
 this card's `faces` fixture.
+
+**Reconciled 2026-07-30 (final glyph-line branch review — citation
+re-sweep, docs-only, not a live run)**: this card's Source section (whole
+`cullFacesReadsPanel`/`closeUpsRail`/`closeUpCropCell`/`refreshCloseUps`
+citation block) had drifted from several intervening `LibraryGridView.swift`
+changes since its 2026-07-17 re-verification, unrelated to this branch's
+own edits — every citation was re-verified by directly reading the cited
+lines at this branch's final HEAD (see the updated Source section above;
+the `faceQualityStrongThreshold` citation in the LIVE RUN 2026-07-29 entry
+was similarly fixed to `:6147`, previously `:6137`, in the prior commit).
+Historical Run-status entries were otherwise left untouched.

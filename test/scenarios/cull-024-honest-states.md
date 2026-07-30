@@ -27,30 +27,30 @@ one-signal read, or a clean winner that isn't really there.
 Source (re-verified against the working tree on this branch, **2026-07-16**;
 fresh grep, not carried over from any older card):
 - **Reads panel gating**, `CullReadsCardPresentation.presentation(for:)`
-  (`Sources/TeststripApp/CullReadsCardPresentation.swift:72-108`): three
+  (`Sources/TeststripApp/CullReadsCardPresentation.swift:74-110`): three
   states, all keyed off `CullingStackRecommendation.normalizedQualityRead`'s
-  `kindCount` (`LibraryGridView.swift:6635-6641`), which counts every
+  `kindCount` (`LibraryGridView.swift:6643-6649`), which counts every
   rankable kind with a scored component — all seven, whole-photo and
   face-specific alike, no special-casing by kind. **Zero rankable kinds**
   (the function returns `nil`) is the only "no read at all" state:
   `emptyState: "No read yet"`, no verdict, no glyphs
-  (`CullReadsCardPresentation.swift:73-82`). **Exactly one scored kind, of
+  (`CullReadsCardPresentation.swift:75-84`). **Exactly one scored kind, of
   *any* rankable type** — whole-photo or face-specific, no distinction as
   of the 2026-07-29 reads-card glyph-line change — is a genuine PARTIAL
-  read (`:84-96`): the one glyph for that kind renders (the same
-  canonical-order `glyphEntries(for:)`, `:113-126`, which now emits all
+  read (`:86-98`): the one glyph for that kind renders (the same
+  canonical-order `glyphEntries(for:)`, `:115-128`, which now emits all
   seven kinds instead of the old four-whole-photo-only `signalRows(for:)`),
   but no verdict is ever computed — `CullingAssistPresentation.verdict` is
   not called in this branch — and `earlyReadCaveat` (`:57-58`) carries the
   exact copy `"early read — 1 signal"`, which the view renders in place of
-  the verdict line. **Two or more kinds** is the FULL read (`:97-107`):
+  the verdict line. **Two or more kinds** is the FULL read (`:99-109`):
   verdict (`CullingAssistPresentation.verdict`, unchanged) plus every
-  scored kind's glyph: `wholePhotoGlyphEntries` (`:62-64`) split 2+2 across
+  scored kind's glyph: `wholePhotoGlyphEntries` (`:64-66`) split 2+2 across
   two lines by the view (`readsCard`'s two `signalGlyphLine` calls over
-  `.prefix(2)`/`.dropFirst(2)`, `LibraryGridView.swift:4214-4215` — a
+  `.prefix(2)`/`.dropFirst(2)`, `LibraryGridView.swift:4218-4219` — a
   2026-07-29 width-truncation fix, since the panel is too narrow for all
-  four whole-photo words on one line), then `faceGlyphEntries` (`:66-68`)
-  on a further line when present (`:4216`) — `earlyReadCaveat` nil. The
+  four whole-photo words on one line), then `faceGlyphEntries` (`:68-70`)
+  on a further line when present (`:4220`) — `earlyReadCaveat` nil. The
   doc comment (`:3-19`) documents exactly these three states; the 2+2
   split is a `LibraryGridView.swift` layout detail, not a presentation
   contract, so `CullReadsCardPresentation.swift`'s own doc comment still
@@ -81,7 +81,7 @@ fresh grep, not carried over from any older card):
 
   This remains a genuinely different gate than the rail's own ✦
   recommendation (`CullingStackRecommendation.rankedCandidates` via
-  `CullingQualityScore.qualityScore`, `LibraryGridView.swift:6589-6605` and
+  `CullingQualityScore.qualityScore`, `LibraryGridView.swift:6597-6613` and
   `Sources/TeststripCore/Evaluation/CullingQualityScore.swift:35-44`), which
   only needs **1** rankable kind of *any* type (`guard !scoreByKind.isEmpty`)
   — the same floor this card's PARTIAL read now shares. The two surfaces no
@@ -125,8 +125,8 @@ fresh grep, not carried over from any older card):
   bridging quirk specific to a plain `.accessibilityElement(children:
   .contain)` view, not a universal one. Because `.contain` (not `.combine`)
   is used, the inner `Text` for whichever branch is active — `emptyState`
-  (`LibraryGridView.swift:4195-4198`, the `readsCard` empty-state branch),
-  or the caveat (`:4206-4210`) — is independently AX-findable as its own
+  (`LibraryGridView.swift:4198-4201`, the `readsCard` empty-state branch),
+  or the caveat (`:4213-4217`) — is independently AX-findable as its own
   element, same as before; **treat the bare `ax find --contains "..."`
   match against that inner `Text` as authoritative, not the container-label
   match**, which this run showed is structurally dead as a test technique
@@ -150,26 +150,26 @@ fresh grep, not carried over from any older card):
   `AXValue`, which `ax_drive.sh`'s combined `--label`-plus-`--contains`
   check relies on.
 - **Rail tie suppression**, `CullingStackRailPresentation.init`
-  (`LibraryGridView.swift:6328-6464`): computes `tiedLeaderIDs` via
-  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6399-6402`,
-  defined at `:6649-6666` — leaders are every candidate whose
+  (`LibraryGridView.swift:6336-6472`): computes `tiedLeaderIDs` via
+  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6407-6410`,
+  defined at `:6657-6674` — leaders are every candidate whose
   `normalizedQualityRead` is within `tooCloseToCallMargin = 0.03` of the top
-  read, `:6647`, `nil` when fewer than 2 candidates qualify, `:6665`). "A
+  read, `:6655`, `nil` when fewer than 2 candidates qualify, `:6673`). "A
   tie can't defend a single winner, so the ✦ is suppressed entirely rather
-  than arbitrarily picking one tied leader to crown" (`:6403-6404`) —
+  than arbitrarily picking one tied leader to crown" (`:6411-6412`) —
   `recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil`
-  (`:6405`), so under a tie **no** rail chip's `isRecommended` is `true`
+  (`:6413`), so under a tie **no** rail chip's `isRecommended` is `true`
   and **no** chip's accessibility value contains `"Recommended"`
-  (`stackChipAccessibilityValue`, `:4899-4903`: `isSelected ? "Selected" :
+  (`stackChipAccessibilityValue`, `:4907-4910`: `isSelected ? "Selected" :
   (isRecommended ? "Recommended" : "Not selected")`). The banner:
   `tooCloseBanner = tiedLeaderIDs.map { "too close to call — <frame
-  labels·joined by ·>" }` (`:6419-6424`), rendered as an orange
+  labels·joined by ·>" }` (`:6427-6432`), rendered as an orange
   `Text(tooCloseBanner)` directly under the rail's title/position text
-  (`:4758-4763`) only when non-nil. The "Keep recommended N" secondary
+  (`:4766-4771`) only when non-nil. The "Keep recommended N" secondary
   action is suppressed the same way: the guard `tiedLeaderIDs == nil, let
   recommendation = rankedCandidates.first else { return nil }` inside
-  `Self.rankedAction` (`:6514-6518`; call site passing `tiedLeaderIDs` at
-  `:6450-6455`) — corrected from this card's stale `:6322-6326` citation,
+  `Self.rankedAction` (`:6526`; call site passing `tiedLeaderIDs` at
+  `:6458-6463`) — corrected from this card's stale `:6322-6326` citation,
   which had drifted onto unrelated `stackScope`-resolution code — leaving
   only "Keep selected", "Keep top 2" (if 3+ frames), and "Keep all" — a tie
   removes the machine's naming of a winner from every surface it would
@@ -201,7 +201,7 @@ script/vm_scenario_run.sh ax wait-vended
    `Sources/TeststripApp/CullHUDPresentation.swift:44`; that gate moved out
    of `LibraryGridView.swift` and into its own presentation struct since
    this card's citation was last checked, gating the `cullHUDScopeChip` call
-   at `LibraryGridView.swift:4320-4322`), so its absence confirms scope
+   at `LibraryGridView.swift:4328-4330`), so its absence confirms scope
    without cycling. Pressing `S` on a fresh launch cycles *away* from "All
    frames" (confirmed live this run: one `S` press left the scope reading
    "Cull filter: Unrated," per `CullScope`'s cycle order,
@@ -250,7 +250,7 @@ script/vm_scenario_run.sh ax wait-vended
    `faceQuality`, `eyeSharpness`, `motionBlur`, `aesthetics`, `framing` —
    `CullingQualityScore.qualityComponent`, `CullingQualityScore.swift:9-31`)
    are present with a `.score` value — this count is exactly
-   `normalizedQualityRead`'s `kindCount` (`LibraryGridView.swift:6635-6641`).
+   `normalizedQualityRead`'s `kindCount` (`LibraryGridView.swift:6643-6649`).
    Branch on the count — three honest outcomes, not two. **Use the bare
    `ax find --contains "..."` form throughout this step, never `--label
    "Reads" --contains "..."`** — confirmed live this run that the combined
@@ -269,11 +269,11 @@ script/vm_scenario_run.sh ax wait-vended
      2026-07-29 reads-card glyph-line change, this count no longer needs a
      further whole-photo-vs-face-specific split — a lone kind of *any*
      rankable type renders the identical PARTIAL shape
-     (`CullReadsCardPresentation.swift:84-96`). Assert
+     (`CullReadsCardPresentation.swift:86-98`). Assert
      `ax find --contains "No read yet"` now fails to match — the card has
      left the empty state — and instead assert the exact early-read caveat
      renders in place of a verdict: `ax find --contains "early read — 1
-     signal"` (exact copy, `CullReadsCardPresentation.swift:94`). Assert
+     signal"` (exact copy, `CullReadsCardPresentation.swift:96`). Assert
      **no** `AXStaticText` reads exactly `"Keep"` or `"Toss"` — a partial
      read never computes a verdict (`CullingAssistPresentation.verdict` is
      not consulted in this branch) — and assert exactly one glyph renders,
@@ -343,7 +343,7 @@ script/vm_scenario_run.sh ax wait-vended
    All three branches: the glyph's own accessibility label carries the
    word and the percentage together (e.g. `"Focus 82%"`,
    `EvaluationSignalPresentation.percentage`, `LibraryGridView.swift:
-   6180-6183`) — there is no separate bare `"%"`-only probe anymore, that
+   6188-6191`) — there is no separate bare `"%"`-only probe anymore, that
    matched the old text-row layout, not `SignalGlyphView`'s combined
    label.
 5. **Tie honest branch.** Compute the stack's tie state independently:
@@ -353,8 +353,8 @@ script/vm_scenario_run.sh ax wait-vended
    apply `CullingQualityScore.qualityComponent`'s per-kind formula
    (`CullingQualityScore.swift:9-31`) to get each frame's
    confidence-weighted mean (`normalizedQualityRead`,
-   `LibraryGridView.swift:6635-6641`), and check whether 2+ frames land
-   within `0.03` of the top score (`tooCloseToCallMargin`, `:6647`).
+   `LibraryGridView.swift:6643-6649`), and check whether 2+ frames land
+   within `0.03` of the top score (`tooCloseToCallMargin`, `:6655`).
    **Branch on what's actually true**:
    - **If a genuine tie exists** (2+ frames within the margin): assert the
      rail shows the `"too close to call — <frame labels>"` banner (`ax find
@@ -508,12 +508,12 @@ script/vm_scenario_run.sh ax wait-vended
   not by searching for the glyph. See `cull-021-stack-rail-nav.md`'s Sharp
   edges for the full explanation and the contrast with the Compare survey's
   independently-findable `"✦ BEST"` badge (a different, unrelated
-  mechanism — `LibraryGridView.swift:5816`, `CompareSurveyPresentation`,
+  mechanism — `LibraryGridView.swift:5824`, `CompareSurveyPresentation`,
   out of scope for this card).
 - **The Compare survey has its own, separate tie mechanism** — tied
   contenders render a `"tied"` rank badge instead of `"#N"`
   (`CompareSurveyPresentation.rankBadges(for:)`, `LibraryGridView.swift:
-  5781-5794`) — this is a different surface (Compare's contenders-only
+  5789-5802`) — this is a different surface (Compare's contenders-only
   mode) from the rail's `tooCloseBanner` this card exercises, and is not
   driven here.
 
@@ -750,3 +750,52 @@ none of this card's existing assertions needed re-deriving, only their
 prose description of the layout. Still not re-run live against this exact
 commit; a future live pass should confirm the whole-photo glyphs no longer
 truncate (`Foc…`/`Mot…`/`Fra…`/`Loo…`) now that they're two-per-line.
+
+**Reconciled 2026-07-30 (final glyph-line branch review — falsifiability,
+verdict-help probe, split-claim correction, citation re-sweep, docs-only,
+not a live run)**: four fixes on top of the 2+2 width-truncation fix above.
+(1) **The bare `ax find --contains "<Word> "` probe was never falsifiable
+for the `faceQuality` word ("Face")** — the close-ups rail's unconditional
+`accessibilityLabel("Face close-ups")` (`LibraryGridView.swift:4127`)
+contains the same substring whenever the panel is up, matching regardless
+of whether the glyph itself rendered; Step 4's both branches now prescribe
+the word-plus-percentage form (`ax find --contains "<Word> <NN>%"`,
+percentage independently computed from SQL) throughout, matching what both
+prior live runs actually asserted, and a new Sharp-edges bullet names the
+collision so it isn't reintroduced. (2) **Added a verdict-help probe** to
+Step 4's decisive-Keep/Toss sub-case — `ax find --help "Composed read
+<score> from <kindCount> signals"` (`--help` is an exact `AXHelp` match,
+confirmed by reading `script/ax_drive.sh:172`, not a substring search) —
+so a regression that silently drops `.help(...)` back to an empty string
+is now visible to a live run; this pairs with the same-day app fix that
+restructured the `.help` call site to apply only when `verdictHelp` is
+non-nil (`LibraryGridView.swift:4208-4212`). (3) **Corrected an
+over-specified split claim**: Step 4's FULL-read bullet named the split as
+always "focus/motionBlur, then framing/aesthetics," but the split is
+positional (`.prefix(2)`/`.dropFirst(2)` over whichever whole-photo kinds
+are actually scored) — with all four scored it is 2+2 as named, but with
+exactly three scored (any one kind absent) it renders 2+1, not always 2+2;
+reworded to state the general rule rather than one named case. (4)
+**Citation re-sweep**: this branch's own verdict-help restructuring added
+4 lines inside `readsCard` (`LibraryGridView.swift`, below line ~4208) and
+2 lines inside `CullReadsCardPresentation.swift`'s domain-split doc comment
+(below line ~60), shifting every citation below those points on top of the
+width-truncation fix's own +3/+4 shift already baked into this file before
+today. Every `LibraryGridView.swift` and `CullReadsCardPresentation.swift`
+citation in the non-historical Source/Steps/Sharp-edges sections was
+re-verified by directly reading the cited lines at this branch's final
+HEAD (this Run-status section's historical entries were left untouched,
+per this card's own convention). Representative shifts: `kindCount`
+(`:6635-6641` → `:6643-6649`), the empty-state/caveat `Text` branches
+(`:4195-4198`/`:4206-4210` → `:4198-4201`/`:4213-4217`), the two
+`signalGlyphLine` call sites (`:4214-4215` → `:4218-4219`), the rail's
+tie-suppression init and its internal call sites (`CullingStackRailPresentation.init`
+`:6328-6464` → `:6336-6472`, and everything inside it shifted similarly),
+the `"✦ BEST"` badge literal (`:5816` → `:5824`), `rankBadges(for:)`
+(`:5781-5794` → `:5789-5802`), and `EvaluationSignalPresentation.percentage`
+(`:6180-6183` → `:6188-6191`). Also reworded the Width-check finding's
+screenshot-evidence pointer, which cited a `.superpowers/sdd/` path — that
+directory is gitignored and machine-local (confirmed via `git check-ignore`),
+so no future reader could ever retrieve it; the finding is now described
+inline instead, noting the original screenshot was session-local. Still
+not re-run live against this exact commit.
