@@ -4179,9 +4179,12 @@ private struct LoupeView: View {
 
     // The frame's whole-frame read as a fast triage cue: the verdict word
     // (or pure silence when a full read lands between the thresholds — a
-    // read that can't commit says nothing), over one micro-glyph per scored
-    // rankable kind. Face kinds render here too — every verdict input
-    // visible in one place — as a second line, while the close-ups rail
+    // read that can't commit says nothing), over the scored rankable kinds'
+    // micro-glyphs. The four whole-photo glyphs split 2+2 across two lines
+    // (a live VM width check, 2026-07-29, found the panel's ~176pt too
+    // narrow for all four words on one line without truncating) — face
+    // kinds render below them as a further line when present, so every
+    // verdict input stays visible in one place, while the close-ups rail
     // keeps per-face detail. With zero scored kinds only the honest "No
     // read yet" empty state renders; with exactly one, the lone glyph plus
     // a quiet early-read caveat. The card's home in the panel never
@@ -4208,7 +4211,8 @@ private struct LoupeView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                signalGlyphLine(presentation.wholePhotoGlyphEntries)
+                signalGlyphLine(Array(presentation.wholePhotoGlyphEntries.prefix(2)))
+                signalGlyphLine(Array(presentation.wholePhotoGlyphEntries.dropFirst(2)))
                 signalGlyphLine(presentation.faceGlyphEntries)
             }
         }

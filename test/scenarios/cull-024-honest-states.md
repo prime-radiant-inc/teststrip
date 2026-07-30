@@ -45,10 +45,17 @@ fresh grep, not carried over from any older card):
   exact copy `"early read — 1 signal"`, which the view renders in place of
   the verdict line. **Two or more kinds** is the FULL read (`:97-107`):
   verdict (`CullingAssistPresentation.verdict`, unchanged) plus every
-  scored kind's glyph, split across two lines by `wholePhotoGlyphEntries`
-  (`:62-64`) and `faceGlyphEntries` (`:66-68`) — whole-photo glyphs first,
-  face glyphs second when present — `earlyReadCaveat` nil. The doc comment
-  (`:3-19`) documents exactly these three states.
+  scored kind's glyph: `wholePhotoGlyphEntries` (`:62-64`) split 2+2 across
+  two lines by the view (`readsCard`'s two `signalGlyphLine` calls over
+  `.prefix(2)`/`.dropFirst(2)`, `LibraryGridView.swift:4214-4215` — a
+  2026-07-29 width-truncation fix, since the panel is too narrow for all
+  four whole-photo words on one line), then `faceGlyphEntries` (`:66-68`)
+  on a further line when present (`:4216`) — `earlyReadCaveat` nil. The
+  doc comment (`:3-19`) documents exactly these three states; the 2+2
+  split is a `LibraryGridView.swift` layout detail, not a presentation
+  contract, so `CullReadsCardPresentation.swift`'s own doc comment still
+  describes the domain split (whole-photo vs. face) rather than the
+  screen line count.
 
   **Superseded history**: this card's original (2026-07-16) claim that any
   single kind rendered "No read yet" was reconciled (Jesse's ruling
@@ -271,11 +278,12 @@ script/vm_scenario_run.sh ax wait-vended
      signal: `ax find --contains "<Word> "` (e.g. `ax find --contains
      "Focus "` or `ax find --contains "Eye sharp "`) against that kind's
      word from the mapping above. If the lone kind is face-specific, that
-     same glyph now also renders here (on the second, face-glyph line) —
-     it is no longer exclusive to the close-ups rail; the rail's own
-     per-face marks (`cull-012-closeups-panel.md`) are a separate, per-face
-     presentation of related data, not a substitute for this card's
-     photo-level glyph.
+     same glyph now also renders here (on the face-glyph line — the two
+     whole-photo-line slots render nothing when empty, so a lone
+     face-specific glyph is the only line visible) — it is no longer
+     exclusive to the close-ups rail; the rail's own per-face marks
+     (`cull-012-closeups-panel.md`) are a separate, per-face presentation
+     of related data, not a substitute for this card's photo-level glyph.
    - **Two or more (a FULL read)**: assert
      `ax find --contains "No read yet"` fails to match, then independently compute
      `normalizedQualityRead` (confidence-weighted mean of the best component
@@ -290,11 +298,14 @@ script/vm_scenario_run.sh ax wait-vended
      that can't commit says nothing, not a "Mixed" label) — don't treat its
      absence as a bug in this branch. Either way, independently assert
      every scored kind's glyph renders: whole-photo kinds
-     (`CullReadsCardPresentation.wholePhotoGlyphEntries`) on the first
-     line, any scored face kind (`faceGlyphEntries`) on a second line
-     beneath it — `ax find --contains "<Word> "` should match for each
-     kind actually present in the SQL row above, on whichever line it
-     belongs to.
+     (`CullReadsCardPresentation.wholePhotoGlyphEntries`) split 2+2 across
+     the first two lines (focus/motionBlur, then framing/aesthetics — the
+     2026-07-29 width-truncation fix), any scored face kind
+     (`faceGlyphEntries`) on a further line beneath them — `ax find
+     --contains "<Word> "` should match for each kind actually present in
+     the SQL row above, regardless of which of the (up to three) lines it
+     lands on; the AX label carries the word and percentage either way, so
+     this probe doesn't need to distinguish which line rendered it.
    All three branches: the glyph's own accessibility label carries the
    word and the percentage together (e.g. `"Focus 82%"`,
    `EvaluationSignalPresentation.percentage`, `LibraryGridView.swift:
@@ -362,7 +373,8 @@ script/vm_scenario_run.sh ax wait-vended
   signal" and no `Keep`/`Toss` text — never "No read yet" for a lone
   face-specific kind, that fallback is retired as of the 2026-07-29
   glyph-line change; two or more kinds must show every scored kind's glyph
-  (whole-photo glyphs on the first line, any face glyphs on a second) and,
+  (whole-photo glyphs split 2+2 across the first two lines, any face
+  glyphs on a further line — the 2026-07-29 width-truncation fix) and,
   per the Keep/Toss/Mixed math, either a matching verdict or no verdict
   text at all. Regardless of what the rail is doing.
 - Step 5: **Fails if** the rail's tie/no-tie/no-signal state disagrees with
@@ -660,3 +672,25 @@ screenshot (a different asset, whole-photo line truncated the same way).
 Per the task brief this is the plan's own anticipated 2+2-fallback
 scenario; reporting per instructions, no code change made here. Screenshot
 evidence in `.superpowers/sdd/2026-07-29-reads-card-glyph-line/task-4-report.md`.
+
+**Reconciled 2026-07-29 (2+2 width-truncation fix, docs-only re-verification
+alongside the code fix, not a live run)**: applied the sanctioned fallback
+this card's own width-check finding called for — `readsCard` now splits
+`wholePhotoGlyphEntries` 2+2 across two `signalGlyphLine` calls
+(`.prefix(2)`/`.dropFirst(2)`, `LibraryGridView.swift:4214-4215`) instead of
+rendering all four on one line, with `faceGlyphEntries` on a further line
+when present (`:4216`). `CullReadsCardPresentation.swift` is unchanged —
+the split is pure view layout, not a presentation-model change. Every
+passage in this card's Source and Step 4 that described the FULL-read
+render as strictly "whole-photo glyphs on the first line, face glyphs on a
+second" (a two-line claim the 2+2 split invalidates — it's now up to three
+lines) was reread and rewritten to describe the current 2+2-then-face
+layout; the PARTIAL-read sub-bullet's "on the second, face-glyph line"
+phrasing was also corrected (a lone face-specific glyph is the only line
+that actually renders, since the two whole-photo slots render nothing when
+empty). No AX-probe methodology changed — `ax find --contains "<Word> "`
+still matches each glyph's label regardless of which line it lands on, so
+none of this card's existing assertions needed re-deriving, only their
+prose description of the layout. Still not re-run live against this exact
+commit; a future live pass should confirm the whole-photo glyphs no longer
+truncate (`Foc…`/`Mot…`/`Fra…`/`Loo…`) now that they're two-per-line.
