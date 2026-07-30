@@ -2652,6 +2652,12 @@ public final class AppModel {
     @ObservationIgnored
     private var availabilityAssetIDsByItemID: [WorkSessionID: [AssetID]]
 
+    // SP-C: queue items the cull prefetch planner enqueued, so a window slide
+    // can cancel undispatched stragglers without touching work other paths
+    // requested. In-flight renders are left to finish.
+    @ObservationIgnored
+    private var cullPrefetchItemIDs: Set<WorkSessionID> = []
+
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
     /// IDs of activities recorded live in this app session (vs. restored
@@ -9320,6 +9326,43 @@ public final class AppModel {
             guard try !previewGenerationAttemptsExhausted(assetID: neighbor.id, level: request.level) else { continue }
             try requestPreview(assetID: request.assetID, level: request.level, placement: .back)
         }
+    }
+
+    // The cull loupe's per-frame request: the visible frame at .front (same as
+    // plain loupe), then the blaze-through warm window at .back. Replaces the
+    // deck-order ±1 neighbor prefetch, which warms the wrong frames in a burst.
+    public func requestVisibleCullPreview(assetID: AssetID) throws {
+        try requestVisibleLoupeAssetPreview(assetID: assetID)
+        try refreshCullPrefetchWindow(around: assetID)
+    }
+
+    private func refreshCullPrefetchWindow(around assetID: AssetID) throws {
+        guard workerSupervisor != nil else { return }
+        let wants = CullPrefetchPlanner.warmAssetIDs(
+            stops: cullingStopSequence(),
+            stagedAssetID: assetID,
+            landingAssetID: { [weak self] stack in self?.recommendedStackLandingAssetID(for: stack) }
+        )
+        let desiredItemIDs = Set(wants.map { Self.previewWorkItemID(assetID: $0, level: .large) })
+        for staleItemID in cullPrefetchItemIDs.subtracting(desiredItemIDs) {
+            if currentBackgroundWorkQueue.item(id: staleItemID)?.status == .queued {
+                try workerSupervisor?.cancel(id: staleItemID)
+            }
+            cullPrefetchItemIDs.remove(staleItemID)
+        }
+        for wantedAssetID in wants {
+            guard previewURL(for: wantedAssetID, levels: [.large]) == nil else { continue }
+            guard let asset = assets.first(where: { $0.id == wantedAssetID }),
+                  asset.availability.isAvailableForPreviewGeneration else { continue }
+            guard try !previewGenerationAttemptsExhausted(assetID: wantedAssetID, level: .large) else { continue }
+            try requestPreview(assetID: wantedAssetID, level: .large, placement: .back)
+            let itemID = Self.previewWorkItemID(assetID: wantedAssetID, level: .large)
+            if let status = currentBackgroundWorkQueue.item(id: itemID)?.status,
+               Self.isActiveBackgroundWorkStatus(status) {
+                cullPrefetchItemIDs.insert(itemID)
+            }
+        }
+        syncBackgroundWorkQueueFromSupervisor()
     }
 
     // Mirrors the automatic background scan's cap

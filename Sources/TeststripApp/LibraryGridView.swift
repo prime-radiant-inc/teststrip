@@ -3893,7 +3893,11 @@ private struct LoupeView: View {
                         }
                         .task(id: LoupeContentKey(assetID: asset.id.rawValue, showsCullChrome: presentation.showsCullChrome)) {
                             do {
-                                try model.requestVisibleLoupePreview(assetID: asset.id)
+                                if presentation.showsCullChrome {
+                                    try model.requestVisibleCullPreview(assetID: asset.id)
+                                } else {
+                                    try model.requestVisibleLoupePreview(assetID: asset.id)
+                                }
                             } catch {
                                 model.errorMessage = error.localizedDescription
                             }
