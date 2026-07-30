@@ -140,7 +140,10 @@ fresh grep, not carried over from any older card):
   element *does* surface via `AXTitle`/`AXDescription`, which `ax find
   --contains` inspects directly — so `ax find --contains "Focus "`
   reliably matches the glyph itself, no container-match workaround needed
-  for per-kind probes. This doesn't mean the presentation logic is wrong —
+  for per-kind probes **for words that don't collide with other panel
+  text** — see Sharp edges for the one word (`"Face"`) where a bare match
+  isn't falsifiable and needs the percentage suffix instead. This doesn't
+  mean the presentation logic is wrong —
   the correct string is still genuinely computed: exposed to assistive
   tech via `AXValueDescription` for the container, and directly via
   `AXTitle`/`AXDescription` for each glyph; just not via the container's
@@ -275,10 +278,18 @@ script/vm_scenario_run.sh ax wait-vended
      read never computes a verdict (`CullingAssistPresentation.verdict` is
      not consulted in this branch) — and assert exactly one glyph renders,
      matching whichever of the seven canonical kinds actually has the
-     signal: `ax find --contains "<Word> "` (e.g. `ax find --contains
-     "Focus "` or `ax find --contains "Eye sharp "`) against that kind's
-     word from the mapping above. If the lone kind is face-specific, that
-     same glyph now also renders here (on the face-glyph line — the two
+     signal: independently compute that kind's percentage from the SQL row
+     above (same `qualityComponent` formula the lead-in cites) and assert
+     `ax find --contains "<Word> <NN>%"` (e.g. `ax find --contains
+     "Focus 82%"` or `ax find --contains "Eye sharp 43%"`) against that
+     kind's word from the mapping above — **never** the bare `ax find
+     --contains "<Word> "` form: for the `faceQuality` word ("Face"), the
+     bare probe is not falsifiable — the close-ups rail's unconditional
+     `accessibilityLabel("Face close-ups")` (`LibraryGridView.swift:4127`)
+     contains the same substring whenever the panel is up, matching
+     regardless of whether the glyph itself rendered (see Sharp edges). If
+     the lone kind is face-specific, that same glyph now also renders here
+     (on the face-glyph line — the two
      whole-photo-line slots render nothing when empty, so a lone
      face-specific glyph is the only line visible) — it is no longer
      exclusive to the close-ups rail; the rail's own per-face marks
@@ -292,20 +303,43 @@ script/vm_scenario_run.sh ax wait-vended
      predict which of three honest outcomes this fixture lands in: (a)
      **decisive Keep/Toss** — assert an `AXStaticText` reading exactly
      `"Keep"` or `"Toss"` (no "read" suffix, no percentage, no caveat text)
-     matching the predicted verdict; (b) **Mixed** (between the two
+     matching the predicted verdict. Also assert its AXHelp is present and
+     exact, so a regression can't silently drop
+     `.help(presentation.verdictHelp ?? "")` back to an empty string
+     (`LibraryGridView.swift:4209`): format the expected string yourself as
+     `"Composed read %.2f from %d signals"` from this same
+     independently-computed `read.score`/`read.kindCount`, then run `ax
+     find --help "Composed read <score> from <kindCount> signals"` —
+     `--help` is an *exact* match against `AXHelp`, not a substring search
+     like `--contains` (confirmed by reading `script/ax_drive.sh:172`) —
+     and confirm it finds the verdict element; **fails if** nothing matches
+     (either `.help` was dropped, or the computed string is wrong); (b)
+     **Mixed** (between the two
      thresholds) — assert **no** `Keep`/`Toss` verdict text and no early-
      read caveat render at all, per the honest-states philosophy (a verdict
      that can't commit says nothing, not a "Mixed" label) — don't treat its
-     absence as a bug in this branch. Either way, independently assert
+     absence as a bug in this branch; `verdictHelp` is nil whenever
+     `verdictText` is, so no verdict-help probe applies to this sub-case.
+     Either way, independently assert
      every scored kind's glyph renders: whole-photo kinds
-     (`CullReadsCardPresentation.wholePhotoGlyphEntries`) split 2+2 across
-     the first two lines (focus/motionBlur, then framing/aesthetics — the
-     2026-07-29 width-truncation fix), any scored face kind
-     (`faceGlyphEntries`) on a further line beneath them — `ax find
-     --contains "<Word> "` should match for each kind actually present in
-     the SQL row above, regardless of which of the (up to three) lines it
-     lands on; the AX label carries the word and percentage either way, so
-     this probe doesn't need to distinguish which line rendered it.
+     (`CullReadsCardPresentation.wholePhotoGlyphEntries`) split
+     positionally — `.prefix(2)` on the first line, `.dropFirst(2)` on the
+     second, over whichever whole-photo kinds are actually scored, in
+     canonical order (focus, motionBlur, framing, aesthetics). With all
+     four scored this renders 2+2 (focus/motionBlur, then
+     framing/aesthetics — the 2026-07-29 width-truncation fix); with only
+     three scored (any one kind absent) it renders 2+1, not always 2+2 —
+     assert whichever split this run's actual scored-kind set produces,
+     don't assume all four are present. Any scored face kind
+     (`faceGlyphEntries`) renders on a further line beneath them. For each
+     kind actually present in the SQL row above, independently compute its
+     percentage (same `qualityComponent` formula) and assert `ax find
+     --contains "<Word> <NN>%"` (e.g. `ax find --contains "Focus 82%"`) —
+     **never** the bare `ax find --contains "<Word> "` form (see Sharp
+     edges: the `"Face "` case is never falsifiable), regardless of which
+     of the (up to three) lines it lands on; the AX label carries the word
+     and percentage together, so this probe doesn't need to distinguish
+     which line rendered it.
    All three branches: the glyph's own accessibility label carries the
    word and the percentage together (e.g. `"Focus 82%"`,
    `EvaluationSignalPresentation.percentage`, `LibraryGridView.swift:
@@ -426,6 +460,23 @@ script/vm_scenario_run.sh ax wait-vended
   find --contains` *does* inspect — so `ax find --contains "Focus "`
   matches the glyph directly, no combined-match workaround needed (see the
   AX-surface Source bullet above for the full mechanism).
+- **`ax find --contains "Face "` is NOT a falsifiable probe for the
+  `faceQuality` glyph — it always matches whenever the faces+reads panel is
+  up, glyph rendered or not.** The close-ups rail carries its own
+  unconditional `.accessibilityLabel("Face close-ups")`
+  (`LibraryGridView.swift:4127`), gated only on the same
+  `showsCullChrome && showsCullFacesPanel` panel visibility this card's
+  Reads-panel assertions already depend on — not on whether any face glyph
+  actually rendered. `"Face close-ups"` contains the substring `"Face "`
+  (the word immediately followed by a space before "close-ups"), so a bare
+  `ax find --contains "Face "` matches that unrelated rail label even when
+  the Reads card shows zero face glyphs — it would pass a broken build just
+  as readily as a correct one. Always assert the word-plus-percentage form
+  instead (`ax find --contains "Face <NN>%"`, percentage independently
+  computed from SQL) for this kind specifically; the other six words don't
+  collide with anything else in this panel, but the percentage suffix is
+  the one probe shape that's falsifiable for all seven, so Step 4 uses it
+  throughout rather than special-casing just this one word.
 - **This card's honest-branch steps (5-6) may all be no-ops on a given
   run** if `burst`'s synthetic rectangles produce a clean winner every time,
   or never produce 2+ scored kinds on any frame — that is a legitimate
@@ -671,7 +722,12 @@ data or AX-contract defect. This reproduced again on `cull-012`'s FULL-read
 screenshot (a different asset, whole-photo line truncated the same way).
 Per the task brief this is the plan's own anticipated 2+2-fallback
 scenario; reporting per instructions, no code change made here. Screenshot
-evidence in `.superpowers/sdd/2026-07-29-reads-card-glyph-line/task-4-report.md`.
+captured at the time showing the four glyphs clipped to
+`Foc…`/`Mot…`/`Fra…`/`Loo…` against the full, untruncated AX labels
+described above; saved to this session's local task-report scratch space
+(`.superpowers/sdd/`, gitignored and machine-local — not retrievable by a
+future reader of this card). The finding is fully described in prose above
+and doesn't depend on the screenshot file.
 
 **Reconciled 2026-07-29 (2+2 width-truncation fix, docs-only re-verification
 alongside the code fix, not a live run)**: applied the sanctioned fallback

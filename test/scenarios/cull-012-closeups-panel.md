@@ -339,7 +339,7 @@ fallback.
   glyph, green sharpness dot — visible in screenshot) matched ground truth:
   `eyesOpen` = 1.0 (open, not closed); the source photo shows the subject
   smiling; `faceQuality` = 0.6071 >= `faceQualityStrongThreshold` (0.45,
-  `LibraryGridView.swift:6137`) → Sharp (green dot). **PASS on
+  `LibraryGridView.swift:6147`) → Sharp (green dot). **PASS on
   substance** — but see the AX-methodology finding below: the exact
   accessibility value needed a raw attribute dump, not `ax_drive.sh find
   --contains`.
@@ -407,3 +407,21 @@ fully exercises the `kindCount == 1` face-specific PARTIAL-read branch that
 card's LIVE RUN 2026-07-29 entry) — together the two runs are a live proof
 of the entire glyph-line change's three-state contract across both
 fixtures.**
+
+**Reconciled 2026-07-30 (2+2 width-truncation fix superseded the layout
+description above, docs-only, not a live run)**: the "Reads-leg finding"
+entry above (the `kindCount = 7` paragraph) predates the 2+2 width-
+truncation fix and describes the whole-photo glyphs as rendering "as a
+second line" together on one line ("`Focus 60%`/`Motion 60%`/`Framing
+60%`/`Looks 49%` on line one, `Eyes 100%`/`Face 61%`/`Eye sharp 43%` on
+line two") — that historical entry is left as written, since it's an
+accurate record of what that run observed at that commit, but its layout
+claim no longer matches current behavior: `readsCard` now splits
+`wholePhotoGlyphEntries` across two lines itself (`.prefix(2)`/
+`.dropFirst(2)`, `LibraryGridView.swift:4218-4219`), so this same
+`kindCount = 7` frame would render three lines today (two whole-photo +
+one face), not two, and the truncation that entry found is the same issue
+`cull-024-honest-states.md`'s matching "Reconciled 2026-07-29 (2+2
+width-truncation fix...)" entry addressed for that card — see that entry
+for the fix's mechanism. Not re-verified live against this exact commit on
+this card's `faces` fixture.
