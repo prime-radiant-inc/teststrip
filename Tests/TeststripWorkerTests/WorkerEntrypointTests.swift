@@ -10,29 +10,16 @@ final class WorkerEntrypointTests: XCTestCase {
         try Data("jpg".utf8).write(to: source)
         let catalogURL = root.appendingPathComponent("catalog.sqlite")
         let previewCacheRoot = root.appendingPathComponent("previews", isDirectory: true)
-        let workerURL = try builtWorkerExecutableURL()
-        let process = Process()
-        let inputPipe = Pipe()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.executableURL = workerURL
-        process.arguments = [
-            "--catalog",
-            catalogURL.path,
-            "--preview-cache",
-            previewCacheRoot.path
-        ]
-        process.standardInput = inputPipe
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
 
-        try process.run()
-        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll)).utf8))
-        inputPipe.fileHandleForWriting.closeFile()
-        process.waitUntilExit()
-
-        let stdout = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let (stdout, stderr) = try runWorkerProcess(
+            arguments: [
+                "--catalog",
+                catalogURL.path,
+                "--preview-cache",
+                previewCacheRoot.path
+            ],
+            input: Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll)).utf8)
+        )
         XCTAssertEqual(stderr, "")
         let database = try CatalogDatabase.open(at: catalogURL)
         try database.migrate()
@@ -63,30 +50,17 @@ final class WorkerEntrypointTests: XCTestCase {
         try Data("jpg".utf8).write(to: source)
         let catalogURL = root.appendingPathComponent("catalog.sqlite")
         let previewCacheRoot = root.appendingPathComponent("previews", isDirectory: true)
-        let workerURL = try builtWorkerExecutableURL()
-        let process = Process()
-        let inputPipe = Pipe()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.executableURL = workerURL
-        process.arguments = [
-            "--catalog",
-            catalogURL.path,
-            "--preview-cache",
-            previewCacheRoot.path
-        ]
-        process.standardInput = inputPipe
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
         let itemID = WorkSessionID(rawValue: "import-work")
 
-        try process.run()
-        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll), itemID: itemID).utf8))
-        inputPipe.fileHandleForWriting.closeFile()
-        process.waitUntilExit()
-
-        let stdout = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let (stdout, stderr) = try runWorkerProcess(
+            arguments: [
+                "--catalog",
+                catalogURL.path,
+                "--preview-cache",
+                previewCacheRoot.path
+            ],
+            input: Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll), itemID: itemID).utf8)
+        )
         XCTAssertEqual(stderr, "")
         let events = try stdout
             .split(separator: "\n", omittingEmptySubsequences: true)
@@ -138,30 +112,17 @@ final class WorkerEntrypointTests: XCTestCase {
         )
         try repository.upsert(asset)
         try FileManager.default.removeItem(at: source)
-        let workerURL = try builtWorkerExecutableURL()
-        let process = Process()
-        let inputPipe = Pipe()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
         let itemID = WorkSessionID(rawValue: "source-scan")
-        process.executableURL = workerURL
-        process.arguments = [
-            "--catalog",
-            catalogURL.path,
-            "--preview-cache",
-            previewCacheRoot.path
-        ]
-        process.standardInput = inputPipe
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
 
-        try process.run()
-        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.refreshAvailability(assetID: asset.id), itemID: itemID).utf8))
-        inputPipe.fileHandleForWriting.closeFile()
-        process.waitUntilExit()
-
-        let stdout = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let (stdout, stderr) = try runWorkerProcess(
+            arguments: [
+                "--catalog",
+                catalogURL.path,
+                "--preview-cache",
+                previewCacheRoot.path
+            ],
+            input: Data(try WorkerProtocolEncoder.encode(.refreshAvailability(assetID: asset.id), itemID: itemID).utf8)
+        )
         XCTAssertEqual(stderr, "")
         XCTAssertEqual(try WorkerProtocolEncoder.decodeEvent(stdout), .completed(
             itemID: itemID,
@@ -171,25 +132,56 @@ final class WorkerEntrypointTests: XCTestCase {
     }
 
     func testMalformedCommandWritesUnstructuredErrorToStderr() throws {
+        let (stdout, stderr) = try runWorkerProcess(arguments: [], input: Data("not-json\n".utf8))
+        XCTAssertEqual(stdout, "")
+        XCTAssertTrue(stderr.hasPrefix("error "))
+    }
+
+    /// Runs the built TeststripWorker with the given arguments and stdin, draining stdout and
+    /// stderr concurrently with the child's execution. Reading the pipes only after
+    /// `waitUntilExit()` deadlocks once the child's output exceeds the pipe buffer (macOS can
+    /// shrink that buffer to ~512 bytes under system-wide pipe pressure): the child blocks in
+    /// write() and `waitUntilExit()` never returns because nobody is draining the other end.
+    private func runWorkerProcess(arguments: [String], input: Data) throws -> (stdout: String, stderr: String) {
         let workerURL = try builtWorkerExecutableURL()
         let process = Process()
         let inputPipe = Pipe()
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.executableURL = workerURL
+        process.arguments = arguments
         process.standardInput = inputPipe
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
+        // Drains start only after a successful launch: starting them earlier
+        // would leak both background threads forever if `run()` throws — the
+        // pipes' write ends stay open (this process still holds them), so
+        // `readDataToEndOfFile()` never sees EOF and never returns.
         try process.run()
-        inputPipe.fileHandleForWriting.write(Data("not-json\n".utf8))
+
+        let drained = DrainedProcessOutput()
+        let drainGroup = DispatchGroup()
+        drainGroup.enter()
+        DispatchQueue.global().async {
+            drained.stdout = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            drainGroup.leave()
+        }
+        drainGroup.enter()
+        DispatchQueue.global().async {
+            drained.stderr = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            drainGroup.leave()
+        }
+
+        inputPipe.fileHandleForWriting.write(input)
         inputPipe.fileHandleForWriting.closeFile()
         process.waitUntilExit()
+        drainGroup.wait()
 
-        let stdout = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        XCTAssertEqual(stdout, "")
-        XCTAssertTrue(stderr.hasPrefix("error "))
+        return (
+            String(data: drained.stdout, encoding: .utf8) ?? "",
+            String(data: drained.stderr, encoding: .utf8) ?? ""
+        )
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {
@@ -213,4 +205,13 @@ final class WorkerEntrypointTests: XCTestCase {
         }
         return url
     }
+}
+
+/// Holds a worker process's drained stdout/stderr. Each property is written exactly once, from
+/// its own dedicated background queue, before `DispatchGroup.wait()` returns on the caller's
+/// thread — that handoff is what makes the unsynchronized access below safe despite the
+/// `@unchecked` conformance.
+private final class DrainedProcessOutput: @unchecked Sendable {
+    var stdout = Data()
+    var stderr = Data()
 }

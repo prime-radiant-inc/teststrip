@@ -4177,14 +4177,19 @@ private struct LoupeView: View {
         return segments.joined(separator: ", ")
     }
 
-    // The frame's whole-frame read: verdict plus one compact text row per
-    // whole-photo signal, in CullReadsCardPresentation's fixed canonical
-    // order — one home per fact, no duplicated list-plus-bars layout, no
-    // thermometer bars. With zero scored kinds only the honest "No read
-    // yet" empty state renders. With exactly one scored kind (a PARTIAL
-    // read) the lone row still renders, but in place of the verdict line is
-    // a quiet early-read caveat — never a fabricated Keep/Toss off one
-    // signal. Either way the card's home in the panel never disappears.
+    // The frame's whole-frame read as a fast triage cue: the verdict word
+    // (or pure silence when a full read lands between the thresholds — a
+    // read that can't commit says nothing), over the scored rankable kinds'
+    // micro-glyphs. The four whole-photo glyphs split 2+2 across two lines
+    // (a live VM width check, 2026-07-29, found the panel's ~176pt too
+    // narrow for all four words on one line without truncating) — face
+    // kinds render below them as a further line when present, so every
+    // verdict input stays visible in one place, while the close-ups rail
+    // keeps per-face detail. With zero scored kinds only the honest "No
+    // read yet" empty state renders; with exactly one, the lone glyph plus
+    // a quiet early-read caveat. The card's home in the panel never
+    // disappears. Composition detail lives in hover/AX help, never on
+    // screen.
     private func readsCard(_ presentation: CullReadsCardPresentation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("READS")
@@ -4196,30 +4201,39 @@ private struct LoupeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 if let verdictText = presentation.verdictText {
-                    Text(verdictText)
+                    let verdict = Text(verdictText)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(readsToneColor(presentation.verdictTone))
                         .lineLimit(1)
+                    if let verdictHelp = presentation.verdictHelp {
+                        verdict.help(verdictHelp)
+                    } else {
+                        verdict
+                    }
                 } else if let earlyReadCaveat = presentation.earlyReadCaveat {
                     Text(earlyReadCaveat)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                ForEach(presentation.signalRows, id: \.kind.rawValue) { row in
-                    HStack(spacing: 6) {
-                        Text(EvaluationSignalPresentation.displayName(for: row.kind))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        Text(EvaluationSignalPresentation.percentage(row.score))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                signalGlyphLine(Array(presentation.wholePhotoGlyphEntries.prefix(2)))
+                signalGlyphLine(Array(presentation.wholePhotoGlyphEntries.dropFirst(2)))
+                signalGlyphLine(presentation.faceGlyphEntries)
             }
         }
         .liveMockupPlaceholder(.cullingAssistVerdict)
+    }
+
+    // One line of glyph pairs; renders nothing at all for an empty domain
+    // (no gaps, no fake zeros).
+    @ViewBuilder
+    private func signalGlyphLine(_ entries: [CullReadsCardPresentation.GlyphEntry]) -> some View {
+        if !entries.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(entries, id: \.kind.rawValue) { entry in
+                    SignalGlyphView(entry: entry)
+                }
+            }
+        }
     }
 
     private func readsToneColor(_ tone: CullingAssistPresentation.Tone) -> Color {
@@ -6610,7 +6624,7 @@ struct CullingStackRecommendation: Equatable {
     }
 
     // The best-weighted rankable component per kind — shared by the
-    // normalized read and the reads card's per-kind signal bars, so they
+    // normalized read and the reads card's per-kind glyph entries, so they
     // can never disagree on which component represents a kind.
     static func bestComponentByKind(for signals: [EvaluationSignal]) -> [EvaluationKind: (score: Double, weight: Double)] {
         var bestComponentByKind: [EvaluationKind: (score: Double, weight: Double)] = [:]
