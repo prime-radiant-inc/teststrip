@@ -4201,11 +4201,15 @@ private struct LoupeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 if let verdictText = presentation.verdictText {
-                    Text(verdictText)
+                    let verdict = Text(verdictText)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(readsToneColor(presentation.verdictTone))
                         .lineLimit(1)
-                        .help(presentation.verdictHelp ?? "")
+                    if let verdictHelp = presentation.verdictHelp {
+                        verdict.help(verdictHelp)
+                    } else {
+                        verdict
+                    }
                 } else if let earlyReadCaveat = presentation.earlyReadCaveat {
                     Text(earlyReadCaveat)
                         .font(.caption)
@@ -6620,7 +6624,7 @@ struct CullingStackRecommendation: Equatable {
     }
 
     // The best-weighted rankable component per kind — shared by the
-    // normalized read and the reads card's per-kind signal bars, so they
+    // normalized read and the reads card's per-kind glyph entries, so they
     // can never disagree on which component represents a kind.
     static func bestComponentByKind(for signals: [EvaluationSignal]) -> [EvaluationKind: (score: Double, weight: Double)] {
         var bestComponentByKind: [EvaluationKind: (score: Double, weight: Double)] = [:]

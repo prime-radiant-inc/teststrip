@@ -154,6 +154,12 @@ final class WorkerEntrypointTests: XCTestCase {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
+        // Drains start only after a successful launch: starting them earlier
+        // would leak both background threads forever if `run()` throws — the
+        // pipes' write ends stay open (this process still holds them), so
+        // `readDataToEndOfFile()` never sees EOF and never returns.
+        try process.run()
+
         let drained = DrainedProcessOutput()
         let drainGroup = DispatchGroup()
         drainGroup.enter()
@@ -167,7 +173,6 @@ final class WorkerEntrypointTests: XCTestCase {
             drainGroup.leave()
         }
 
-        try process.run()
         inputPipe.fileHandleForWriting.write(input)
         inputPipe.fileHandleForWriting.closeFile()
         process.waitUntilExit()

@@ -57,8 +57,10 @@ struct CullReadsCardPresentation: Equatable {
     /// Non-nil only for a PARTIAL (exactly one scored kind) read.
     var earlyReadCaveat: String?
 
-    /// The line wraps by domain, not by measurement: whole-photo glyphs on
-    /// the first line, face glyphs on the second when present.
+    /// Split by domain, not by screen layout: whole-photo entries and face
+    /// entries are exposed separately so the view can lay each out on its
+    /// own — how many lines that becomes is a `LibraryGridView` layout
+    /// detail, not something this presentation dictates.
     var wholePhotoGlyphEntries: [GlyphEntry] {
         glyphEntries.filter { !Self.faceKinds.contains($0.kind) }
     }
