@@ -6104,6 +6104,12 @@ public final class AppModel {
         _ flagsByAssetID: [AssetID: PickFlag],
         to compareGroup: [Asset]
     ) throws -> CompareFlagChangeSummary {
+        // Shared write path for every Compare/A-B "keep" rail action
+        // (keepABFrame, keepAllCompareAssets, keepCompareAssetAndReject-
+        // Alternates, keepTopTwoCompareContendersAndRejectAlternates) — all
+        // bypass applyCullingShortcut, so an in-flight armed commit on one
+        // of these frames must not survive this explicit compare decision.
+        disarmStackCommit()
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -6449,8 +6455,11 @@ public final class AppModel {
             }
             return
         }
-        armedStackCommitAssetID = stagedAssetID
+        // Request the render before recording the arm: a throw here (no
+        // supervisor, etc.) must leave no dangling arm behind, since there
+        // would be no work item left to ever resolve it.
         try requestPreview(assetID: stagedAssetID, level: .large, placement: .front)
+        armedStackCommitAssetID = stagedAssetID
         if let asset {
             lastCullingMetadataDecision = Self.armedCommitFeedback(asset: asset)
         }
@@ -6462,7 +6471,13 @@ public final class AppModel {
 
     private func fireArmedStackCommitIfReady(previewAssetID: AssetID) {
         guard let armedID = armedStackCommitAssetID, armedID == previewAssetID else { return }
-        guard selectedAssetID == armedID, selectedView == .loupe,
+        // The arm can be made from any of Return's live sub-views (.loupe,
+        // .compare, .abCompare — CullingKeyCaptureGate.isActive's scope,
+        // mirrored by isCullingMenuShortcutActive); the fire guard must
+        // accept that same scope rather than hardcoding just .loupe, or an
+        // arm made from Compare/A-B would silently disarm here and never
+        // commit.
+        guard selectedAssetID == armedID, isCullingMenuShortcutActive,
               previewURL(for: armedID, levels: [.large]) != nil else {
             disarmStackCommit()
             return
@@ -6536,11 +6551,17 @@ public final class AppModel {
     }
 
     public func keepAllFramesInSelectedCullingStack() throws {
+        // A rail action bypasses applyCullingShortcut's disarm; an armed
+        // commit on a frame in this stack must not survive this explicit
+        // decision (see fireArmedStackCommitIfReady/disarmStackCommit).
+        disarmStackCommit()
         let context = try selectedCullingStackDecisionContext()
         try applyCullingStackDecision(context: context, pickedAssetIDs: Set(context.stack.assetIDs))
     }
 
     public func keepTopRankedFramesInSelectedCullingStack(assetIDs: [AssetID]) throws {
+        // Same rail-bypass reasoning as keepAllFramesInSelectedCullingStack.
+        disarmStackCommit()
         let context = try selectedCullingStackDecisionContext()
         let keepSet = Set(assetIDs)
         guard !keepSet.isEmpty,
@@ -7327,6 +7348,11 @@ public final class AppModel {
     }
 
     public func setFlagForSelectedAsset(_ flag: PickFlag?) throws {
+        // Bypasses applyCullingShortcut (Inspector, grid context menu,
+        // Compare's per-candidate buttons all call this directly): an
+        // explicit flag decision must disarm an in-flight commit the same
+        // way the keyboard path already does.
+        disarmStackCommit()
         // U on a tentative ✨ flag is the provenance invariant's REMOVE
         // gesture, not a plain clear: route through the recorded removal
         // (removed_ai_labels) so re-evaluation can never resurrect the
@@ -7391,6 +7417,9 @@ public final class AppModel {
     }
 
     public func setFlagForSelectedAssets(_ flag: PickFlag?) throws {
+        // Same bypass reasoning as setFlagForSelectedAsset above (Inspector
+        // and grid context menu's batch flag buttons call this directly).
+        disarmStackCommit()
         // Batch counterpart of the single-asset U gesture above: clearing a
         // tentative ✨ flag is a recorded removal per asset, not a plain
         // clear, even inside a mixed-origin batch selection. Each

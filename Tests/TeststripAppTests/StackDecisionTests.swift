@@ -373,7 +373,7 @@ final class StackDecisionTests: XCTestCase {
     // No metadata write happens at arm time; the render is requested at
     // front placement so it lands as soon as possible.
     func testGatedReturnArmsCommitAndRequestsFrontRender() throws {
-        let (model, repository, _, _, frame1, frame2) = try makeArmedStackFixture(named: "gated-return-arms")
+        let (model, repository, _, _, frame1, frame2, _) = try makeArmedStackFixture(named: "gated-return-arms")
         model.select(frame1.id)
 
         try model.promoteCurrentFrameAndRejectSiblings()
@@ -393,7 +393,7 @@ final class StackDecisionTests: XCTestCase {
 
     @MainActor
     func testArmedCommitFiresWhenRenderLands() async throws {
-        let (model, repository, previewCache, transport, frame1, frame2) = try makeArmedStackFixture(named: "armed-commit-fires")
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "armed-commit-fires")
         model.select(frame1.id)
         try model.promoteCurrentFrameAndRejectSiblings()
         XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
@@ -420,9 +420,32 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
     }
 
+    // SP-C review Finding 1: Return is reachable from .compare/.abCompare too
+    // (CullingKeyCaptureGate.isActive), so an arm made there must still fire
+    // — the fire guard must accept the same view scope the arm can happen
+    // in, not just .loupe.
+    @MainActor
+    func testArmedCommitFiresFromCompareSubView() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "armed-commit-fires-compare")
+        model.selectedView = .compare
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        XCTAssertNil(model.armedStackCommitAssetID)
+    }
+
     @MainActor
     func testOtherShortcutDisarmsBeforeRenderLands() async throws {
-        let (model, repository, previewCache, transport, frame1, frame2) = try makeArmedStackFixture(named: "other-shortcut-disarms")
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "other-shortcut-disarms")
         model.select(frame1.id)
         try model.promoteCurrentFrameAndRejectSiblings()
         XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
@@ -444,7 +467,7 @@ final class StackDecisionTests: XCTestCase {
 
     @MainActor
     func testSelectionChangeDisarmsBeforeRenderLands() async throws {
-        let (model, repository, previewCache, transport, frame1, frame2) = try makeArmedStackFixture(named: "selection-change-disarms")
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "selection-change-disarms")
         model.select(frame1.id)
         try model.promoteCurrentFrameAndRejectSiblings()
         XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
@@ -529,9 +552,39 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
     }
 
+    // SP-C review Finding 3: `armStackCommit` used to set
+    // `armedStackCommitAssetID` before the fallible `requestPreview` call —
+    // a throw (no worker supervisor configured, here) left a permanently
+    // dangling arm with no work item that could ever resolve it.
+    func testPromoteThrowsWithoutSupervisorLeavesNoArmedCommit() throws {
+        let capturedAt = Date(timeIntervalSince1970: 2000)
+        let frame1 = makeAsset(
+            id: "no-supervisor-frame-1",
+            path: "/Photos/Job/no-supervisor-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "no-supervisor-frame-2",
+            path: "/Photos/Job/no-supervisor-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository, _) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "promote-throws-no-supervisor",
+            assets: [frame1, frame2],
+            seedsLargePreviews: false
+        )
+        model.select(frame1.id)
+
+        XCTAssertThrowsError(try model.promoteCurrentFrameAndRejectSiblings())
+
+        XCTAssertNil(model.armedStackCommitAssetID)
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
     @MainActor
     func testRenderFailureDisarmsWithUnavailableToast() async throws {
-        let (model, repository, _, transport, frame1, frame2) = try makeArmedStackFixture(named: "render-failure-disarms")
+        let (model, repository, _, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "render-failure-disarms")
         model.select(frame1.id)
         try model.promoteCurrentFrameAndRejectSiblings()
         XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
@@ -547,9 +600,45 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
     }
 
+    // SP-C review Finding 2: the rail's secondary-actions menu
+    // (keepTopRankedFramesInSelectedCullingStack) writes a stack decision
+    // directly, bypassing applyCullingShortcut's disarm. With no other
+    // stack to advance to (this fixture's only stack), the post-decision
+    // selection stays on the just-armed frame — so if the arm survives,
+    // frame1's later render-completion refires promote and flips the
+    // explicit reject this test just made straight back to a pick.
+    @MainActor
+    func testKeepTopRankedRailActionDisarmsBeforeRenderLands() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "keep-top-ranked-disarms")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        // Rail action: keep frame2 (the sibling), which rejects frame1 — an
+        // explicit decision made while frame1's commit is still armed.
+        try model.keepTopRankedFramesInSelectedCullingStack(assetIDs: [frame2.id])
+        XCTAssertNil(model.armedStackCommitAssetID)
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .pick)
+        // No next stack exists, so the rail action doesn't move selection
+        // off frame1 — the exact precondition the reviewer's failure needs.
+        XCTAssertEqual(model.selectedAssetID, frame1.id)
+
+        // frame1's render (requested when the commit armed) lands after the
+        // rail decision.
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .pick)
+    }
+
     @MainActor
     func testArmedCommitFiresAtMostOnce() async throws {
-        let (model, repository, previewCache, transport, frame1, frame2) = try makeArmedStackFixture(named: "fires-at-most-once")
+        let (model, repository, previewCache, transport, frame1, frame2, supervisor) = try makeArmedStackFixture(named: "fires-at-most-once")
         model.select(frame1.id)
         try model.promoteCurrentFrameAndRejectSiblings()
         XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
@@ -565,14 +654,34 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertNil(model.armedStackCommitAssetID)
         let postCommitSelection = model.selectedAssetID
 
-        // Fire normally, note the post-commit selection, then emit a second
-        // .completed for the same itemID; flags and selection must be
-        // unchanged and armedStackCommitAssetID must still be nil.
-        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered again")))
+        // SP-C review Finding 4: the final armedStackCommitAssetID == nil
+        // check below has no teeth by itself — it's already nil from the
+        // fire above, so a stray duplicate render-completed event is a
+        // guaranteed no-op regardless of whether the "fires at most once"
+        // guard actually works. Give the guard something to protect: apply
+        // an explicit decision to the just-fired frame, then send the
+        // duplicate event. A broken guard would call
+        // promoteCurrentFrameAndRejectSiblings() again and flip this reject
+        // straight back to a pick — exactly Finding 2's failure shape — so
+        // this is the assertion with teeth.
+        try model.applyCullingShortcut(.reject)
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+
+        // A literal duplicate `.completed` wire line for the same itemID
+        // never reaches AppModel at all — WorkerSupervisor's own
+        // dispatchedItemIDs bookkeeping (completeDispatchedItem) drops it
+        // before `onCommandCompleted` fires a second time. To exercise
+        // AppModel's own "fires at most once" guard (armedStackCommitAssetID
+        // going nil before the commit runs), invoke the supervisor's
+        // completion callback directly, the same one WorkerSupervisor itself
+        // calls — simulating the real-world case this guards against: the
+        // same asset's large preview being regenerated and completing again
+        // sometime after the arm already fired once.
+        supervisor.onCommandCompleted?(.completed(itemID: itemID, message: "rendered again"))
         // Give the (incorrect) re-fire a chance before asserting it didn't happen.
         try await Task.sleep(nanoseconds: 50_000_000)
 
-        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
         XCTAssertEqual(model.selectedAssetID, postCommitSelection)
         XCTAssertNil(model.armedStackCommitAssetID)
@@ -855,7 +964,8 @@ final class StackDecisionTests: XCTestCase {
         previewCache: PreviewCache,
         transport: RecordingWorkerTransport,
         frame1: Asset,
-        frame2: Asset
+        frame2: Asset,
+        supervisor: WorkerSupervisor
     ) {
         let capturedAt = Date(timeIntervalSince1970: 2000)
         let frame1 = makeAsset(
@@ -880,7 +990,7 @@ final class StackDecisionTests: XCTestCase {
         // (fireArmedStackCommitIfReady requires it); the model defaults to
         // .grid, so these tests set the stage explicitly.
         model.selectedView = .loupe
-        return (model, repository, previewCache, transport, frame1, frame2)
+        return (model, repository, previewCache, transport, frame1, frame2, supervisor)
     }
 
     // Drains whatever else occupies the single running slot (e.g. select()'s
