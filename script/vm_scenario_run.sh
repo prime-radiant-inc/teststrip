@@ -199,12 +199,34 @@ seed_locally() {
   esac
 }
 
+# Fails loudly when the just-built bundle shipped without the Core ML face
+# model and the 'faces' variant was requested — without it face detection
+# silently records zero face_observations (kata #18), which a card can't
+# tell apart from "no faces in these photos". Other variants never touch
+# face detection, so just warn and let the sync continue.
+# Usage: require_face_model <app_bundle> <faces_requested:0|1>
+require_face_model() {
+  local app_bundle="$1" faces_requested="$2"
+  [[ -d "$app_bundle/Contents/Resources/auraface-v1.mlmodelc" ]] && return 0
+  if [[ "$faces_requested" == "1" ]]; then
+    echo "error: $app_bundle is missing Contents/Resources/auraface-v1.mlmodelc — the 'faces' variant needs it for face detection; without it, face cards will record zero face_observations (kata #18). Run script/download_face_model.sh in the main checkout, then retry." >&2
+    exit 1
+  fi
+  echo "warning: $app_bundle is missing Contents/Resources/auraface-v1.mlmodelc; shipping without the face model" >&2
+}
+
 cmd_sync() {
   local variants=("${@:-}")
   [[ -z "${variants[*]}" ]] && variants=(smoke faces)
 
   echo "building app bundle locally (host-only; the VM never runs swift build)"
   ( cd "$ROOT_DIR" && ./script/build_and_run.sh --build )
+
+  local faces_requested=0
+  for v in "${variants[@]}"; do
+    [[ "$v" == "faces" ]] && faces_requested=1
+  done
+  require_face_model "$APP_BUNDLE" "$faces_requested"
 
   for v in "${variants[@]}"; do
     [[ -z "$v" ]] && continue

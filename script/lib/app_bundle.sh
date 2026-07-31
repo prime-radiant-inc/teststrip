@@ -25,8 +25,11 @@ TESTSTRIP_BUNDLE_VERSION="${TESTSTRIP_BUNDLE_VERSION:-1}"
 # precompiled runtime form. Absent in a fresh checkout;
 # script/download_face_model.sh fetches the .mlpackage and
 # script/compile_face_models.sh compiles it (assembly runs the compile step,
-# a fast no-op when fresh). Assembly skips the model (with a warning) when
-# missing so the bundle can still be built and signed.
+# a fast no-op when fresh). Resolved against <root_dir> first, then against
+# the main checkout (git's common-dir) so worktrees — which never carry their
+# own sample-data/models, see .gitignore — pick up the shared copy instead of
+# always shipping without it. Assembly skips the model (with a warning) when
+# neither location has it, so the bundle can still be built and signed.
 TESTSTRIP_FACE_MODEL_REL="sample-data/models/auraface-v1.mlmodelc"
 
 # Build the app + worker products.
@@ -67,6 +70,24 @@ teststrip_assemble_bundle() {
   local app_icon_icns="$root_dir/config/macos/AppIcon.icns"
   local face_model="$root_dir/$TESTSTRIP_FACE_MODEL_REL"
   local sparkle_framework="$build_dir/Sparkle.framework"
+
+  if [[ ! -d "$face_model" ]]; then
+    # Worktrees don't carry their own sample-data/models (see .gitignore —
+    # it's meant to be shared from the main checkout). Resolve the main
+    # checkout root via git's common-dir, which is shared across all
+    # worktrees of the same repo, and fall back to its copy of the model.
+    # A non-worktree checkout's common-dir IS its own .git, so main_root ==
+    # root_dir there and this is a no-op (the path above already came up
+    # missing).
+    local git_common_dir
+    git_common_dir="$(git -C "$root_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [[ "$git_common_dir" == */.git ]]; then
+      local main_root="${git_common_dir%/.git}"
+      if [[ -d "$main_root/$TESTSTRIP_FACE_MODEL_REL" ]]; then
+        face_model="$main_root/$TESTSTRIP_FACE_MODEL_REL"
+      fi
+    fi
+  fi
 
   rm -rf "$app_bundle"
   mkdir -p "$app_macos" "$app_helpers" "$app_resources" "$app_frameworks"
