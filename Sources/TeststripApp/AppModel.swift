@@ -9355,9 +9355,17 @@ public final class AppModel {
             guard let asset = assets.first(where: { $0.id == wantedAssetID }),
                   asset.availability.isAvailableForPreviewGeneration else { continue }
             guard try !previewGenerationAttemptsExhausted(assetID: wantedAssetID, level: .large) else { continue }
-            try requestPreview(assetID: wantedAssetID, level: .large, placement: .back)
             let itemID = Self.previewWorkItemID(assetID: wantedAssetID, level: .large)
-            if let status = currentBackgroundWorkQueue.item(id: itemID)?.status,
+            // The planner always lists the staged asset first, and its own
+            // front-placed visible request (requestVisibleLoupeAssetPreview)
+            // may already have created this exact item just above -- track
+            // only items THIS call creates, or a later window slide could
+            // cancel work some other path enqueued.
+            let wasAlreadyActive = currentBackgroundWorkQueue.item(id: itemID)
+                .map { Self.isActiveBackgroundWorkStatus($0.status) } ?? false
+            try requestPreview(assetID: wantedAssetID, level: .large, placement: .back)
+            if !wasAlreadyActive,
+               let status = currentBackgroundWorkQueue.item(id: itemID)?.status,
                Self.isActiveBackgroundWorkStatus(status) {
                 cullPrefetchItemIDs.insert(itemID)
             }

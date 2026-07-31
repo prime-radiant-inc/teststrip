@@ -168,6 +168,129 @@ final class CullPrefetchDriverTests: XCTestCase {
         XCTAssertNil(model.backgroundWorkQueue.item(id: previewItemID("burst-3")))
     }
 
+    // SP-C review round 1, Finding 1 (Critical). The planner's warm set
+    // always lists the staged asset first (`CullPrefetchPlanner.warmAssetIDs`
+    // prepends `stagedAssetID`), so the prefetch loop's own `requestPreview`
+    // call for the staged asset lands on an item `requestVisibleLoupeAssetPreview`
+    // already created (front-placed) a moment earlier in the same
+    // `requestVisibleCullPreview`. The driver must recognize that item was
+    // already active *before* its own call and never adopt it into
+    // `cullPrefetchItemIDs` -- adopting it means a later window slide that
+    // leaves this item still `.queued` (worker contention) cancels the
+    // actively-viewed frame's own visible request, which is work the
+    // prefetch driver never enqueued.
+    //
+    // Reproduction: give the staged asset (burst-2) a real backing file with
+    // a matching fingerprint so its own front-placed request actually
+    // survives `refreshAvailability` and enqueues (every other fixture asset
+    // uses a fabricated path that flips it to `.missing`, skipping its own
+    // visible request entirely -- see "Background you need" in the task
+    // brief). Pin the sole running slot with an unrelated decoy request
+    // (requested directly, bypassing the planner) so the staged item is
+    // forced to land `.queued` rather than `.running`. Then slide the window
+    // far enough that burst-2 drops out of the desired set entirely and
+    // assert its own item survives.
+    func testWindowSlideNeverCancelsStagedFramesOwnVisibleRequest() throws {
+        let directory = try makeTemporaryDirectory(named: "cull-prefetch-staged-own-request")
+        let stagedOriginalURL = directory.appendingPathComponent("burst-2.cr2")
+        try Data("staged-original".utf8).write(to: stagedOriginalURL)
+
+        var assets = makeFixtureAssets()
+        guard let stagedIndex = assets.firstIndex(where: { $0.id == id("burst-2") }) else {
+            return XCTFail("fixture is missing burst-2")
+        }
+        assets[stagedIndex].originalURL = stagedOriginalURL
+        assets[stagedIndex].fingerprint = try fileFingerprint(for: stagedOriginalURL)
+        // Well before burst-1 so it never enters burst-2's or burst-5's warm
+        // window -- it exists purely so a direct `requestPreview` call can
+        // occupy the sole running slot, standing in for some unrelated
+        // in-flight request the way it would happen in the real app.
+        assets.append(makeAsset(
+            id: "decoy",
+            path: "/Photos/Job/decoy.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 0))
+        ))
+
+        let (model, _, _) = try makeModel(
+            named: "cull-prefetch-staged-own-request",
+            assets: assets,
+            supervisor: WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 1), transport: RecordingWorkerTransport())
+        )
+
+        try model.requestPreview(assetID: id("decoy"), level: .large, placement: .back)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItemID("decoy"))?.status, .running)
+
+        try model.requestVisibleCullPreview(assetID: id("burst-2"))
+        XCTAssertEqual(
+            model.backgroundWorkQueue.item(id: previewItemID("burst-2"))?.status,
+            .queued,
+            "the staged frame's own visible request should have enqueued behind the running decoy"
+        )
+
+        // Slide far forward -- burst-2 drops out of the desired window entirely.
+        try model.requestVisibleCullPreview(assetID: id("burst-5"))
+
+        XCTAssertNotEqual(
+            model.backgroundWorkQueue.item(id: previewItemID("burst-2"))?.status,
+            .cancelled,
+            "the prefetch driver never enqueued the staged frame's own visible request -- it must not cancel it"
+        )
+    }
+
+    // SP-C review round 1, Finding 2 (Important). Placement only manifests
+    // as insertion order among queued items -- `.back` regressing to
+    // `.front` is otherwise invisible to every other test in this file,
+    // since none of them observe queue order directly. Seed a pre-existing
+    // `.queued` item (an unrelated asset requested while the sole running
+    // slot is occupied), then trigger the warm window and assert every warm
+    // item lands AFTER it in `queuedItems` -- `BackgroundWorkQueue` is FIFO,
+    // so `.back` appends behind the pre-existing item while `.front` would
+    // insert ahead of it.
+    func testWarmWindowItemsQueueBehindPreExistingQueuedItem() throws {
+        var assets = makeFixtureAssets()
+        // Both well before burst-1 so neither intrudes on burst-2's warm
+        // window; they exist purely to occupy the running slot and seed a
+        // pre-existing queued item ahead of the warm window's own requests.
+        assets.append(makeAsset(
+            id: "runner",
+            path: "/Photos/Job/runner.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 0))
+        ))
+        assets.append(makeAsset(
+            id: "early-queued",
+            path: "/Photos/Job/early-queued.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 1))
+        ))
+        let (model, _, _) = try makeModel(
+            named: "cull-prefetch-placement-order",
+            assets: assets,
+            supervisor: WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 1), transport: RecordingWorkerTransport())
+        )
+
+        try model.requestPreview(assetID: id("runner"), level: .large, placement: .back)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItemID("runner"))?.status, .running)
+        try model.requestPreview(assetID: id("early-queued"), level: .large, placement: .back)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItemID("early-queued"))?.status, .queued)
+
+        try model.requestVisibleCullPreview(assetID: id("burst-2"))
+
+        let queuedIDs = model.backgroundWorkQueue.queuedItems.map(\.id)
+        guard let earlyQueuedIndex = queuedIDs.firstIndex(of: previewItemID("early-queued")) else {
+            return XCTFail("expected the pre-existing queued item to still be queued")
+        }
+        for warmAssetID in ["burst-3", "burst-4", "burst-1", "solo-1", "solo-2", "solo-3"] {
+            guard let warmIndex = queuedIDs.firstIndex(of: previewItemID(warmAssetID)) else {
+                XCTFail("expected \(warmAssetID) to be queued")
+                continue
+            }
+            XCTAssertGreaterThan(
+                warmIndex,
+                earlyQueuedIndex,
+                "\(warmAssetID) must queue behind the pre-existing item -- .front would jump ahead of it"
+            )
+        }
+    }
+
     // MARK: - Fixtures (mirrors StackDecisionTests' private helpers; kept local per file)
 
     private func makeAsset(
@@ -208,6 +331,18 @@ final class CullPrefetchDriverTests: XCTestCase {
     private func writePreviewPlaceholder(to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("preview".utf8).write(to: url)
+    }
+
+    // Mirrors AppModelTests' private helper of the same name: a fingerprint
+    // computed from a file that actually exists on disk, so an asset backed
+    // by it stays `.online` through `SourceAvailabilityProbe` instead of
+    // flipping to `.missing` like the fixture's fabricated paths.
+    private func fileFingerprint(for url: URL) throws -> FileFingerprint {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return FileFingerprint(
+            size: (attributes[.size] as? NSNumber)?.int64Value ?? 0,
+            modificationDate: attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+        )
     }
 
     private func makeModel(
