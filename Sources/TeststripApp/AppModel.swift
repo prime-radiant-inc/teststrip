@@ -2239,6 +2239,11 @@ public final class AppModel {
     public var starredWork: [AppWorkActivity]
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
+    // SP-C: a Return that hit the render gate arms the commit; the moment the
+    // staged frame's large preview lands, the decision fires. Deliberately
+    // fragile — any other input disarms, so an armed commit can never fire
+    // against a frame the user is no longer staging.
+    public private(set) var armedStackCommitAssetID: AssetID?
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
     public private(set) var rejectRelocationSummary: RejectRelocationSummary?
     public private(set) var isRelocatingRejects = false
@@ -2651,6 +2656,12 @@ public final class AppModel {
 
     @ObservationIgnored
     private var availabilityAssetIDsByItemID: [WorkSessionID: [AssetID]]
+
+    // SP-C: queue items the cull prefetch planner enqueued, so a window slide
+    // can cancel undispatched stragglers without touching work other paths
+    // requested. In-flight renders are left to finish.
+    @ObservationIgnored
+    private var cullPrefetchItemIDs: Set<WorkSessionID> = []
 
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
@@ -4471,6 +4482,13 @@ public final class AppModel {
                 try? self.refreshPreviewGenerationQueueStates()
                 self.refreshLoadedAssetAvailabilityForPreviewFailures(newFailedPreviewItemIDs)
                 try? self.enqueuePendingPreviewGeneration(excluding: newFailedPreviewItemIDs)
+                if let armedID = self.armedStackCommitAssetID,
+                   newFailedPreviewItemIDs.contains(Self.previewWorkItemID(assetID: armedID, level: .large)) {
+                    self.disarmStackCommit()
+                    if let asset = self.assets.first(where: { $0.id == armedID }) {
+                        self.lastCullingMetadataDecision = Self.renderUnavailableFeedback(asset: asset)
+                    }
+                }
             }
             self.releaseInactiveWorkerImportContexts(in: queue)
             self.releaseInactiveEvaluationContexts(in: queue)
@@ -4834,6 +4852,12 @@ public final class AppModel {
     }
 
     private func selectAssetID(_ assetID: AssetID?) {
+        // A selection change that lands anywhere but the armed asset must
+        // disarm: an armed commit can never fire against a frame the user is
+        // no longer staging.
+        if assetID != armedStackCommitAssetID {
+            disarmStackCommit()
+        }
         if assetID != selectedAssetID {
             resetLoupeZoom()
         }
@@ -6080,6 +6104,12 @@ public final class AppModel {
         _ flagsByAssetID: [AssetID: PickFlag],
         to compareGroup: [Asset]
     ) throws -> CompareFlagChangeSummary {
+        // Shared write path for every Compare/A-B "keep" rail action
+        // (keepABFrame, keepAllCompareAssets, keepCompareAssetAndReject-
+        // Alternates, keepTopTwoCompareContendersAndRejectAlternates) — all
+        // bypass applyCullingShortcut, so an in-flight armed commit on one
+        // of these frames must not survive this explicit compare decision.
+        disarmStackCommit()
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -6373,12 +6403,12 @@ public final class AppModel {
         // Render gate: Return force-commits the stack decision, so it must
         // not fire against a preview that hasn't rendered yet — the staged
         // frame is what the user is actually looking at. No metadata write
-        // happens while the gate is closed; a second Return after the
-        // preview lands commits normally.
+        // happens while the gate is closed; instead the commit arms, and
+        // fires automatically the moment the staged frame's large preview
+        // lands (or a second Return after it lands commits immediately,
+        // since the gate is then already open).
         guard previewURL(for: context.selectedAssetID, levels: [.large]) != nil else {
-            if let originalAsset {
-                lastCullingMetadataDecision = Self.renderPendingFeedback(asset: originalAsset)
-            }
+            try armStackCommit(stagedAssetID: context.selectedAssetID, asset: originalAsset)
             return
         }
         // Jesse's ruling (2026-07-11): a sibling the user already picked is
@@ -6412,6 +6442,54 @@ public final class AppModel {
         }
     }
 
+    private func armStackCommit(stagedAssetID: AssetID, asset: Asset?) throws {
+        // Stored availability, not a fresh probe: the same gate the prefetch
+        // paths use. If the render can never succeed, arming would hang forever.
+        let stored = assets.first(where: { $0.id == stagedAssetID })
+        let canRender = try stored?.availability.isAvailableForPreviewGeneration == true
+            && !previewGenerationAttemptsExhausted(assetID: stagedAssetID, level: .large)
+        guard canRender else {
+            armedStackCommitAssetID = nil
+            if let asset {
+                lastCullingMetadataDecision = Self.renderUnavailableFeedback(asset: asset)
+            }
+            return
+        }
+        // Request the render before recording the arm: a throw here (no
+        // supervisor, etc.) must leave no dangling arm behind, since there
+        // would be no work item left to ever resolve it.
+        try requestPreview(assetID: stagedAssetID, level: .large, placement: .front)
+        armedStackCommitAssetID = stagedAssetID
+        if let asset {
+            lastCullingMetadataDecision = Self.armedCommitFeedback(asset: asset)
+        }
+    }
+
+    private func disarmStackCommit() {
+        armedStackCommitAssetID = nil
+    }
+
+    private func fireArmedStackCommitIfReady(previewAssetID: AssetID) {
+        guard let armedID = armedStackCommitAssetID, armedID == previewAssetID else { return }
+        // The arm can be made from any of Return's live sub-views (.loupe,
+        // .compare, .abCompare — CullingKeyCaptureGate.isActive's scope,
+        // mirrored by isCullingMenuShortcutActive); the fire guard must
+        // accept that same scope rather than hardcoding just .loupe, or an
+        // arm made from Compare/A-B would silently disarm here and never
+        // commit.
+        guard selectedAssetID == armedID, isCullingMenuShortcutActive,
+              previewURL(for: armedID, levels: [.large]) != nil else {
+            disarmStackCommit()
+            return
+        }
+        disarmStackCommit()
+        do {
+            try promoteCurrentFrameAndRejectSiblings()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private static func singleFrameStackFeedback(asset: Asset) -> CullingMetadataDecisionFeedback {
         CullingMetadataDecisionFeedback(
             assetID: asset.id,
@@ -6422,12 +6500,22 @@ public final class AppModel {
         )
     }
 
-    private static func renderPendingFeedback(asset: Asset) -> CullingMetadataDecisionFeedback {
+    private static func armedCommitFeedback(asset: Asset) -> CullingMetadataDecisionFeedback {
         CullingMetadataDecisionFeedback(
             assetID: asset.id,
             filename: asset.originalURL.lastPathComponent,
             command: .clearFlag,
-            decisionText: "Rendering full preview…",
+            decisionText: "Rendering full preview… will keep when ready",
+            isInformational: true
+        )
+    }
+
+    private static func renderUnavailableFeedback(asset: Asset) -> CullingMetadataDecisionFeedback {
+        CullingMetadataDecisionFeedback(
+            assetID: asset.id,
+            filename: asset.originalURL.lastPathComponent,
+            command: .clearFlag,
+            decisionText: "Preview unavailable — not committed",
             isInformational: true
         )
     }
@@ -6463,11 +6551,17 @@ public final class AppModel {
     }
 
     public func keepAllFramesInSelectedCullingStack() throws {
+        // A rail action bypasses applyCullingShortcut's disarm; an armed
+        // commit on a frame in this stack must not survive this explicit
+        // decision (see fireArmedStackCommitIfReady/disarmStackCommit).
+        disarmStackCommit()
         let context = try selectedCullingStackDecisionContext()
         try applyCullingStackDecision(context: context, pickedAssetIDs: Set(context.stack.assetIDs))
     }
 
     public func keepTopRankedFramesInSelectedCullingStack(assetIDs: [AssetID]) throws {
+        // Same rail-bypass reasoning as keepAllFramesInSelectedCullingStack.
+        disarmStackCommit()
         let context = try selectedCullingStackDecisionContext()
         let keepSet = Set(assetIDs)
         guard !keepSet.isEmpty,
@@ -6536,6 +6630,13 @@ public final class AppModel {
     }
 
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
+        // Any input other than the arming Return itself disarms: an armed
+        // commit must never fire against a frame the user has moved past. A
+        // repeat Return re-enters the gate and re-arms the same asset, which
+        // is the specced no-op.
+        if shortcut != .promoteAndRejectSiblings {
+            disarmStackCommit()
+        }
         // While the ? key-map overlay is visible it owns navigation entirely
         // (item 3): arrows/PgUp/PgDn scroll the overlay instead of moving the
         // deck underneath, and every other shortcut is swallowed. Esc/? are
@@ -7247,6 +7348,11 @@ public final class AppModel {
     }
 
     public func setFlagForSelectedAsset(_ flag: PickFlag?) throws {
+        // Bypasses applyCullingShortcut (Inspector, grid context menu,
+        // Compare's per-candidate buttons all call this directly): an
+        // explicit flag decision must disarm an in-flight commit the same
+        // way the keyboard path already does.
+        disarmStackCommit()
         // U on a tentative ✨ flag is the provenance invariant's REMOVE
         // gesture, not a plain clear: route through the recorded removal
         // (removed_ai_labels) so re-evaluation can never resurrect the
@@ -7311,6 +7417,9 @@ public final class AppModel {
     }
 
     public func setFlagForSelectedAssets(_ flag: PickFlag?) throws {
+        // Same bypass reasoning as setFlagForSelectedAsset above (Inspector
+        // and grid context menu's batch flag buttons call this directly).
+        disarmStackCommit()
         // Batch counterpart of the single-asset U gesture above: clearing a
         // tentative ✨ flag is a recorded removal per asset, not a plain
         // clear, even inside a mixed-origin batch selection. Each
@@ -9322,6 +9431,51 @@ public final class AppModel {
         }
     }
 
+    // The cull loupe's per-frame request: the visible frame at .front (same as
+    // plain loupe), then the blaze-through warm window at .back. Replaces the
+    // deck-order ±1 neighbor prefetch, which warms the wrong frames in a burst.
+    public func requestVisibleCullPreview(assetID: AssetID) throws {
+        try requestVisibleLoupeAssetPreview(assetID: assetID)
+        try refreshCullPrefetchWindow(around: assetID)
+    }
+
+    private func refreshCullPrefetchWindow(around assetID: AssetID) throws {
+        guard workerSupervisor != nil else { return }
+        let wants = CullPrefetchPlanner.warmAssetIDs(
+            stops: cullingStopSequence(),
+            stagedAssetID: assetID,
+            landingAssetID: { [weak self] stack in self?.recommendedStackLandingAssetID(for: stack) }
+        )
+        let desiredItemIDs = Set(wants.map { Self.previewWorkItemID(assetID: $0, level: .large) })
+        for staleItemID in cullPrefetchItemIDs.subtracting(desiredItemIDs) {
+            if currentBackgroundWorkQueue.item(id: staleItemID)?.status == .queued {
+                try workerSupervisor?.cancel(id: staleItemID)
+            }
+            cullPrefetchItemIDs.remove(staleItemID)
+        }
+        for wantedAssetID in wants {
+            guard previewURL(for: wantedAssetID, levels: [.large]) == nil else { continue }
+            guard let asset = assets.first(where: { $0.id == wantedAssetID }),
+                  asset.availability.isAvailableForPreviewGeneration else { continue }
+            guard try !previewGenerationAttemptsExhausted(assetID: wantedAssetID, level: .large) else { continue }
+            let itemID = Self.previewWorkItemID(assetID: wantedAssetID, level: .large)
+            // The planner always lists the staged asset first, and its own
+            // front-placed visible request (requestVisibleLoupeAssetPreview)
+            // may already have created this exact item just above -- track
+            // only items THIS call creates, or a later window slide could
+            // cancel work some other path enqueued.
+            let wasAlreadyActive = currentBackgroundWorkQueue.item(id: itemID)
+                .map { Self.isActiveBackgroundWorkStatus($0.status) } ?? false
+            try requestPreview(assetID: wantedAssetID, level: .large, placement: .back)
+            if !wasAlreadyActive,
+               let status = currentBackgroundWorkQueue.item(id: itemID)?.status,
+               Self.isActiveBackgroundWorkStatus(status) {
+                cullPrefetchItemIDs.insert(itemID)
+            }
+        }
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
     // Mirrors the automatic background scan's cap
     // (`pendingPreviewGenerationItems(maximumAttemptCount:)`): an asset/level
     // pair that has already burned its automatic attempts must not be
@@ -10300,6 +10454,7 @@ public final class AppModel {
                let itemID,
                let previewAssetID = Self.previewAssetID(from: itemID) {
                 enqueueImportEvaluationsForCachedPreviews(assetIDs: [previewAssetID])
+                fireArmedStackCommitIfReady(previewAssetID: previewAssetID)
             }
             runImportAutopilotIfArmedAndResolved()
             if itemID == Self.geocodeWorkItemID {

@@ -265,8 +265,44 @@ cmd_launch() {
     if [[ -s '$fresh/Teststrip/catalog.sqlite' ]]; then \
       sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$local_seed', '$fresh');\" && \
       sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$ROOT_DIR/sample-data', '$REMOTE_ROOT/sample-data');\"; \
-    fi && \
-    open -n '$REMOTE_ROOT/dist/$APP_NAME.app' --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY='$fresh' && sleep 2 && pgrep -x $APP_NAME"
+    fi"
+  # Every asset's fingerprint_json records the *seed-time* mtime at full
+  # double precision (SmokeCatalogSeeder/FileFingerprint), but the copy this
+  # asset's original_path now points at went through openrsync (protocol
+  # 29 -- no sub-second mtime support, confirmed via `rsync --version`) on
+  # the host->VM `isolated/$variant` hop above, and a plain `cp -R` on this
+  # hop stamps copy time (with its own sub-second component) regardless.
+  # Either way the live mtime SourceAvailabilityProbe reads essentially
+  # never matches the stored fingerprint (FileFingerprint's tolerance is
+  # 1ms), so it marks the asset `.stale` (blocks preview generation) the
+  # instant anything actually tries to render it -- invisible to a card
+  # that only reads pre-rendered previews, but it silently poisoned
+  # cull-027-blaze-through-prefetch.md's first live run (2026-07-30): the
+  # prefetch driver's own deliberately targeted assets came back `.stale`
+  # instead of re-rendering. Re-derive each asset's fingerprint from
+  # whatever file actually landed in `$fresh` after the path rewrites above
+  # have settled -- self-consistent by construction, independent of what
+  # any upstream copy step preserved. Full double precision matters here:
+  # `stat -f %m` truncates to whole seconds, which is *itself* off from the
+  # copy's actual (sub-second) mtime by more than the 1ms tolerance, so the
+  # asset would still read `.stale` on the very next probe -- use Python's
+  # os.stat (same underlying stat(2) call Foundation's
+  # FileManager.attributesOfItem reads) to keep the fractional component.
+  local fingerprint_refresh
+  fingerprint_refresh=$(cat <<'REMOTE'
+DB="__FRESH__/Teststrip/catalog.sqlite"
+if [ -s "$DB" ]; then
+  sqlite3 "$DB" "SELECT id || '|' || original_path FROM assets;" | while IFS='|' read -r rid rpath; do
+    if [ -f "$rpath" ]; then
+      read -r rmtime rsize <<< "$(python3 -c "import os,sys; st = os.stat(sys.argv[1]); print(repr(st.st_mtime), st.st_size)" "$rpath")"
+      sqlite3 "$DB" "UPDATE assets SET fingerprint_json = json_set(fingerprint_json,'\$.modificationDate',$rmtime,'\$.size',$rsize) WHERE id='$rid';"
+    fi
+  done
+fi
+REMOTE
+  )
+  ssh_cmd "${fingerprint_refresh//__FRESH__/$fresh}"
+  ssh_cmd "open -n '$REMOTE_ROOT/dist/$APP_NAME.app' --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY='$fresh' && sleep 2 && pgrep -x $APP_NAME"
   echo "launched '$variant' fresh at $fresh (catalog: $fresh/Teststrip/catalog.sqlite)"
 }
 

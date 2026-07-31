@@ -369,46 +369,352 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertNil(model.selectedCullingStackScope)
     }
 
-    // Task 7: Return force-commits the stack decision, so it must not fire
-    // against a preview that hasn't rendered yet — gate on the staged
-    // frame's `.large` preview before writing any metadata. A second Return
-    // after the preview lands commits normally.
-    func testPromoteInertWhenLargePreviewMissing() throws {
-        let capturedAt = Date(timeIntervalSince1970: 1000)
-        let frame1 = makeAsset(
-            id: "render-gate-frame-1",
-            path: "/Photos/Job/render-gate-frame-1.cr2",
-            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
-        )
-        let frame2 = makeAsset(
-            id: "render-gate-frame-2",
-            path: "/Photos/Job/render-gate-frame-2.cr2",
-            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
-        )
-        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
-            named: "promote-render-gate",
-            assets: [frame1, frame2]
-        )
-        let stagedLargePreviewURL = previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large))
-        try FileManager.default.removeItem(at: stagedLargePreviewURL)
+    // SP-C: a gated Return arms the commit instead of dropping the keystroke.
+    // No metadata write happens at arm time; the render is requested at
+    // front placement so it lands as soon as possible.
+    func testGatedReturnArmsCommitAndRequestsFrontRender() throws {
+        let (model, repository, _, _, frame1, frame2, _) = try makeArmedStackFixture(named: "gated-return-arms")
         model.select(frame1.id)
 
         try model.promoteCurrentFrameAndRejectSiblings()
 
-        // Gated: no writes, no advance.
-        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)   // no write yet
         XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
-        let gatedFeedback = try XCTUnwrap(model.lastCullingMetadataDecision)
-        XCTAssertEqual(gatedFeedback.decisionText, "Rendering full preview…")
-        XCTAssertTrue(gatedFeedback.isInformational)
-        XCTAssertEqual(model.selectedAssetID, frame1.id)
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(feedback.decisionText, "Rendering full preview… will keep when ready")
+        XCTAssertTrue(feedback.isInformational)
+        // The render was requested (front placement). Don't assert it is the
+        // *running* item: with a supervisor present, select() may enqueue an
+        // XMP selection check that occupies the single running slot first.
+        let armedItem = model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large"))
+        XCTAssertTrue([.queued, .running].contains(armedItem?.status))
+    }
 
-        // Once the preview lands, the same Return commits normally.
-        try writePreviewPlaceholder(to: stagedLargePreviewURL)
+    @MainActor
+    func testArmedCommitFiresWhenRenderLands() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "armed-commit-fires")
+        model.select(frame1.id)
         try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        // The armed preview item must be RUNNING before its terminal event
+        // means anything: if select() put an XMP selection check in the
+        // single running slot, drain it first (AppModelTests.swift:3173-3199
+        // pattern), then wait for the armed item itself to become running.
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
 
         XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
         XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        // Provenance: the deferred commit is still the explicit user gesture —
+        // a confirmed (user-origin) flag, not a tentative AI one.
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.confirmedProjection.flag, .pick)
+        XCTAssertNil(model.armedStackCommitAssetID)
+        // Same single undo group as a direct Return.
+        try model.undoMetadataChange()
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    // SP-C review Finding 1: Return is reachable from .compare/.abCompare too
+    // (CullingKeyCaptureGate.isActive), so an arm made there must still fire
+    // — the fire guard must accept the same view scope the arm can happen
+    // in, not just .loupe.
+    @MainActor
+    func testArmedCommitFiresFromCompareSubView() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "armed-commit-fires-compare")
+        model.selectedView = .compare
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        XCTAssertNil(model.armedStackCommitAssetID)
+    }
+
+    @MainActor
+    func testOtherShortcutDisarmsBeforeRenderLands() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "other-shortcut-disarms")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        // Arm, then any other input:
+        try model.applyCullingShortcut(.toggleAutoAdvance)
+        XCTAssertNil(model.armedStackCommitAssetID)
+
+        // Render landing afterwards must NOT commit.
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    @MainActor
+    func testSelectionChangeDisarmsBeforeRenderLands() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "selection-change-disarms")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        // Arm, then any other selection:
+        model.select(frame2.id)
+        XCTAssertNil(model.armedStackCommitAssetID)
+
+        // Render landing afterwards must NOT commit.
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    // The spec's disarm list includes leaving cull mode, and there is no
+    // `selectedView` didSet hook for it — `fireArmedStackCommitIfReady`'s
+    // `isCullingMenuShortcutActive` check is the entire enforcement. Without
+    // that check an arm made in the cull loupe would force-commit a whole
+    // stack decision while the user is looking at the Library grid.
+    @MainActor
+    func testLeavingCullWorkspaceStopsArmedCommitFromFiring() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "cull-exit-stops-fire")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        // Leave the Cull workspace for the Library grid; the selection itself
+        // never moves, so only the sub-view check can stop the commit.
+        model.selectedView = .grid
+        XCTAssertFalse(model.isCullingMenuShortcutActive)
+        XCTAssertEqual(model.selectedAssetID, frame1.id)
+
+        // Render landing afterwards must NOT commit.
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+        XCTAssertNil(model.armedStackCommitAssetID)
+    }
+
+    // An original that can never render (offline source) must not arm —
+    // arming would wait forever for a preview request the gate itself
+    // refuses to make.
+    func testReturnRefusesToArmWhenOriginalUnavailable() throws {
+        let capturedAt = Date(timeIntervalSince1970: 2000)
+        let frame1 = makeAsset(
+            id: "unavailable-original-frame-1",
+            path: "/Photos/Job/unavailable-original-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt),
+            availability: .offline
+        )
+        let frame2 = makeAsset(
+            id: "unavailable-original-frame-2",
+            path: "/Photos/Job/unavailable-original-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository, _) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "return-refuses-unavailable",
+            assets: [frame1, frame2],
+            seedsLargePreviews: false
+        )
+        model.select(frame1.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertNil(model.armedStackCommitAssetID)
+        XCTAssertEqual(try XCTUnwrap(model.lastCullingMetadataDecision).decisionText, "Preview unavailable — not committed")
+        XCTAssertTrue(model.backgroundWorkQueue.items.filter { $0.kind == .previewGeneration }.isEmpty)
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    // A staged frame that has already exhausted its automatic preview-render
+    // attempts must not arm either — the render the arm is waiting on is the
+    // exact one the retry cap gave up on.
+    func testReturnRefusesToArmWhenAttemptsExhausted() throws {
+        let capturedAt = Date(timeIntervalSince1970: 2000)
+        let frame1 = makeAsset(
+            id: "attempts-exhausted-frame-1",
+            path: "/Photos/Job/attempts-exhausted-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "attempts-exhausted-frame-2",
+            path: "/Photos/Job/attempts-exhausted-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository, _) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "return-refuses-exhausted",
+            assets: [frame1, frame2],
+            seedsLargePreviews: false
+        )
+        for _ in 0..<3 {
+            try repository.recordPreviewGenerationFailure(assetID: frame1.id, level: .large, errorMessage: "boom")
+        }
+        model.select(frame1.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertNil(model.armedStackCommitAssetID)
+        XCTAssertEqual(try XCTUnwrap(model.lastCullingMetadataDecision).decisionText, "Preview unavailable — not committed")
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    // SP-C review Finding 3: `armStackCommit` used to set
+    // `armedStackCommitAssetID` before the fallible `requestPreview` call —
+    // a throw (no worker supervisor configured, here) left a permanently
+    // dangling arm with no work item that could ever resolve it.
+    func testPromoteThrowsWithoutSupervisorLeavesNoArmedCommit() throws {
+        let capturedAt = Date(timeIntervalSince1970: 2000)
+        let frame1 = makeAsset(
+            id: "no-supervisor-frame-1",
+            path: "/Photos/Job/no-supervisor-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "no-supervisor-frame-2",
+            path: "/Photos/Job/no-supervisor-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository, _) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "promote-throws-no-supervisor",
+            assets: [frame1, frame2],
+            seedsLargePreviews: false
+        )
+        model.select(frame1.id)
+
+        XCTAssertThrowsError(try model.promoteCurrentFrameAndRejectSiblings())
+
+        XCTAssertNil(model.armedStackCommitAssetID)
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    @MainActor
+    func testRenderFailureDisarmsWithUnavailableToast() async throws {
+        let (model, repository, _, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "render-failure-disarms")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(itemID: itemID, message: "render failed")))
+        try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
+
+        XCTAssertNil(model.armedStackCommitAssetID)
+        XCTAssertEqual(try XCTUnwrap(model.lastCullingMetadataDecision).decisionText, "Preview unavailable — not committed")
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    // SP-C review Finding 2: the rail's secondary-actions menu
+    // (keepTopRankedFramesInSelectedCullingStack) writes a stack decision
+    // directly, bypassing applyCullingShortcut's disarm. With no other
+    // stack to advance to (this fixture's only stack), the post-decision
+    // selection stays on the just-armed frame — so if the arm survives,
+    // frame1's later render-completion refires promote and flips the
+    // explicit reject this test just made straight back to a pick.
+    @MainActor
+    func testKeepTopRankedRailActionDisarmsBeforeRenderLands() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "keep-top-ranked-disarms")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        // Rail action: keep frame2 (the sibling), which rejects frame1 — an
+        // explicit decision made while frame1's commit is still armed.
+        try model.keepTopRankedFramesInSelectedCullingStack(assetIDs: [frame2.id])
+        XCTAssertNil(model.armedStackCommitAssetID)
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .pick)
+        // No next stack exists, so the rail action doesn't move selection
+        // off frame1 — the exact precondition the reviewer's failure needs.
+        XCTAssertEqual(model.selectedAssetID, frame1.id)
+
+        // frame1's render (requested when the commit armed) lands after the
+        // rail decision.
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .pick)
+    }
+
+    @MainActor
+    func testArmedCommitFiresAtMostOnce() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, supervisor) = try makeArmedStackFixture(named: "fires-at-most-once")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        XCTAssertNil(model.armedStackCommitAssetID)
+        let postCommitSelection = model.selectedAssetID
+
+        // SP-C review Finding 4: the final armedStackCommitAssetID == nil
+        // check below has no teeth by itself — it's already nil from the
+        // fire above, so a stray duplicate render-completed event is a
+        // guaranteed no-op regardless of whether the "fires at most once"
+        // guard actually works. Give the guard something to protect: apply
+        // an explicit decision to the just-fired frame, then send the
+        // duplicate event. A broken guard would call
+        // promoteCurrentFrameAndRejectSiblings() again and flip this reject
+        // straight back to a pick — exactly Finding 2's failure shape — so
+        // this is the assertion with teeth.
+        try model.applyCullingShortcut(.reject)
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+
+        // A literal duplicate `.completed` wire line for the same itemID
+        // never reaches AppModel at all — WorkerSupervisor's own
+        // dispatchedItemIDs bookkeeping (completeDispatchedItem) drops it
+        // before `onCommandCompleted` fires a second time. To exercise
+        // AppModel's own "fires at most once" guard (armedStackCommitAssetID
+        // going nil before the commit runs), invoke the supervisor's
+        // completion callback directly, the same one WorkerSupervisor itself
+        // calls — simulating the real-world case this guards against: the
+        // same asset's large preview being regenerated and completing again
+        // sometime after the arm already fired once.
+        supervisor.onCommandCompleted?(.completed(itemID: itemID, message: "rendered again"))
+        // Give the (incorrect) re-fire a chance before asserting it didn't happen.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        XCTAssertEqual(model.selectedAssetID, postCommitSelection)
+        XCTAssertNil(model.armedStackCommitAssetID)
     }
 
     // Persona-1 (Maya) again: Return force-flips a sibling's staged frame
@@ -581,14 +887,15 @@ final class StackDecisionTests: XCTestCase {
         id: String,
         path: String,
         technicalMetadata: AssetTechnicalMetadata? = nil,
-        metadata: AssetMetadata = AssetMetadata()
+        metadata: AssetMetadata = AssetMetadata(),
+        availability: SourceAvailability = .online
     ) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
             originalURL: URL(fileURLWithPath: path),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
-            availability: .online,
+            availability: availability,
             metadata: metadata,
             technicalMetadata: technicalMetadata
         )
@@ -623,11 +930,13 @@ final class StackDecisionTests: XCTestCase {
     // Every test in this file drives `promoteCurrentFrameAndRejectSiblings`,
     // which force-commits only once the staged frame's `.large` preview is
     // cached (Task 7's render gate) — so this seeds a placeholder for every
-    // asset by default. `testPromoteInertWhenLargePreviewMissing` withholds
-    // one via the returned preview cache.
+    // asset by default. The armed-commit tests withhold one via
+    // `seedsLargePreviews: false` and the returned preview cache.
     private func makeModelWithCatalogAssetsAndPreviewCache(
         named name: String,
-        assets: [Asset]
+        assets: [Asset],
+        workerSupervisor: WorkerSupervisor? = nil,
+        seedsLargePreviews: Bool = true
     ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -635,8 +944,10 @@ final class StackDecisionTests: XCTestCase {
         let repository = CatalogRepository(database: database)
         try repository.upsert(assets)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        for asset in assets {
-            try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        if seedsLargePreviews {
+            for asset in assets {
+                try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+            }
         }
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
@@ -647,12 +958,128 @@ final class StackDecisionTests: XCTestCase {
                 previewCache: previewCache
             )
         )
-        let model = try AppModel.load(catalog: catalog)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor)
         return (model, repository, previewCache)
     }
 
     private func writePreviewPlaceholder(to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("preview".utf8).write(to: url)
+    }
+
+    @MainActor
+    private func waitForBackgroundWorkStatus(
+        _ status: WorkSessionStatus,
+        itemID: WorkSessionID,
+        in model: AppModel
+    ) async throws {
+        for _ in 0..<100 {
+            if model.backgroundWorkQueue.item(id: itemID)?.status == status {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for background work status \(status.rawValue)")
+    }
+
+    // Shared fixture for the armed-commit tests: a two-frame stack, a
+    // `RecordingWorkerTransport` + single-slot `WorkerSupervisor`, and no
+    // large preview seeded — the render gate starts closed so
+    // `promoteCurrentFrameAndRejectSiblings()` arms instead of committing.
+    private func makeArmedStackFixture(
+        named name: String
+    ) throws -> (
+        model: AppModel,
+        repository: CatalogRepository,
+        previewCache: PreviewCache,
+        transport: RecordingWorkerTransport,
+        frame1: Asset,
+        frame2: Asset,
+        supervisor: WorkerSupervisor
+    ) {
+        let capturedAt = Date(timeIntervalSince1970: 2000)
+        let frame1 = makeAsset(
+            id: "\(name)-frame-1",
+            path: "/Photos/Job/\(name)-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "\(name)-frame-2",
+            path: "/Photos/Job/\(name)-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 1), transport: transport)
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: name,
+            assets: [frame1, frame2],
+            workerSupervisor: supervisor,
+            seedsLargePreviews: false
+        )
+        // The armed Return only fires from a Return-capturing cull sub-view
+        // — .loupe, .compare or .abCompare (fireArmedStackCommitIfReady
+        // requires isCullingMenuShortcutActive, and
+        // testArmedCommitFiresFromCompareSubView covers the Compare case).
+        // The model defaults to .grid, so these tests set the stage
+        // explicitly.
+        model.selectedView = .loupe
+        return (model, repository, previewCache, transport, frame1, frame2, supervisor)
+    }
+
+    // Drains whatever else occupies the single running slot (e.g. select()'s
+    // XMP sync check) until `itemID` itself is running — the pattern
+    // AppModelTests.swift:3173-3199 established for the same single-slot
+    // supervisor setup.
+    @MainActor
+    private func drainUntilRunning(
+        _ itemID: WorkSessionID,
+        transport: RecordingWorkerTransport,
+        model: AppModel
+    ) async throws {
+        while let runningItemID = model.backgroundWorkQueue.runningItems.first?.id, runningItemID != itemID {
+            transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: runningItemID, message: "drained")))
+            try await waitForBackgroundWorkStatus(.completed, itemID: runningItemID, in: model)
+        }
+        try await waitForBackgroundWorkStatus(.running, itemID: itemID, in: model)
+    }
+}
+
+/// Records the JSON-lines commands `WorkerSupervisor` would send to the
+/// out-of-process worker without ever completing them on its own, so tests
+/// can drive terminal events (`.completed`/`.failed`) at exactly the moment
+/// they want. Mirrors `AppModelTests`' private type of the same name (kept
+/// local per file per Swift's file-private access).
+private final class RecordingWorkerTransport: WorkerTransport {
+    var outputHandler: ((String) -> Void)?
+    var errorHandler: ((String) -> Void)?
+    var terminationHandler: (() -> Void)?
+
+    private(set) var lines: [String] = []
+    private(set) var terminateCount = 0
+    private(set) var isRunning = false
+
+    func launch() throws {
+        isRunning = true
+    }
+
+    func writeLine(_ line: String) throws {
+        lines.append(line)
+    }
+
+    func terminate() {
+        terminateCount += 1
+        isRunning = false
+    }
+
+    func commands() throws -> [WorkerCommand] {
+        try lines.map { try WorkerProtocolEncoder.decode($0) }
+    }
+
+    func emitOutputLine(_ line: String) {
+        outputHandler?(line)
+    }
+
+    func emitErrorLine(_ line: String) {
+        errorHandler?(line)
     }
 }
