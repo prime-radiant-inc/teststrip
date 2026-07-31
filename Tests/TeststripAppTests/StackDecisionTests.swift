@@ -487,6 +487,36 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
     }
 
+    // The spec's disarm list includes leaving cull mode, and there is no
+    // `selectedView` didSet hook for it — `fireArmedStackCommitIfReady`'s
+    // `isCullingMenuShortcutActive` check is the entire enforcement. Without
+    // that check an arm made in the cull loupe would force-commit a whole
+    // stack decision while the user is looking at the Library grid.
+    @MainActor
+    func testLeavingCullWorkspaceStopsArmedCommitFromFiring() async throws {
+        let (model, repository, previewCache, transport, frame1, frame2, _) = try makeArmedStackFixture(named: "cull-exit-stops-fire")
+        model.select(frame1.id)
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(model.armedStackCommitAssetID, frame1.id)
+
+        // Leave the Cull workspace for the Library grid; the selection itself
+        // never moves, so only the sub-view check can stop the commit.
+        model.selectedView = .grid
+        XCTAssertFalse(model.isCullingMenuShortcutActive)
+        XCTAssertEqual(model.selectedAssetID, frame1.id)
+
+        // Render landing afterwards must NOT commit.
+        let itemID = WorkSessionID(rawValue: "preview-\(frame1.id.rawValue)-large")
+        try await drainUntilRunning(itemID, transport: transport, model: model)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: itemID, message: "rendered")))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+        XCTAssertNil(model.armedStackCommitAssetID)
+    }
+
     // An original that can never render (offline source) must not arm —
     // arming would wait forever for a preview request the gate itself
     // refuses to make.
@@ -986,9 +1016,12 @@ final class StackDecisionTests: XCTestCase {
             workerSupervisor: supervisor,
             seedsLargePreviews: false
         )
-        // The armed Return only ever fires from the cull loupe in real usage
-        // (fireArmedStackCommitIfReady requires it); the model defaults to
-        // .grid, so these tests set the stage explicitly.
+        // The armed Return only fires from a Return-capturing cull sub-view
+        // — .loupe, .compare or .abCompare (fireArmedStackCommitIfReady
+        // requires isCullingMenuShortcutActive, and
+        // testArmedCommitFiresFromCompareSubView covers the Compare case).
+        // The model defaults to .grid, so these tests set the stage
+        // explicitly.
         model.selectedView = .loupe
         return (model, repository, previewCache, transport, frame1, frame2, supervisor)
     }
