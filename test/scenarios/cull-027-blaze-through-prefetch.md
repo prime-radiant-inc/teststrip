@@ -328,11 +328,17 @@ preview request, or there is nothing to observe.
    Record group2's baseline (already known from Step 1:
    `GEN3_BEFORE`…`GEN6_BEFORE`, flags `pick,NULL,reject,pick`). Delete
    `smoke-3`'s `.large` and press Return, then **immediately** (no
-   intervening `find`/`sql` round-trip) press `→`:
+   intervening `find`/`sql` round-trip) press `→` — deliver both keystrokes
+   from a **single `osascript` process** (one `tell` block spanning both
+   `key code` lines), not two separate `vm_scenario_run.sh key` invocations:
+   each separate invocation pays its own `osascript` process-spawn cost
+   (~100-150ms), and once a VM session's Metal shader cache is warm (Sharp
+   edges below), the render+auto-fire can complete inside that gap, losing
+   the race before the second keystroke ever lands:
    ```bash
    script/vm_scenario_run.sh shell "rm -f '$PREVIEWS/smoke-3/large.jpg'"
-   script/vm_scenario_run.sh key 'key code 36'    # Return -- arms smoke-3
-   script/vm_scenario_run.sh key 'key code 124'   # -> -- disarms immediately
+   script/vm_scenario_run.sh shell "osascript -e 'tell application \"System Events\"' \
+     -e 'key code 36' -e 'key code 124' -e 'end tell'"   # Return arms, -> disarms, one process
    ```
    Wait 60s (a generous margin past the render time observed in Step 5 —
    long enough that the deferred commit would certainly have fired by now
@@ -391,12 +397,22 @@ makes lives under `$RUN_DIR`, which `launch` never reuses across runs.
 - **Step 6's disarm is a real (if generous) race, not a synchronous
   guarantee.** Pressing `→` merely has to land *before* the worker's
   completion callback fires for `smoke-3`'s render — not before the render
-  starts. In practice the worker round-trip (dispatch over the JSON-lines
-  protocol to a separate process, decode, render, encode, report back) is
-  far slower than two back-to-back `osascript` keystrokes, but if this leg
-  ever flakes with the flags landing anyway, suspect a driving-side delay
-  between the two keystrokes (an accidental `find`/`sql` call slipped in
-  between) before concluding it's an app bug.
+  starts. **Confirmed live (2026-07-30): "generous" does not hold once a VM
+  session's Metal shader cache is warm** (see the render-speed sharp edge
+  below) — two *separate* `vm_scenario_run.sh key` invocations for Return
+  then `→` (each paying its own `osascript` process-spawn cost, ~100-150ms)
+  lost this race twice in a row, with `smoke-4` flipping to `reject` and its
+  generation bumping exactly as if the disarm had never happened. Delivering
+  both keystrokes from a **single `osascript` process** (one `tell` block,
+  as the Step 6 command now shows) closed that gap and the disarm held
+  cleanly, twice in a row. If this leg ever flakes with the flags landing
+  anyway, suspect exactly this kind of driving-side delay between the two
+  keystrokes (an accidental `find`/`sql` call slipped in between, or two
+  separate `key` invocations instead of one combined `tell` block) before
+  concluding it's an app bug — the disarm write itself
+  (`selectAssetID`'s unconditional clear of `armedStackCommitAssetID`,
+  source above) is a plain synchronous assignment with nothing in it that
+  could race internally.
 - **Order matters in Step 3: check `smoke-14`'s absence there, not later.**
   Step 6 deliberately lands on `smoke-7` if the disarm's `→` is pressed
   from `smoke-3` in some future variant of this card — `smoke-7`'s *own*
@@ -418,10 +434,144 @@ makes lives under `$RUN_DIR`, which `launch` never reuses across runs.
   Step 7 was never that card's focus (force-flip/protection/sidecar/undo/
   standalone are). This card is the one that exercises the render-gate/
   armed-commit leg live.
+- **`vm_scenario_run.sh launch`'s `cp -R` used to poison availability the
+  first time any card ever forced a live re-render (found and fixed
+  2026-07-30, this card's first live run).** Every asset's `fingerprint_json`
+  records the seed-time mtime at full double precision, but the host->VM
+  `isolated/$variant` hop goes over `openrsync` (protocol 29 — confirmed via
+  `rsync --version` — no sub-second mtime support) and the per-launch
+  `isolated/$variant`->`$fresh` copy was a plain `cp -R` (copy-time mtime,
+  regardless). Either way the live mtime `SourceAvailabilityProbe` reads
+  essentially never matched the stored fingerprint (1ms tolerance), so the
+  *worker's own* availability re-check on any real render attempt marked
+  the asset `.stale` (blocks preview generation) — invisible to every prior
+  card (all of them only ever read pre-rendered previews) but it silently
+  failed this card's Step 2/3 outright the first time (all six deleted
+  `.large` files stayed `MISSING` through a 60s wait, and the five in the
+  prefetch window came back `availability = stale` in the catalog instead of
+  re-rendering). Fixed in `cmd_launch` by re-deriving every asset's
+  fingerprint from whatever file actually landed in `$fresh` after the path
+  rewrites settle (`stat`/`os.stat`-driven, self-consistent by construction,
+  independent of what any upstream copy step preserved) — see the comment
+  block above `cmd_launch`'s fingerprint-refresh step for the full account.
+  This was a harness bug, not an app bug or a card bug: `SourceAvailability
+  Probe` behaved exactly as designed (a genuine mtime mismatch legitimately
+  should block rendering) against a launch script that was accidentally
+  manufacturing that mismatch on every single launch.
+- **A VM session's first-ever live render pays a one-time Metal
+  shader-compile tax; every render after that in the same VM boot is
+  near-instant.** Confirmed live (2026-07-30): immediately after fixing the
+  fingerprint bug above, the *first* successful live render in this VM's
+  current boot (Step 3's five targets) took several minutes (`Teststrip`'s
+  own unified-log output showed a `(Metal) unable to find air64_v27 slice or
+  a compatible one in binary archive` error at launch — a virtualized-GPU
+  shader-archive mismatch that forces a slow first-time software compile).
+  Every subsequent render in the *same* VM boot session — including on
+  freshly-relaunched app instances — completed inside ~10s or faster,
+  consistent with the compiled shader persisting in an OS-level Metal cache
+  across app relaunches (the worker process itself is killed and restarted
+  every launch, so the speedup isn't from the worker staying warm). The
+  card's Step 3 60s budget and Step 5 45s budget hold comfortably for a
+  Tart VM whose Metal cache is already warm from any prior render in the
+  same boot (true for every run after the first in a given `tart run`
+  session) but may need widening — or a `destroy`/`setup` cycle avoided —
+  for a VM's very first live render since boot.
+- **Step 4's "Rendering full preview… will keep when ready" toast could not
+  be directly observed live once the VM's Metal cache was warm**, despite
+  three attempts with progressively tighter polling: a plain
+  `ax_drive.sh find` after the keypress (misses it entirely — the toast has
+  already faded per the toast-fade sharp edge above), an `ax_drive.sh wait`
+  started *before* the keypress at the default 150ms poll interval, and the
+  same started before the keypress at `TESTSTRIP_AX_POLL_SECONDS=0.02`
+  (20ms) — all three ran through the entire commit without a match, while
+  ground truth confirmed the full arm-render-fire cycle completed correctly
+  each time (gen bump, exact force-flip flags). This is treated as PASS by
+  indirect/structural proof, not a live toast sighting: the render-gate
+  guard (`previewURL(...) != nil`, source above) sits *before* any write
+  logic in `promoteCurrentFrameAndRejectSiblings` with no `await` in
+  between, so given a confirmed-missing `.large` at keypress time (verified
+  live via `test -f` immediately before every Return in this run), a
+  same-call synchronous write is structurally impossible — the only way to
+  reach the observed final state is through arm-then-fire. Step 5's final
+  commit toast (below) *was* directly caught, which cross-checks that the
+  toast pipeline itself works and this is a render-speed/poll-granularity
+  gap, not a toast-rendering regression.
 
 ## Run status
-UNRUN — authored 2026-07-30, source-cited against the working tree at HEAD
-`11cdf360` by directly reading `CullPrefetchPlanner.swift`,
+**PASS-WITH-CARD-FIXES** — first live run 2026-07-30 against app build
+`33f8cd0b` (freshly built and verified via `strings` for the `"Rendering
+full preview"` literal — see below) in the `teststrip-e2e` Tart VM (`burst`
+fixture). All three assertion groups pass; one **harness bug** (in the
+shared `vm_scenario_run.sh`, not this card or the app) was found and fixed
+before Steps 2-3 could run at all, and one **card driving bug** (Step 6's
+two-keystroke technique) was found and fixed. No app bugs found: every
+defect was in test tooling.
+
+Per-assertion results:
+- **Step 1 (baseline)**: PASS. Flags/generations matched exactly
+  (`smoke-0=reject`, `smoke-3=pick`, `smoke-5=reject`, `smoke-6=pick`, rest
+  `NULL`, all `catalog_generation=1`); all seven `.large` files confirmed
+  `PRESENT` pre-deletion.
+- **Step 2 (deletion + first landing)**: PASS. All six targeted `.large`
+  files confirmed `MISSING` after deletion; ⌘1 landed on `smoke-0.jpg` with
+  the scope chip absent, matching Pre-state.
+- **Step 3 (prefetch window, positive + negative control)**: PASS, but only
+  after fixing a harness bug (below) that made it fail outright on the
+  first attempt — see Sharp edges for the full account. Once fixed:
+  `smoke-1`/`smoke-2`/`smoke-3`/`smoke-7`/`smoke-10` all rendered (within
+  ~10s of landing, once the VM's Metal cache was warm — see Sharp edges);
+  `smoke-14` stayed `MISSING` through the full budget every time (confirmed
+  across 4 independent runs); `catalog_generation` never changed for any of
+  the seven watched assets in any run.
+- **Step 4 (armed commit, deferred write)**: PASS by ground truth and
+  structural code proof; the literal toast text was **not** directly
+  observable live in a warm VM despite three escalating attempts — see
+  Sharp edges. In every one of 3 independent trials, `.large` was confirmed
+  `MISSING` immediately before Return, and the flags/generation reached
+  after Return exactly match Step 5's expected force-flip outcome — never
+  anything else (no garbled intermediate state, no immediate-write
+  variant).
+- **Step 5 (auto-fire on render landing)**: PASS, directly observed. Caught
+  the exact toast text `Kept smoke-0.jpg (was ✕) · rejected 2 · ⌘Z undoes`
+  live via an AX watcher armed before the keypress. Ground truth matched
+  exactly: `smoke-0|pick|0|<bumped>`, `smoke-1|reject|0|<bumped>`,
+  `smoke-2|reject|0|<bumped>` (no tentative marker on any of the three).
+- **Step 6 (disarm)**: PASS, after fixing a card driving bug (below). The
+  card's original two-`vm_scenario_run.sh key`-invocation technique lost
+  the race twice in a row in this warm VM (`smoke-4` flipped to `reject`,
+  generation bumped, exactly as if the disarm had never fired); switching
+  both keystrokes into a single `osascript` process (one `tell` block)
+  closed the gap and the disarm held cleanly, twice in a row, with group2's
+  four assets byte-identical to baseline both times while `smoke-3`'s
+  deferred render still completed on disk (expected, not part of the
+  falsification).
+
+Harness bug found and fixed (`script/vm_scenario_run.sh`, `cmd_launch`):
+a plain `cp -R` from the seed template to each fresh per-launch directory,
+combined with `openrsync`'s lack of sub-second mtime support on the earlier
+host->VM hop, meant every asset's live mtime essentially never matched its
+seed-time `fingerprint_json` once cull-027's technique forced a genuine live
+re-render — the worker's own `SourceAvailabilityProbe` re-check then marked
+the asset `.stale` and refused to render, exactly matching what a live
+Step 2/3 run showed (`smoke-1`/`2`/`3`/`7`/`10` all reading `availability =
+stale` and staying `MISSING` through a full 60s wait). No prior VM-run card
+had ever forced a live re-render (all of them only read pre-rendered
+previews), so this bug was latent and invisible until now. Fixed by
+re-deriving every asset's fingerprint from the file that actually landed in
+`$fresh` after every path rewrite settles, self-consistent by construction
+regardless of what any upstream copy step preserved — see the comment block
+above `cmd_launch`'s fingerprint-refresh step. Verified live: availability
+read `online` for all 18 assets on every launch after the fix, across 6
+consecutive relaunches, with the deletion/re-render technique working
+correctly every time.
+
+Card driving bug found and fixed (this file, Step 6): see the Step 6 Sharp
+edges bullet — two separate `key` invocations for Return then `→` are too
+slow once a VM session's Metal cache is warm; a single combined `osascript`
+`tell` block is not.
+
+Originally authored 2026-07-30, source-cited against the working tree at
+HEAD `11cdf360` by directly reading `CullPrefetchPlanner.swift`,
 `CullPrefetchPlannerTests.swift`, `CullPrefetchDriverTests.swift`,
 `AppModel.swift` (`requestVisibleCullPreview`, `refreshCullPrefetchWindow`,
 `promoteCurrentFrameAndRejectSiblings`, `armStackCommit`,
@@ -438,5 +588,5 @@ UNRUN — authored 2026-07-30, source-cited against the working tree at HEAD
 `managedWorkerKindRunningLimits`), `PreviewCache.swift`, `PathSafeName.swift`,
 `PreviewScheduler.swift`, `SmokeCatalogSeeder.swift`/`BurstFixtureLayout`,
 and `BenchmarkCommand.swift`/`main.swift`'s `seed-burst-catalog` wiring.
-Needs a live Tart VM run per `test/scenarios/README.md` (tracked
-separately).
+First live run 2026-07-30 confirms all of the above against the assembled
+app, per the per-assertion results above.

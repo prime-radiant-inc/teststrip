@@ -491,3 +491,15 @@ bullets discussing it changed in substance. The dated Run status entry
 above predates this reconciliation and describes a run against the
 pre-armed-commit code — it is left as-is (a historical record of what that
 run observed), not restated for the current behavior.
+
+**2026-07-30 addendum**: `cull-027-blaze-through-prefetch.md`'s first live
+run (same day) exercised the armed-commit/render-gate leg this card's own
+Step 7 stays unable to reach (Sharp edges above) — confirmed live: the
+force-flip toast text this card's own Step 2 expects
+(`Kept smoke-0.jpg (was ✕) · rejected 2 · ⌘Z undoes`) was directly observed
+firing automatically once a deliberately-deleted `.large` preview finished
+re-rendering, with the write correctly deferred until then. See that card's
+Run status for the full per-assertion account, including two tooling bugs
+(one in the shared `vm_scenario_run.sh` harness, one in that card's own
+Step 6 driving technique) found and fixed along the way — neither affects
+this card, which was not re-run.
