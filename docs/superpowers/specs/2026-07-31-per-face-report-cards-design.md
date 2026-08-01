@@ -41,7 +41,8 @@ FaceExpressionEvaluationProvider.swift), and returns one `FaceReport` per
 face:
 
 - Existing fields carried through: normalized bounds, eyes open/closed,
-  smile, eye centers.
+  smile. (Eye centers stay on `DetectedFaceExpression` for zoom-to-face,
+  which is unchanged.)
 - **facing** (0…1): one `VNDetectFaceRectanglesRequest` on the same image;
   Vision observations matched to CIDetector faces by bounding-box overlap
   (greatest-IoU wins, unmatched → facing unscored). Score decays from 1
