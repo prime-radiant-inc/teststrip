@@ -108,6 +108,13 @@ enum FaceReportRollUpPresentation {
         frame?.rolledUpGrade
     }
 
+    /// What a rail thumb's dot says out loud. nil exactly when there is no
+    /// dot: uncomputed, or the frame has no faces.
+    static func railAccessibilityText(for frame: FrameFaceReport?) -> String? {
+        guard let grade = dotGrade(for: frame) else { return nil }
+        return "Faces \(word(for: grade).lowercased())"
+    }
+
     /// The close-ups header's accessibility value. "No faces" is preserved
     /// verbatim as the faceless empty state that scenario cards assert on.
     static func headerValue(for frame: FrameFaceReport?) -> String {

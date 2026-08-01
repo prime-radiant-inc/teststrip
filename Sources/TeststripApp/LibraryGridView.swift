@@ -4894,6 +4894,50 @@ private struct LoupeView: View {
             .task(id: presentation.items.map(\.assetID.rawValue).joined(separator: "\n")) {
                 requestVisiblePreviews(for: presentation.items.map(\.assetID))
             }
+            // A separate task from the preview request above: this one also
+            // re-keys on each frame's preview generation and level, so frames
+            // skipped for want of a floor-quality preview get picked up the
+            // moment one lands, and a level upgrade re-measures. `.task(id:)`
+            // cancels the running sweep when the key changes, which is the
+            // whole cancellation story — no queue, no worker items.
+            .task(id: faceReportSweepKey(for: presentation)) {
+                await faceReportStore.sweep(
+                    frames: faceReportSweepFrames(for: presentation),
+                    currentFrameID: model.selectedAssetID
+                )
+            }
+        }
+    }
+
+    // Deliberately NOT keyed on the selected frame. Selection only decides
+    // which frame the sweep does first; keying on it would cancel and restart
+    // the whole sweep on every arrow-key press, and a frame further down a
+    // stack the photographer is paging through could then never finish
+    // computing — exactly the "dots appear for frames you never visited"
+    // promise this feature exists to keep.
+    private struct FaceReportSweepKey: Equatable {
+        var frameIDs: [String]
+        var previewGenerations: [Int]
+        var previewLevels: [String]
+    }
+
+    private func faceReportSweepKey(for presentation: CullingStackRailPresentation) -> FaceReportSweepKey {
+        FaceReportSweepKey(
+            frameIDs: presentation.items.map(\.assetID.rawValue),
+            previewGenerations: presentation.items.map { model.previewCacheGeneration(for: $0.assetID) },
+            previewLevels: presentation.items.map {
+                model.faceReportPreviewSource(for: $0.assetID)?.level.rawValue ?? ""
+            }
+        )
+    }
+
+    private func faceReportSweepFrames(for presentation: CullingStackRailPresentation) -> [FaceReportSweepFrame] {
+        presentation.items.map { item in
+            FaceReportSweepFrame(
+                assetID: item.assetID,
+                source: model.faceReportPreviewSource(for: item.assetID),
+                previewCacheGeneration: model.previewCacheGeneration(for: item.assetID)
+            )
         }
     }
 
@@ -4927,6 +4971,20 @@ private struct LoupeView: View {
                             .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(3)
+                    }
+                    // Top-leading, clear of the ✦ (top-trailing) and the 3pt
+                    // decision bar that runs across the very top. No dot at
+                    // all while the frame is uncomputed, its report is stale,
+                    // or it has no faces — absence means "nothing known",
+                    // never "known good".
+                    if let grade = FaceReportRollUpPresentation.dotGrade(for: currentFaceReport(for: item.assetID)) {
+                        Circle()
+                            .fill(FaceReportRollUpPresentation.color(for: grade))
+                            .frame(width: Self.faceGradeDotSize, height: Self.faceGradeDotSize)
+                            .overlay { Circle().strokeBorder(.black.opacity(0.5), lineWidth: 1) }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .padding(.top, 5)
+                            .padding(.leading, 3)
                     }
                 }
                 .frame(width: Self.cullStackRailThumbnailSize.width, height: Self.cullStackRailThumbnailSize.height)
@@ -4980,6 +5038,11 @@ private struct LoupeView: View {
     private func stackChipAccessibilityValue(_ item: CullingStackRailPresentation.Item) -> String {
         var segments = [item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected")]
         segments.append(contentsOf: item.flawBadges.map(\.text))
+        if let facesText = FaceReportRollUpPresentation.railAccessibilityText(
+            for: currentFaceReport(for: item.assetID)
+        ) {
+            segments.append(facesText)
+        }
         return segments.joined(separator: ", ")
     }
 
