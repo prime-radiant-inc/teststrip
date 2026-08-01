@@ -40,12 +40,14 @@ enum FaceReportPreviewFloor {
 }
 
 /// The cached preview a frame's report cards are measured from, and the level
-/// it came from — both halves of the staleness key.
-struct FaceReportPreviewSource: Equatable, Sendable {
-    var previewURL: URL
-    var level: PreviewLevel
+/// it came from — both halves of the staleness key. Public: `AppModel`'s
+/// `faceReportPreviewSource(for:)` hands this out as part of its public
+/// surface, matching `loupePreviewURL`/`loupeZoomPreviewURL` beside it.
+public struct FaceReportPreviewSource: Equatable, Sendable {
+    public var previewURL: URL
+    public var level: PreviewLevel
 
-    init(previewURL: URL, level: PreviewLevel) {
+    public init(previewURL: URL, level: PreviewLevel) {
         self.previewURL = previewURL
         self.level = level
     }

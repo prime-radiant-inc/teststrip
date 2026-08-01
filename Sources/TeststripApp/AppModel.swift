@@ -14133,6 +14133,20 @@ public final class AppModel {
         previewURL(for: assetID, levels: [.original, .large, .medium, .grid, .micro])
     }
 
+    /// The best cached preview at or above the face-report analysis floor,
+    /// with the level it came from. nil when nothing good enough is cached
+    /// yet — the report store leaves that frame unread rather than grading a
+    /// thumbnail, because a grade measured off a 512px preview visibly
+    /// changes once the real preview lands (see `FaceReportPreviewFloor`).
+    public func faceReportPreviewSource(for assetID: AssetID) -> FaceReportPreviewSource? {
+        for level in FaceReportPreviewFloor.acceptedLevelsHighestFirst {
+            if let url = previewURL(for: assetID, levels: [level]) {
+                return FaceReportPreviewSource(previewURL: url, level: level)
+            }
+        }
+        return nil
+    }
+
     private func cachedLoupePreviewLevel(for assetID: AssetID) -> PreviewLevel? {
         [PreviewLevel.original, .large, .medium, .grid, .micro].first { level in
             previewURL(for: assetID, levels: [level]) != nil
