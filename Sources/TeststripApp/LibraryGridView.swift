@@ -4942,7 +4942,12 @@ private struct LoupeView: View {
     }
 
     private func cullStackRailCell(_ item: CullingStackRailPresentation.Item) -> some View {
-        Button {
+        // Resolved once per cell render and shared by the dot and the
+        // accessibility value below — each resolution walks the accepted
+        // preview levels doing real `FileManager.fileExists` calls, and every
+        // mounted rail cell re-renders on every sweep publish.
+        let faceReport = currentFaceReport(for: item.assetID)
+        return Button {
             model.select(item.assetID)
         } label: {
             VStack(alignment: .leading, spacing: 4) {
@@ -4977,7 +4982,7 @@ private struct LoupeView: View {
                     // all while the frame is uncomputed, its report is stale,
                     // or it has no faces — absence means "nothing known",
                     // never "known good".
-                    if let grade = FaceReportRollUpPresentation.dotGrade(for: currentFaceReport(for: item.assetID)) {
+                    if let grade = FaceReportRollUpPresentation.dotGrade(for: faceReport) {
                         Circle()
                             .fill(FaceReportRollUpPresentation.color(for: grade))
                             .frame(width: Self.faceGradeDotSize, height: Self.faceGradeDotSize)
@@ -5005,7 +5010,7 @@ private struct LoupeView: View {
         .buttonStyle(.plain)
         .help(stackChipFlawHelpText(item))
         .accessibilityLabel("Stack frame \(item.label)")
-        .accessibilityValue(stackChipAccessibilityValue(item))
+        .accessibilityValue(stackChipAccessibilityValue(item, faceReport: faceReport))
     }
 
     /// Keyed off the rail item's `DecisionState` directly (rail items don't
@@ -5035,12 +5040,13 @@ private struct LoupeView: View {
         return "Frame \(item.label): \(item.flawBadges.map(\.text).joined(separator: ", "))"
     }
 
-    private func stackChipAccessibilityValue(_ item: CullingStackRailPresentation.Item) -> String {
+    private func stackChipAccessibilityValue(
+        _ item: CullingStackRailPresentation.Item,
+        faceReport: FrameFaceReport?
+    ) -> String {
         var segments = [item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected")]
         segments.append(contentsOf: item.flawBadges.map(\.text))
-        if let facesText = FaceReportRollUpPresentation.railAccessibilityText(
-            for: currentFaceReport(for: item.assetID)
-        ) {
+        if let facesText = FaceReportRollUpPresentation.railAccessibilityText(for: faceReport) {
             segments.append(facesText)
         }
         return segments.joined(separator: ", ")

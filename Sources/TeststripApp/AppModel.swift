@@ -2455,13 +2455,16 @@ public final class AppModel {
     private let sessionRestoreDefaults: UserDefaults?
 
     // Per-cell preview lookups hit the filesystem and scan the work queue; the grid
-    // re-renders far more often than preview state can change, so both are memoized
-    // until the next background-work publication or queue-state refresh.
+    // re-renders far more often than preview state can change, so all three are
+    // memoized until the next background-work publication or queue-state refresh.
     @ObservationIgnored
     private var gridPreviewURLCacheByAssetID: [AssetID: URL?]
 
     @ObservationIgnored
     private var gridPreviewStatusCacheByAssetID: [AssetID: AssetGridPreviewStatusPresentation?]
+
+    @ObservationIgnored
+    private var faceReportPreviewSourceCacheByAssetID: [AssetID: FaceReportPreviewSource?]
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -4426,6 +4429,7 @@ public final class AppModel {
         self.pendingPreviewGenerationQueueStatesRefresh = false
         self.gridPreviewURLCacheByAssetID = [:]
         self.gridPreviewStatusCacheByAssetID = [:]
+        self.faceReportPreviewSourceCacheByAssetID = [:]
         self.evaluationAssetIDsByItemID = [:]
         self.evaluationProvidersByItemID = [:]
         self.metadataSyncAssetIDsByItemID = [:]
@@ -8902,7 +8906,7 @@ public final class AppModel {
 
     private func refreshPreviewGenerationQueueStates() throws {
         guard let catalog else { return }
-        clearGridPreviewCaches()
+        clearPreviewLookupCaches()
         previewGenerationQueueStates = try Self.previewGenerationQueueStates(
             repository: catalog.repository,
             selectedAssetID: selectedAssetID
@@ -8911,7 +8915,7 @@ public final class AppModel {
 
     private func refreshSelectedPreviewGenerationQueueStates(for assetID: AssetID) throws {
         guard let catalog else { return }
-        clearGridPreviewCaches()
+        clearPreviewLookupCaches()
         try Self.mergePreviewGenerationQueueStates(
             for: assetID,
             repository: catalog.repository,
@@ -10303,7 +10307,7 @@ public final class AppModel {
     }
 
     private func flushBackgroundWorkPublication() {
-        clearGridPreviewCaches()
+        clearPreviewLookupCaches()
         backgroundWorkQueue = currentBackgroundWorkQueue
         previewCacheGenerationsByAssetID = currentPreviewCacheGenerationsByAssetID
         if pendingLatestImportPreviewStatusRefresh {
@@ -10316,9 +10320,10 @@ public final class AppModel {
         }
     }
 
-    private func clearGridPreviewCaches() {
+    private func clearPreviewLookupCaches() {
         gridPreviewURLCacheByAssetID.removeAll(keepingCapacity: true)
         gridPreviewStatusCacheByAssetID.removeAll(keepingCapacity: true)
+        faceReportPreviewSourceCacheByAssetID.removeAll(keepingCapacity: true)
     }
 
     // Defers the repository-backed queue-state refresh to the coalesced publication
@@ -14139,12 +14144,18 @@ public final class AppModel {
     /// thumbnail, because a grade measured off a 512px preview visibly
     /// changes once the real preview lands (see `FaceReportPreviewFloor`).
     public func faceReportPreviewSource(for assetID: AssetID) -> FaceReportPreviewSource? {
+        if let cachedSource = faceReportPreviewSourceCacheByAssetID[assetID] {
+            return cachedSource
+        }
+        var source: FaceReportPreviewSource?
         for level in FaceReportPreviewFloor.acceptedLevelsHighestFirst {
             if let url = previewURL(for: assetID, levels: [level]) {
-                return FaceReportPreviewSource(previewURL: url, level: level)
+                source = FaceReportPreviewSource(previewURL: url, level: level)
+                break
             }
         }
-        return nil
+        faceReportPreviewSourceCacheByAssetID[assetID] = source
+        return source
     }
 
     private func cachedLoupePreviewLevel(for assetID: AssetID) -> PreviewLevel? {
