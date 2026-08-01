@@ -51,6 +51,35 @@ final class FaceStackFixtureSeederTests: XCTestCase {
         }
     }
 
+    // Regression coverage for the fixture guarantee ("2026-dated, hours
+    // apart"): every seeded frame's decoded DateTimeOriginal must equal the
+    // exact stamp the seeder intended, for stack frames and singletons
+    // alike. `copyJPEG` previously re-encoded via
+    // `CGImageDestinationAddImageFromSource`, which does not reliably
+    // override `DateTimeOriginal`/`DateTimeDigitized` already present in a
+    // source JPEG's Exif block — three corpus files (two Sally Ride STS-7
+    // shots carrying only a 2008 DateTimeDigitized, and the Armstrong
+    // Gemini 8 shot carrying a 1966 DateTimeOriginal plus a 2013
+    // DateTimeDigitized) came out with the wrong date instead of the
+    // intended 2026 stamp.
+    func testEverySeededFrameDecodesItsIntendedCaptureDateExactly() throws {
+        guard let sourceDirectory = Self.facesCorpusDirectory() else { throw Self.corpusSkip }
+        let directory = try Self.makeScratchDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let result = try FaceStackFixtureSeeder(
+            directory: directory,
+            sourcePhotoDirectory: sourceDirectory
+        ).run()
+
+        XCTAssertFalse(result.capturedAtByFilename.isEmpty)
+        let provider = ImageIODecodeProvider()
+        for (filename, expected) in result.capturedAtByFilename.sorted(by: { $0.key < $1.key }) {
+            let actual = try provider.metadata(for: directory.appendingPathComponent(filename)).capturedAt
+            XCTAssertEqual(actual, expected, "\(filename) decoded the wrong capture date")
+        }
+    }
+
     func testTheStackCarriesDetectableFacesAndOneDeliberatelyFacelessFrame() throws {
         guard let sourceDirectory = Self.facesCorpusDirectory() else { throw Self.corpusSkip }
         let directory = try Self.makeScratchDirectory()

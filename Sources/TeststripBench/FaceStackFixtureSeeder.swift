@@ -10,17 +10,23 @@ public struct FaceStackFixtureSeederResult: Equatable {
     public var singleCount: Int
     public var stackCaptureGapSeconds: TimeInterval
     public var backgroundFaceProminence: Double
+    /// The capture date intended for every seeded frame (stack frames and
+    /// singletons alike), keyed by filename — the source of truth the
+    /// seed-time self-check and the test suite both verify against.
+    public var capturedAtByFilename: [String: Date]
 
     public init(
         stackFilenames: [String],
         singleCount: Int,
         stackCaptureGapSeconds: TimeInterval,
-        backgroundFaceProminence: Double
+        backgroundFaceProminence: Double,
+        capturedAtByFilename: [String: Date]
     ) {
         self.stackFilenames = stackFilenames
         self.singleCount = singleCount
         self.stackCaptureGapSeconds = stackCaptureGapSeconds
         self.backgroundFaceProminence = backgroundFaceProminence
+        self.capturedAtByFilename = capturedAtByFilename
     }
 }
 
@@ -76,6 +82,7 @@ public struct FaceStackFixtureSeeder {
     public func run() throws -> FaceStackFixtureSeederResult {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let analyzer = CoreImageFaceExpressionAnalyzer()
+        var capturedAtByFilename: [String: Date] = [:]
 
         var sourceURLs: [URL] = []
         for (index, sourceName) in Self.stackSourceFilenames.enumerated() {
@@ -85,31 +92,30 @@ public struct FaceStackFixtureSeeder {
             }
             sourceURLs.append(sourceURL)
             let destinationURL = directory.appendingPathComponent(Self.stackFaceFilenames[index])
-            try Self.copyJPEG(
-                from: sourceURL,
-                to: destinationURL,
-                capturedAt: Self.baseCapture.addingTimeInterval(Double(index) * Self.stackGapSeconds)
-            )
+            let capturedAt = Self.baseCapture.addingTimeInterval(Double(index) * Self.stackGapSeconds)
+            try Self.copyJPEG(from: sourceURL, to: destinationURL, capturedAt: capturedAt)
+            capturedAtByFilename[Self.stackFaceFilenames[index]] = capturedAt
             guard try !analyzer.detectFaces(previewURL: destinationURL).isEmpty else {
                 throw TeststripError.invalidState("face stack fixture \(sourceName) yielded no detectable face")
             }
         }
 
         let compositeURL = directory.appendingPathComponent(Self.stackCompositeFilename)
+        let compositeCapturedAt = Self.baseCapture.addingTimeInterval(2 * Self.stackGapSeconds)
         let backgroundProminence = try Self.writeComposite(
             subjectURL: sourceURLs[0],
             backgroundURL: sourceURLs[1],
             to: compositeURL,
-            capturedAt: Self.baseCapture.addingTimeInterval(2 * Self.stackGapSeconds),
+            capturedAt: compositeCapturedAt,
             analyzer: analyzer
         )
+        capturedAtByFilename[Self.stackCompositeFilename] = compositeCapturedAt
 
         let facelessURL = directory.appendingPathComponent(Self.stackNoFaceFilename)
+        let facelessCapturedAt = Self.baseCapture.addingTimeInterval(3 * Self.stackGapSeconds)
         try BenchmarkImageFixtures.writeJPEG(to: facelessURL, index: 0)
-        try Self.stampCapture(
-            at: facelessURL,
-            capturedAt: Self.baseCapture.addingTimeInterval(3 * Self.stackGapSeconds)
-        )
+        try Self.stampCapture(at: facelessURL, capturedAt: facelessCapturedAt)
+        capturedAtByFilename[Self.stackNoFaceFilename] = facelessCapturedAt
         guard try analyzer.detectFaces(previewURL: facelessURL).isEmpty else {
             throw TeststripError.invalidState("the deliberately faceless stack frame grew a detectable face")
         }
@@ -120,19 +126,54 @@ public struct FaceStackFixtureSeeder {
             .filter { !Self.stackSourceFilenames.contains($0.lastPathComponent) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         for (index, sourceURL) in remaining.enumerated() {
+            let capturedAt = Self.baseCapture.addingTimeInterval(Double(index + 1) * Self.singleGapSeconds)
             try Self.copyJPEG(
                 from: sourceURL,
                 to: directory.appendingPathComponent(sourceURL.lastPathComponent),
-                capturedAt: Self.baseCapture.addingTimeInterval(Double(index + 1) * Self.singleGapSeconds)
+                capturedAt: capturedAt
             )
+            capturedAtByFilename[sourceURL.lastPathComponent] = capturedAt
         }
+
+        // Seed-time self-check: re-decode every frame the same way the app
+        // does and confirm the stamped date round-tripped exactly. Catches
+        // regressions where the JPEG re-encode silently keeps (or splices
+        // with) a source's pre-existing Exif date instead of applying the
+        // override — see `copyJPEG`.
+        try Self.verifyStampedCaptures(capturedAtByFilename, in: directory)
 
         return FaceStackFixtureSeederResult(
             stackFilenames: Self.stackFaceFilenames + [Self.stackCompositeFilename, Self.stackNoFaceFilename],
             singleCount: remaining.count,
             stackCaptureGapSeconds: Self.stackGapSeconds,
-            backgroundFaceProminence: backgroundProminence
+            backgroundFaceProminence: backgroundProminence,
+            capturedAtByFilename: capturedAtByFilename
         )
+    }
+
+    /// Decodes every seeded frame via `ImageIODecodeProvider` — the same
+    /// path the app uses — and confirms its `capturedAt` matches the stamp
+    /// `copyJPEG` was asked to write. Collects every mismatch before
+    /// throwing so a regression names every affected file at once instead of
+    /// failing loudly on the first.
+    private static func verifyStampedCaptures(_ expected: [String: Date], in directory: URL) throws {
+        let provider = ImageIODecodeProvider()
+        var mismatches: [String] = []
+        for filename in expected.keys.sorted() {
+            let actual = try provider.metadata(for: directory.appendingPathComponent(filename)).capturedAt
+            guard actual == expected[filename] else {
+                let expectedString = exifTimestamp(expected[filename] ?? Date(timeIntervalSince1970: 0))
+                let actualString = actual.map(exifTimestamp) ?? "nil"
+                mismatches.append("\(filename): expected \(expectedString), got \(actualString)")
+                continue
+            }
+        }
+        guard mismatches.isEmpty else {
+            throw TeststripError.invalidState(
+                "face stack fixture stamped capture date mismatch(es) — the intended stamp did not win over "
+                    + "pre-existing EXIF:\n" + mismatches.map { "  - \($0)" }.joined(separator: "\n")
+            )
+        }
     }
 
     /// Composites `backgroundURL` into the top-right corner of `subjectURL` at
@@ -191,16 +232,32 @@ public struct FaceStackFixtureSeeder {
         )
     }
 
-    /// Re-encodes the source's own compressed image data with an added EXIF
-    /// capture date — the pixels the face detector sees are the originals'.
+    /// Decodes the source's pixels and re-encodes them under a
+    /// fully-controlled properties dictionary that never mentions the
+    /// source's own Exif block — only orientation (if present) and the
+    /// stamped capture dates carry over. `CGImageDestinationAddImageFromSource`
+    /// with a properties override does *not* reliably replace a
+    /// `DateTimeOriginal`/`DateTimeDigitized` already present in the
+    /// source's Exif: it can silently keep the source's date, or splice
+    /// fields from two different source tags into one garbled result.
+    /// Re-encoding via `CGImageDestinationAddImage` with a dictionary that
+    /// never contains the source's Exif guarantees the stamped date wins.
     private static func copyJPEG(from sourceURL: URL, to destinationURL: URL, capturedAt: Date) throws {
-        guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil) else {
+        guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw TeststripError.io("could not read face stack fixture source \(sourceURL.lastPathComponent)")
         }
-        var properties = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]) ?? [:]
-        var exif = (properties[kCGImagePropertyExifDictionary] as? [CFString: Any]) ?? [:]
-        exif[kCGImagePropertyExifDateTimeOriginal] = exifTimestamp(capturedAt)
-        properties[kCGImagePropertyExifDictionary] = exif
+        let sourceProperties = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]) ?? [:]
+        let timestamp = exifTimestamp(capturedAt)
+        var properties: [CFString: Any] = [
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifDateTimeOriginal: timestamp,
+                kCGImagePropertyExifDateTimeDigitized: timestamp
+            ]
+        ]
+        if let orientation = sourceProperties[kCGImagePropertyOrientation] {
+            properties[kCGImagePropertyOrientation] = orientation
+        }
         guard let destination = CGImageDestinationCreateWithURL(
             destinationURL as CFURL,
             UTType.jpeg.identifier as CFString,
@@ -209,7 +266,7 @@ public struct FaceStackFixtureSeeder {
         ) else {
             throw TeststripError.io("could not create face stack fixture \(destinationURL.lastPathComponent)")
         }
-        CGImageDestinationAddImageFromSource(destination, source, 0, properties as CFDictionary)
+        CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {
             throw TeststripError.io("could not write face stack fixture \(destinationURL.lastPathComponent)")
         }
