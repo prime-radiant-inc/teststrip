@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import XCTest
 @testable import TeststripCore
@@ -87,6 +88,37 @@ final class FaceReportPresentationTests: XCTestCase {
         let presentation = FaceReportChipPresentation(report: Self.report())
 
         XCTAssertEqual(presentation.entries.map(\.id), ["eyes", "sharpness", "facing", "light"])
+    }
+
+    // MARK: - Chip symbol names (Task 5 review fix 1: pin the exact SF Symbol names)
+
+    func testChipSymbolNamesArePinnedPerSignal() {
+        XCTAssertEqual(FaceReportSignal.eyes.symbolName, "eye.fill")
+        XCTAssertEqual(FaceReportSignal.sharpness.symbolName, "scope")
+        XCTAssertEqual(FaceReportSignal.facing.symbolName, "person.fill")
+        XCTAssertEqual(FaceReportSignal.light.symbolName, "sun.max.fill")
+    }
+
+    func testEveryChipSymbolNameExistsAsARealSFSymbol() {
+        for signal in FaceReportSignal.allCases {
+            XCTAssertNotNil(
+                NSImage(systemSymbolName: signal.symbolName, accessibilityDescription: nil),
+                "\(signal) symbol name \"\(signal.symbolName)\" is not a real SF Symbol"
+            )
+        }
+    }
+
+    // MARK: - Percentage rounding (Task 5 review fix 2: pin the half-boundary rule)
+
+    // 98.5% is an exact tie: `.rounded()` (half away from zero) rounds up to
+    // 99%, while `.rounded(.toNearestOrEven)` would round down to 98% (98 is
+    // even). This pins the current away-from-zero behavior so a switch to
+    // toNearestOrEven silently changing displayed chip percentages gets caught.
+    func testHalfBoundaryPercentRoundsAwayFromZeroNotToEven() {
+        let presentation = FaceReportChipPresentation(report: Self.report(sharpness: 0.985))
+
+        XCTAssertEqual(presentation.entries[1].score, 0.985)
+        XCTAssertEqual(presentation.entries[1].accessibilityText, "Sharpness 99%")
     }
 
     // MARK: - Tile accessibility
