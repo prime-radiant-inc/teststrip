@@ -23,6 +23,7 @@ SAMPLE_PHOTOS_DIR="${TESTSTRIP_SAMPLE_PHOTOS_DIR:-}"
 SAMPLE_PHOTOS_MANIFEST="${TESTSTRIP_SAMPLE_PHOTOS_MANIFEST:-}"
 REAL_CORPUS=0
 REAL_CORPUS_DIR="${TESTSTRIP_REAL_CORPUS_DIR:-}"
+FACE_STACK=0
 BACKGROUND_OPEN=0
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,7 +43,7 @@ APP_ENTITLEMENTS="$ROOT_DIR/config/macos/Teststrip.entitlements"
 WORKER_ENTITLEMENTS="$ROOT_DIR/config/macos/TeststripWorker.entitlements"
 
 usage() {
-  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--faces|--verify-faces|--real-corpus|--verify-real-corpus|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--faces|--verify-faces|--face-stack|--verify-face-stack|--real-corpus|--verify-real-corpus|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -86,6 +87,9 @@ open_app() {
     fi
     if [[ "$REAL_CORPUS" == "1" ]]; then
       seed_real_corpus_catalog
+    fi
+    if [[ "$FACE_STACK" == "1" ]]; then
+      seed_face_stack_catalog
     fi
     open_args=(--env "$APPLICATION_SUPPORT_ENV_KEY=$ISOLATED_APPLICATION_SUPPORT" "${open_args[@]}")
   fi
@@ -148,6 +152,17 @@ seed_sample_catalog() {
     "$ROOT_DIR/script/download_sample_photos.sh" --manifest "$SAMPLE_PHOTOS_MANIFEST" --destination "$SAMPLE_PHOTOS_DIR"
   fi
   swift run "$BENCH_PRODUCT_NAME" seed-sample-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SAMPLE_PHOTOS_DIR"
+}
+
+seed_face_stack_catalog() {
+  cd "$ROOT_DIR"
+  local photos="$ROOT_DIR/sample-data/photos/faces"
+  if [[ ! -d "$photos" ]] || [[ -z "$(find "$photos" -maxdepth 1 -type f -print -quit)" ]]; then
+    "$ROOT_DIR/script/download_sample_photos.sh" --manifest "$ROOT_DIR/sample-data/faces.tsv" --destination "$photos"
+  fi
+  local originals="$ISOLATED_APPLICATION_SUPPORT/FaceStackOriginals"
+  swift run "$BENCH_PRODUCT_NAME" seed-face-stack-fixtures "$originals" "$photos"
+  swift run "$BENCH_PRODUCT_NAME" seed-sample-catalog "$ISOLATED_APPLICATION_SUPPORT" "$originals"
 }
 
 seed_real_corpus_catalog() {
@@ -219,6 +234,16 @@ case "$MODE" in
     SAMPLE_PHOTOS=1
     SAMPLE_PHOTOS_MANIFEST="$ROOT_DIR/sample-data/faces.tsv"
     SAMPLE_PHOTOS_DIR="$ROOT_DIR/sample-data/photos/faces"
+    ;;
+  --face-stack|face-stack)
+    MODE="run"
+    ISOLATED=1
+    FACE_STACK=1
+    ;;
+  --verify-face-stack|verify-face-stack)
+    MODE="--verify"
+    ISOLATED=1
+    FACE_STACK=1
     ;;
   --real-corpus|real-corpus)
     MODE="run"

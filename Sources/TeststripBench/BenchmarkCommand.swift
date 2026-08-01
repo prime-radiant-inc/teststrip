@@ -17,6 +17,7 @@ public enum BenchmarkCommand: Equatable {
     case laneOverlapSmoke(count: Int)
     case realCorpusSmoke(photoDirectory: URL)
     case seedGeoFixtures(directory: URL, count: Int)
+    case seedFaceStackFixtures(directory: URL, sourcePhotoDirectory: URL)
     case seedDupFixtures(directory: URL)
     case samplePreviewRender(photoDirectory: URL)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
@@ -82,6 +83,14 @@ public enum BenchmarkCommand: Equatable {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
             let count = Int(userArguments.dropFirst(2).first ?? "12") ?? 12
             return .seedGeoFixtures(directory: URL(fileURLWithPath: directory), count: count)
+        }
+        if firstArgument == "seed-face-stack-fixtures" {
+            let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+            let sourceDirectory = userArguments.dropFirst(2).first ?? FileManager.default.currentDirectoryPath
+            return .seedFaceStackFixtures(
+                directory: URL(fileURLWithPath: directory),
+                sourcePhotoDirectory: URL(fileURLWithPath: sourceDirectory)
+            )
         }
         if firstArgument == "seed-dup-fixtures" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
