@@ -58,6 +58,27 @@ enum PreviewPixelMetrics {
         return min(max(rawMeanDelta / focusCalibrationCeiling, 0.0), 1.0)
     }
 
+    /// Mean luminance over the sampled pixels.
+    static func meanLuminance(in pixels: [UInt8], width: Int, height: Int) -> Double {
+        let pixelCount = Double(width * height)
+        guard pixelCount > 0 else { return 0 }
+        var total = 0.0
+        for y in 0..<height {
+            for x in 0..<width {
+                total += luminance(atX: x, y: y, in: pixels, width: width)
+            }
+        }
+        return total / pixelCount
+    }
+
+    /// How close a mean luminance sits to a balanced mid-gray exposure: 1 at
+    /// 0.5, falling linearly to 0 at pure black or pure white. Shared by the
+    /// whole-photo aesthetics term and the per-face light signal so both
+    /// answer "is this correctly exposed" the same way.
+    static func balancedExposure(meanLuminance: Double) -> Double {
+        1.0 - min(abs(meanLuminance - 0.5) * 2.0, 1.0)
+    }
+
     static func luminance(atX x: Int, y: Int, in pixels: [UInt8], width: Int) -> Double {
         let index = (y * width + x) * 4
         return luminance(

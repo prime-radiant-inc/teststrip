@@ -33,6 +33,14 @@ public struct DetectedFaceExpression: Equatable, Sendable {
     var hasBothEyesOpen: Bool {
         !leftEyeClosed && !rightEyeClosed
     }
+
+    /// The blink noise floor every culling surface shares: CIDetector reports
+    /// a single shut eye often enough that one alone is noise, so only both
+    /// eyes shut reads as closed. Distinct from `hasBothEyesOpen`, which the
+    /// per-photo eyesOpen fraction uses.
+    public var bothEyesShut: Bool {
+        leftEyeClosed && rightEyeClosed
+    }
 }
 
 public protocol FaceExpressionAnalyzing: Sendable {

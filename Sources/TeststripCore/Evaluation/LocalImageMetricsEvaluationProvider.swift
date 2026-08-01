@@ -110,7 +110,7 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
         color: RGBColor,
         framingScore: Double
     ) -> Double {
-        let balancedExposure = 1.0 - min(abs(exposure - 0.5) * 2.0, 1.0)
+        let balancedExposure = PreviewPixelMetrics.balancedExposure(meanLuminance: exposure)
         let colorContrast = max(color.red, color.green, color.blue) - min(color.red, color.green, color.blue)
         let score = focusScore * 0.35
             + balancedExposure * 0.25
@@ -120,7 +120,7 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
     }
 
     private static func framingScore(in pixels: [UInt8], width: Int, height: Int) -> Double {
-        let average = averageLuminance(in: pixels, width: width, height: height)
+        let average = PreviewPixelMetrics.meanLuminance(in: pixels, width: width, height: height)
         var weightedX = 0.0
         var weightedY = 0.0
         var totalWeight = 0.0
@@ -147,18 +147,6 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
         }.min() ?? 0.5
 
         return min(max(1.0 - nearestDistance / 0.5, 0.0), 1.0)
-    }
-
-    private static func averageLuminance(in pixels: [UInt8], width: Int, height: Int) -> Double {
-        let pixelCount = Double(width * height)
-        guard pixelCount > 0 else { return 0 }
-        var total = 0.0
-        for y in 0..<height {
-            for x in 0..<width {
-                total += PreviewPixelMetrics.luminance(atX: x, y: y, in: pixels, width: width)
-            }
-        }
-        return total / pixelCount
     }
 }
 
