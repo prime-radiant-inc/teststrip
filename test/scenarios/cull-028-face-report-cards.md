@@ -284,3 +284,91 @@ unprompted at least once during this session — dismiss with `ax press
 --role AXButton --label "Remind Me Later"` before driving further, and
 treat its possible reappearance as a standing hazard for any future VM
 scenario run, not specific to this card.
+
+---
+
+**2026-08-02 LIVE RUN (Round 2), app `feat/face-report-cards` @ `5b44634d`,
+VM `teststrip-e2e`, seed `facestack`. Verdict: PASS — all 8 steps pass.**
+
+The 2026-08-01 BLOCKED verdict above named a specific next step: add live
+instrumentation and redrive to see directly whether the two symptomatic
+`.task(id:)` closures actually re-fire. That was done (temporary
+`NSLog`-based instrumentation, since removed) and it **refuted** the
+hypothesis it was written to test: `CloseUpsRefreshKey`'s computed value did
+change after the generation bump, and its `.task(id:)` closure did re-fire,
+calling `refreshCloseUps` with a valid, non-nil `.large` preview source. The
+close-ups pass and the stack-rail sweep were both correctly triggered every
+time. The actual defect was one layer deeper: `refreshCloseUps`'s and
+`FaceReportStore.sweep`'s `Task.detached` blocks both call
+`CoreImageFaceExpressionAnalyzer().detectFaces(previewURL:)` — CIDetector
+created with `context: nil`, not documented safe for concurrent access from
+multiple threads — with no synchronization between them, and can be
+mid-analysis for the same frame at the same time. A standalone reproduction
+independent of all Teststrip code (a bare Swift binary calling `CIDetector`
+concurrently via `Task.detached`) confirmed this **deadlocks outright** (0%
+CPU, no progress, ever) at concurrency 4+ on this VM, while a single
+sequential call completes in well under a second — this explains why the
+live symptom over 55 polls/99 seconds showed zero recovery (a true hang, not
+slowness) and why the earlier 2026-08-01 run's "control test" (relaunching
+against an already-populated run directory, so no concurrent
+worker-completion-triggered sweep restarts piled up) worked on the first
+poll. Fix: `FaceDetectionGate`, a new actor in `FaceReportStore.swift`,
+serializes every `CoreImageFaceExpressionAnalyzer` call this feature makes —
+`FaceReportStore.analyzeCachedPreview` and `LoupeView.refreshCloseUps` both
+now route through `FaceDetectionGate.shared`, making "at most one call in
+flight" structural rather than incidental. (Production's
+import/evaluation pipeline was never at risk — it already serializes the
+same analyzer, but only incidentally, via `AppCatalog
+.managedWorkerKindRunningLimits[.recognition] == 1`, an unrelated policy
+this feature's direct app-process calls bypassed entirely.) See
+`.superpowers/sdd/2026-08-01-face-report-cards/blocker-fix-report.md`,
+"Round 2 (live instrumentation)" for the full evidence trail.
+
+- **Step 1 — PASS.** Fixture ordering confirmed identical to the 2026-08-01
+  run: `stack-1-face.jpg` (1767268800), `stack-2-face.jpg` (1767268801),
+  `stack-3-two-faces.jpg` (1767268802), `stack-4-noface.jpg` (1767268803),
+  then `commons-aldrin-portrait.jpg` (1767272400) ~1hr later.
+- **Step 2 — PASS.** Selected `stack-1-face.jpg` (Library grid → ⌘1 to
+  Cull). `ax find --contains "Face close-ups"` matched; `ax find --contains
+  "No faces"` and `ax find --contains "Not read yet"` both matched nothing
+  (exit 1) within seconds of selection — no stuck "not read yet" state.
+- **Step 3 — PASS.** Raw AX dump of the `Face` tile's `AXValueDescription`:
+  `"Clean, Eyes open, Smiling, Eyes 100%, Sharpness 63%, Facing 84%, Light
+  93%"` — grade first, eyes state and smile, then all four chip readings
+  (eyes, sharpness, facing, light) in fixed order, all `<NN>%`.
+- **Step 4 — PASS.** `Face close-ups`'s `AXValueDescription`: `"1 face,
+  Clean"` — count matches the frame's one detected face, never `"Faces not
+  read yet"` or `"No faces"` once the tile rendered.
+- **Step 5 — PASS.** Without ever selecting frames 2/3/4: raw dumps show
+  `Stack frame 2` → `"Not selected, Faces clean"`, `Stack frame 3` →
+  `"Not selected, Faces clean"` (the sweep reached both without a visit —
+  the feature's headline claim), `Stack frame 4` → `"Not selected"` with
+  **no** `Faces …` segment at all. Screenshot
+  (`cull028-redrive-step5.png`, not committed) visually confirms a green
+  dot on rail thumbnails 1-3 and none on thumbnail 4 — the falsification
+  leg holds, stable, not "sometimes."
+- **Step 6 — PASS.** Selected `stack-3-two-faces.jpg`: header rolled up to
+  `"2 faces, Clean"`. Both individual face tiles graded `Clean` in this
+  run (the composited background face did not independently grade
+  `Ruined` this time), so the prominence cap itself wasn't adversarially
+  exercised, but the stated assertion — 2 faces, never rolls up `Ruined`
+  — holds.
+- **Step 7 — PASS.** Frame 1: panel `"1 face, Clean"` vs. rail `"Selected,
+  Faces clean"` — same grade word. Frame 3: panel `"2 faces, Clean"` vs.
+  rail `"Selected, Faces clean"` — same grade word. Panel and rail agree
+  in both cases.
+- **Step 8 — PASS.** `evaluation_signals`/`face_observations`/
+  `person_assets` all read `0` before and after steps 2-7; zero `.xmp`
+  files found next to any stack original. Nothing was written.
+
+Redrove independently 3 times from a fresh `launch facestack` (no shared
+state) before this pass to confirm the fix isn't itself a lucky race: all 3
+resolved the close-ups panel within 1 second of selection, 0 hangs.
+
+Full foreground suite: `swift test` — 2366 executed, 5 skipped, 0 failures
+(2365 baseline + 1 new `FaceDetectionGate` concurrency test). No
+`AppCatalogTests` flake observed.
+
+Cleaned up `~/teststrip-vm/run/facestack-*` and the ad-hoc diagnostic
+binaries this round's investigation used (`/tmp/citest`, not committed —
+lived only in the scratchpad and the VM's `/tmp`). Left the VM running.
