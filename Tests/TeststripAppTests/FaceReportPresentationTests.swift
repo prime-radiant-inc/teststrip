@@ -156,6 +156,26 @@ final class FaceReportPresentationTests: XCTestCase {
         )
     }
 
+    // The negative leg of the smile rule: a non-smiling face is not a defect,
+    // so the value must say nothing at all about the smile rather than
+    // announcing "Not smiling" — and a scenario card asserting on the absence
+    // of "Smiling" has to be able to trust that absence.
+    func testANonSmilingFaceSaysNothingAboutSmilingAtAll() {
+        let value = FaceReportRollUpPresentation.tileAccessibilityValue(for: Self.report(hasSmile: false))
+
+        XCTAssertFalse(
+            value.lowercased().contains("smil"),
+            "non-smiling tile value must not mention a smile at all: \(value)"
+        )
+        // …and the rest of the value is unchanged by the omission.
+        XCTAssertEqual(
+            value,
+            FaceReportRollUpPresentation
+                .tileAccessibilityValue(for: Self.report(hasSmile: true))
+                .replacingOccurrences(of: "Smiling, ", with: "")
+        )
+    }
+
     // MARK: - Roll-up
 
     func testGradeWordsAreTheTrafficLightVocabulary() {

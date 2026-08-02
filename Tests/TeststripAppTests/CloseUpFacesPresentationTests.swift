@@ -78,6 +78,37 @@ final class CloseUpFacesPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.crops.map(\.faceIndex), [1])
     }
 
+    // The three-way interaction the two tests above only cover in pairs: a
+    // scrambled detection order, faces below the crop floor, AND more
+    // croppable faces than the cap. Get any leg wrong and a tile renders
+    // another face's report card, which is the one failure mode `faceIndex`
+    // exists to prevent. (Sub-floor faces are also the smallest by area, so
+    // they always sort last and can never consume cap budget — asserted here
+    // by the cap landing on exactly the four largest.)
+    func testTheCapKeepsTheFourLargestFacesIndicesEvenWithSubFloorFacesInTheMix() {
+        // side = max(width * 2000, height * 1000) * 1.6, floor 24px, so
+        // anything under size 0.0075 is sub-floor here.
+        let faces = [
+            Self.face(x: 0.02, size: 0.11),  // 0 — croppable, 5th largest
+            Self.face(x: 0.14, size: 0.004), // 1 — sub-floor
+            Self.face(x: 0.22, size: 0.30),  // 2 — largest
+            Self.face(x: 0.40, size: 0.18),  // 3 — 3rd largest
+            Self.face(x: 0.56, size: 0.006), // 4 — sub-floor
+            Self.face(x: 0.70, size: 0.25),  // 5 — 2nd largest
+            Self.face(x: 0.88, size: 0.15)   // 6 — 4th largest
+        ]
+
+        let presentation = CloseUpFacesPresentation(faces: faces, imagePixelSize: CGSize(width: 2000, height: 1000))
+
+        XCTAssertEqual(presentation.crops.count, CloseUpFacesPresentation.maximumCropCount)
+        // Descending area: 0.30 (2), 0.25 (5), 0.18 (3), 0.15 (6).
+        XCTAssertEqual(presentation.crops.map(\.faceIndex), [2, 5, 3, 6])
+        XCTAssertEqual(presentation.crops.map(\.id), [0, 1, 2, 3])
+        // The sub-floor faces are excluded outright, never merely reordered.
+        XCTAssertFalse(presentation.crops.map(\.faceIndex).contains(1))
+        XCTAssertFalse(presentation.crops.map(\.faceIndex).contains(4))
+    }
+
     private static func face(x: Double, y: Double = 0.1, size: Double) -> DetectedFaceExpression {
         DetectedFaceExpression(
             normalizedBounds: CGRect(x: x, y: y, width: size, height: size),

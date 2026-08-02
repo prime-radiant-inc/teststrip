@@ -272,6 +272,59 @@ final class FaceReportStoreTests: XCTestCase {
         XCTAssertNil(store.report(for: AssetID(rawValue: "c"), currentGeneration: 1, bestAvailableLevel: .medium))
     }
 
+    // A stack change or a generation bump cancels the running sweep and starts
+    // a new one WITHOUT waiting for the old one's in-flight analysis to
+    // finish, so the two overlap by construction. The stale result must lose:
+    // publishing it would replace a current report with an older-generation,
+    // worse-level one and make the frame's dot vanish until something else
+    // re-triggered the sweep.
+    @MainActor
+    func testACancelledSweepDoesNotClobberAFresherEntryWrittenWhileItWasInFlight() async {
+        let recorder = AnalysisRecorder()
+        await recorder.gate(on: "a.jpg")
+        let store = FaceReportStore(analyze: { await recorder.analyze($0) })
+
+        let stale = Task { @MainActor in
+            await store.sweep(frames: [Self.frame("a", generation: 1, level: .medium)], currentFrameID: nil)
+        }
+        await recorder.waitUntilGateReached()
+
+        // The preview upgraded: the old sweep is cancelled and the close-ups
+        // pass publishes the fresh read while the stale analysis is still out.
+        stale.cancel()
+        store.record(
+            [Self.cleanReport],
+            for: AssetID(rawValue: "a"),
+            previewCacheGeneration: 2,
+            analyzedLevel: .large
+        )
+
+        await recorder.openGate()
+        await stale.value
+
+        let current = store.report(for: AssetID(rawValue: "a"), currentGeneration: 2, bestAvailableLevel: .large)
+        XCTAssertEqual(current?.previewCacheGeneration, 2, "the stale sweep overwrote a newer report")
+        XCTAssertEqual(current?.analyzedLevel, .large, "the stale sweep downgraded the analyzed level")
+    }
+
+    // `sweep`/`record` take the level on trust — their doc comments say
+    // callers must never write below the floor. This is where that trust is
+    // actually earned: `AppModel.faceReportPreviewSource` walks exactly this
+    // list and takes the first hit, so a below-floor level can never reach
+    // either writer, and a better cached preview always beats a worse one.
+    func testTheAcceptedPreviewLevelListIsWhatKeepsBelowFloorLevelsOffTheWritePath() {
+        XCTAssertEqual(FaceReportPreviewFloor.acceptedLevelsHighestFirst, [.original, .large, .medium])
+        XCTAssertTrue(
+            FaceReportPreviewFloor.acceptedLevelsHighestFirst.allSatisfy { FaceReportPreviewFloor.accepts($0) }
+        )
+        for rejected in PreviewLevel.allCases where !FaceReportPreviewFloor.accepts(rejected) {
+            XCTAssertFalse(
+                FaceReportPreviewFloor.acceptedLevelsHighestFirst.contains(rejected),
+                "\(rejected) is below the floor but reachable from the lookup ladder"
+            )
+        }
+    }
+
     // MARK: - Roll-up and the close-ups hand-off
 
     @MainActor

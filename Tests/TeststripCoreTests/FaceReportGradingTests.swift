@@ -127,6 +127,68 @@ final class FaceReportGradingTests: XCTestCase {
         XCTAssertEqual(report.eyesScore, 1.0)
     }
 
+    // MARK: - Band boundaries (final review: the `<` / `>=` comparisons themselves)
+
+    // The signal bands are half-open — `worst < redSignalCeiling` is red and
+    // `worst < greenSignalFloor` is yellow — so a signal sitting EXACTLY on a
+    // constant belongs to the friendlier band. Pinned against the constants
+    // themselves (not a literal), so an accidental `<=` is caught even after a
+    // re-measurement moves the numbers.
+    func testASignalExactlyAtTheRedCeilingIsYellowNotRed() {
+        XCTAssertEqual(
+            FaceReportGrading.grade(
+                eyesOpen: true,
+                sharpness: FaceReportGrading.redSignalCeiling,
+                light: Self.clean,
+                facing: Self.clean,
+                prominence: Self.prominentArea
+            ),
+            .yellow
+        )
+    }
+
+    func testASignalExactlyAtTheGreenFloorIsGreenNotYellow() {
+        XCTAssertEqual(
+            FaceReportGrading.grade(
+                eyesOpen: true,
+                sharpness: FaceReportGrading.greenSignalFloor,
+                light: Self.clean,
+                facing: Self.clean,
+                prominence: Self.prominentArea
+            ),
+            .green
+        )
+    }
+
+    // The prominence gate is `>=`: a face sitting exactly on the floor is a
+    // subject, not a bystander, so it can still take a frame red.
+    func testAFaceExactlyAtTheProminenceFloorStillGradesRed() {
+        XCTAssertEqual(
+            FaceReportGrading.grade(
+                eyesOpen: true,
+                sharpness: Self.ruined,
+                light: Self.clean,
+                facing: Self.clean,
+                prominence: FaceReportGrading.prominenceFloor
+            ),
+            .red
+        )
+    }
+
+    // The other side of the same comparison, so the pair brackets the floor.
+    func testAFaceJustBelowTheProminenceFloorCapsAtYellow() {
+        XCTAssertEqual(
+            FaceReportGrading.grade(
+                eyesOpen: true,
+                sharpness: Self.ruined,
+                light: Self.clean,
+                facing: Self.clean,
+                prominence: FaceReportGrading.prominenceFloor.nextDown
+            ),
+            .yellow
+        )
+    }
+
     func testGradesOrderGreenBeforeYellowBeforeRed() {
         XCTAssertEqual([FaceReportGrade.yellow, .green, .red].max(), .red)
         XCTAssertEqual([FaceReportGrade.yellow, .green].max(), .yellow)
