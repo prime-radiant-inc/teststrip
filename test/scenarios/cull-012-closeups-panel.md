@@ -20,17 +20,20 @@ a mark for a read the photo doesn't have (see the "on-face marks" step
 below). The 112px crop size, the Cull-chrome-only gate, and the
 display-only/nothing-persisted behavior are unchanged.
 
-**Source (re-verified 2026-07-17)**: `cullFacesReadsPanel` at
-`Sources/TeststripApp/LibraryGridView.swift:4085-4104` (an `HStack` of
+**Source (re-verified 2026-08-01, SP-B per-face report cards citation
+sweep)**: `cullFacesReadsPanel` at
+`Sources/TeststripApp/LibraryGridView.swift:4116-4135` (an `HStack` of
 `readsCard` + `closeUpsRail`), gated into the loupe body only `if
-presentation.showsCullChrome && model.showsCullFacesPanel` at `:3890`;
-`closeUpsRail` at `:4106-4129`; per-crop rendering (`closeUpCropCell`,
-`closeUpMarks`) at `:4134-4167`; `refreshCloseUps(for:)` at `:4255-4293`;
-the marks themselves come from `CloseUpFacesPresentation.Crop` (`eyesState`,
-`isSmiling`, `sharpnessTone`) in `Sources/TeststripApp/CloseUpFacesPresentation.swift`.
-(Citations re-verified at this branch's final HEAD, 2026-07-30 — several
-had drifted well past the 2026-07-17 reconciliation from unrelated
-intervening changes; see Run status for the re-sweep note.)
+presentation.showsCullChrome && model.showsCullFacesPanel` at `:3903`;
+`closeUpsRail` at `:4137-4190`; per-tile rendering (`closeUpCropCell`,
+`closeUpChips`) at `:4200-4231`; `refreshCloseUps(for:)` at `:4321-4366`.
+Each tile's composed accessibility value now comes from
+`FaceReportRollUpPresentation.tileAccessibilityValue`
+(`Sources/TeststripApp/FaceReportPresentation.swift`), not from
+`CloseUpFacesPresentation` — that type dropped `eyesState`/`isSmiling`/
+`sharpnessTone` and now owns only crop geometry (`Crop.faceIndex`/
+`.pixelRect`) in `Sources/TeststripApp/CloseUpFacesPresentation.swift`. See
+the 2026-08-01 Run-status reconciliation for the full before/after.
 
 **Correction to the assumed source of truth**: `refreshCloseUps` does **not**
 read the catalog's `face_observations` table. It runs a fresh, synchronous,
@@ -43,14 +46,13 @@ detector (the worker's face-embedding pipeline) that may find a different
 face count, run at a different time, or use a different confidence threshold
 than the live Core Image analyzer. Treat "crops render for a photo with
 visible faces" as the assertion, not "crop count == face_observations count".
-The same applies to the on-face eyes/smile marks — they come from the same
-live per-crop `DetectedFaceExpression`, so they're always internally
-consistent with the crop they're attached to, but not necessarily with
-`face_observations`. The sharpness dot is different again: it's the
-asset-level `faceQuality`/`eyeSharpness` evaluation signal (no per-face
-location), so `CloseUpFacesPresentation` only attaches it when there's
-**exactly one** face crop for the asset — with 2+ faces, no crop shows a
-sharpness dot (ambiguous attribution, so no mark beats a misleading one).
+The same applies to the eyes/smile segments of each tile's accessibility
+value — they come from the same live per-crop `DetectedFaceExpression`, so
+they're always internally consistent with the crop they're attached to, but
+not necessarily with `face_observations`. Sharpness is now measured
+per-face over that face's own crop (`FaceReportAnalyzer`), not as a single
+asset-level signal — see the 2026-08-01 Run-status reconciliation for the
+retired exactly-one-face limit this paragraph used to describe.
 
 ## Pre-state
 ```bash
@@ -124,23 +126,22 @@ script/ax_drive.sh wait-vended Teststrip
    PF1=$(sqlite3 "$DB" "SELECT count(*) FROM person_faces;")
    DF1=$(sqlite3 "$DB" "SELECT count(*) FROM dismissed_faces;")
    ```
-5. **On-face marks.** With the same asset still selected, inspect each face
-   cell's accessibility value (`closeUpCropCell`'s
-   `.accessibilityLabel("Face")`/`.accessibilityValue(...)`):
+5. **Per-face report card.** With the same asset still selected, inspect each
+   face tile's accessibility value (`closeUpCropCell`'s
+   `.accessibilityLabel("Face")`/`.accessibilityValue(...)`, composed by
+   `FaceReportRollUpPresentation.tileAccessibilityValue`):
    ```bash
    script/ax_drive.sh find --role AXImage --label "Face"   # or whichever role SwiftUI exposes for .accessibilityElement(children: .combine) here — inspect the AX tree first
    ```
-   Cross-check against ground truth: for a face crop, "Eyes closed" in the
+   Cross-check against ground truth: for a face tile, "Eyes closed" in the
    value must correspond to a live `DetectedFaceExpression` with **both**
    `leftEyeClosed`/`rightEyeClosed` true (not independently queryable from
    the catalog — this is in-memory-only detection, so cross-check by eye
-   from the crop image itself, not sqlite). If the fixture asset has exactly
-   one face crop, also confirm whether "Sharp"/"Soft" appears — it should
-   only if `evaluation_signals` has a `faceQuality` or `eyeSharpness` row for
-   this asset (from step 1's Evaluate Matches pass); if the fixture has 2+
-   face crops, confirm **no** cell shows "Sharp"/"Soft" (ambiguous
-   attribution — the source deliberately omits the mark rather than
-   guessing which face an asset-level signal describes).
+   from the crop image itself, not sqlite). Every tile carries all four chip
+   readings (eyes, sharpness, facing, light) regardless of face count — the
+   old single-face-only sharpness limit this step used to assert is retired
+   (see the 2026-08-01 reconciliation below); do not re-assert "no crop shows
+   Sharp/Soft with 2+ faces".
 
 ## Expected
 - Step 2: the Close-Ups rail renders with at least one 112x112 crop while in
@@ -150,7 +151,7 @@ script/ax_drive.sh wait-vended Teststrip
   (zero crops).
 - Step 3: the rail is completely absent from the Library workspace's loupe
   for the identical asset. **Fails if** it renders in Library — that would
-  contradict the "Cull-chrome-only" claim in the gate at `:3832`.
+  contradict the "Cull-chrome-only" claim in the gate at `:3903`.
 - Step 4: `person_assets`/`person_faces`/`dismissed_faces` counts are
   identical before and after interacting with a crop (`PA1==PA0`,
   `PF1==PF0`, `DF1==DF0`). **Fails if** any count changed — that would be a
@@ -158,13 +159,12 @@ script/ax_drive.sh wait-vended Teststrip
   written without an explicit confirming gesture). This assertion holds
   regardless of whether the click was a no-op; a no-op click passing this
   step trivially is fine and expected given the source reading in this card.
-- Step 5: the eyes/smile marks match the crop's own detection, and the
-  sharpness dot appears on exactly one crop when the asset has exactly one
-  face crop and a scored faceQuality/eyeSharpness signal, or on **no** crop
-  when the asset has 2+ face crops. **Fails if** a mark contradicts the crop
-  it's attached to, or if a sharpness dot appears on more than one crop for
-  the same asset (that would mean one asset-level signal got attributed to
-  multiple faces, an honesty-invariant violation).
+- Step 5: the eyes/smile segments of each tile's composed accessibility value
+  match the tile's own crop detection. **Fails if** a segment contradicts the
+  crop it's attached to. The old "sharpness dot on exactly one crop, none
+  with 2+ faces" assertion is retired (see the 2026-08-01 reconciliation
+  below) — sharpness is now a per-face chip on every tile, asserted by
+  `cull-028-face-report-cards.md` instead.
 
 ## Cleanup
 ```bash
@@ -180,7 +180,7 @@ script/ax_drive.sh wait-vended Teststrip
   fixture asset, not as an exact-match assertion on the rendered crop count.
 - Step 4's "click a crop" gesture was read from source as very likely a
   no-op (`Image(decorative:)` with no button/tap modifier at
-  `LibraryGridView.swift:4136-4140`) — if `ax_drive.sh find --role AXImage`
+  `LibraryGridView.swift:4200-4223`, `closeUpCropCell`) — if `ax_drive.sh find --role AXImage`
   can't even locate a pressable target, that's expected; don't fabricate an
   interaction that doesn't exist in the source. The negative-write assertion
   still stands and is still worth capturing.
@@ -439,3 +439,33 @@ lines at this branch's final HEAD (see the updated Source section above;
 the `faceQualityStrongThreshold` citation in the LIVE RUN 2026-07-29 entry
 was similarly fixed to `:6151`, previously `:6137`, in the prior commit).
 Historical Run-status entries were otherwise left untouched.
+
+---
+
+**Reconciled 2026-08-01 (SP-B per-face report cards, docs-only, not a live
+run)**: the compact on-face marks this card described — an `eye`/`eye.slash`
+glyph, a conditional `face.smiling` glyph, and a green/orange sharpness dot
+attached only when the asset had exactly one face crop — are **retired**. Each
+tile now carries a corner traffic-light dot plus an always-on row of four
+icon-in-donut chips (eyes, sharpness, facing, light), all four rendered every
+time; because the tile still combines its children for accessibility, the
+per-chip readings are repeated inside the tile's own composed value
+(`"<Grade>, Eyes <open|closed>[, Smiling], Eyes NN%, Sharpness NN%, Facing
+NN%, Light NN%"`), which is the only string a live driver can read. Smile is
+a segment of that value, never a chip. The single-face-only sharpness
+attribution limit is gone with it: sharpness is now measured per face over
+that face's own crop (`FaceReportAnalyzer`), so a 2+-face frame shows a
+sharpness chip on **every** tile — the old "no crop shows Sharp/Soft with 2+
+faces" assertion in Step 5 and Expected step 5 is superseded and must not be
+re-asserted. `CloseUpFacesPresentation` no longer has `eyesState`,
+`isSmiling`, `sharpnessTone`, or a `wholePhotoSignals:` parameter; it owns
+crop geometry plus a `faceIndex` pairing only. Two further behavior changes
+this card's future runs will see: the panel's body text is now driven by the
+report store rather than by the crop list (so a frame whose faces are all too
+small to crop reads "Faces too small to crop", not "No faces"), and report
+cards are only measured off a preview at or above `FaceReportPreviewFloor`, so
+a freshly-selected frame can briefly read "Not read yet". Everything else this
+card covers is unchanged: the 112px crop size, the Cull-chrome-only gate, the
+`"No faces"` empty state for a genuinely faceless frame, and the
+display-only/nothing-persisted behavior. The replacement assertions live in
+`cull-028-face-report-cards.md`.
