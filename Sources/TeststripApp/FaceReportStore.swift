@@ -142,6 +142,8 @@ final class FaceReportStore {
         previewCacheGeneration: Int,
         analyzedLevel: PreviewLevel
     ) {
+        // INSTRUMENTATION (cull-028 blocker, Round 2).
+        print("INSTRUMENTATION FaceReportStore.record assetID=\(assetID.rawValue) gen=\(previewCacheGeneration) level=\(analyzedLevel.rawValue) reportsCount=\(reports.count)")
         reportsByAssetID[assetID] = FrameFaceReport(
             reports: reports,
             previewCacheGeneration: previewCacheGeneration,
@@ -160,18 +162,29 @@ final class FaceReportStore {
     /// could then never finish computing.
     @MainActor
     func sweep(frames: [FaceReportSweepFrame], currentFrameID: AssetID?) async {
+        // INSTRUMENTATION (cull-028 blocker, Round 2).
+        print("INSTRUMENTATION FaceReportStore.sweep entered frames=\(frames.map { "\($0.assetID.rawValue):gen=\($0.previewCacheGeneration):level=\($0.source?.level.rawValue ?? "nil")" }) currentFrameID=\(currentFrameID?.rawValue ?? "nil")")
         for frame in Self.sweepOrder(frames: frames, currentFrameID: currentFrameID) {
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                print("INSTRUMENTATION FaceReportStore.sweep cancelled before frame=\(frame.assetID.rawValue)")
+                return
+            }
             guard let source = frame.source else { continue }
             // Already computed at this generation and at least this level:
             // a re-trigger must not redo work it already has.
             if let cached = reportsByAssetID[frame.assetID],
                cached.previewCacheGeneration == frame.previewCacheGeneration,
                cached.analyzedLevel.faceReportRank >= source.level.faceReportRank {
+                print("INSTRUMENTATION FaceReportStore.sweep skip-cached assetID=\(frame.assetID.rawValue) gen=\(frame.previewCacheGeneration)")
                 continue
             }
+            print("INSTRUMENTATION FaceReportStore.sweep analyzing assetID=\(frame.assetID.rawValue) gen=\(frame.previewCacheGeneration) level=\(source.level.rawValue)")
             let reports = await analyze(source.previewURL)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                print("INSTRUMENTATION FaceReportStore.sweep cancelled after analyze assetID=\(frame.assetID.rawValue)")
+                return
+            }
+            print("INSTRUMENTATION FaceReportStore.sweep writing assetID=\(frame.assetID.rawValue) gen=\(frame.previewCacheGeneration) reportsCount=\(reports.count)")
             reportsByAssetID[frame.assetID] = FrameFaceReport(
                 reports: reports,
                 previewCacheGeneration: frame.previewCacheGeneration,

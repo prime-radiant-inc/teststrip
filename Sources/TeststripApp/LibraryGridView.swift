@@ -3808,6 +3808,19 @@ private struct CloseUpsRefreshKey: Equatable {
     var previewCacheGeneration: Int
 }
 
+// INSTRUMENTATION (cull-028 blocker, Round 2 — temporary, will be reverted):
+// logs a `.task(id:)` key's computed value on every body evaluation,
+// independent of whether the paired `.task(id:)` modifier's closure actually
+// re-fires (each closure below has its own "FIRE" print). Purely
+// synchronous — no Task, no Sendable closure, no actor-isolation
+// implications — so it can't itself perturb the behavior being observed.
+extension View {
+    func taskDebugLog<ID>(_ id: ID, label: String) -> some View {
+        print("INSTRUMENTATION KEY \(label) computed=\(String(describing: id))")
+        return self
+    }
+}
+
 private struct LoupeView: View {
     var model: AppModel
     var beginExport: () -> Void
@@ -3904,7 +3917,15 @@ private struct LoupeView: View {
                                 cullFacesReadsPanel
                             }
                         }
+                        // INSTRUMENTATION (cull-028 blocker, Round 2): print the
+                        // key's computed value on every render (independent of
+                        // whether the task closure below re-fires), so a
+                        // repeated value vs. a changed value is visible in the
+                        // log regardless of what SwiftUI decides to do with it.
+                        .taskDebugLog(LoupeContentKey(assetID: asset.id.rawValue, showsCullChrome: presentation.showsCullChrome), label: "LoupeContentKey")
                         .task(id: LoupeContentKey(assetID: asset.id.rawValue, showsCullChrome: presentation.showsCullChrome)) {
+                            // INSTRUMENTATION (cull-028 blocker, Round 2).
+                            print("INSTRUMENTATION FIRE LoupeContentKey assetID=\(asset.id.rawValue) showsCullChrome=\(presentation.showsCullChrome)")
                             do {
                                 if presentation.showsCullChrome {
                                     try model.requestVisibleCullPreview(assetID: asset.id)
@@ -3919,11 +3940,23 @@ private struct LoupeView: View {
                         // only measured off a floor-quality preview, so the
                         // pass has to re-run once one lands. This task never
                         // requests a preview, so it cannot re-dispatch work.
+                        // INSTRUMENTATION (cull-028 blocker, Round 2): same
+                        // computed-vs-fired split as LoupeContentKey above.
+                        .taskDebugLog(
+                            CloseUpsRefreshKey(
+                                assetID: asset.id.rawValue,
+                                showsCullChrome: presentation.showsCullChrome,
+                                previewCacheGeneration: model.previewCacheGeneration(for: asset.id)
+                            ),
+                            label: "CloseUpsRefreshKey"
+                        )
                         .task(id: CloseUpsRefreshKey(
                             assetID: asset.id.rawValue,
                             showsCullChrome: presentation.showsCullChrome,
                             previewCacheGeneration: model.previewCacheGeneration(for: asset.id)
                         )) {
+                            // INSTRUMENTATION (cull-028 blocker, Round 2).
+                            print("INSTRUMENTATION FIRE CloseUpsRefreshKey assetID=\(asset.id.rawValue) gen=\(model.previewCacheGeneration(for: asset.id))")
                             if presentation.showsCullChrome {
                                 await refreshCloseUps(for: asset.id)
                             }
@@ -4325,9 +4358,13 @@ private struct LoupeView: View {
             // panel in its honest "not read yet" state; the preview request
             // this view already made will bump the generation and re-fire
             // this pass.
+            // INSTRUMENTATION (cull-028 blocker, Round 2).
+            print("INSTRUMENTATION refreshCloseUps assetID=\(assetID.rawValue) source=NIL")
             model.setLoupeFaceFocuses([])
             return
         }
+        // INSTRUMENTATION (cull-028 blocker, Round 2).
+        print("INSTRUMENTATION refreshCloseUps assetID=\(assetID.rawValue) source=\(source.level.rawValue) url=\(source.previewURL.lastPathComponent)")
         let previewURL = source.previewURL
         let previewCacheGeneration = model.previewCacheGeneration(for: assetID)
         let result = await Task.detached(priority: .utility) { () -> (crops: [LoupeCloseUpCrop], reports: [FaceReport], faceFocuses: [LoupeZoomFocus]) in
@@ -4891,7 +4928,12 @@ private struct LoupeView: View {
             .frame(maxHeight: .infinity)
             .background(Color.black.opacity(0.23))
             .liveMockupPlaceholder(.cullingStackCull)
+            // INSTRUMENTATION (cull-028 blocker, Round 2): computed-vs-fired
+            // split, same pattern as LoupeContentKey/CloseUpsRefreshKey above.
+            .taskDebugLog(presentation.items.map(\.assetID.rawValue).joined(separator: "\n"), label: "StackPreviewRequestKey")
             .task(id: presentation.items.map(\.assetID.rawValue).joined(separator: "\n")) {
+                // INSTRUMENTATION (cull-028 blocker, Round 2).
+                print("INSTRUMENTATION FIRE StackPreviewRequestKey items=\(presentation.items.map(\.assetID.rawValue))")
                 requestVisiblePreviews(for: presentation.items.map(\.assetID))
             }
             // A separate task from the preview request above: this one also
@@ -4900,7 +4942,15 @@ private struct LoupeView: View {
             // moment one lands, and a level upgrade re-measures. `.task(id:)`
             // cancels the running sweep when the key changes, which is the
             // whole cancellation story — no queue, no worker items.
+            // INSTRUMENTATION (cull-028 blocker, Round 2): computed-vs-fired
+            // split for the symptomatic second task on this view.
+            // `faceReportSweepKey(for:)` itself already logs the computed
+            // value (see its definition below) every time it's called, which
+            // happens here once per render via the `id:` argument — no extra
+            // `taskDebugLog` needed.
             .task(id: faceReportSweepKey(for: presentation)) {
+                // INSTRUMENTATION (cull-028 blocker, Round 2).
+                print("INSTRUMENTATION FIRE FaceReportSweepKey key=\(faceReportSweepKey(for: presentation))")
                 await faceReportStore.sweep(
                     frames: faceReportSweepFrames(for: presentation),
                     currentFrameID: model.selectedAssetID
@@ -4922,13 +4972,20 @@ private struct LoupeView: View {
     }
 
     private func faceReportSweepKey(for presentation: CullingStackRailPresentation) -> FaceReportSweepKey {
-        FaceReportSweepKey(
+        let key = FaceReportSweepKey(
             frameIDs: presentation.items.map(\.assetID.rawValue),
             previewGenerations: presentation.items.map { model.previewCacheGeneration(for: $0.assetID) },
             previewLevels: presentation.items.map {
                 model.faceReportPreviewSource(for: $0.assetID)?.level.rawValue ?? ""
             }
         )
+        // INSTRUMENTATION (cull-028 blocker, Round 2): the key computation
+        // itself, independent of taskInstrumented's generic wrapper — proves
+        // whether the inputs (`previewCacheGeneration`/`faceReportPreviewSource`)
+        // actually change in the live tree, separate from whether the task
+        // re-fires on the changed value.
+        print("INSTRUMENTATION KEYINPUTS FaceReportSweepKey frameIDs=\(key.frameIDs) previewGenerations=\(key.previewGenerations) previewLevels=\(key.previewLevels)")
+        return key
     }
 
     private func faceReportSweepFrames(for presentation: CullingStackRailPresentation) -> [FaceReportSweepFrame] {
