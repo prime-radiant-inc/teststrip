@@ -188,3 +188,99 @@ script/vm_scenario_run.sh shell 'rm -rf ~/teststrip-vm/run/facestack-*'
   prevent.
 - The chip row is 4 × 17pt inside a 112pt tile. If it wraps or truncates in
   the screenshot, that is a real layout bug, not a card problem.
+
+## Run status
+
+**2026-08-01 LIVE RUN, app `feat/face-report-cards` @ `87b76824`, VM
+`teststrip-e2e`, seed `facestack`. Verdict: BLOCKED — a real, cleanly
+reproduced app bug in the preview-generation-completion plumbing prevents
+`FaceReportStore` from ever being fed, so Steps 2-7 could not be
+meaningfully exercised. Step 1 and Step 8 pass on their own merits.**
+
+- **Step 1 — PASS.** `sql facestack "SELECT original_path,
+  json_extract(technical_metadata_json,'\$.capturedAt') FROM assets ORDER BY
+  2 LIMIT 5;"` returned `stack-1-face.jpg` (1767268800), `stack-2-face.jpg`
+  (1767268801), `stack-3-two-faces.jpg` (1767268802), `stack-4-noface.jpg`
+  (1767268803), then `commons-aldrin-portrait.jpg` (1767272400) — exactly
+  1s apart for the four stack frames, then ~3597s (~1hr) to the next asset.
+
+- **Steps 2, 4, 5, 6, 7 — BLOCKED (app bug).** After selecting
+  `stack-1-face.jpg` (via Library grid `ax press --role AXButton --label
+  "stack-1-face.jpg"` then ⌘1 to Cull — the same selection technique
+  `cull-012-closeups-panel.md`'s live runs use), the close-ups panel showed
+  `"Not read yet"` and **never cleared**, even though:
+  - `.medium`/`.large` previews for `stack-1-face.jpg`
+    (`0F738826-31B5-403F-97F0-F140F76FDF12`) existed on disk within **9
+    seconds** of selection (confirmed via `ls` timestamps against a `date
+    +%s` baseline taken at selection time).
+  - A lock-step poll (AX state + `ls` of the preview directory, every ~1-2s)
+    over the following **99 seconds** (55 polls total) showed the files
+    present from poll 1 onward, while `ax find --contains "Not read yet"`
+    matched on every single poll with zero recovery.
+  - Reselecting away (Stack frame 2) and back (Stack frame 1) — which forces
+    a brand-new `.task(id: CloseUpsRefreshKey(...))` instance regardless of
+    generation — did not clear it either.
+  - A raw `AXUIElementCopyAttributeNames` dump of the `Face close-ups`
+    `AXGroup` confirmed the app's own accessibility layer reports
+    `AXValueDescription = "Faces not read yet"` at the end of that window —
+    not a card-driving artifact.
+  - The **rail dots are equally affected, including on frames that never
+    needed a live-generated preview**: `stack-2-face.jpg`
+    (`BBD642DD-420C-40C6-8916-1894C2E6C0F6`) already had a qualifying
+    `large.jpg` cached (from `prefetchLoupeNeighborLargePreviews`'s warm of
+    the selected frame's neighbor), yet a raw AX dump of its "Stack frame 2"
+    button showed `AXValue = "Not selected"` — no `Faces …` segment at all.
+    Neither `ax find --contains "Faces clean"` /`"Faces check"`/`"Faces
+    ruined"` matched anywhere in the whole AX tree for the entire session.
+  - **Control test, isolating the mechanism**: killing the app and
+    relaunching it (`open -n`) against the **same, already-populated** run
+    directory (previews already on disk from the very first frame, no
+    mid-session generation needed) rendered the report correctly on the
+    **very first poll** (`"Not read yet"` cleared immediately). This
+    isolates the defect to *previews that complete while the asset is
+    already selected/rendered*, not to the analyzer, the store, or the
+    presentation layer — those all work correctly the instant they're given
+    a chance to run.
+  - **Most likely locus** (from reading, not instrumented/proven): both
+    consumers — `closeUpsRail`'s `.task(id: CloseUpsRefreshKey(...))`
+    (`LibraryGridView.swift:3922-3926`) and `cullingStackRail`'s `.task(id:
+    faceReportSweepKey(for:))` (`:4903`, key built at `:4924-4932`) — are
+    re-keyed on `model.previewCacheGeneration(for:)`
+    (`AppModel.swift:9386-9388`, reading `previewCacheGenerationsByAssetID`)
+    and `model.faceReportPreviewSource(for:)` (`:14146-14159`, itself
+    memoized in `faceReportPreviewSourceCacheByAssetID`). Both of those
+    reads are only refreshed by `flushBackgroundWorkPublication`
+    (`:10309-10321`, which calls `clearPreviewLookupCaches()` at `:10323-10327`
+    and copies `currentPreviewCacheGenerationsByAssetID` into the published
+    map), which itself only runs off worker-completion-driven
+    `publishBackgroundWorkState()` calls. Since a from-disk cold read (the
+    control test) works immediately, the analyzer/store/presentation code
+    Tasks 0-7 own is not implicated — the gap is in this shared
+    completion-tracking plumbing that predates this feature (`AppModel.swift`
+    is pre-existing infrastructure), and this card is simply the first
+    consumer whose correctness depends entirely on that one generation
+    number changing with no other fallback re-render trigger.
+  - Because neither the panel nor any rail dot ever populated for any
+    frame, Steps 4 ("N faces, `<word>`" header), 5 (frame 2/3 dots vs. frame
+    4 absence), 6 (composite prominence cap), and 7 (panel/rail agreement)
+    could not be meaningfully exercised — there was nothing to read. Frame
+    4's dot absence in this state is real but vacuous (every frame lacked a
+    dot, not just frame 4), so it does **not** count as a passing
+    falsification leg.
+
+- **Step 3 — not reached** (no tile ever rendered to dump).
+
+- **Step 8 — PASS**, independent of the block above:
+  `evaluation_signals`/`face_observations`/`person_assets` all read `0`,
+  and `ls .../FaceStackOriginals/*.xmp` matched nothing. Nothing was
+  written regardless of the stuck report state.
+
+**No production code was changed** (per instructions: app bug → BLOCKED
+with evidence, no fix attempted here). Sharp edge encountered mid-run, noted
+for future drivers: this VM has live internet access and its Sparkle
+auto-updater found a real published release (0.2.0 > the running 0.1.0),
+popping a modal "A new version of Teststrip is available!" dialog
+unprompted at least once during this session — dismiss with `ax press
+--role AXButton --label "Remind Me Later"` before driving further, and
+treat its possible reappearance as a standing hazard for any future VM
+scenario run, not specific to this card.
