@@ -50,6 +50,10 @@ set -euo pipefail
 #   geo       TeststripBench seed-geo-fixtures imported via seed-sample-catalog:
 #             half the assets carry Eiffel Tower GPS EXIF, for places cards
 #   faces     sample-data/photos/faces via faces.tsv (script/build_and_run.sh --faces)
+#   facestack sample-data/photos/faces re-stamped with EXIF capture times so
+#             four frames form one burst stack: two real portraits, one
+#             composite (subject + small background face), and one
+#             deliberately faceless frame; for the per-face report-card card
 #   empty     isolated but unseeded catalog (script/build_and_run.sh --isolated)
 #
 # A scenario card is still driven by hand (or by an agent) issuing a sequence
@@ -157,8 +161,8 @@ SQL
 
 seed_dir_for() {
   case "$1" in
-    smoke|smokebig|burst|geo|faces|empty) echo "$SEED_ROOT/$1" ;;
-    *) echo "unknown seed variant: $1 (want smoke|smokebig|burst|geo|faces|empty)" >&2; exit 2 ;;
+    smoke|smokebig|burst|geo|faces|facestack|empty) echo "$SEED_ROOT/$1" ;;
+    *) echo "unknown seed variant: $1 (want smoke|smokebig|burst|geo|faces|facestack|empty)" >&2; exit 2 ;;
   esac
 }
 
@@ -192,6 +196,16 @@ seed_locally() {
       local photos="$ROOT_DIR/sample-data/photos/faces"
       [[ -d "$photos" ]] || "$ROOT_DIR/script/download_sample_photos.sh" --manifest "$ROOT_DIR/sample-data/faces.tsv" --destination "$photos"
       ( cd "$ROOT_DIR" && swift run TeststripBench seed-sample-catalog "$dir" "$photos" )
+      ;;
+    facestack)
+      local photos="$ROOT_DIR/sample-data/photos/faces"
+      [[ -d "$photos" ]] || "$ROOT_DIR/script/download_sample_photos.sh" --manifest "$ROOT_DIR/sample-data/faces.tsv" --destination "$photos"
+      # Originals land inside the seed dir, so the host->VM rsync ships them
+      # and `launch`'s original_path prefix rewrite relocates them for free
+      # (the same reason the `geo` arm writes into "$dir/GeoOriginals").
+      ( cd "$ROOT_DIR" \
+        && swift run TeststripBench seed-face-stack-fixtures "$dir/FaceStackOriginals" "$photos" \
+        && swift run TeststripBench seed-sample-catalog "$dir" "$dir/FaceStackOriginals" )
       ;;
     empty)
       mkdir -p "$dir/Teststrip"
@@ -266,7 +280,7 @@ cmd_sync() {
 }
 
 cmd_launch() {
-  local variant="${1:?usage: $0 launch VARIANT (smoke|smokebig|burst|geo|faces|empty)}"
+  local variant="${1:?usage: $0 launch VARIANT (smoke|smokebig|burst|geo|faces|facestack|empty)}"
   seed_dir_for "$variant" >/dev/null # validate
   local remote_seed="$REMOTE_ROOT/isolated/$variant"
   local fresh="$REMOTE_ROOT/run/$variant-$(date +%s)"

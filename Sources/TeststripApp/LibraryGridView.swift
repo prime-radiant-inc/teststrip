@@ -3779,14 +3779,12 @@ private struct RejectRelocationBannerView: View {
     }
 }
 
-/// A single close-up rail entry: the cropped face image plus the compact
-/// on-face read marks `CloseUpFacesPresentation` computed alongside it.
+/// A single close-up rail entry: the cropped face image plus the per-face
+/// report card `FaceReportAnalyzer` produced from the same detections.
 private struct LoupeCloseUpCrop {
     var id: Int
     var image: CGImage
-    var eyesState: CloseUpFacesPresentation.EyesState
-    var isSmiling: Bool
-    var sharpnessTone: CloseUpFacesPresentation.SharpnessTone?
+    var report: FaceReport
 }
 
 // Identifies what the cull loupe's content task should be running for: the
@@ -3800,6 +3798,16 @@ private struct LoupeContentKey: Equatable {
     var showsCullChrome: Bool
 }
 
+// Like `LoupeContentKey`, but also re-fires when the asset's cached preview
+// improves: the close-ups pass only measures report cards off a preview at or
+// above `FaceReportPreviewFloor`, so a frame that had only a thumbnail when
+// the loupe opened has to be re-read once a real preview is cached.
+private struct CloseUpsRefreshKey: Equatable {
+    var assetID: String
+    var showsCullChrome: Bool
+    var previewCacheGeneration: Int
+}
+
 private struct LoupeView: View {
     var model: AppModel
     var beginExport: () -> Void
@@ -3809,6 +3817,11 @@ private struct LoupeView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isDecisionToastVisible = false
     @State private var closeUpCrops: [LoupeCloseUpCrop] = []
+    // The one home for per-face report cards this session. The close-ups
+    // pass records the selected frame's reports here and the stack rail
+    // sweeps the rest, so the panel's dot and the rail's dot for the same
+    // frame always come from one computation.
+    @State private var faceReportStore = FaceReportStore()
     // The completion state is dismissible so the handoff doesn't block a user
     // who just wants to look around: an explicit "Continue culling" button
     // dismisses it, and switching scope or moving to another asset (e.g. via
@@ -3901,6 +3914,16 @@ private struct LoupeView: View {
                             } catch {
                                 model.errorMessage = error.localizedDescription
                             }
+                        }
+                        // Re-keyed on the preview generation: report cards are
+                        // only measured off a floor-quality preview, so the
+                        // pass has to re-run once one lands. This task never
+                        // requests a preview, so it cannot re-dispatch work.
+                        .task(id: CloseUpsRefreshKey(
+                            assetID: asset.id.rawValue,
+                            showsCullChrome: presentation.showsCullChrome,
+                            previewCacheGeneration: model.previewCacheGeneration(for: asset.id)
+                        )) {
                             if presentation.showsCullChrome {
                                 await refreshCloseUps(for: asset.id)
                             }
@@ -4079,6 +4102,10 @@ private struct LoupeView: View {
     private static let cullFacesReadsPanelWidth: CGFloat = 340
     private static let closeUpsRailWidth: CGFloat = 132
     private static let closeUpCropSize: CGFloat = 112
+    // One dot size for the face tile's corner dot, the close-ups header, and
+    // the burst rail's roll-up dot — they mean the same thing, so they look
+    // the same.
+    private static let faceGradeDotSize: CGFloat = 9
 
     // Faces + reads right panel: the frame's reads card on the left, face
     // close-ups as a vertical rail on the right. One home per fact — the
@@ -4108,19 +4135,49 @@ private struct LoupeView: View {
     }
 
     private var closeUpsRail: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CLOSE-UPS")
-                .font(.caption2.monospaced().weight(.semibold))
-                .foregroundStyle(.secondary)
-            if closeUpCrops.isEmpty {
+        let frameReport = model.selectedAssetID.flatMap { currentFaceReport(for: $0) }
+        let state = FaceReportRollUpPresentation.railState(for: frameReport)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                if let grade = FaceReportRollUpPresentation.dotGrade(for: frameReport) {
+                    Circle()
+                        .fill(FaceReportRollUpPresentation.color(for: grade))
+                        .frame(width: Self.faceGradeDotSize, height: Self.faceGradeDotSize)
+                }
+                Text("CLOSE-UPS")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if case .faces(let count, _) = state {
+                    Text("\(count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            // Body text and header dot are driven by the same state, so the
+            // panel can never print "No faces" beside a live grade dot.
+            switch state {
+            case .notRead:
+                Text("Not read yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .noFaces:
                 Text("No faces")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                ScrollView {
-                    VStack(spacing: 10) {
-                        ForEach(closeUpCrops, id: \.id) { crop in
-                            closeUpCropCell(crop)
+            case .faces:
+                if closeUpCrops.isEmpty {
+                    // Faces were found but every one of them is smaller than
+                    // the minimum crop — say so rather than claiming there
+                    // are none.
+                    Text("Faces too small to crop")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            ForEach(closeUpCrops, id: \.id) { crop in
+                                closeUpCropCell(crop)
+                            }
                         }
                     }
                 }
@@ -4129,12 +4186,17 @@ private struct LoupeView: View {
         .frame(width: Self.closeUpsRailWidth)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Face close-ups")
-        .accessibilityValue(closeUpCrops.isEmpty ? "No faces" : "\(closeUpCrops.count) faces")
+        .accessibilityValue(FaceReportRollUpPresentation.headerValue(for: frameReport))
     }
 
-    // One face crop plus its compact on-face read marks (eyes, smile,
-    // sharpness) — small glyphs immediately below the crop, never bars or
-    // long text, and never a mark for a read the photo doesn't have.
+    // One face crop plus its report card: a corner traffic dot on the crop,
+    // and one always-on row of four icon-in-donut chips below it (eyes,
+    // sharpness, facing, light) in that fixed order. Always all four — a
+    // missing chip must never read as a clean signal. Smile is not a defect,
+    // so it lives in the tile's accessibility value, not the chip row. That
+    // value also repeats every chip's percentage, because
+    // `.accessibilityElement(children: .combine)` collapses the chips' own
+    // labels and a live driver can read nothing else.
     private func closeUpCropCell(_ crop: LoupeCloseUpCrop) -> some View {
         VStack(spacing: 4) {
             Image(decorative: crop.image, scale: 1)
@@ -4146,39 +4208,26 @@ private struct LoupeView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .strokeBorder(Color.white.opacity(0.14))
                 }
-            closeUpMarks(crop)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(FaceReportRollUpPresentation.color(for: crop.report.grade))
+                        .frame(width: Self.faceGradeDotSize, height: Self.faceGradeDotSize)
+                        .overlay { Circle().strokeBorder(.black.opacity(0.5), lineWidth: 1) }
+                        .padding(5)
+                }
+            closeUpChips(crop)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Face")
-        .accessibilityValue(closeUpMarksAccessibilityValue(crop))
+        .accessibilityValue(FaceReportRollUpPresentation.tileAccessibilityValue(for: crop.report))
     }
 
-    private func closeUpMarks(_ crop: LoupeCloseUpCrop) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: crop.eyesState == .closed ? "eye.slash" : "eye")
-                .foregroundStyle(crop.eyesState == .closed ? .orange : .secondary)
-            if crop.isSmiling {
-                Image(systemName: "face.smiling")
-                    .foregroundStyle(.secondary)
-            }
-            if let sharpnessTone = crop.sharpnessTone {
-                Circle()
-                    .fill(sharpnessTone == .sharp ? Color.green : Color.orange)
-                    .frame(width: 6, height: 6)
+    private func closeUpChips(_ crop: LoupeCloseUpCrop) -> some View {
+        HStack(spacing: 4) {
+            ForEach(FaceReportChipPresentation(report: crop.report).entries) { entry in
+                FaceSignalChipView(entry: entry)
             }
         }
-        .font(.system(size: 10))
-    }
-
-    private func closeUpMarksAccessibilityValue(_ crop: LoupeCloseUpCrop) -> String {
-        var segments = [crop.eyesState == .closed ? "Eyes closed" : "Eyes open"]
-        if crop.isSmiling {
-            segments.append("Smiling")
-        }
-        if let sharpnessTone = crop.sharpnessTone {
-            segments.append(sharpnessTone == .sharp ? "Sharp" : "Soft")
-        }
-        return segments.joined(separator: ", ")
     }
 
     // The frame's whole-frame read as a fast triage cue: the verdict word
@@ -4251,48 +4300,68 @@ private struct LoupeView: View {
         }
     }
 
+    // Every face-report read in this view goes through here, so no surface
+    // can accidentally render a grade measured off a preview that has since
+    // been replaced.
+    private func currentFaceReport(for assetID: AssetID) -> FrameFaceReport? {
+        faceReportStore.report(
+            for: assetID,
+            currentGeneration: model.previewCacheGeneration(for: assetID),
+            bestAvailableLevel: model.faceReportPreviewSource(for: assetID)?.level
+        )
+    }
+
     // Detection is display-only and per-selection: the cached preview is read
-    // off the main actor, cropped in memory, and nothing is persisted. The
-    // same detections feed both the Close-Ups panel crops and the Z
-    // zoom-to-face targets (normalized face-box centers), so they always
-    // agree on what counts as "a face" for this frame.
+    // off the main actor, analyzed and cropped in memory, and nothing is
+    // persisted. The same detections feed the Close-Ups crops, their report
+    // cards, the frame's entry in the shared report store (so its rail dot
+    // agrees), and the Z zoom-to-face targets. Crops and report cards come
+    // from the SAME floor-quality preview, so a tile's chips always describe
+    // the face pictured above them.
     private func refreshCloseUps(for assetID: AssetID) async {
         closeUpCrops = []
-        guard let previewURL = model.loupePreviewURL(for: assetID) else {
+        guard let source = model.faceReportPreviewSource(for: assetID) else {
+            // Nothing at or above the analysis floor is cached yet. Leave the
+            // panel in its honest "not read yet" state; the preview request
+            // this view already made will bump the generation and re-fire
+            // this pass.
             model.setLoupeFaceFocuses([])
             return
         }
-        let wholePhotoSignals = model.selectedEvaluationSignals
-        let result = await Task.detached(priority: .utility) { () -> (crops: [LoupeCloseUpCrop], faceFocuses: [LoupeZoomFocus]) in
-            guard let faces = try? CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL),
+        let previewURL = source.previewURL
+        let previewCacheGeneration = model.previewCacheGeneration(for: assetID)
+        let result = await Task.detached(priority: .utility) { () -> (crops: [LoupeCloseUpCrop], reports: [FaceReport], faceFocuses: [LoupeZoomFocus]) in
+            guard let faces = try? await FaceDetectionGate.shared.detectFaces(previewURL: previewURL),
                   !faces.isEmpty,
-                  let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
-                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-                return ([], [])
+                  let imageSource = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
+                  let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
+                return ([], [], [])
             }
+            let reports = FaceReportAnalyzer().reports(in: image, detections: faces)
             let presentation = CloseUpFacesPresentation(
                 faces: faces,
-                imagePixelSize: CGSize(width: image.width, height: image.height),
-                wholePhotoSignals: wholePhotoSignals
+                imagePixelSize: CGSize(width: image.width, height: image.height)
             )
             let crops = presentation.crops.compactMap { crop -> LoupeCloseUpCrop? in
-                image.cropping(to: crop.pixelRect).map { croppedImage in
-                    LoupeCloseUpCrop(
-                        id: crop.id,
-                        image: croppedImage,
-                        eyesState: crop.eyesState,
-                        isSmiling: crop.isSmiling,
-                        sharpnessTone: crop.sharpnessTone
-                    )
+                guard reports.indices.contains(crop.faceIndex),
+                      let croppedImage = image.cropping(to: crop.pixelRect) else {
+                    return nil
                 }
+                return LoupeCloseUpCrop(id: crop.id, image: croppedImage, report: reports[crop.faceIndex])
             }
             let faceFocuses = faces.map { face in
                 LoupeZoomFocus(x: face.normalizedBounds.midX, y: face.normalizedBounds.midY)
             }
-            return (crops, faceFocuses)
+            return (crops, reports, faceFocuses)
         }.value
         guard model.selectedAssetID == assetID else { return }
         closeUpCrops = result.crops
+        faceReportStore.record(
+            result.reports,
+            for: assetID,
+            previewCacheGeneration: previewCacheGeneration,
+            analyzedLevel: source.level
+        )
         model.setLoupeFaceFocuses(result.faceFocuses)
     }
 
@@ -4825,11 +4894,60 @@ private struct LoupeView: View {
             .task(id: presentation.items.map(\.assetID.rawValue).joined(separator: "\n")) {
                 requestVisiblePreviews(for: presentation.items.map(\.assetID))
             }
+            // A separate task from the preview request above: this one also
+            // re-keys on each frame's preview generation and level, so frames
+            // skipped for want of a floor-quality preview get picked up the
+            // moment one lands, and a level upgrade re-measures. `.task(id:)`
+            // cancels the running sweep when the key changes, which is the
+            // whole cancellation story — no queue, no worker items.
+            .task(id: faceReportSweepKey(for: presentation)) {
+                await faceReportStore.sweep(
+                    frames: faceReportSweepFrames(for: presentation),
+                    currentFrameID: model.selectedAssetID
+                )
+            }
+        }
+    }
+
+    // Deliberately NOT keyed on the selected frame. Selection only decides
+    // which frame the sweep does first; keying on it would cancel and restart
+    // the whole sweep on every arrow-key press, and a frame further down a
+    // stack the photographer is paging through could then never finish
+    // computing — exactly the "dots appear for frames you never visited"
+    // promise this feature exists to keep.
+    private struct FaceReportSweepKey: Equatable {
+        var frameIDs: [String]
+        var previewGenerations: [Int]
+        var previewLevels: [String]
+    }
+
+    private func faceReportSweepKey(for presentation: CullingStackRailPresentation) -> FaceReportSweepKey {
+        FaceReportSweepKey(
+            frameIDs: presentation.items.map(\.assetID.rawValue),
+            previewGenerations: presentation.items.map { model.previewCacheGeneration(for: $0.assetID) },
+            previewLevels: presentation.items.map {
+                model.faceReportPreviewSource(for: $0.assetID)?.level.rawValue ?? ""
+            }
+        )
+    }
+
+    private func faceReportSweepFrames(for presentation: CullingStackRailPresentation) -> [FaceReportSweepFrame] {
+        presentation.items.map { item in
+            FaceReportSweepFrame(
+                assetID: item.assetID,
+                source: model.faceReportPreviewSource(for: item.assetID),
+                previewCacheGeneration: model.previewCacheGeneration(for: item.assetID)
+            )
         }
     }
 
     private func cullStackRailCell(_ item: CullingStackRailPresentation.Item) -> some View {
-        Button {
+        // Resolved once per cell render and shared by the dot and the
+        // accessibility value below — each resolution walks the accepted
+        // preview levels doing real `FileManager.fileExists` calls, and every
+        // mounted rail cell re-renders on every sweep publish.
+        let faceReport = currentFaceReport(for: item.assetID)
+        return Button {
             model.select(item.assetID)
         } label: {
             VStack(alignment: .leading, spacing: 4) {
@@ -4859,6 +4977,20 @@ private struct LoupeView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(3)
                     }
+                    // Top-leading, clear of the ✦ (top-trailing) and the 3pt
+                    // decision bar that runs across the very top. No dot at
+                    // all while the frame is uncomputed, its report is stale,
+                    // or it has no faces — absence means "nothing known",
+                    // never "known good".
+                    if let grade = FaceReportRollUpPresentation.dotGrade(for: faceReport) {
+                        Circle()
+                            .fill(FaceReportRollUpPresentation.color(for: grade))
+                            .frame(width: Self.faceGradeDotSize, height: Self.faceGradeDotSize)
+                            .overlay { Circle().strokeBorder(.black.opacity(0.5), lineWidth: 1) }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .padding(.top, 5)
+                            .padding(.leading, 3)
+                    }
                 }
                 .frame(width: Self.cullStackRailThumbnailSize.width, height: Self.cullStackRailThumbnailSize.height)
                 .opacity(item.decision.isDimmed ? 0.45 : 1.0)
@@ -4878,7 +5010,7 @@ private struct LoupeView: View {
         .buttonStyle(.plain)
         .help(stackChipFlawHelpText(item))
         .accessibilityLabel("Stack frame \(item.label)")
-        .accessibilityValue(stackChipAccessibilityValue(item))
+        .accessibilityValue(stackChipAccessibilityValue(item, faceReport: faceReport))
     }
 
     /// Keyed off the rail item's `DecisionState` directly (rail items don't
@@ -4908,9 +5040,15 @@ private struct LoupeView: View {
         return "Frame \(item.label): \(item.flawBadges.map(\.text).joined(separator: ", "))"
     }
 
-    private func stackChipAccessibilityValue(_ item: CullingStackRailPresentation.Item) -> String {
+    private func stackChipAccessibilityValue(
+        _ item: CullingStackRailPresentation.Item,
+        faceReport: FrameFaceReport?
+    ) -> String {
         var segments = [item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected")]
         segments.append(contentsOf: item.flawBadges.map(\.text))
+        if let facesText = FaceReportRollUpPresentation.railAccessibilityText(for: faceReport) {
+            segments.append(facesText)
+        }
         return segments.joined(separator: ", ")
     }
 

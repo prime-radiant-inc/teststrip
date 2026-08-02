@@ -36,6 +36,8 @@ case .realCorpusSmoke(let photoDirectory):
     try runRealCorpusSmoke(photoDirectory: photoDirectory, root: root)
 case .seedGeoFixtures(let directory, let count):
     try runSeedGeoFixtures(directory: directory, count: count)
+case .seedFaceStackFixtures(let directory, let sourcePhotoDirectory):
+    try runSeedFaceStackFixtures(directory: directory, sourcePhotoDirectory: sourcePhotoDirectory)
 case .seedDupFixtures(let directory):
     try runSeedDupFixtures(directory: directory)
 case .samplePreviewRender(let photoDirectory):
@@ -384,6 +386,20 @@ private func runSeedGeoFixtures(directory: URL, count: Int) throws {
     print("gps-bearing fixtures: \(result.gpsBearingCount)")
     print("gps latitude: \(result.latitude)")
     print("gps longitude: \(result.longitude)")
+}
+
+private func runSeedFaceStackFixtures(directory: URL, sourcePhotoDirectory: URL) throws {
+    print("TeststripBench seed face stack fixtures")
+    print("directory: \(directory.path)")
+    print("source photos: \(sourcePhotoDirectory.path)")
+    let result = try FaceStackFixtureSeeder(
+        directory: directory,
+        sourcePhotoDirectory: sourcePhotoDirectory
+    ).run()
+    print("stack frames: \(result.stackFilenames.joined(separator: ", "))")
+    print("stack capture gap: \(result.stackCaptureGapSeconds)s")
+    print("background face prominence: \(result.backgroundFaceProminence)")
+    print("standalone frames: \(result.singleCount)")
 }
 
 private func runSeedDupFixtures(directory: URL) throws {

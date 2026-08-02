@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// One micro signal glyph: an 11pt donut ring (arc sweep = score) with the
-/// measure's word beside it. The reads card's glyph line is built from
-/// these, and SP-B's per-face report cards reuse the same component —
-/// change it here, both surfaces follow.
+/// measure's word beside it. The reads card's glyph line is built from these
+/// and is this view's only consumer. SP-B's per-face report cards do NOT
+/// reuse it — `FaceSignalChipView` is a sibling with its own 17pt
+/// icon-in-donut geometry, because a 112pt face tile has room for four icons
+/// but not four words. Changing this view does not change the face tiles.
 struct SignalGlyphView: View {
     let entry: CullReadsCardPresentation.GlyphEntry
 
