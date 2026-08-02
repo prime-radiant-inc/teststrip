@@ -341,4 +341,58 @@ final class FaceReportStoreTests: XCTestCase {
             store.report(for: AssetID(rawValue: "never-swept"), currentGeneration: 1, bestAvailableLevel: .medium)
         )
     }
+
+    // MARK: - Face detection concurrency gate (cull-028 blocker, Round 2)
+
+    // Thread-safe by a plain lock, not an actor: the tracked closure below
+    // runs synchronously (matching CoreImageFaceExpressionAnalyzer's real,
+    // non-async signature), so it cannot `await` its way into an actor.
+    private final class ConcurrencyTracker: @unchecked Sendable {
+        private let lock = NSLock()
+        private var current = 0
+        private(set) var maxObserved = 0
+
+        func enter() {
+            lock.lock(); defer { lock.unlock() }
+            current += 1
+            maxObserved = Swift.max(maxObserved, current)
+        }
+
+        func exit() {
+            lock.lock(); defer { lock.unlock() }
+            current -= 1
+        }
+    }
+
+    // CIDetector's default (`context: nil`) internal CIContext is not
+    // documented safe for concurrent access from multiple threads at once.
+    // The live VM redrive for cull-028 (blocker-fix-report.md Round 2)
+    // proved this is not theoretical: 4 concurrent
+    // CoreImageFaceExpressionAnalyzer.detectFaces calls deadlocked outright
+    // (0% CPU, no progress, ever) in a standalone reproduction with no
+    // Teststrip code involved, where a single call completed in well under a
+    // second. FaceDetectionGate must make "at most one call in flight"
+    // structural, not incidental -- this test proves that holds even when
+    // several callers race it at once.
+    func testFaceDetectionGateSerializesConcurrentCalls() async {
+        let tracker = ConcurrencyTracker()
+        let gate = FaceDetectionGate(detect: { _ in
+            tracker.enter()
+            // Long enough that six nearly-simultaneous callers would almost
+            // certainly overlap if the gate did not serialize them.
+            Thread.sleep(forTimeInterval: 0.05)
+            tracker.exit()
+            return []
+        })
+
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<6 {
+                group.addTask {
+                    _ = try? await gate.detectFaces(previewURL: URL(fileURLWithPath: "/previews/frame-\(i).jpg"))
+                }
+            }
+        }
+
+        XCTAssertEqual(tracker.maxObserved, 1, "concurrent calls through the gate must never overlap")
+    }
 }

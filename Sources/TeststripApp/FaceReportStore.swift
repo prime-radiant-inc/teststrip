@@ -90,6 +90,38 @@ struct FaceReportSweepFrame: Equatable, Sendable {
     }
 }
 
+/// Serializes CoreImage face detection across every caller in the app
+/// process. `CIDetector`'s default (`context: nil`) internal `CIContext` is
+/// not documented safe for concurrent access from multiple threads at once.
+/// The production import/evaluation pipeline has always avoided this only
+/// incidentally — `AppCatalog.managedWorkerKindRunningLimits[.recognition]
+/// == 1` caps the worker to one evaluation job at a time for an unrelated
+/// reason (the worker keeps no per-lane state), which happens to also
+/// serialize its `CoreImageFaceExpressionAnalyzer` calls. This feature calls
+/// the same analyzer directly from the app process via independent
+/// `Task.detached` blocks (the close-ups pass and the stack-rail sweep can
+/// both be mid-analysis for the same frame at once), entirely bypassing that
+/// policy. Confirmed live on the VM used for scenario driving (cull-028
+/// blocker, Round 2 — see blocker-fix-report.md): 4+ concurrent
+/// `detectFaces` calls deadlock outright (0% CPU, no progress, ever, in a
+/// reproduction with no Teststrip code involved) where a single call
+/// completes in well under a second. An actor makes "at most one call in
+/// flight" structural rather than incidental — every caller queues on
+/// `shared` instead of racing the analyzer directly.
+actor FaceDetectionGate {
+    static let shared = FaceDetectionGate()
+
+    private let detect: @Sendable (URL) throws -> [DetectedFaceExpression]
+
+    init(detect: @escaping @Sendable (URL) throws -> [DetectedFaceExpression] = { try CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: $0) }) {
+        self.detect = detect
+    }
+
+    func detectFaces(previewURL: URL) throws -> [DetectedFaceExpression] {
+        try detect(previewURL)
+    }
+}
+
 /// The single in-app home for per-face report cards. Both surfaces read it
 /// through `report(for:currentGeneration:bestAvailableLevel:)` — the
 /// close-ups panel's chips and header roll-up, and the burst rail's dots — so
@@ -142,8 +174,6 @@ final class FaceReportStore {
         previewCacheGeneration: Int,
         analyzedLevel: PreviewLevel
     ) {
-        // INSTRUMENTATION (cull-028 blocker, Round 2).
-        print("INSTRUMENTATION FaceReportStore.record assetID=\(assetID.rawValue) gen=\(previewCacheGeneration) level=\(analyzedLevel.rawValue) reportsCount=\(reports.count)")
         reportsByAssetID[assetID] = FrameFaceReport(
             reports: reports,
             previewCacheGeneration: previewCacheGeneration,
@@ -162,29 +192,18 @@ final class FaceReportStore {
     /// could then never finish computing.
     @MainActor
     func sweep(frames: [FaceReportSweepFrame], currentFrameID: AssetID?) async {
-        // INSTRUMENTATION (cull-028 blocker, Round 2).
-        print("INSTRUMENTATION FaceReportStore.sweep entered frames=\(frames.map { "\($0.assetID.rawValue):gen=\($0.previewCacheGeneration):level=\($0.source?.level.rawValue ?? "nil")" }) currentFrameID=\(currentFrameID?.rawValue ?? "nil")")
         for frame in Self.sweepOrder(frames: frames, currentFrameID: currentFrameID) {
-            if Task.isCancelled {
-                print("INSTRUMENTATION FaceReportStore.sweep cancelled before frame=\(frame.assetID.rawValue)")
-                return
-            }
+            if Task.isCancelled { return }
             guard let source = frame.source else { continue }
             // Already computed at this generation and at least this level:
             // a re-trigger must not redo work it already has.
             if let cached = reportsByAssetID[frame.assetID],
                cached.previewCacheGeneration == frame.previewCacheGeneration,
                cached.analyzedLevel.faceReportRank >= source.level.faceReportRank {
-                print("INSTRUMENTATION FaceReportStore.sweep skip-cached assetID=\(frame.assetID.rawValue) gen=\(frame.previewCacheGeneration)")
                 continue
             }
-            print("INSTRUMENTATION FaceReportStore.sweep analyzing assetID=\(frame.assetID.rawValue) gen=\(frame.previewCacheGeneration) level=\(source.level.rawValue)")
             let reports = await analyze(source.previewURL)
-            if Task.isCancelled {
-                print("INSTRUMENTATION FaceReportStore.sweep cancelled after analyze assetID=\(frame.assetID.rawValue)")
-                return
-            }
-            print("INSTRUMENTATION FaceReportStore.sweep writing assetID=\(frame.assetID.rawValue) gen=\(frame.previewCacheGeneration) reportsCount=\(reports.count)")
+            if Task.isCancelled { return }
             reportsByAssetID[frame.assetID] = FrameFaceReport(
                 reports: reports,
                 previewCacheGeneration: frame.previewCacheGeneration,
@@ -213,7 +232,7 @@ final class FaceReportStore {
     /// rather than a fabricated one.
     static func analyzeCachedPreview(at previewURL: URL) async -> [FaceReport] {
         await Task.detached(priority: .utility) { () -> [FaceReport] in
-            guard let detections = try? CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL),
+            guard let detections = try? await FaceDetectionGate.shared.detectFaces(previewURL: previewURL),
                   !detections.isEmpty,
                   let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
                   let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
