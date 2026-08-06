@@ -37,6 +37,15 @@ final class AutopilotGhostTests: XCTestCase {
         XCTAssertNil(AutopilotGhost.kind(in: rating))
     }
 
+    // The discriminator is the field marker, not "any AI label present": a
+    // user-origin flag alongside an unconfirmed caption is still a real user
+    // decision, not a ghost.
+    func testUnconfirmedNonFlagFieldDoesNotMakeAConfirmedFlagAGhost() {
+        let userFlagWithAICaption = AssetMetadata(flag: .pick, caption: "a dog", aiUnconfirmedFields: [.caption])
+
+        XCTAssertNil(AutopilotGhost.kind(in: userFlagWithAICaption))
+    }
+
     // Ambient AI keywords are invisible to flag-ghost derivation (spec
     // decision 2: keywords exit the review pipeline entirely).
     func testAmbientAIKeywordsAreInvisibleToGhostDerivation() {
