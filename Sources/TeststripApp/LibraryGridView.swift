@@ -2367,7 +2367,7 @@ struct LibraryGridView: View {
                             previewStatus: model.gridPreviewStatus(for: asset.id),
                             isSelected: model.selectedAssetID == asset.id,
                             isBatchSelected: model.isBatchSelected(asset.id),
-                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                            autopilotDecision: AutopilotGhost.kind(in: asset.metadata)
                         )
                         .assetActivation(
                             for: asset,
@@ -2520,7 +2520,7 @@ struct LibraryGridView: View {
     private var autopilotReviewToolbar: some View {
         let selectedIDs = model.selectedBatchAssetIDsInCatalogOrder
         return HStack(spacing: 8) {
-            Text("Reviewing \(model.autopilotReviewProposalCount) proposals")
+            Text("Reviewing \(model.autopilotGhostCount) proposals")
                 .font(.caption.weight(.semibold))
             Spacer(minLength: 0)
             Button("Commit \(selectedIDs.count)") {
@@ -2531,7 +2531,7 @@ struct LibraryGridView: View {
             .tint(.green)
             .disabled(selectedIDs.isEmpty)
             .help("Commit the selected proposals' keeps, cuts, and keywords")
-            Button("Commit all \(model.autopilotReviewProposalCount)") {
+            Button("Commit all \(model.autopilotGhostCount)") {
                 commitAllAutopilotProposals()
             }
             .buttonStyle(.bordered)
@@ -3603,15 +3603,15 @@ struct LibraryGridView: View {
 }
 
 struct AutopilotBadgePresentation: Equatable {
-    // Maps a pending proposal's decision to the grid cell's KEEP/CUT badge.
-    // Keyword proposals and undecided cells carry no keep/cut badge.
-    static func badge(for kind: AutopilotProposalKind?) -> (text: String, isKeep: Bool)? {
-        switch kind {
+    // Maps the ghost's own value to the grid cell's KEEP/CUT badge. An asset
+    // with no ghost carries no badge.
+    static func badge(for ghost: PickFlag?) -> (text: String, isKeep: Bool)? {
+        switch ghost {
         case .pick:
             return (text: "KEEP", isKeep: true)
         case .reject:
             return (text: "CUT", isKeep: false)
-        case .keyword, nil:
+        case nil:
             return nil
         }
     }
@@ -7687,7 +7687,7 @@ private extension View {
             selectionState: selectionState,
             badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
             availability: asset.availability,
-            autopilotDecision: model.autopilotProposalDecision(for: asset.id),
+            autopilotDecision: AutopilotGhost.kind(in: asset.metadata),
             hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
         )
     }
@@ -8144,7 +8144,7 @@ private struct TimelineWorkspaceView: View {
                             previewStatus: model.gridPreviewStatus(for: asset.id),
                             isSelected: model.selectedAssetID == asset.id,
                             isBatchSelected: model.isBatchSelected(asset.id),
-                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                            autopilotDecision: AutopilotGhost.kind(in: asset.metadata)
                         )
                         .assetActivation(
                             for: asset,
@@ -8332,7 +8332,7 @@ enum AssetGridCellAccessibilityValue {
         selectionState: String,
         badges: AssetGridMetadataBadgePresentation,
         availability: SourceAvailability,
-        autopilotDecision: AutopilotProposalKind?,
+        autopilotDecision: PickFlag?,
         hasBondedStill: Bool
     ) -> String {
         var parts = [selectionState]
@@ -9667,7 +9667,7 @@ private struct AssetGridCell: View {
     var previewStatus: AssetGridPreviewStatusPresentation?
     var isSelected: Bool
     var isBatchSelected = false
-    var autopilotDecision: AutopilotProposalKind? = nil
+    var autopilotDecision: PickFlag? = nil
 
     var body: some View {
         GeometryReader { geometry in
