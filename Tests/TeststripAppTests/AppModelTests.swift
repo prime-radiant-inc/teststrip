@@ -5773,7 +5773,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
         XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
-        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        // Under SP-D0 nothing resurrects a ghost from a table — undo leaves
+        // the frame with no ghost at all. Same fact the `metadata.flag` nil
+        // check two lines up already established, read via the ghost lens.
+        XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: alternate.id).metadata))
         XCTAssertFalse(model.canUndoAutopilotRun)
     }
 
