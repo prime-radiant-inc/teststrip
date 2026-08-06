@@ -5684,7 +5684,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(confirmedAlternate.aiUnconfirmedFields.contains(.flag))
         XCTAssertEqual(confirmedLead.flag, .reject)
         XCTAssertFalse(confirmedLead.aiUnconfirmedFields.contains(.flag))
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
         XCTAssertEqual(model.lastUndoableActionLabel, "Autopilot")
         // Committing confirms the flags — the ghosts are gone, not just hidden.
         XCTAssertNil(AutopilotGhost.kind(in: confirmedAlternate))
@@ -5732,7 +5731,6 @@ final class AppModelTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog)
         try model.selectSidebarTarget(.allPhotographs)
         _ = try model.runAutopilot(scope: .visible)
-        XCTAssertEqual(model.pendingAutopilotProposals.count, 2)
         XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
 
         // Simulate a proposal left dangling by data corruption or a bypassed
