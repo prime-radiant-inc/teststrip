@@ -2,16 +2,16 @@ import TeststripCore
 
 /// The stage-replacing state shown in the cull loupe once nothing is left
 /// undecided in the session: a handoff offering the next move (export,
-/// relocate rejects, review picks, review AI suggestions, or save the picks
-/// as a set) instead of an empty stage, plus the run's quality-of-coverage
-/// counts (skipped, never viewed, AI suggestions still awaiting review).
+/// relocate rejects, review picks, or save the picks as a set) instead of an
+/// empty stage, plus the run's quality-of-coverage counts (skipped, never
+/// viewed). Purely about the user's decisions — machine suggestions are
+/// ambient and never nag from here.
 struct CullCompletionPresentation: Equatable {
     enum Action: Equatable, Hashable {
         case export
         case moveRejects
         case moveRejectsToTrash
         case reviewPicks
-        case reviewAISuggestions
         case savePicksAsSet
     }
 
@@ -20,38 +20,24 @@ struct CullCompletionPresentation: Equatable {
     var undecided: Int
     var skipped: Int
     var neverViewed: Int
-    var sparkleAwaiting: Int
     var actions: [Action]
 
     /// The run-summary math, ungated: classifies every frame in the scope by
     /// its CONFIRMED flag — a tentative (AI-unconfirmed) flag counts as
-    /// undecided and never as a pick/reject (the provenance invariant); such
-    /// frames surface in `sparkleAwaiting` via their pending proposals
-    /// instead. skipped = skipped ∖ decided (a skipped-then-decided frame
-    /// counts as decided, subtracted here so the tracker never needs a
-    /// write-back); neverViewed = scope ∖ viewed; sparkleAwaiting is
-    /// kind-aware, since a pending proposal's relationship to "still
-    /// awaiting review" depends on what it proposes: a pending KEYWORD
-    /// proposal (`AutopilotProposalKind.keyword`) has nothing to do with the
-    /// flag, so it counts regardless of the asset's flag state; a pending
-    /// FLAG proposal (`.pick`/`.reject`) counts only while the asset's flag
-    /// is still unconfirmed — once a user-origin flag decision lands (via
-    /// this proposal's own review flow or some other path entirely), that
-    /// proposal has gone stale and no longer represents awaiting review,
-    /// even though its row is left `pending` (a display-time filter only —
-    /// `autopilot_proposals` and the review queue are untouched).
+    /// undecided and never as a pick/reject (the provenance invariant), so a
+    /// scope still carrying a ghost is not complete and never reaches here.
+    /// skipped = skipped ∖ decided (a skipped-then-decided frame counts as
+    /// decided, subtracted here so the tracker never needs a write-back);
+    /// neverViewed = scope ∖ viewed.
     static func summary(
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,
-        skippedAssetIDs: Set<AssetID>,
-        pendingFlagProposalAssetIDs: Set<AssetID>,
-        pendingKeywordProposalAssetIDs: Set<AssetID>
+        skippedAssetIDs: Set<AssetID>
     ) -> CullCompletionPresentation {
         var pickCount = 0
         var rejectCount = 0
         var undecidedCount = 0
         var neverViewedCount = 0
-        var sparkleAwaitingCount = 0
         var decidedAssetIDs: Set<AssetID> = []
         for asset in assets {
             switch asset.metadata.confirmedProjection.flag {
@@ -67,25 +53,15 @@ struct CullCompletionPresentation: Equatable {
             if !viewedAssetIDs.contains(asset.id) {
                 neverViewedCount += 1
             }
-            let flagProposalAwaitsReview = pendingFlagProposalAssetIDs.contains(asset.id)
-                && asset.metadata.confirmedProjection.flag == nil
-            let keywordProposalAwaitsReview = pendingKeywordProposalAssetIDs.contains(asset.id)
-            if flagProposalAwaitsReview || keywordProposalAwaitsReview {
-                sparkleAwaitingCount += 1
-            }
         }
         let scopeAssetIDs = Set(assets.map(\.id))
         let skippedCount = skippedAssetIDs
             .intersection(scopeAssetIDs)
             .subtracting(decidedAssetIDs)
             .count
-        // The core four always; the two follow-ups only when they have work
-        // to do — a Review AI Suggestions row with nothing pending (or a
-        // Save Picks row with no picks) would be a dead control.
+        // The core four always; Save Picks only when it has work to do — a
+        // Save Picks row with no picks would be a dead control.
         var actions: [Action] = [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks]
-        if sparkleAwaitingCount > 0 {
-            actions.append(.reviewAISuggestions)
-        }
         if pickCount > 0 {
             actions.append(.savePicksAsSet)
         }
@@ -95,7 +71,6 @@ struct CullCompletionPresentation: Equatable {
             undecided: undecidedCount,
             skipped: skippedCount,
             neverViewed: neverViewedCount,
-            sparkleAwaiting: sparkleAwaitingCount,
             actions: actions
         )
     }
@@ -114,8 +89,6 @@ struct CullCompletionPresentation: Equatable {
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,
         skippedAssetIDs: Set<AssetID>,
-        pendingFlagProposalAssetIDs: Set<AssetID>,
-        pendingKeywordProposalAssetIDs: Set<AssetID>,
         scope: CullScope
     ) -> CullCompletionPresentation? {
         guard scope == .unrated || scope == .all else { return nil }
@@ -123,9 +96,7 @@ struct CullCompletionPresentation: Equatable {
         let summary = summary(
             assets: assets,
             viewedAssetIDs: viewedAssetIDs,
-            skippedAssetIDs: skippedAssetIDs,
-            pendingFlagProposalAssetIDs: pendingFlagProposalAssetIDs,
-            pendingKeywordProposalAssetIDs: pendingKeywordProposalAssetIDs
+            skippedAssetIDs: skippedAssetIDs
         )
         guard summary.undecided == 0 else { return nil }
         return summary
