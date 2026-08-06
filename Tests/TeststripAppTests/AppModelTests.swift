@@ -5949,7 +5949,12 @@ final class AppModelTests: XCTestCase {
         // scope — the planner only re-proposes a pick/reject inside a
         // multi-member stack, so `lead` has to be present for it to
         // re-attempt (and, correctly, re-suppress) ghostAssetID's proposal.
-        try model.runAutopilot(scope: .assetIDs([leadAssetID, ghostAssetID]))
+        // Assert the run actually reached the planner (keeperCount == 1, for
+        // ghostAssetID's re-proposed-then-suppressed pick) so a planner that
+        // silently stopped emitting for this scope fails loudly instead of
+        // passing quietly.
+        let rerun = try model.runAutopilot(scope: .assetIDs([leadAssetID, ghostAssetID]))
+        XCTAssertEqual(rerun.keeperCount, 1)
 
         XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
         XCTAssertFalse(model.autopilotGhostAssetIDs.contains(ghostAssetID))
@@ -5970,6 +5975,9 @@ final class AppModelTests: XCTestCase {
         try repository.upsert(AssetSet.manual(id: narrowSetID, name: "Narrow", assetIDs: [lead]))
         try model.applyAssetSet(id: narrowSetID)
         XCTAssertEqual(model.assets.map(\.id), [lead])
+        // The sidebar count is catalog-wide too, not just the queue: with one
+        // frame loaded, the count still sees both ghosts.
+        XCTAssertEqual(model.autopilotGhostCount, allGhostIDs.count)
 
         try model.beginAutopilotReview()
 
@@ -6002,7 +6010,29 @@ final class AppModelTests: XCTestCase {
     // MARK: - SP-D0: dismiss records the removal
 
     func testDismissRecordsRemovedAILabelSoNothingResurrects() throws {
-        let (model, repository, _, ghostAssetID) = try makeAutopilotModelWithGhosts(named: "ghost-dismiss")
+        // Real originals on disk (not the shared ghost fixture's
+        // non-existent `/Photos/Job/...` paths): the sidecar-absence
+        // assertion below must be able to fail if dismiss ever wrote one.
+        let directory = try makeTemporaryDirectory(named: "ghost-dismiss")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let leadURL = photosDirectory.appendingPathComponent("ghost-dismiss-lead.cr2")
+        let alternateURL = photosDirectory.appendingPathComponent("ghost-dismiss-alt.cr2")
+        try Data("lead raw bytes".utf8).write(to: leadURL)
+        try Data("alt raw bytes".utf8).write(to: alternateURL)
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "ghost-dismiss-lead", path: leadURL.path, rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "ghost-dismiss-alt", path: alternateURL.path, rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "ghost-dismiss-model", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        let ghostAssetID = alternate.id
         let ghostValue = try XCTUnwrap(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
 
         let dismissed = try model.dismissAutopilotProposals(assetIDs: [ghostAssetID])
@@ -6014,8 +6044,7 @@ final class AppModelTests: XCTestCase {
                 .contains(RemovedAILabel(field: .flag, value: ghostValue.rawValue))
         )
         // Dismiss writes no sidecar: nothing confirmed changed.
-        let sidecarURL = try repository.asset(id: ghostAssetID).originalURL
-            .appendingPathExtension("xmp")
+        let sidecarURL = alternateURL.appendingPathExtension("xmp")
         XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
     }
 
@@ -6029,6 +6058,9 @@ final class AppModelTests: XCTestCase {
         let source = try XCTUnwrap(
             model.cullSourcePresentation.sources.first { $0.target == CullSource.Target.autopilotProposals }
         )
+        // Pin the fixture's literal ghost count alongside the self-referential
+        // comparison so a wrong count (not just a wrong-vs-itself count) fails.
+        XCTAssertEqual(ghostIDs.count, 2)
         XCTAssertEqual(source.count, ghostIDs.count)
 
         _ = try model.dismissAutopilotProposals(assetIDs: ghostIDs)
