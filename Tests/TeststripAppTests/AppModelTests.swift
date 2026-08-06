@@ -5517,6 +5517,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.isEmpty)
         XCTAssertFalse(model.canUndoAutopilotRun)
         XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+        // Undo removed the ghosts, so the sidebar's derived set must be empty
+        // too — a stale count leaves a phantom "Autopilot Proposals" row that
+        // only disappears when you click it.
+        XCTAssertTrue(model.autopilotGhostAssetIDs.isEmpty)
     }
 
     func testRunAutopilotOnCurrentScopeAppliesTentativeFlagsOnRun() throws {

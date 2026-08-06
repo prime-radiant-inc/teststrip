@@ -2530,7 +2530,7 @@ struct LibraryGridView: View {
             .controlSize(.small)
             .tint(.green)
             .disabled(selectedIDs.isEmpty)
-            .help("Commit the selected proposals' keeps, cuts, and keywords")
+            .help("Commit the selected proposals' keeps and cuts")
             Button("Commit all \(model.autopilotGhostCount)") {
                 commitAllAutopilotProposals()
             }

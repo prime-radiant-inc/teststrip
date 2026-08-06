@@ -9968,6 +9968,12 @@ public final class AppModel {
         }
         lastAutopilotRunUndoGroup = nil
         lastAutopilotRunUndoRunID = nil
+        // Reverting a purely tentative run leaves the confirmed projection
+        // unchanged, so `revertAutopilotTentativeChange`'s own refresh never
+        // fires — without this the sidebar's ghost-derived count keeps
+        // showing the undone run's proposals until an unrelated action
+        // happens to hit the refresh funnel.
+        try refreshCatalogSidebarCounts()
         statusMessage = "Undid autopilot batch"
     }
 
