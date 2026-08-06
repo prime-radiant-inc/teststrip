@@ -5421,7 +5421,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(alternateMetadata.aiUnconfirmedFields.contains(.flag))
         XCTAssertEqual(AutopilotGhost.kind(in: alternateMetadata), .pick)
         XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
     }
 
     func testRunAutopilotAppliesTentativeFlagsCatalogOnlyNoSidecar() throws {
@@ -5516,7 +5515,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try repository.asset(id: lead.id).metadata.aiUnconfirmedFields.isEmpty)
         XCTAssertTrue(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.isEmpty)
         XCTAssertFalse(model.canUndoAutopilotRun)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
         // Undo removed the ghosts, so the sidebar's derived set must be empty
         // too — a stale count leaves a phantom "Autopilot Proposals" row that
         // only disappears when you click it.
@@ -5543,7 +5541,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary?.keeperCount, 1)
         XCTAssertEqual(summary?.rejectCount, 1)
         XCTAssertNotNil(model.autopilotRunSummary)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
         // The run applies its proposals tentatively, so the catalog generation bumps.
         let leadMetadata = try repository.asset(id: lead.id).metadata
         let alternateMetadata = try repository.asset(id: alternate.id).metadata
@@ -5646,12 +5643,11 @@ final class AppModelTests: XCTestCase {
         _ = try model.runAutopilot(scope: .visible)
         _ = try model.runAutopilot(scope: .visible)
 
-        // A re-run on the identical scope doesn't accumulate duplicate
-        // proposals, and the still-tentative keyword from the first run
-        // doesn't get filtered out of the second run's candidates (it isn't
-        // "already there" in the sense that would block re-proposing it —
-        // it's this same mechanism's own unconfirmed proposal).
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 3)
+        // A re-run on the identical scope doesn't accumulate duplicates, and
+        // the still-tentative keyword from the first run doesn't get filtered
+        // out of the second run's candidates (it isn't "already there" in the
+        // sense that would block re-proposing it — it's this same
+        // mechanism's own unconfirmed proposal).
         let leadMetadata = try repository.asset(id: lead.id).metadata
         XCTAssertEqual(leadMetadata.keywords.filter { $0 == "dog" }.count, 1)
         XCTAssertTrue(leadMetadata.aiUnconfirmedKeywords.contains("dog"))
@@ -5754,7 +5750,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try repository.assetIDsWithAutopilotGhost().isEmpty)
     }
 
-    func testUndoAutopilotRunRevertsMetadataAndRestoresPendingProposals() throws {
+    func testUndoAutopilotRunRevertsMetadataAndRestoresGhosts() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "undoall-lead", path: "/Photos/Job/undoall-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let alternate = makeAsset(id: "undoall-alt", path: "/Photos/Job/undoall-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
@@ -5774,12 +5770,24 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
-        // Under SP-D0 nothing resurrects a ghost from a table — undo leaves
-        // the frame with no ghost at all. Same fact the `metadata.flag` nil
-        // check two lines up already established, read via the ghost lens.
+        // The run's tentative writes are gone from metadata, so the ghosts
+        // they created are gone with them — nothing else records their
+        // existence.
+        XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: lead.id).metadata))
         XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: alternate.id).metadata))
+        XCTAssertTrue(model.autopilotGhostAssetIDs.isEmpty)
         XCTAssertFalse(model.canUndoAutopilotRun)
+    }
+
+    // SP-D0: nothing persists a proposal. The ghost in metadata_json is the
+    // only record a run leaves behind.
+    func testRunAutopilotPersistsNoProposals() throws {
+        let (model, repository, _, _) = try makeAutopilotModelWithGhosts(named: "ghost-no-persistence")
+
+        XCTAssertFalse(model.autopilotGhostAssetIDs.isEmpty, "fixture must produce at least one ghost")
+        XCTAssertEqual(try repository.autopilotProposals(status: .pending), [])
+        XCTAssertEqual(try repository.autopilotProposals(status: .committed), [])
+        XCTAssertEqual(try repository.autopilotProposals(status: .dismissed), [])
     }
 
     // Regression for a data-loss defect: undoAutopilotRun used to restore
