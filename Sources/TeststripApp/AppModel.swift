@@ -9659,12 +9659,10 @@ public final class AppModel {
         for asset in scopeAssets {
             let signals = (try? catalog.repository.evaluationSignals(assetID: asset.id)) ?? []
             signalsByAssetID[asset.id] = signals
-            // Only a *confirmed* existing keyword should block re-proposing
-            // it: an unconfirmed one is still this same tentative mechanism's
-            // own prior proposal, and excluding it here would silently drop
-            // its proposal row (and thus its reviewability) on a re-run of
-            // the identical scope, even though the tentative keyword stays
-            // stuck in metadata forever.
+            // Only *confirmed* keywords block re-proposing. Unconfirmed
+            // keywords can reappear in subsequent runs and count toward the
+            // summary, though they won't change metadata since they're already
+            // applied.
             let confirmedKeywords = asset.metadata.keywords.filter {
                 !asset.metadata.aiUnconfirmedKeywords.contains($0)
             }
@@ -9930,10 +9928,9 @@ public final class AppModel {
     /// Reverses the last autopilot run's tentative writes in one gesture:
     /// reverts the run-time metadata undo group captured when the run first
     /// applied its pick/reject/keyword proposals
-    /// (`applyTentativeAutopilotProposals`) — independent of the shared
-    /// `metadataUndoStack`/Cmd+Z, which `commitAutopilotProposals`'s confirm
-    /// step uses instead — the reverted metadata restores the pre-run ghost
-    /// state directly.
+    /// (`applyTentativeAutopilotProposals`), restoring the pre-run ghost
+    /// state — independent of the shared `metadataUndoStack`/Cmd+Z, which
+    /// `commitAutopilotProposals`'s confirm step uses instead.
     public func undoAutopilotRun() throws {
         guard let group = lastAutopilotRunUndoGroup else { return }
         for change in group.changes.reversed() {
