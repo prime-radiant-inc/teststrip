@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 22
+    static let version = 23
 
     static let statements = [
         """
@@ -206,22 +206,6 @@ enum CatalogMigrations {
         """,
         "CREATE INDEX IF NOT EXISTS idx_relocation_manifest_session ON relocation_manifest_entries(session_id, sequence)",
         """
-        CREATE TABLE IF NOT EXISTS autopilot_proposals (
-            id TEXT PRIMARY KEY NOT NULL,
-            run_id TEXT NOT NULL,
-            asset_id TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            keyword TEXT,
-            rationale TEXT NOT NULL,
-            confidence REAL NOT NULL,
-            status TEXT NOT NULL,
-            created_at REAL NOT NULL,
-            updated_at REAL NOT NULL
-        )
-        """,
-        "CREATE INDEX IF NOT EXISTS idx_autopilot_proposals_run ON autopilot_proposals(run_id)",
-        "CREATE INDEX IF NOT EXISTS idx_autopilot_proposals_status ON autopilot_proposals(status)",
-        """
         CREATE TABLE IF NOT EXISTS place_cache (
             coordinate_key TEXT PRIMARY KEY NOT NULL,
             locality TEXT,
@@ -266,6 +250,17 @@ enum CatalogMigrations {
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_contact_reference_faces_person ON contact_reference_faces(person_id)"
+    ]
+
+    // Forward-only drops for tables whose data is no longer truth. Run right
+    // after `statements` so a catalog that still carries the table loses it —
+    // and its indexes, which `DROP TABLE` takes with it — on the next open.
+    // There is no back-out: `autopilot_proposals` went away with SP-D0,
+    // because the machine's flag opinion is derived from the unconfirmed AI
+    // flag in `metadata_json` (`AutopilotGhost`) and never stored in a status
+    // row. The stale rows were bookkeeping; the ghosts are untouched.
+    static let dropStatements = [
+        "DROP TABLE IF EXISTS autopilot_proposals"
     ]
 
     // Runs after `technical_metadata_json` is ensured on legacy catalogs (the
