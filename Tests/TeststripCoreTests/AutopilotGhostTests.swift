@@ -57,6 +57,21 @@ final class AutopilotGhostTests: XCTestCase {
         XCTAssertNil(AutopilotGhost.kind(in: keywordsOnly))
     }
 
+    // A run can propose a flag, a caption, and ambient keywords in one pass.
+    // The ghost is derived from the `.flag` marker alone — neither a
+    // co-proposed field nor an ambient keyword may mask or veto it.
+    func testGhostSurvivesAlongsideOtherAILabelsFromTheSameRun() {
+        let multiLabel = AssetMetadata(
+            flag: .reject,
+            keywords: ["dog"],
+            caption: "a dog",
+            aiUnconfirmedKeywords: ["dog"],
+            aiUnconfirmedFields: [.flag, .caption]
+        )
+
+        XCTAssertEqual(AutopilotGhost.kind(in: multiLabel), .reject)
+    }
+
     // Defensive: a marker left behind with no value is not a ghost. Nothing
     // should produce this state, and if something does, the derivation must
     // report "no status" rather than a phantom.
