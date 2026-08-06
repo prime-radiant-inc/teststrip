@@ -436,6 +436,29 @@ public final class CatalogRepository {
         return matchingAssetIDs
     }
 
+    /// Every asset carrying an autopilot ghost — an AI-origin, unconfirmed
+    /// flag in `metadata_json`. The SQL twin of `AutopilotGhost.kind(in:)`,
+    /// and the positive mirror of `confirmedFieldClauseSQL`: `json_each` on a
+    /// path that doesn't exist (an asset with no unconfirmed fields at all,
+    /// the common case) yields zero rows, so the EXISTS is safe on every row.
+    ///
+    /// Catalog-wide by design — the review queue and the Cull sidebar's
+    /// "Autopilot Proposals" count must not silently shrink to whatever the
+    /// grid happens to have loaded. Display-facing, so bonded secondaries are
+    /// excluded like the other id listings.
+    public func assetIDsWithAutopilotGhost() throws -> [AssetID] {
+        let ghostClauseSQL = """
+        json_extract(metadata_json, '$.flag') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM json_each(metadata_json, '$.aiUnconfirmedFields') WHERE json_each.value = ?)
+        """
+        let whereSQL = Self.excludingSecondaries(" WHERE \(ghostClauseSQL)")
+        let rows = try database.rows(
+            "SELECT id FROM assets\(whereSQL) ORDER BY rowid ASC",
+            bindings: [MetadataField.flag.rawValue]
+        )
+        return try rows.map(decodeAssetID)
+    }
+
     private static func orderSQL(for sort: LibrarySortOption) -> String {
         let validCapturedAtSQL = """
         CASE
