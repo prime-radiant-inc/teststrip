@@ -254,39 +254,6 @@ final class AppModelSessionRestoreTests: XCTestCase {
         )
     }
 
-    // SP-D0: the autopilot banner is run-time only. It used to be rebuilt at
-    // load from pending proposal rows (its Undo button was already dead by
-    // then); nothing reconstructs it now.
-    func testAutopilotBannerDoesNotSurviveRelaunch() throws {
-        let directory = try makeTemporaryDirectory(named: "restore-autopilot-banner")
-        let defaults = try makeIsolatedDefaults()
-        let catalogA = try makeCatalog(directory: directory)
-        var ghostAsset = makeAsset(id: "ghost-1", filename: "ghost-1.dng")
-        ghostAsset.metadata.flag = .pick
-        ghostAsset.metadata.aiUnconfirmedFields = [.flag]
-        try catalogA.repository.upsert([ghostAsset])
-        // A stale pending proposal row, exactly what a pre-SP-D0 catalog holds.
-        try catalogA.repository.save([AutopilotProposal(
-            id: AutopilotProposalID(rawValue: "p-1"),
-            runID: AutopilotRunID(rawValue: "run-1"),
-            assetID: ghostAsset.id,
-            kind: .pick,
-            keyword: nil,
-            rationale: "Sharpest frame in its burst",
-            confidence: 0.82,
-            status: .pending,
-            createdAt: Date(timeIntervalSince1970: 10),
-            updatedAt: Date(timeIntervalSince1970: 10)
-        )])
-
-        let catalogB = try makeCatalog(directory: directory)
-        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
-
-        XCTAssertNil(modelB.autopilotRunSummary)
-        // The ghost is unaffected by the row's presence or absence.
-        XCTAssertEqual(modelB.autopilotGhostAssetIDs, [ghostAsset.id])
-    }
-
     func testSessionRestoreDisabledByDefaultDoesNotPersistOrRestore() throws {
         let directory = try makeTemporaryDirectory(named: "restore-disabled-by-default")
         let catalogA = try makeCatalog(directory: directory)

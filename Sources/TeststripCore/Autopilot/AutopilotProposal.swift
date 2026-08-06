@@ -16,12 +16,10 @@ public enum AutopilotProposalKind: String, Codable, Hashable, Sendable {
     case keyword
 }
 
-public enum AutopilotProposalStatus: String, Codable, Hashable, Sendable {
-    case pending
-    case committed
-    case dismissed
-}
-
+/// One run's working proposal, in memory only. Produced by
+/// `AutopilotProposalPlanner` and consumed by the run that applies it as a
+/// tentative AI label; nothing persists it. The durable record of "the machine
+/// proposed a flag" is the ghost in `metadata_json` (`AutopilotGhost`).
 public struct AutopilotProposal: Codable, Equatable, Sendable {
     public var id: AutopilotProposalID
     public var runID: AutopilotRunID
@@ -30,7 +28,6 @@ public struct AutopilotProposal: Codable, Equatable, Sendable {
     public var keyword: String?
     public var rationale: String
     public var confidence: Double
-    public var status: AutopilotProposalStatus
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -42,7 +39,6 @@ public struct AutopilotProposal: Codable, Equatable, Sendable {
         keyword: String?,
         rationale: String,
         confidence: Double,
-        status: AutopilotProposalStatus,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -53,7 +49,6 @@ public struct AutopilotProposal: Codable, Equatable, Sendable {
         self.keyword = keyword
         self.rationale = rationale
         self.confidence = confidence
-        self.status = status
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

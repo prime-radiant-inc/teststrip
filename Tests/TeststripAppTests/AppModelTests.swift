@@ -5592,14 +5592,13 @@ final class AppModelTests: XCTestCase {
 
     func testRunAutopilotOnCurrentScopeWithoutEvaluationsSetsStatusMessage() throws {
         let unevaluated = makeAsset(id: "noeval", path: "/Photos/Job/noeval.cr2", rating: 0)
-        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-noeval", assets: [unevaluated])
+        let (model, _) = try makeModelWithCatalogAssets(named: "run-autopilot-noeval", assets: [unevaluated])
         try model.selectSidebarTarget(.allPhotographs)
 
         let summary = try model.runAutopilotOnCurrentScope()
 
         XCTAssertNil(summary)
         XCTAssertNil(model.autopilotRunSummary)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
         XCTAssertEqual(model.statusMessage, "Autopilot: no evaluated photos in view to run on")
     }
 
@@ -5777,17 +5776,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: alternate.id).metadata))
         XCTAssertTrue(model.autopilotGhostAssetIDs.isEmpty)
         XCTAssertFalse(model.canUndoAutopilotRun)
-    }
-
-    // SP-D0: nothing persists a proposal. The ghost in metadata_json is the
-    // only record a run leaves behind.
-    func testRunAutopilotPersistsNoProposals() throws {
-        let (model, repository, _, _) = try makeAutopilotModelWithGhosts(named: "ghost-no-persistence")
-
-        XCTAssertFalse(model.autopilotGhostAssetIDs.isEmpty, "fixture must produce at least one ghost")
-        XCTAssertEqual(try repository.autopilotProposals(status: .pending), [])
-        XCTAssertEqual(try repository.autopilotProposals(status: .committed), [])
-        XCTAssertEqual(try repository.autopilotProposals(status: .dismissed), [])
     }
 
     // Regression for a data-loss defect: undoAutopilotRun used to restore

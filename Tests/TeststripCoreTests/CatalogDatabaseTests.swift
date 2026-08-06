@@ -16,52 +16,6 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched, asset)
     }
 
-    func testPersistsAndReadsAutopilotProposalsByRunAndStatus() throws {
-        let directory = try TestDirectories.makeTemporaryDirectory(named: "autopilot-proposals")
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 0)
-        try repository.upsert(asset)
-        let runID = AutopilotRunID(rawValue: "run-1")
-        let keep = AutopilotProposal(
-            id: AutopilotProposalID(rawValue: "p-keep"),
-            runID: runID,
-            assetID: asset.id,
-            kind: .pick,
-            keyword: nil,
-            rationale: "Sharpest frame in its burst",
-            confidence: 0.82,
-            status: .pending,
-            createdAt: Date(timeIntervalSince1970: 10),
-            updatedAt: Date(timeIntervalSince1970: 10)
-        )
-        let keyword = AutopilotProposal(
-            id: AutopilotProposalID(rawValue: "p-kw"),
-            runID: runID,
-            assetID: asset.id,
-            kind: .keyword,
-            keyword: "dog",
-            rationale: "Vision detected dog",
-            confidence: 0.7,
-            status: .pending,
-            createdAt: Date(timeIntervalSince1970: 11),
-            updatedAt: Date(timeIntervalSince1970: 11)
-        )
-        try repository.save([keep, keyword])
-
-        XCTAssertEqual(try repository.autopilotProposals(runID: runID).map(\.id), [keep.id, keyword.id])
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
-
-        try repository.updateAutopilotProposalStatus(ids: [keep.id], to: .committed)
-        XCTAssertEqual(try repository.autopilotProposals(status: .committed).map(\.id), [keep.id])
-        XCTAssertEqual(try repository.autopilotProposals(status: .pending).map(\.id), [keyword.id])
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 1)
-
-        try repository.deleteAutopilotProposals(runID: runID)
-        XCTAssertEqual(try repository.autopilotProposals(runID: runID), [])
-    }
-
     func testSecondConnectionWaitsForBusyWriter() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-busy-timeout")
         let catalogURL = directory.appendingPathComponent("catalog.sqlite")
@@ -3315,33 +3269,6 @@ final class CatalogDatabaseTests: XCTestCase {
         try repository.upsert(trashed)
         try repository.replaceFaceObservations(assetID: trashed.id, provenance: provenance, with: [face(trashed, 0)])
         XCTAssertEqual(try repository.faceObservations(assetID: trashed.id).count, 1)
-    }
-
-    func testDeleteAssetRemovesPendingAutopilotProposal() throws {
-        let directory = try TestDirectories.makeTemporaryDirectory(named: "delete-asset-cascade-autopilot")
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        let asset = Asset.testAsset(id: AssetID(rawValue: "autopilot-trashed"), path: "/Shoot/autopilot-trashed.jpg", rating: 0)
-        try repository.upsert(asset)
-        let runID = AutopilotRunID(rawValue: "run-1")
-        let proposal = AutopilotProposal(
-            id: AutopilotProposalID(rawValue: "proposal-1"),
-            runID: runID,
-            assetID: asset.id,
-            kind: .pick,
-            keyword: nil,
-            rationale: "sharpest of stack",
-            confidence: 0.9,
-            status: .pending,
-            createdAt: Date(timeIntervalSince1970: 0),
-            updatedAt: Date(timeIntervalSince1970: 0)
-        )
-        try repository.save([proposal])
-
-        try repository.deleteAsset(id: asset.id)
-
-        XCTAssertEqual(try repository.autopilotProposals(runID: runID), [])
     }
 
     func testPersonIDsForAssetListsEveryLinkedPerson() throws {
