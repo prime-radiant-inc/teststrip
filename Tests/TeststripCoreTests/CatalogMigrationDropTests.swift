@@ -74,8 +74,33 @@ final class CatalogMigrationDropTests: XCTestCase {
             availability: .online,
             metadata: AssetMetadata(flag: .pick, aiUnconfirmedFields: [.flag])
         )
-        try CatalogRepository(database: legacyDatabase).upsert(ghostAsset)
+        let legacyRepository = CatalogRepository(database: legacyDatabase)
+        try legacyRepository.upsert(ghostAsset)
         XCTAssertTrue(try tableExists("autopilot_proposals", in: legacyDatabase))
+        XCTAssertFalse(
+            try legacyDatabase.rows(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_autopilot_proposals%'"
+            ).isEmpty,
+            "fixture drift: no index matches the pattern the post-reopen assertion checks, " +
+            "which would make that assertion vacuously true"
+        )
+
+        // Snapshot every table name so a drop of the wrong table — one
+        // `statements` does not re-create, e.g. `place_cache` — is caught even
+        // though it wouldn't show up in the autopilot_proposals-specific checks.
+        let tablesBefore = Set(try legacyDatabase.rows(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).compactMap { $0["name"] })
+
+        // Record a removed-AI-label for the ghost asset through the real
+        // repository API so it's genuine catalog ground truth, not hand-rolled
+        // SQL — this is the no-resurrection ledger the drop must not touch.
+        let recordedLabel = RemovedAILabel(field: .flag, value: "reject")
+        try legacyRepository.recordRemovedAILabel(
+            assetID: ghostAsset.id,
+            field: recordedLabel.field,
+            value: recordedLabel.value
+        )
 
         // Reopen: the drop runs, and nothing throws.
         let reopened = try CatalogDatabase.open(at: catalogURL)
@@ -89,12 +114,27 @@ final class CatalogMigrationDropTests: XCTestCase {
             "DROP TABLE takes the table's indexes with it"
         )
 
+        // A drop of the wrong table would shrink or otherwise change this set
+        // in a way that the table-specific assertions above can't see —
+        // e.g. dropping `place_cache` (which `statements` never re-creates)
+        // would silently vanish from the schema forever.
+        let tablesAfter = Set(try reopened.rows(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).compactMap { $0["name"] })
+        XCTAssertEqual(tablesAfter, tablesBefore.subtracting(["autopilot_proposals"]))
+
         // The ghost is untouched — metadata_json is the truth, not the table.
         let reopenedRepository = CatalogRepository(database: reopened)
         let restored = try reopenedRepository.asset(id: ghostAsset.id)
         XCTAssertEqual(AutopilotGhost.kind(in: restored.metadata), .pick)
         XCTAssertNil(restored.metadata.confirmedProjection.flag)
         XCTAssertEqual(try reopenedRepository.assetIDsWithAutopilotGhost(), [ghostAsset.id])
+
+        // A DROP aimed at the wrong table would take this row with it and get
+        // the table re-CREATEd empty by `statements` on the next open — the
+        // name set would look identical while the no-resurrection ledger was
+        // silently wiped.
+        XCTAssertEqual(try reopenedRepository.removedAILabels(assetID: ghostAsset.id), [recordedLabel])
     }
 
     // Idempotence: the drop runs on every open, including opens where the
