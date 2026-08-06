@@ -60,8 +60,12 @@ stored:
   (pick/reject) — no table lookup.
 - **Overridden** = a user-origin flag replaced the ghost. Gone is gone;
   `U` yields neutral undecided, nothing resurrects.
-- **Dismissed** = ghost removed via the review surface;
-  `removed_ai_labels` records it (existing mechanism, unchanged).
+- **Dismissed** = ghost removed via the review surface, recorded in
+  `removed_ai_labels`. [Corrected 2026-08-06 during plan authoring: this
+  recording is NEW — today's `dismissAutopilotProposals` removes without
+  recording, so a re-run could resurrect a dismissed ghost. Routing
+  dismiss through `removeAIField` closes the gap and is what the
+  no-resurrection invariant requires. Behavior change 6 below.]
 - **Never applied** = `removed_ai_labels` suppressed the write at apply
   time, so no ghost exists and nothing counts it. The inflation bug
   vanishes by construction.
@@ -106,8 +110,10 @@ persisting proposals.
   Trash, Review picks, Save picks as set) are unchanged.
 - **Review surface** (`beginAutopilotReview`): the queue is "assets
   carrying a ghost," derived from metadata. Flags only. Commit stays
-  promote-to-user-origin (sidecar written where eligible); dismiss stays
-  remove-plus-`removed_ai_labels`. Universe: catalog-wide, matching
+  promote-to-user-origin (sidecar written where eligible); dismiss removes
+  the ghost via `removeAIField`, which records `removed_ai_labels` (a fix —
+  today's dismiss records nothing; see behavior change 6). Universe:
+  catalog-wide, matching
   today's global pending query — the review queue and the sidebar count
   must not silently shrink to the loaded scope. Badges and the completion
   summary keep operating on loaded assets, as today.
@@ -130,6 +136,10 @@ persisting proposals.
 4. Suppressed proposals cannot inflate any count — they never exist.
 5. The banner no longer survives relaunch; badges now survive it
    natively.
+6. Dismissing a ghost in review now records `removed_ai_labels` (today's
+   dismiss removes without recording, so a later autopilot run could
+   resurrect a dismissed ghost — closing this is required by the
+   no-resurrection invariant).
 
 ### Invariants (unchanged, re-asserted in tests)
 
