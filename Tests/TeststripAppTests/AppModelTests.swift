@@ -5750,7 +5750,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try repository.assetIDsWithAutopilotGhost().isEmpty)
     }
 
-    func testUndoAutopilotRunRevertsMetadataAndRestoresGhosts() throws {
+    func testUndoAutopilotRunRevertsMetadataAndRemovesGhosts() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "undoall-lead", path: "/Photos/Job/undoall-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let alternate = makeAsset(id: "undoall-alt", path: "/Photos/Job/undoall-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
