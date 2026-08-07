@@ -6604,7 +6604,7 @@ final class AppModelTests: XCTestCase {
                     EvaluationSignal(assetID: faceFound2.id, kind: .faceCount, value: .count(1), confidence: 0.85, provenance: visionProvenance),
                     EvaluationSignal(assetID: ocrFound.id, kind: .ocrText, value: .text("invoice"), confidence: 0.94, provenance: visionProvenance),
                     EvaluationSignal(assetID: ocrFound2.id, kind: .ocrText, value: .text("receipt"), confidence: 0.9, provenance: visionProvenance),
-                    EvaluationSignal(assetID: likelyIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: visionProvenance),
+                    EvaluationSignal(assetID: likelyIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: focusProvenance),
                     EvaluationSignal(assetID: likelyIssue2.id, kind: .exposure, value: .score(0.05), confidence: 0.88, provenance: visionProvenance),
                     EvaluationSignal(assetID: providerFailure.id, kind: .object, value: .label("person"), confidence: 0.77, provenance: visionProvenance),
                     EvaluationSignal(assetID: providerFailure2.id, kind: .object, value: .label("car"), confidence: 0.7, provenance: visionProvenance)
