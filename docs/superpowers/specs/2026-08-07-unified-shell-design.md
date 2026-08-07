@@ -46,6 +46,11 @@ any set.
 7. **No back-compat.** Nobody is using the tool yet. No migration shims, no
    legacy keybindings, no preserved UserDefaults for the old workspace
    selection.
+8. **Code-map follow-ups (Jesse, 2026-08-07, post-exploration):** Analysis
+   Failures survives as the tenth Smart Collection; the import "Keywords"
+   child row is dropped (YAGNI — the scoped mechanic falls out of source
+   selection + the existing Batch Metadata entries); Compare / A/B Compare /
+   Cull-grid stay transient Cull-lens sub-modes (`g`/`c`/`b`), not lenses.
 
 ## Design
 
@@ -76,14 +81,22 @@ Sections, top to bottom:
   "All imports…" overflow row with the total. Backed by the existing
   `work_sessions` (import-kind rows: title, detail, status, `issues_json`)
   joined to `asset_sets` membership — **no schema change**. Row label
-  derives from the session's date and source-folder text already carried in
-  its title/detail.
+  derives from the session's `created_at` date plus the source-folder text
+  in its `detail` (import sessions' `title` and `intent` are both the
+  constant "Import photos"; `detail` is the only distinguishing text).
+  Backed by the existing unbounded
+  `workSessions(kind: .ingest, statuses: [.completed])` query — not the
+  mixed-kind, limit-10 `recentWork` cache, which cannot promise three
+  imports.
 - **Smart Collections** — the old Cull From rows, which were always live
   queries: Picks, Potential Picks, Likely Issues, Not analyzed yet,
-  Rejects, 5 Stars, Needs Keywords, Faces Found, OCR Found, and the
-  SP-D0 AI Suggestions source (ghost-derived, appears only when a ghost
-  exists). Plus **"+ New from search…"**: saves the current search query as
-  a named smart collection (live query, count updates).
+  Rejects, 5 Stars, Needs Keywords, Faces Found, OCR Found, **Analysis
+  Failures** (evaluation-failure diagnostics; keeps feeding the Activity
+  Center problem badge — Jesse 2026-08-07: keep), and the SP-D0 AI
+  Suggestions source (ghost-derived, appears only when a ghost exists).
+  Saving the current search as a live smart collection **already exists**
+  (the result header's Save ▾ dynamic-search action); the section header
+  surfaces the same action as "+ New from search…" — reuse, don't rebuild.
 - **Sets** — saved `asset_sets` (static membership), starred first.
 - **Selection** — transient, bottom, only while a selection exists.
 
@@ -100,8 +113,11 @@ An import row expands (disclosure) to import-scoped children:
 - **⚠ Likely issues** — the flagged/likely-issue query scoped to the
   import.
 - **Faces found** — face-carrying assets within the import.
-- **Keywords** — the batch keyword-suggestion review surface, scoped to
-  the import (the banner was its only entry point; this is its new home).
+
+No Keywords child (Jesse 2026-08-07, YAGNI): batch keyword review already
+has two global entry points (Toolbar ▸ Batch Metadata, ⌥⌘M), and the
+import-scoped variant is exactly "select the import as source, then open
+Batch Metadata" — which this sidebar provides for free.
 
 Children render only with nonzero counts. Warning children (Skipped files,
 Preview failed) are **diagnostic sources**: they open in Grid for
@@ -116,7 +132,14 @@ Evaluate import (run local reads), Manual Compare over the import.
   warning if any, and a **Start culling** button. It fades after ~10s (or
   on click/dismiss) and docks into the Activity Center bell, which keeps
   the full receipt: counts, issue list, Start culling. The new import row
-  appears in the sidebar with a brief pulse.
+  appears in the sidebar with a brief pulse. Both halves are **new
+  construction** (no transient-overlay component exists; the Activity
+  Center lists only active work today): receipts become a new completed-
+  import item family in the bell. The badge stays problems-only — receipts
+  never badge; the toast is the announcement, the bell is the archive.
+- The toast is session-scoped, carrying over today's
+  `isCurrentSessionActivity` guard: a relaunch never resurrects it (the
+  app-006 zombie-panel lesson).
 - Existing-only imports ("No new photos imported — N already in catalog")
   get the same toast shape with that copy and no Start culling button.
 - Start culling selects the import as the source and enters the Cull lens.
@@ -134,10 +157,12 @@ Evaluate import (run local reads), Manual Compare over the import.
 - The Cull lens runs over whatever source is selected — an import, a smart
   collection, a set, the selection, All Photos.
 - Browse lenses (Grid, Loupe, Timeline, Map) carry the token search field.
-  When a query is active, the results header gains **"Cull these"** (hand
-  the current result set to the Cull lens as its source) and **"Save as
-  set"** (materialize membership into `asset_sets`). "+ New from search…"
-  in the sidebar saves the query itself as a live smart collection.
+  The result header's existing Save ▾ menu (dynamic search / frozen
+  snapshot / manual set) already covers every save semantic and stays.
+  The one new action is **"Cull these"**: hand the current result set to
+  the Cull lens as its source. The handoff travels as `SetQuery`, never
+  through the text serializer (which is lossy for `.likelyPick`,
+  `.likelyIssue`, `.evaluationFailure`, `.withinGeoBounds`).
 - Precise run semantics (scope snapshotting, resume, completion) are the
   SP-D lifecycle spec's job. This spec's contract: every source — and a
   handed-off search result — can be the Cull lens's input.
@@ -153,6 +178,13 @@ Evaluate import (run local reads), Manual Compare over the import.
   the current lens disables on falls back to Grid.
 - Lens switching preserves source, selection, and (where meaningful) the
   focused asset.
+- Compare, A/B Compare, and Cull-grid are **not lenses**: they remain
+  transient sub-modes inside the Cull lens, reached by `g`/`c`/`b` as
+  today (Jesse 2026-08-07).
+- Session restore (no back-compat; `SessionRestoreState` reshapes freely):
+  relaunch restores the selected source and the lens for browse lenses;
+  quitting mid-cull relaunches on the same source in Grid — actual run
+  resume is the SP-D lifecycle spec's job.
 
 ## Behavior changes (the honest list)
 
@@ -164,10 +196,15 @@ Evaluate import (run local reads), Manual Compare over the import.
    as a concept disappears (those rows are Smart Collections now).
 4. Import history becomes visible and navigable; older imports are
    cullable again at any time.
-5. Any search can be culled and saved (as a set or a smart collection).
+5. Any search can be culled ("Cull these"); saving searches/sets already
+   existed and is unchanged.
 6. People becomes source-scoped; the global queue moves to All Photos.
-7. Batch keyword-suggestion review is reachable from import rows instead
-   of the dead banner.
+7. Timeline's year histogram becomes source-scoped — today it shows
+   catalog-wide numbers over filtered thumbnails, a live bug this fixes.
+8. Session restore returns source + browse lens; a mid-cull quit
+   relaunches on the same source in Grid (run resume arrives with SP-D).
+9. Receipts (completed imports) appear in the Activity Center; its badge
+   stays problems-only.
 
 ## Invariants (unchanged, re-asserted in tests)
 
@@ -184,8 +221,8 @@ spec touches metadata semantics — it relocates chrome.
   `CullingSessionCompletionSummary` with `CullCompletionPresentation`.
 - Any change to import mechanics, preview generation, evaluation, or
   metadata handling.
-- Smart-collection editing UI beyond "+ New from search…" (rename/delete
-  via context menu is in; a query-builder editor is not).
+- Smart-collection editing UI beyond the existing save actions
+  (rename/delete via context menu is in; a query-builder editor is not).
 - Multi-window.
 
 ## Testing
@@ -202,9 +239,9 @@ spec touches metadata semantics — it relocates chrome.
 - Lens scoping: switching lenses preserves source/selection; People query
   scoped to source vs All Photos; Cull disabled on diagnostic/empty
   sources with Grid fallback.
-- Cull-these handoff: a query result set becomes the Cull lens input;
-  Save as set writes `asset_sets` membership; New-from-search persists a
-  live query.
+- Cull-these handoff: a query result set becomes the Cull lens input via
+  `SetQuery` (asserted to survive the predicates the text serializer
+  loses); existing save actions keep their tests.
 
 **End-to-end (scenario cards, VM, seeded batch):** import a batch; assert
 the toast appears with Start culling and no banner chrome exists; let the
