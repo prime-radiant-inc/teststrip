@@ -65,3 +65,13 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - A prior run of this card was BLOCKED-CONSOLE; `AppModel.selectWorkspace` /
   `Workspace.keyEquivalent` were confirmed by source read only. The live
   assertions still need a first green run.
+
+## Run status
+**Reviewed 2026-08-06 (Task 9, SP-D0 ghost derivation sweep)**: checked for
+stale `autopilot_proposals`/proposal-batch-pending language per the task
+brief; this card's only Autopilot-related content is the literal "Autopilot
+Proposals" sidebar row label in Step 3, which is unchanged by SP-D0 (the
+row's presence predicate moved from `pendingAutopilotProposals` to
+`autopilotGhostAssetIDs`, but the card never names that predicate). No edit
+needed. Supersedes prior status: no change to the substance of any prior
+claim; this note exists for the record per house style.

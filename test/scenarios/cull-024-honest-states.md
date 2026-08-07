@@ -581,6 +581,18 @@ re-verified by directly reading each cited symbol. `AppModel.swift` and
 `CullReadsCardPresentation.swift` citations are untouched (neither file
 changed). No prose or behavior claims changed. Still NOT RUN.
 
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the
+`AutopilotProposalKind` partition this note describes **no longer exists at
+all** — `CullCompletionPresentation.summary`/`.presentation`
+(`Sources/TeststripApp/CullCompletionPresentation.swift:32,88`) now take
+only `assets:viewedAssetIDs:skippedAssetIDs:(scope:)`, no proposal-ID
+parameters, so the exhaustive `switch` this note's "+7 lines" refers to is
+gone from `LibraryGridView.swift` entirely, not merely refactored again.
+This almost certainly shifts every `LibraryGridView.swift` citation in this
+card by some further amount — **not independently re-verified in this
+reconciliation pass**, which was scoped to this one historical note per the
+task brief, not a full citation re-sweep. Still NOT RUN.
+
 **LIVE RUN 2026-07-28, app 878f1939 (merged main, includes the three-state
 code), `teststrip-e2e` VM, fresh `burst` launch.** Verdict:
 **PASS-WITH-CARD-FIXES, no app bugs.** Selected Stack 1 of 4 (`smoke-0`,

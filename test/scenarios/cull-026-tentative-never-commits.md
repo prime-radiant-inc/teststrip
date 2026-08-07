@@ -90,21 +90,25 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   synchronously the `.xmp` sidecar's `ts:Pick` attribute
   (`Sources/TeststripCore/Metadata/XMPPacket.swift:73`) from
   `metadata.confirmedProjection`.
-- **The separate "remove/decline" gesture exists in the model but has no
-  wired UI for flags.** `AppModel.removeAIField(_:for:)`
-  (`AppModel.swift:8034-8058`) is the literal CLAUDE.md "or removes it"
-  path — clears the field and records `removed_ai_labels`
-  (`Sources/TeststripCore/Catalog/CatalogMigrations.swift:247-255`) keyed
-  by the rejected value (`"pick"`/`"reject"` for a flag,
-  `AppModel.swift:8060-8071`) "so a future promoter (autopilot) can
-  recognize and skip re-proposing that same value." Grepping every call
-  site: the **only** UI wiring is for `.caption`
-  (`InspectorView.swift:1169`) — nothing in the shipped culling-flow-shell
-  calls `removeAIField(.flag, for:)`. This card therefore tests the two
-  gestures that **are** wired for a pick/reject flag — re-asserting the
-  same decision (`P`/`X` again) and choosing the opposite one — both of
-  which go through `setFlagForSelectedAsset`, not `removeAIField`, and so
-  neither writes a `removed_ai_labels` row. See Sharp edges.
+- **The separate "remove/decline" gesture — SP-D0 wired it for flags too
+  (2026-08-06 correction; this bullet previously claimed it had no flag
+  UI at all).** `AppModel.removeAIField(_:for:)` (`AppModel.swift:8391-8420`)
+  is the literal CLAUDE.md "or removes it" path — clears the field and
+  records `removed_ai_labels`
+  (`Sources/TeststripCore/Catalog/CatalogMigrations.swift:231-238`) keyed
+  by the rejected value (`"pick"`/`"reject"` for a flag) "so a future
+  promoter (autopilot) can recognize and skip re-proposing that same
+  value." `AppModel.setFlagForSelectedAsset(_:)` now routes a `U`
+  (`.clearFlag`) on a **still-tentative** ghost through exactly this path
+  (`AppModel.swift:7362-7366` — `if flag == nil, ...
+  aiUnconfirmedFields.contains(.flag) { try removeAIField(.flag, for:
+  selectedAsset.id) }`); `U` on an already-**confirmed** flag still takes
+  the plain-clear branch this bullet originally described, which goes
+  through `setFlagForSelectedAsset`'s ordinary write, not `removeAIField`,
+  and writes no `removed_ai_labels` row. This card only exercises confirm
+  and override (never a still-tentative `U`), so neither of *this card's*
+  own two gestures writes a `removed_ai_labels` row — but the gesture
+  itself is no longer unwired; see Sharp edges for where it's covered.
 - **Fixture and seeding gap**: no existing `TeststripBench` seed command
   produces a pre-flagged tentative-AI asset (`SmokeCatalogSeeder`'s formula,
   `Sources/TeststripBench/SmokeCatalogSeeder.swift:145-147`:
@@ -321,20 +325,22 @@ rm -rf "${TMPDIR:-/tmp}/teststrip-vm-seeds/smoke/Teststrip"
 ```
 
 ## Sharp edges
-- **This card cannot exercise the "remove/decline" gesture
-  (`removeAIField(.flag,...)` / `removed_ai_labels`) for a pick/reject
-  flag** — grepped every call site and only `.caption` is wired to any
-  control in the shipped UI (`InspectorView.swift:1169`). "Confirming then
-  rejecting" per this card's brief is interpreted as the two gestures that
-  *are* reachable: re-asserting the same decision (confirms) and choosing
-  the opposite decision (also confirms, to a different value) — both go
-  through `setFlagForSelectedAsset`, not `removeAIField`, so neither
-  records a `removed_ai_labels` row. If a future task wires a "decline the
-  AI's suggestion, stay undecided" control for flags, this card's steps
-  6-7 should grow a third leg exercising `removeAIField(.flag,...)`
-  directly and asserting the `removed_ai_labels` row exists (so a future
-  autopilot re-proposal is suppressed) — flagging this as a real gap, not
-  a card-authoring shortcut.
+- **This card doesn't exercise the "remove/decline" gesture
+  (`removeAIField(.flag,...)` / `removed_ai_labels`) — but the leg this
+  bullet used to ask a "future task" to add now exists elsewhere
+  (2026-08-06 update).** This card's own steps 6-7 only ever confirm
+  (re-assert the same decision) or override (choose the opposite decision)
+  — both go through `setFlagForSelectedAsset`'s ordinary write, not
+  `removeAIField`, so neither records a `removed_ai_labels` row here, and
+  that remains true. What's changed: `U` on a still-tentative ghost is now
+  wired to `removeAIField(.flag, for:)` (`AppModel.swift:7362-7366`, see
+  Source above), and `cull-029-autopilot-ghost-derivation.md`'s Step 6 P0
+  leg drives exactly that gesture end-to-end — pressing `U` on a
+  still-tentative ghost, asserting `metadata_json` clears, `removed_ai_labels`
+  gains exactly one row, and a second Autopilot run does not resurrect it.
+  This card's cross-reference to `cull-017-autopilot-review.md` (below,
+  the "shared local `smoke` seed template" bullet) stays valid and
+  unaffected by this change.
 - **The preflight's tentative-exclusion is silent** — unlike
   `outsideScopeCount`, which the sheet discloses in its summary text, the
   aiUnconfirmedFields skip in `rejectRelocationScope` produces no visible
@@ -430,3 +436,19 @@ directly reading `Metadata.swift`, `AppModel.swift` (`cullUndecidedCount`,
 `CullHUDPresentation.swift`, `LibraryGridView.swift`
 (`RejectRelocationSheetPresentation`), `XMPPacket.swift`, and
 `SmokeCatalogSeeder.swift`.
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation) — the live PASS
+above is unaffected.** None of this card's 8 driven steps ever queried
+`autopilot_proposals` or any autopilot machinery — the confirmed-flag SQL
+predicate (`assetCount(ids:confirmedFlag:)`) and the HUD/preflight
+assertions are untouched by SP-D0, so the 2026-07-28 PASS evidence still
+stands and does not need a fresh VM run on that basis alone. What changed
+is documentation only: the Source bullet's claim that "the only UI wiring
+is for `.caption`... nothing in the shipped culling-flow-shell calls
+`removeAIField(.flag, for:)`" was corrected — `U` on a still-tentative
+ghost is now wired to exactly that call — and the matching Sharp-edges gap
+note was updated to point at `cull-029-autopilot-ghost-derivation.md`'s
+Step 6 P0 leg, which now covers that gesture end-to-end. Re-verified
+`removeAIField`'s citation (`AppModel.swift:8391-8420`, was `8034-8058`)
+and `removed_ai_labels`'s (`CatalogMigrations.swift:231-238`, was
+`247-255`) against the current tree while making this correction.

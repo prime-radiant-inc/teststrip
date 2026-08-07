@@ -31,13 +31,25 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    `SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.flag') IS NULL;` reads 0.
 3. Assert the completion stage renders (item 46): `ax_drive.sh find --contains
    "End of set"` (the stage's `accessibilityLabel`) and `ax_drive.sh find
-   --contains "Nothing left to decide"`. Assert exactly the 3-action set from
-   source — Export, "Move Rejects…", "Review Picks" — is present
-   (`ax_drive.sh find --role AXButton --label "Export"` /
-   `--label "Move Rejects…"` / `--label "Review Picks"`); there is no fourth
-   "Continue" *action button* — "Continue culling" is a separate plain-style
-   dismiss control below the action row (`LibraryGridView.swift:3641-3646`),
-   not a `CullCompletionPresentation.Action` case.
+   --contains "Nothing left to decide"`. **This card is the authoritative
+   post-drop completion action set** (verified directly against
+   `Sources/TeststripApp/CullCompletionPresentation.swift:9-16,62-67` and
+   `LibraryGridView.swift:4009-4028` — see `cull-025-run-strip-completion.md`,
+   which cross-references this card rather than duplicating the action-set
+   assertion): assert exactly the five titles — "Export", "Move Rejects…",
+   "Move Rejects to Trash…", "Review Picks", "Save Picks as Set" — are
+   present (`ax_drive.sh find --role AXButton --label "Export"` /
+   `--label "Move Rejects…"` / `--label "Move Rejects to Trash…"` /
+   `--label "Review Picks"` / `--label "Save Picks as Set"`; the last is
+   conditional on `picks > 0`, guaranteed on this fixture — `--smoke`'s flag
+   formula, `index.isMultiple(of: 5) ? .reject : (index.isMultiple(of: 3) ?
+   .pick : nil)`, seeds several picks among the 24 assets). There is no
+   sixth "Continue" *action button* — "Continue culling" is a separate
+   plain-style dismiss control below the action row
+   (`LibraryGridView.swift:3993-3997`), not a
+   `CullCompletionPresentation.Action` case; there is likewise no
+   "Review AI Suggestions" action — that ceremony was deleted from the
+   source entirely by SP-D0 (`cull-025`'s Source, Actions rule).
 4. **Review Picks (item 47).** Click "Review Picks"
    (`ax_drive.sh press --role AXButton --label "Review Picks"`). Assert the
    scope indicator now reads "Picks" and the visible set narrows to picked
@@ -70,8 +82,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Expected
 - Step 3: completion stage visible once the last frame is decided, with
-  exactly the Export/Move Rejects/Review Picks action row. **Fails if** a
-  4th action button renders, or an action from the set is missing.
+  exactly the five-title action row (Export/Move Rejects…/Move Rejects to
+  Trash…/Review Picks/Save Picks as Set). **Fails if** a sixth action
+  button renders (in particular "Review AI Suggestions" — deleted from the
+  source, not gated to absent), or any of the five is missing.
 - Step 4: scope indicator and visible set both read Picks-only after Review
   Picks. **Fails if** the scope doesn't change, or the wrong scope is
   selected.
@@ -116,10 +130,9 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   `cullRemainingSinglesFromCullingCompletion` (51). Flagging as an open
   question rather than fabricating an untestable step here.
 - The autopilot banner is suppressed above the stage once `completion != nil`
-  (folded into the stage body instead per `LibraryGridView.swift:3531-3534`
-  and `:3627-3630`) — if this card is ever combined with
-  `cull-017-autopilot-review.md`'s fixture, expect the banner to move location
-  rather than disappear.
+  (folded into the stage body instead per `LibraryGridView.swift:3865-3867`
+  and `:3975-3977`) — an undismissed banner reappears inside
+  `cullCompletionStage`, still with its own Review/Undo all controls.
 
 ## Run status
 UNRUN since the rename/extension in this revision — the original Move
@@ -132,3 +145,17 @@ numbers before this revision's re-read; current numbers cited above),
 newly added and have not been dry-run against a live catalog or AX tree.
 Needs a human-present re-run, including confirming the `onChange` dismissal
 behavior actually matches source (SwiftUI `onChange` ordering can surprise).
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation — this card is now
+authoritative)**: Step 3 was rewritten from a stale 3-action assertion
+(missing "Move Rejects to Trash…" and "Save Picks as Set", which predate
+this task and were never about autopilot) to the full, verified five-title
+post-drop action set, cross-referenced from `cull-025-run-strip-completion.md`
+so the two cards no longer conflict on what the completion stage's action
+row actually contains. The banner-suppression Sharp-edges bullet's citations
+were re-verified against the current tree and its speculative
+`cull-017-autopilot-review.md`-combination caveat was replaced with the
+actual (now-confirmed) behavior: an undismissed banner reappears inside the
+completion stage, unaffected by SP-D0. Supersedes prior status: the
+2026-07-10 source read predates both the three-action staleness and the
+ghost-derivation model. Needs a fresh VM run.

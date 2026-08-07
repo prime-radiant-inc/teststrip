@@ -125,7 +125,7 @@ are the point; do not weaken them to make a card pass.
 
 | Card | Surface under test |
 | --- | --- |
-| `autopilot-review-commit-undo.md` | Autopilot proposal → Review → Commit → Undo all |
+| `autopilot-review-commit-undo.md` | Autopilot ghost → Review → Commit → Undo all |
 | `reject-relocation-move-and-back.md` | Move Rejects to folder, then Move back (origin-relocating) |
 | `duplicate-detection-import-new-only.md` | Content-hash dedup on re-import (import-new-only) |
 | `places-map-and-geocode.md` | GPS ingest → Places map clustering → reverse-geocoded names |

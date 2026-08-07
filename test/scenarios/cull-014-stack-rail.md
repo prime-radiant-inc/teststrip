@@ -340,6 +340,24 @@ above shifted by exactly +7 (e.g. `cullingStackRail` `:4721-4808` →
 `:4728-4815`), re-verified by directly reading each cited symbol, not by
 assuming the offset. No prose or behavior claims changed.
 
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the
+`AutopilotProposalKind` partition this note describes **no longer exists at
+all**. `CullCompletionPresentation.summary`/`.presentation`
+(`Sources/TeststripApp/CullCompletionPresentation.swift:32,88`) now take
+only `assets:viewedAssetIDs:skippedAssetIDs:(scope:)` — no proposal-ID
+parameters of any kind — so `LibraryGridView`'s call site
+(`:3844`, verified 2026-08-06) has no partition to build any more; the
+`switch` this note's "+7 lines" refers to is gone from the source, not
+merely refactored again. This almost certainly shifts every
+`LibraryGridView.swift` citation in this card by some further amount (the
+removed switch was 7 lines, but other unrelated edits on this branch may
+also have moved code before `cullingStackRail`) — **not independently
+re-verified in this reconciliation pass**, which was scoped to this one
+historical note per the task brief, not a full citation re-sweep. A future
+pass should re-read every `LibraryGridView.swift` citation in this card
+directly, the same way the 2026-07-28 notes above did, rather than trust
+any offset math.
+
 **Run 2026-07-28 (live VM, app 878f1939): PASS-WITH-CARD-FIXES for steps
 1-5; step 6 PASS on cell-count/flaw-badge, fixture-gap on `✦`.** All
 source citations re-verified accurate before driving. No app bugs found —
