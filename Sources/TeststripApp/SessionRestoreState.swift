@@ -33,6 +33,11 @@ struct SessionRestoreState: Codable, Equatable, Sendable {
     var providerFailuresFilter: Bool
     var metadataSyncPendingFilter: Bool
     var metadataSyncConflictFilter: Bool
+    /// Predicates installed by a smart-collection selection. Without these a
+    /// relaunch drops the user out of the collection they were in, because a
+    /// smart collection is no longer expressible as the boolean filter
+    /// properties above.
+    var detachedFilterPredicates: [SetQuery.Predicate]
 }
 
 // Reads and writes SessionRestoreState via app preferences (the same mechanism

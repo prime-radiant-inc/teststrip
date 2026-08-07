@@ -355,8 +355,8 @@ struct SidebarView: View {
             return "person.2"
         case .places:
             return "map"
-        case .reviewQueue(let queue):
-            return reviewQueueIconName(queue)
+        case .smartCollection(let queue):
+            return smartCollectionIconName(queue)
         case .folder:
             return "folder"
         case .sourceAvailability:
@@ -376,7 +376,7 @@ struct SidebarView: View {
         }
     }
 
-    private func reviewQueueIconName(_ queue: ReviewQueue) -> String {
+    private func smartCollectionIconName(_ queue: SmartCollection) -> String {
         queue.presentation.systemImage
     }
 

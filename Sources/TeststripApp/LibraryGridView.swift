@@ -817,7 +817,7 @@ struct LibraryGridView: View {
             canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
             canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
             canSaveManualSet: model.canSaveSelectedAssetAsManualSet,
-            reviewQueueCounts: model.reviewQueueCounts,
+            smartCollectionCounts: model.smartCollectionCounts,
             evaluationKindSummaries: model.catalogEvaluationKindSummaries,
             activeTokens: LibraryQueryToken.tokens(from: model)
         )
@@ -1646,7 +1646,7 @@ struct LibraryGridView: View {
                 activeFilterRows: model.activeLibraryFilterRows,
                 matchCount: model.totalAssetCount,
                 typedRuleText: savedSearchRuleText,
-                reviewQueueCounts: model.reviewQueueCounts,
+                smartCollectionCounts: model.smartCollectionCounts,
                 evaluationKindSummaries: model.catalogEvaluationKindSummaries
             ),
             previewAssets: Array(model.assets.prefix(18)),
@@ -3206,7 +3206,7 @@ struct LibraryGridView: View {
 
     private func reviewFaceQueueFromImportCompletion() {
         do {
-            try model.selectSidebarTarget(.reviewQueue(.facesFound))
+            try model.selectSidebarTarget(.smartCollection(.facesFound))
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -8625,12 +8625,12 @@ struct SmartCollectionBuilderPresentation: Equatable {
     var activeFilterRows: [ActiveLibraryFilterRow]? = nil
     var matchCount: Int
     var typedRuleText: String = ""
-    var reviewQueueCounts: [ReviewQueue: Int] = [:]
+    var smartCollectionCounts: [SmartCollection: Int] = [:]
     var evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
 
     var suggestedTemplateRows: [SmartCollectionSuggestedTemplateRow] {
         Self.suggestedTemplateRows(
-            reviewQueueCounts: reviewQueueCounts,
+            smartCollectionCounts: smartCollectionCounts,
             evaluationKindSummaries: evaluationKindSummaries,
             activeRuleChips: ruleChips
         )
@@ -8667,14 +8667,14 @@ struct SmartCollectionBuilderPresentation: Equatable {
     }
 
     private static func suggestedTemplateRows(
-        reviewQueueCounts: [ReviewQueue: Int],
+        smartCollectionCounts: [SmartCollection: Int],
         evaluationKindSummaries: [CatalogEvaluationKindSummary],
         activeRuleChips: [String]
     ) -> [SmartCollectionSuggestedTemplateRow] {
         var rows: [SmartCollectionSuggestedTemplateRow] = []
         let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 5
-        let ratedCount = reviewQueueCounts[.fiveStars] ?? 0
-        let pickedCount = reviewQueueCounts[.picks] ?? 0
+        let ratedCount = smartCollectionCounts[.fiveStars] ?? 0
+        let pickedCount = smartCollectionCounts[.picks] ?? 0
         if ratedCount > 0,
            pickedCount > 0,
            !isPresetActive(.ratingFourPlus, activeRuleChips: activeRuleChips),
@@ -8695,7 +8695,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
             rows.append(row)
         }
 
-        let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
+        let candidates: [(queue: SmartCollection, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
             (.facesFound, .facesFound, "Face review", "person.2.circle"),
             (.needsKeywords, .needsKeywords, "Needs keywords", "tag.circle"),
             (.needsEvaluation, .needsEvaluation, "Needs evaluation", "wand.and.stars.inverse"),
@@ -8704,7 +8704,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
         ]
         for candidate in candidates {
             guard rows.count < rowLimit else { break }
-            guard let count = reviewQueueCounts[candidate.queue], count > 0 else { continue }
+            guard let count = smartCollectionCounts[candidate.queue], count > 0 else { continue }
             guard !isPresetActive(candidate.preset, activeRuleChips: activeRuleChips) else { continue }
             guard !rows.containsPreset(candidate.preset) else { continue }
             rows.append(SmartCollectionSuggestedTemplateRow(
@@ -8755,7 +8755,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
         }
     }
 
-    private static func suggestionDetail(for queue: ReviewQueue, count: Int) -> String {
+    private static func suggestionDetail(for queue: SmartCollection, count: Int) -> String {
         switch queue {
         case .facesFound:
             return count == 1 ? "1 photo has faces" : "\(count) photos have faces"

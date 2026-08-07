@@ -55,14 +55,14 @@ public struct LibraryResultHeaderPresentation: Equatable {
         canSaveDynamicSet: Bool,
         canSaveSnapshotSet: Bool,
         canSaveManualSet: Bool,
-        reviewQueueCounts: [ReviewQueue: Int] = [:],
+        smartCollectionCounts: [SmartCollection: Int] = [:],
         evaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         activeTokens: [LibraryQueryToken] = []
     ) {
         matchCount = totalAssetCount
         interpretation = Self.interpretation(for: librarySearchText)
         suggestedTokens = Self.suggestedTokens(
-            reviewQueueCounts: reviewQueueCounts,
+            smartCollectionCounts: smartCollectionCounts,
             evaluationKindSummaries: evaluationKindSummaries,
             activeTokens: activeTokens
         )
@@ -120,7 +120,7 @@ public struct LibraryResultHeaderPresentation: Equatable {
     /// result set, expressed as tokens the query field's Add-filter menu
     /// already knows how to apply and remove.
     private static func suggestedTokens(
-        reviewQueueCounts: [ReviewQueue: Int],
+        smartCollectionCounts: [SmartCollection: Int],
         evaluationKindSummaries: [CatalogEvaluationKindSummary],
         activeTokens: [LibraryQueryToken]
     ) -> [LibraryQueryToken] {
@@ -132,8 +132,8 @@ public struct LibraryResultHeaderPresentation: Equatable {
             tokens.append(token)
         }
 
-        func hasResults(_ queue: ReviewQueue) -> Bool {
-            (reviewQueueCounts[queue] ?? 0) > 0
+        func hasResults(_ queue: SmartCollection) -> Bool {
+            (smartCollectionCounts[queue] ?? 0) > 0
         }
 
         if hasResults(.fiveStars) {

@@ -662,7 +662,7 @@ private struct IndexedCullingStack {
     var lastIndex: Int
 }
 
-public enum ReviewQueue: String, CaseIterable, Equatable, Hashable, Sendable {
+public enum SmartCollection: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case picks
     case potentialPicks
     case rejects
@@ -675,7 +675,7 @@ public enum ReviewQueue: String, CaseIterable, Equatable, Hashable, Sendable {
     case providerFailures
 }
 
-public struct ReviewQueuePresentation: Equatable, Sendable {
+public struct SmartCollectionPresentation: Equatable, Sendable {
     public var title: String
     public var systemImage: String
 
@@ -685,29 +685,60 @@ public struct ReviewQueuePresentation: Equatable, Sendable {
     }
 }
 
-public extension ReviewQueue {
-    var presentation: ReviewQueuePresentation {
+public extension SmartCollection {
+    var presentation: SmartCollectionPresentation {
         switch self {
         case .picks:
-            return ReviewQueuePresentation(title: "Picks", systemImage: "flag.fill")
+            return SmartCollectionPresentation(title: "Picks", systemImage: "flag.fill")
         case .potentialPicks:
-            return ReviewQueuePresentation(title: "Potential Picks", systemImage: "sparkles")
+            return SmartCollectionPresentation(title: "Potential Picks", systemImage: "sparkles")
         case .rejects:
-            return ReviewQueuePresentation(title: "Rejects", systemImage: "xmark.circle")
+            return SmartCollectionPresentation(title: "Rejects", systemImage: "xmark.circle")
         case .fiveStars:
-            return ReviewQueuePresentation(title: "5 Stars", systemImage: "star.fill")
+            return SmartCollectionPresentation(title: "5 Stars", systemImage: "star.fill")
         case .needsKeywords:
-            return ReviewQueuePresentation(title: "Needs Keywords", systemImage: "tag")
+            return SmartCollectionPresentation(title: "Needs Keywords", systemImage: "tag")
         case .needsEvaluation:
-            return ReviewQueuePresentation(title: "Not analyzed yet", systemImage: "wand.and.stars")
+            return SmartCollectionPresentation(title: "Not analyzed yet", systemImage: "wand.and.stars")
         case .facesFound:
-            return ReviewQueuePresentation(title: "Faces Found", systemImage: "person.2")
+            return SmartCollectionPresentation(title: "Faces Found", systemImage: "person.2")
         case .ocrFound:
-            return ReviewQueuePresentation(title: "OCR Found", systemImage: "text.viewfinder")
+            return SmartCollectionPresentation(title: "OCR Found", systemImage: "text.viewfinder")
         case .likelyIssues:
-            return ReviewQueuePresentation(title: "Likely Issues", systemImage: "exclamationmark.triangle")
+            return SmartCollectionPresentation(title: "Likely Issues", systemImage: "exclamationmark.triangle")
         case .providerFailures:
-            return ReviewQueuePresentation(title: "Analysis Failures", systemImage: "bolt.horizontal.circle")
+            return SmartCollectionPresentation(title: "Analysis Failures", systemImage: "bolt.horizontal.circle")
+        }
+    }
+}
+
+public extension SmartCollection {
+    /// The one and only expression of a smart collection's membership. The
+    /// sidebar count, the list you get when you click the row, and every
+    /// import-scoped variant are all derived from this — never re-expressed.
+    /// A second expression is how the count and the list drift apart.
+    var query: SetQuery {
+        switch self {
+        case .picks:
+            return SetQuery(predicates: [.flag(.pick)])
+        case .potentialPicks:
+            return SetQuery(predicates: [.likelyPick])
+        case .rejects:
+            return SetQuery(predicates: [.flag(.reject)])
+        case .fiveStars:
+            return SetQuery(predicates: [.ratingAtLeast(5)])
+        case .needsKeywords:
+            return SetQuery(predicates: [.missingKeywords])
+        case .needsEvaluation:
+            return SetQuery(predicates: [.unevaluated])
+        case .facesFound:
+            return SetQuery(predicates: [.evaluationKind(.faceCount)])
+        case .ocrFound:
+            return SetQuery(predicates: [.evaluationKind(.ocrText)])
+        case .likelyIssues:
+            return SetQuery(predicates: [.likelyIssue])
+        case .providerFailures:
+            return SetQuery(predicates: [.evaluationFailure])
         }
     }
 }
@@ -730,7 +761,7 @@ public struct CullSource: Equatable, Sendable, Identifiable {
     public enum Target: Equatable, Sendable {
         case recentImport
         case autopilotProposals
-        case reviewQueue(ReviewQueue)
+        case smartCollection(SmartCollection)
         case selection
     }
 
@@ -777,7 +808,7 @@ public struct CullSourcePresentation: Equatable, Sendable {
 /// avoidance) instead of routing to an empty queue.
 public struct FindBestShotsPlan: Equatable, Sendable {
     public enum Route: Equatable, Sendable {
-        case reviewQueue(ReviewQueue)
+        case smartCollection(SmartCollection)
         case nothingRanked(message: String)
     }
 
@@ -805,16 +836,16 @@ public enum FindBestShotsRouter {
         let shouldEvaluate = canEvaluateScope && needsEvaluationCount > 0
 
         if potentialPickCount > 0 {
-            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .reviewQueue(.potentialPicks))
+            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .smartCollection(.potentialPicks))
         }
         if pickCount > 0 {
-            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .reviewQueue(.picks))
+            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .smartCollection(.picks))
         }
         // Nothing ranks yet. If there are still-unevaluated frames we can read,
         // trigger evaluation and land on Potential Picks so it fills in as the
         // worker reports; otherwise say what actually happened, never zero.
         if shouldEvaluate {
-            return FindBestShotsPlan(shouldTriggerEvaluation: true, route: .reviewQueue(.potentialPicks))
+            return FindBestShotsPlan(shouldTriggerEvaluation: true, route: .smartCollection(.potentialPicks))
         }
         return FindBestShotsPlan(shouldTriggerEvaluation: false, route: .nothingRanked(message: nothingRankedMessage))
     }
@@ -994,7 +1025,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case people
     case places
     case placeholder
-    case reviewQueue(ReviewQueue)
+    case smartCollection(SmartCollection)
     case folder(String)
     case sourceAvailability(SourceAvailability)
     case evaluationKind(EvaluationKind)
@@ -2252,7 +2283,7 @@ public final class AppModel {
     /// The catalog-wide set of assets carrying an autopilot ghost — derived,
     /// never stored. Backs the Cull sidebar's "Autopilot Proposals" source and
     /// its count; refreshed through `refreshCatalogSidebarCounts()`, the same
-    /// funnel that maintains `reviewQueueCounts`.
+    /// funnel that maintains `smartCollectionCounts`.
     public private(set) var autopilotGhostAssetIDs: [AssetID] = []
     public private(set) var isAutopilotReviewActive = false
     // The run-time metadata undo group for the most recent autopilot run's
@@ -2410,7 +2441,7 @@ public final class AppModel {
     /// loupe overlay never present the naming popover for the same face at once
     /// (`FaceNamingPopover`).
     public var editingFaceSource: FaceEditSurface?
-    public var reviewQueueCounts: [ReviewQueue: Int]
+    public var smartCollectionCounts: [SmartCollection: Int]
     public var selectedAssetSetID: AssetSetID? {
         didSet { persistSessionState() }
     }
@@ -3032,7 +3063,7 @@ public final class AppModel {
             importError: importError,
             sources: sources,
             xmpConflicts: xmpConflicts,
-            providerFailureCount: reviewQueueCounts[.providerFailures] ?? 0
+            providerFailureCount: smartCollectionCounts[.providerFailures] ?? 0
         )
     }
 
@@ -3301,7 +3332,7 @@ public final class AppModel {
             Self.append(
                 ActiveLibraryFilterRow(
                     title: "Rating >= \(minimumRatingFilter)",
-                    target: minimumRatingFilter == 5 ? .reviewQueue(.fiveStars) : nil
+                    target: minimumRatingFilter == 5 ? .smartCollection(.fiveStars) : nil
                 ),
                 to: &rows
             )
@@ -3345,19 +3376,19 @@ public final class AppModel {
             )
         }
         if needsKeywordsFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Needs Keywords", target: .smartCollection(.needsKeywords)), to: &rows)
         }
         if needsEvaluationFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Not analyzed yet", target: .reviewQueue(.needsEvaluation)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Not analyzed yet", target: .smartCollection(.needsEvaluation)), to: &rows)
         }
         if likelyIssuesFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .reviewQueue(.likelyIssues)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .smartCollection(.likelyIssues)), to: &rows)
         }
         if potentialPicksFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Potential Picks", target: .reviewQueue(.potentialPicks)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Potential Picks", target: .smartCollection(.potentialPicks)), to: &rows)
         }
         if providerFailuresFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Analysis Failures", target: .reviewQueue(.providerFailures)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Analysis Failures", target: .smartCollection(.providerFailures)), to: &rows)
         }
         if metadataSyncPendingFilter {
             Self.append(ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending), to: &rows)
@@ -3489,7 +3520,7 @@ public final class AppModel {
               !assetIDs.isEmpty,
               let faceAssetIDs = try? catalog.repository.assetIDs(
                 ids: assetIDs,
-                matching: Self.reviewQueueQuery(.facesFound)
+                matching: SmartCollection.facesFound.query
               ) else {
             return 0
         }
@@ -3593,6 +3624,15 @@ public final class AppModel {
 
     public var suggestedSavedSearchName: String {
         var parts: [String] = []
+        // Smart-collection selections (and any other detached predicates,
+        // e.g. from a Smart Collection Builder preset) no longer set the
+        // boolean filter properties below, so their name has to come from
+        // here — through the same `activeLibraryFilterRow(for:)` the filter
+        // chips already use, not a second title spelling.
+        for predicate in detachedLibraryFilterPredicates {
+            guard let title = Self.activeLibraryFilterRow(for: predicate)?.title else { continue }
+            Self.append(title, to: &parts)
+        }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
             parts.append(residualSearch)
@@ -4322,7 +4362,7 @@ public final class AppModel {
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         catalogPeople: [CatalogPerson] = [],
-        reviewQueueCounts: [ReviewQueue: Int] = [:],
+        smartCollectionCounts: [SmartCollection: Int] = [:],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil,
@@ -4347,7 +4387,7 @@ public final class AppModel {
             catalogTimelineDays: catalogTimelineDays,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            reviewQueueCounts: reviewQueueCounts,
+            smartCollectionCounts: smartCollectionCounts,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
             pendingMetadataSyncCount: resolvedPendingMetadataSyncCount,
@@ -4407,7 +4447,7 @@ public final class AppModel {
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
         self.catalogPeople = catalogPeople
-        self.reviewQueueCounts = reviewQueueCounts
+        self.smartCollectionCounts = smartCollectionCounts
         self.selectedAssetSetID = selectedAssetSetID
         self.latestImportPresentationCore = nil
         self.latestImportPreviewStatus = nil
@@ -4562,7 +4602,7 @@ public final class AppModel {
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
         let catalogPeople = try repository.people()
-        let reviewQueueCounts = try Self.reviewQueueCounts(repository: repository)
+        let smartCollectionCounts = try Self.smartCollectionCounts(repository: repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: repository,
             selectedAssetID: assets.first?.id
@@ -4584,7 +4624,7 @@ public final class AppModel {
                 catalogTimelineDays: catalogTimelineDays,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-                reviewQueueCounts: reviewQueueCounts,
+                smartCollectionCounts: smartCollectionCounts,
                 pendingMetadataSyncItems: metadataSyncState.pendingItems,
                 metadataSyncConflictItems: metadataSyncState.conflictItems,
                 pendingMetadataSyncCount: metadataSyncState.pendingCount,
@@ -4614,7 +4654,7 @@ public final class AppModel {
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             catalogPeople: catalogPeople,
-            reviewQueueCounts: reviewQueueCounts
+            smartCollectionCounts: smartCollectionCounts
         )
     }
 
@@ -4641,7 +4681,7 @@ public final class AppModel {
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
-        let reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+        let smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: catalog.repository,
             selectedAssetID: assets.first?.id
@@ -4663,7 +4703,7 @@ public final class AppModel {
                 catalogTimelineDays: catalogTimelineDays,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-                reviewQueueCounts: reviewQueueCounts,
+                smartCollectionCounts: smartCollectionCounts,
                 pendingMetadataSyncItems: metadataSyncState.pendingItems,
                 metadataSyncConflictItems: metadataSyncState.conflictItems,
                 pendingMetadataSyncCount: metadataSyncState.pendingCount,
@@ -4693,7 +4733,7 @@ public final class AppModel {
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            reviewQueueCounts: reviewQueueCounts,
+            smartCollectionCounts: smartCollectionCounts,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
             cardImportTaskFactory: cardImportTaskFactory,
@@ -5038,8 +5078,8 @@ public final class AppModel {
             clearLibraryQueryFilters()
             selectedView = .map
             try refreshPlaceData()
-        case .reviewQueue(let queue):
-            try applyReviewQueue(queue)
+        case .smartCollection(let queue):
+            try applySmartCollection(queue)
         case .folder(let path):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
@@ -5857,8 +5897,8 @@ public final class AppModel {
             try beginCullingFromLatestImportCompletion()
         case .autopilotProposals:
             try beginAutopilotReview()
-        case .reviewQueue(let queue):
-            try applyReviewQueue(queue)
+        case .smartCollection(let queue):
+            try applySmartCollection(queue)
             _ = try beginCullingSession(named: queue.presentation.title)
         case .selection:
             try cullCurrentSelection()
@@ -5892,34 +5932,34 @@ public final class AppModel {
                 target: .autopilotProposals
             ))
         }
-        for queue in [ReviewQueue.picks, .potentialPicks] {
+        for queue in [SmartCollection.picks, .potentialPicks] {
             sources.append(CullSource(
                 id: "queue-\(queue.rawValue)",
                 group: .topPicks,
                 title: queue.presentation.title,
                 systemImage: queue.presentation.systemImage,
-                count: reviewQueueCounts[queue] ?? 0,
-                target: .reviewQueue(queue)
+                count: smartCollectionCounts[queue] ?? 0,
+                target: .smartCollection(queue)
             ))
         }
-        for queue in [ReviewQueue.likelyIssues, .needsEvaluation] {
+        for queue in [SmartCollection.likelyIssues, .needsEvaluation] {
             sources.append(CullSource(
                 id: "queue-\(queue.rawValue)",
                 group: .needsEyes,
                 title: queue.presentation.title,
                 systemImage: queue.presentation.systemImage,
-                count: reviewQueueCounts[queue] ?? 0,
-                target: .reviewQueue(queue)
+                count: smartCollectionCounts[queue] ?? 0,
+                target: .smartCollection(queue)
             ))
         }
-        for queue in [ReviewQueue.rejects, .fiveStars, .needsKeywords, .facesFound, .ocrFound, .providerFailures] {
+        for queue in [SmartCollection.rejects, .fiveStars, .needsKeywords, .facesFound, .ocrFound, .providerFailures] {
             sources.append(CullSource(
                 id: "queue-\(queue.rawValue)",
                 group: .diagnostics,
                 title: queue.presentation.title,
                 systemImage: queue.presentation.systemImage,
-                count: reviewQueueCounts[queue] ?? 0,
-                target: .reviewQueue(queue)
+                count: smartCollectionCounts[queue] ?? 0,
+                target: .smartCollection(queue)
             ))
         }
         let selectionCount = selectedBatchAssetIDs.isEmpty
@@ -9793,17 +9833,17 @@ public final class AppModel {
     @discardableResult
     public func findBestShots() throws -> FindBestShotsPlan {
         let plan = FindBestShotsRouter.plan(
-            pickCount: reviewQueueCounts[.picks] ?? 0,
-            potentialPickCount: reviewQueueCounts[.potentialPicks] ?? 0,
+            pickCount: smartCollectionCounts[.picks] ?? 0,
+            potentialPickCount: smartCollectionCounts[.potentialPicks] ?? 0,
             canEvaluateScope: canRequestCurrentScopeAssetEvaluations,
-            needsEvaluationCount: reviewQueueCounts[.needsEvaluation] ?? 0
+            needsEvaluationCount: smartCollectionCounts[.needsEvaluation] ?? 0
         )
         if plan.shouldTriggerEvaluation {
             try? requestCurrentScopeAssetEvaluations()
         }
         switch plan.route {
-        case .reviewQueue(let queue):
-            try selectSidebarTarget(.reviewQueue(queue))
+        case .smartCollection(let queue):
+            try selectSidebarTarget(.smartCollection(queue))
         case .nothingRanked(let message):
             statusMessage = message
         }
@@ -11059,31 +11099,14 @@ public final class AppModel {
         try reload()
     }
 
-    private func applyReviewQueue(_ queue: ReviewQueue) throws {
+    private func applySmartCollection(_ collection: SmartCollection) throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
-        switch queue {
-        case .picks:
-            flagFilter = .pick
-        case .potentialPicks:
-            potentialPicksFilter = true
-        case .rejects:
-            flagFilter = .reject
-        case .fiveStars:
-            minimumRatingFilter = 5
-        case .needsKeywords:
-            needsKeywordsFilter = true
-        case .needsEvaluation:
-            needsEvaluationFilter = true
-        case .facesFound:
-            evaluationKindFilter = .faceCount
-        case .ocrFound:
-            evaluationKindFilter = .ocrText
-        case .likelyIssues:
-            likelyIssuesFilter = true
-        case .providerFailures:
-            providerFailuresFilter = true
-        }
+        // The smart collection's own predicates, installed as detached filter
+        // predicates: `currentLibraryQuery()` folds them into the SQL and
+        // `activeLibraryFilterRows` renders them as removable chips, so the
+        // list and the sidebar count are two readings of one expression.
+        detachedLibraryFilterPredicates = collection.query.predicates
         selectedView = .grid
         try reload()
     }
@@ -11389,17 +11412,17 @@ public final class AppModel {
     }
 
     private static func activeLibraryFilterRow(forEvaluationKind kind: EvaluationKind) -> ActiveLibraryFilterRow {
-        if let queue = reviewQueue(forEvaluationKind: kind) {
-            return ActiveLibraryFilterRow(title: queue.presentation.title, target: .reviewQueue(queue))
+        if let queue = smartCollection(forEvaluationKind: kind) {
+            return ActiveLibraryFilterRow(title: queue.presentation.title, target: .smartCollection(queue))
         }
         return ActiveLibraryFilterRow(title: kind.filterChipLabel, target: .evaluationKind(kind))
     }
 
     private static func filterName(for kind: EvaluationKind) -> String {
-        reviewQueue(forEvaluationKind: kind)?.presentation.title ?? kind.filterChipLabel
+        smartCollection(forEvaluationKind: kind)?.presentation.title ?? kind.filterChipLabel
     }
 
-    private static func reviewQueue(forEvaluationKind kind: EvaluationKind) -> ReviewQueue? {
+    private static func smartCollection(forEvaluationKind kind: EvaluationKind) -> SmartCollection? {
         switch kind {
         case .faceCount:
             .facesFound
@@ -11413,29 +11436,29 @@ public final class AppModel {
     private static func sidebarTarget(for predicate: SetQuery.Predicate) -> SidebarRowTarget? {
         switch predicate {
         case .ratingAtLeast(let rating):
-            rating == 5 ? .reviewQueue(.fiveStars) : nil
+            rating == 5 ? .smartCollection(.fiveStars) : nil
         case .flag(.pick):
-            .reviewQueue(.picks)
+            .smartCollection(.picks)
         case .flag(.reject):
-            .reviewQueue(.rejects)
+            .smartCollection(.rejects)
         case .missingKeywords:
-            .reviewQueue(.needsKeywords)
+            .smartCollection(.needsKeywords)
         case .availability(let availability):
             .sourceAvailability(availability)
         case .evaluationKind(let kind):
-            if let queue = reviewQueue(forEvaluationKind: kind) {
-                .reviewQueue(queue)
+            if let queue = smartCollection(forEvaluationKind: kind) {
+                .smartCollection(queue)
             } else {
                 .evaluationKind(kind)
             }
         case .unevaluated:
-            .reviewQueue(.needsEvaluation)
+            .smartCollection(.needsEvaluation)
         case .likelyIssue:
-            .reviewQueue(.likelyIssues)
+            .smartCollection(.likelyIssues)
         case .likelyPick:
-            .reviewQueue(.potentialPicks)
+            .smartCollection(.potentialPicks)
         case .evaluationFailure:
-            .reviewQueue(.providerFailures)
+            .smartCollection(.providerFailures)
         case .metadataSyncPending:
             .metadataSyncPending
         case .metadataSyncConflict:
@@ -11496,52 +11519,52 @@ public final class AppModel {
             removed = true
         }
         switch row.target {
-        case .reviewQueue(.picks):
+        case .smartCollection(.picks):
             if flagFilter == .pick {
                 flagFilter = nil
                 removed = true
             }
-        case .reviewQueue(.rejects):
+        case .smartCollection(.rejects):
             if flagFilter == .reject {
                 flagFilter = nil
                 removed = true
             }
-        case .reviewQueue(.fiveStars):
+        case .smartCollection(.fiveStars):
             if minimumRatingFilter == 5 {
                 minimumRatingFilter = nil
                 removed = true
             }
-        case .reviewQueue(.needsKeywords):
+        case .smartCollection(.needsKeywords):
             if needsKeywordsFilter {
                 needsKeywordsFilter = false
                 removed = true
             }
-        case .reviewQueue(.needsEvaluation):
+        case .smartCollection(.needsEvaluation):
             if needsEvaluationFilter {
                 needsEvaluationFilter = false
                 removed = true
             }
-        case .reviewQueue(.facesFound):
+        case .smartCollection(.facesFound):
             if evaluationKindFilter == .faceCount {
                 evaluationKindFilter = nil
                 removed = true
             }
-        case .reviewQueue(.ocrFound):
+        case .smartCollection(.ocrFound):
             if evaluationKindFilter == .ocrText {
                 evaluationKindFilter = nil
                 removed = true
             }
-        case .reviewQueue(.likelyIssues):
+        case .smartCollection(.likelyIssues):
             if likelyIssuesFilter {
                 likelyIssuesFilter = false
                 removed = true
             }
-        case .reviewQueue(.potentialPicks):
+        case .smartCollection(.potentialPicks):
             if potentialPicksFilter {
                 potentialPicksFilter = false
                 removed = true
             }
-        case .reviewQueue(.providerFailures):
+        case .smartCollection(.providerFailures):
             if providerFailuresFilter {
                 providerFailuresFilter = false
                 removed = true
@@ -11809,7 +11832,8 @@ public final class AppModel {
             potentialPicksFilter: potentialPicksFilter,
             providerFailuresFilter: providerFailuresFilter,
             metadataSyncPendingFilter: metadataSyncPendingFilter,
-            metadataSyncConflictFilter: metadataSyncConflictFilter
+            metadataSyncConflictFilter: metadataSyncConflictFilter,
+            detachedFilterPredicates: detachedLibraryFilterPredicates
         )
     }
 
@@ -11846,6 +11870,7 @@ public final class AppModel {
         providerFailuresFilter = state.providerFailuresFilter
         metadataSyncPendingFilter = state.metadataSyncPendingFilter
         metadataSyncConflictFilter = state.metadataSyncConflictFilter
+        detachedLibraryFilterPredicates = state.detachedFilterPredicates
 
         if let assetSetID = state.selectedAssetSetID,
            !Self.isWorkStackSetID(assetSetID),
@@ -13196,7 +13221,7 @@ public final class AppModel {
         guard let catalog else { return }
         do {
             catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
-            reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+            smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
             refreshLatestImportPresentation()
             if selectedView == .people {
                 refreshPeopleFaceSuggestions()
@@ -13209,7 +13234,7 @@ public final class AppModel {
 
     private func refreshCatalogSidebarCounts() throws {
         guard let catalog else { return }
-        reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+        smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
         try refreshAutopilotGhostAssetIDs()
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         refreshLatestImportPresentation()
@@ -14120,7 +14145,7 @@ public final class AppModel {
         catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
-        reviewQueueCounts: [ReviewQueue: Int] = [:],
+        smartCollectionCounts: [SmartCollection: Int] = [:],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
         pendingMetadataSyncCount: Int? = nil,
@@ -14135,7 +14160,7 @@ public final class AppModel {
         // Import, Starred, Recent Work), Saved Sets, Folders. Search/Review/
         // Timeline/People/Places routes moved to the workspace switcher, the
         // Library view toggle, and the Cull source picker; review-queue data
-        // (`reviewQueueCounts`) stays available for the Cull sidebar even
+        // (`smartCollectionCounts`) stays available for the Cull sidebar even
         // though its Library rows are gone.
         var collectionsRows = [
             SidebarRow(
@@ -14233,9 +14258,9 @@ public final class AppModel {
         }
     }
 
-    private static func reviewQueueSidebarRows(reviewQueueCounts: [ReviewQueue: Int]) -> [SidebarRow] {
-        reviewQueueSidebarOrder.compactMap { queue in
-            guard let count = reviewQueueCounts[queue],
+    private static func smartCollectionSidebarRows(smartCollectionCounts: [SmartCollection: Int]) -> [SidebarRow] {
+        smartCollectionSidebarOrder.compactMap { queue in
+            guard let count = smartCollectionCounts[queue],
                   count > 0 else {
                 return nil
             }
@@ -14243,12 +14268,12 @@ public final class AppModel {
                 id: "review-\(queue.rawValue)",
                 title: queue.presentation.title,
                 countText: sidebarCountText(count),
-                target: .reviewQueue(queue)
+                target: .smartCollection(queue)
             )
         }
     }
 
-    private static let reviewQueueSidebarOrder: [ReviewQueue] = [
+    private static let smartCollectionSidebarOrder: [SmartCollection] = [
         .picks,
         .potentialPicks,
         .rejects,
@@ -14261,37 +14286,12 @@ public final class AppModel {
         .providerFailures
     ]
 
-    private static func reviewQueueCounts(repository: CatalogRepository) throws -> [ReviewQueue: Int] {
-        var counts: [ReviewQueue: Int] = [:]
-        for queue in reviewQueueSidebarOrder {
-            counts[queue] = try repository.assetCount(matching: reviewQueueQuery(queue))
+    private static func smartCollectionCounts(repository: CatalogRepository) throws -> [SmartCollection: Int] {
+        var counts: [SmartCollection: Int] = [:]
+        for collection in smartCollectionSidebarOrder {
+            counts[collection] = try repository.assetCount(matching: collection.query)
         }
         return counts
-    }
-
-    private static func reviewQueueQuery(_ queue: ReviewQueue) -> SetQuery {
-        switch queue {
-        case .picks:
-            return SetQuery(predicates: [.flag(.pick)])
-        case .potentialPicks:
-            return SetQuery(predicates: [.likelyPick])
-        case .rejects:
-            return SetQuery(predicates: [.flag(.reject)])
-        case .fiveStars:
-            return SetQuery(predicates: [.ratingAtLeast(5)])
-        case .needsKeywords:
-            return SetQuery(predicates: [.missingKeywords])
-        case .needsEvaluation:
-            return SetQuery(predicates: [.unevaluated])
-        case .facesFound:
-            return SetQuery(predicates: [.evaluationKind(.faceCount)])
-        case .ocrFound:
-            return SetQuery(predicates: [.evaluationKind(.ocrText)])
-        case .likelyIssues:
-            return SetQuery(predicates: [.likelyIssue])
-        case .providerFailures:
-            return SetQuery(predicates: [.evaluationFailure])
-        }
     }
 
     private static func sourceAvailabilitySummaries(repository: CatalogRepository) throws -> [CatalogSourceAvailabilitySummary] {

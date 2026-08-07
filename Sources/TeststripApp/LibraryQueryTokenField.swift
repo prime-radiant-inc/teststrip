@@ -413,17 +413,17 @@ public struct LibraryQueryToken: Equatable, Identifiable {
     private static func sidebarTargets(for token: LibraryQueryToken) -> [SidebarRowTarget] {
         switch (token.field, token.value) {
         case (.rating, .int(let rating)):
-            return rating == 5 ? [.reviewQueue(.fiveStars)] : []
+            return rating == 5 ? [.smartCollection(.fiveStars)] : []
         case (.flag, .flag(let flag)):
-            return [.reviewQueue(flag == .pick ? .picks : .rejects)]
+            return [.smartCollection(flag == .pick ? .picks : .rejects)]
         case (.source, .source(let source)):
             return [.sourceAvailability(source)]
         case (.signal, .signal(let kind)):
             switch kind {
             case .faceCount:
-                return [.evaluationKind(kind), .reviewQueue(.facesFound)]
+                return [.evaluationKind(kind), .smartCollection(.facesFound)]
             case .ocrText:
-                return [.evaluationKind(kind), .reviewQueue(.ocrFound)]
+                return [.evaluationKind(kind), .smartCollection(.ocrFound)]
             default:
                 return [.evaluationKind(kind)]
             }
@@ -432,13 +432,13 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         case (.xmpConflict, _):
             return [.metadataSyncConflicts]
         case (.needsKeywords, _):
-            return [.reviewQueue(.needsKeywords)]
+            return [.smartCollection(.needsKeywords)]
         case (.needsEvaluation, _):
-            return [.reviewQueue(.needsEvaluation)]
+            return [.smartCollection(.needsEvaluation)]
         case (.likelyIssues, _):
-            return [.reviewQueue(.likelyIssues)]
+            return [.smartCollection(.likelyIssues)]
         case (.providerFailures, _):
-            return [.reviewQueue(.providerFailures)]
+            return [.smartCollection(.providerFailures)]
         default:
             return []
         }

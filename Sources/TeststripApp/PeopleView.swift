@@ -768,7 +768,7 @@ struct PeoplePresentation: Equatable {
                 countText: Self.photoCountDescription(photosWithDetectedFaces),
                 suggestedActionTitle: "Review faces",
                 filterKind: faceSignalKind,
-                target: faceSignalKind == .faceCount ? .reviewQueue(.facesFound) : .evaluationKind(faceSignalKind),
+                target: faceSignalKind == .faceCount ? .smartCollection(.facesFound) : .evaluationKind(faceSignalKind),
                 gradientColors: [.orange, .brown]
             ))
         }
