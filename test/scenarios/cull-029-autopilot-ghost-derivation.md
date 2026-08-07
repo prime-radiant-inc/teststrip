@@ -82,7 +82,7 @@ Every surface this card drives reads that one field, never a status row:
   instead (`updateSelectedAssetMetadata`, no `removeAIField` call, no
   `removed_ai_labels` row) — the frame returns to genuinely neutral
   undecided, not "rejected," so nothing blocks a later run from proposing it
-  again. This distinction is load-bearing for Step 5 below and is pinned
+  again. This distinction is load-bearing for Step 6 below and is pinned
   separately by `testDirectFlagThenClearLeavesNoGhostAnywhere`
   (`AppModelTests.swift:5905-5931`, whose own comment: "A direct user flag
   replaces the ghost; pressing U afterwards returns the frame to neutral
@@ -100,7 +100,6 @@ Baselines (`sql smoke` targets the newest `run/smoke-*` dir, i.e. the one
 ```bash
 script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='autopilot_proposals';"   # expect 0 — the table is gone
 GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');")   # expect 0
-GEN0=$(script/vm_scenario_run.sh sql smoke "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;")
 ```
 
 ## Steps
@@ -164,7 +163,35 @@ GEN0=$(script/vm_scenario_run.sh sql smoke "SELECT COALESCE(SUM(catalog_generati
    ```bash
    script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # must equal GHOSTN
    ```
-5. **Reject a ghost directly — gone is gone, and nothing resurrects (P0).**
+5. **Relaunch: badges survive, banner does not.** Run this leg now, right
+   after Step 4 and before Step 6 or 7 touch any flag — a decided frame
+   carries no ghost (Step 6 clears/confirms `$G1`/`$G2`, Step 7 decides
+   everything else), so this leg has to prove survival while the ghosts
+   from Step 2 are still undecided, or there would be nothing left with a
+   live ghost to check. Quit the app and reopen it against the **same** run
+   directory, not a fresh copy — `launch` (`cmd_launch`, `script/
+   vm_scenario_run.sh:282-343`) always stamps a brand new
+   `run/<variant>-<timestamp>` on every call, so it can never be used for a
+   relaunch leg (see Sharp edges). Go through `shell` instead, which
+   creates no new run dir, so `sql smoke`'s "newest `run/smoke-*` dir"
+   resolution (`cmd_sql`, `:347-351`) keeps targeting the very catalog this
+   card has been mutating:
+   ```bash
+   script/vm_scenario_run.sh shell 'osascript -e "tell application \"Teststrip\" to quit"'
+   script/vm_scenario_run.sh shell 'latest=$(ls -dt /Users/admin/teststrip-vm/run/smoke-* | head -1); open -n /Users/admin/teststrip-vm/dist/Teststrip.app --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"'
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   ```
+   A fresh launch's starting workspace isn't asserted by this card, so
+   select Library explicitly rather than assuming it: ⌘2
+   (`script/vm_scenario_run.sh key 'keystroke "2" using {command down}'`).
+   Then, same as Step 3, scroll `$G1`'s tile into view by filename
+   (`ax_drive.sh find --contains "$G1.jpg"` — the grid is lazily
+   virtualized, README) before re-reading its accessibility value:
+   ```bash
+   script/vm_scenario_run.sh ax find --contains "Autopilot proposes"      # expect FOUND — $G1's ghost badge, untouched since Step 3, must survive the relaunch natively
+   script/vm_scenario_run.sh ax find --contains "Autopilot reviewed"      # expect NOT-FOUND (the run-time-only banner; AutopilotBannerPresentation, LibraryGridView.swift:3628, set only by runAutopilot's in-memory autopilotRunSummary, AppModel.swift:9695, never reloaded by `load(catalog:)`)
+   ```
+6. **Reject a ghost directly — gone is gone, and nothing resurrects (P0).**
    On `$G1` (still tentative — do not press `P`/`X` first; see Source's
    "Gone is gone, precisely" note on why order matters here), select its
    tile and press `U` directly:
@@ -174,8 +201,9 @@ GEN0=$(script/vm_scenario_run.sh sql smoke "SELECT COALESCE(SUM(catalog_generati
    script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM removed_ai_labels WHERE asset_id='\$G1' AND field='flag';"   # expect 1
    script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE id='\$G1' AND EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # expect 0
    ```
-   Re-check `$G1`'s tile: neither "Autopilot proposes keep" nor "...cut" may
-   appear. Then re-run Culling ▸ Run Autopilot
+   Re-check `$G1`'s tile (scroll it into view by filename first — same
+   virtualized-grid caveat as Step 3): neither "Autopilot proposes keep"
+   nor "...cut" may appear. Then re-run Culling ▸ Run Autopilot
    (`ax press --role AXMenuItem --label "Run Autopilot"`) and re-run the
    same three queries — **still NULL/NULL, still exactly 1, still 0**:
    `removed_ai_labels` must suppress the re-proposal so nothing can
@@ -196,7 +224,7 @@ GEN0=$(script/vm_scenario_run.sh sql smoke "SELECT COALESCE(SUM(catalog_generati
    *may* legitimately re-propose it. That is correct behavior per Source's
    distinction, not a resurrection of the original ghost (which was already
    erased the moment `P`/`X` confirmed it, several lines above).
-6. **Complete the run; no ✨ ink anywhere.** Decide every remaining frame
+7. **Complete the run; no ✨ ink anywhere.** Decide every remaining frame
    with `P`/`X` (poll the HUD's "N left" segment after each decision) until:
    ```bash
    script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.flag') IS NULL OR EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # 0
@@ -212,39 +240,7 @@ GEN0=$(script/vm_scenario_run.sh sql smoke "SELECT COALESCE(SUM(catalog_generati
    `GHOSTN`** — `sparkleAwaiting`/`.reviewAISuggestions` are gone from the
    source entirely (Source above), not merely zero for this fixture — so
    this step remains meaningful even in the fixture-gap branch where Steps
-   3-5 could not run.
-7. **Relaunch: badges survive, banner does not.** Quit the app and reopen
-   it against the **same** run directory, not a fresh copy — `launch`
-   (`cmd_launch`, `script/vm_scenario_run.sh:282-343`) always stamps a brand
-   new `run/<variant>-<timestamp>` on every call, so it can never be used
-   for a relaunch leg (see Sharp edges). Go through `shell` instead, which
-   creates no new run dir, so `sql smoke`'s "newest `run/smoke-*` dir"
-   resolution (`cmd_sql`, `:347-351`) keeps targeting the very catalog this
-   card has been mutating:
-   ```bash
-   script/vm_scenario_run.sh shell 'osascript -e "tell application \"Teststrip\" to quit"'
-   script/vm_scenario_run.sh shell 'latest=$(ls -dt /Users/admin/teststrip-vm/run/smoke-* | head -1); open -n /Users/admin/teststrip-vm/dist/Teststrip.app --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"'
-   script/vm_scenario_run.sh ax wait-vended Teststrip
-   ```
-   **Reorder the card in practice** (the same ordering-conflict pattern
-   `cull-017-autopilot-review.md`'s Sharp edges already documents for its
-   own Dismiss/Review conflict): Step 6 decides *every* remaining frame,
-   which necessarily includes any ghost besides `$G1`/`$G2`, so by the time
-   Step 6 finishes there is nothing left with a live ghost to assert
-   survives a relaunch. Drive this step as an independent branch instead —
-   either (a) hold back one ghost id from Step 6's sweep (skip deciding it,
-   so completion never gates in that branch, and drive this step's
-   quit/relaunch/assert sequence in isolation without ever reaching Step
-   6), or (b) re-run Steps 1-4 fresh on a new `launch smoke` and quit
-   immediately after Step 4 with at least one ghost still undecided, before
-   doing Step 5 or 6 at all. Do not attempt to run Steps 6 and 7 back to
-   back against the same undecided ghost — they are mutually exclusive
-   outcomes for the same asset, exactly like cull-017's Dismiss/Review pair.
-   Assert:
-   ```bash
-   script/vm_scenario_run.sh ax find --contains "Autopilot proposes"      # expect FOUND for the surviving ghost
-   script/vm_scenario_run.sh ax find --contains "Autopilot reviewed"      # expect NOT-FOUND (the run-time-only banner; AutopilotBannerPresentation, LibraryGridView.swift:3628, set only by runAutopilot's in-memory autopilotRunSummary, AppModel.swift:9695, never reloaded by `load(catalog:)`)
-   ```
+   3-6 could not run.
 
 ## Expected
 - Step 1: `evaluation_signals` reaches 24 distinct assets. **Fails if** it
@@ -257,7 +253,7 @@ GEN0=$(script/vm_scenario_run.sh sql smoke "SELECT COALESCE(SUM(catalog_generati
   tentative verdict silently landing as confirmed is a provenance-invariant
   violation: report immediately, do not soften it. **If `GHOSTN == GHOST0`
   after the full drain, this is the honest fixture-gap branch (Sharp
-  edges) — mark the card NOT-RUN for Steps 3-5/7, not a pass and not a
+  edges) — mark the card NOT-RUN for Steps 3-6, not a pass and not a
   failure.**
 - Step 3: every ghost id's tile shows the badge matching its own
   `metadata_json.flag`. **Fails if** a badge is missing, wrong, or present
@@ -265,22 +261,29 @@ GEN0=$(script/vm_scenario_run.sh sql smoke "SELECT COALESCE(SUM(catalog_generati
 - Step 4: the "Autopilot Proposals" row is present with count == `GHOSTN`.
   **Fails if** the row is absent while `GHOSTN > 0`, present while
   `GHOSTN == 0`, or its count disagrees with the SQL cross-check.
-- Step 5: **Fails if** the ghost returns in `metadata_json` for `$G1` after
+- Step 5: **Fails if** `$G1`'s tile loses its badge across relaunch (ghosts
+  must survive natively via `metadata_json`, no reconstruction step
+  required) or if the "Autopilot reviewed" banner reappears (it is
+  run-time-only and must not be reloaded from disk).
+- Step 6: **Fails if** the ghost returns in `metadata_json` for `$G1` after
   `U`, if its badge reappears, if a second Autopilot run re-proposes a flag
   for `$G1`, or if `removed_ai_labels` does not gain exactly the one row for
   `$G1`/`flag`. Resurrection is the exact bug this spec exists to kill —
   this is a P0, not a nitpick; a runner must not talk themselves out of a
   failure here by arguing the badge "looks" gone without the SQL and re-run
-  checks. (Secondary leg: **fails if** `$G2`'s `removed_ai_labels` count is
-  nonzero after confirm-then-clear — that would mean a plain neutral-clear
-  is wrongly recording a rejection it never made.)
-- Step 6: **Fails if** the detail line contains "awaiting review", if a
+  checks. (Secondary leg: unlike the P0 numbers above — pinned live by
+  `testClearingATentativeGhostRecordsItsRemovalAndSuppressesTheNextRun` —
+  this leg's `removed_ai_labels == 0` expectation is a source-derived
+  inference from the plain-clear branch's code path
+  (`AppModel.swift:7362-7367`, no `removeAIField` call), not itself pinned
+  by `testDirectFlagThenClearLeavesNoGhostAnywhere` (which asserts
+  ghost/queue absence, not this count): **fails if** `$G2`'s
+  `removed_ai_labels` count is nonzero after confirm-then-clear — that
+  would mean a plain neutral-clear is wrongly recording a rejection it
+  never made.)
+- Step 7: **Fails if** the detail line contains "awaiting review", if a
   "Review AI Suggestions" button is present, or if any ✨ count appears
   anywhere in the completion stage — regardless of `GHOSTN`.
-- Step 7: **Fails if** a ghost tile loses its badge across relaunch (ghosts
-  must survive natively via `metadata_json`, no reconstruction step
-  required) or if the "Autopilot reviewed" banner reappears (it is
-  run-time-only and must not be reloaded from disk).
 
 ## Cleanup
 ```bash
@@ -313,7 +316,7 @@ runs `sync smoke`/`launch smoke` again.
   keywordCandidatesByAssetID`, unrelated to the flag ghost this card is
   about) — never a flag ghost. Per the Honesty requirement this card was
   written under: **if `GHOSTN == GHOST0` after the Step 1/2 drain, that is
-  this exact fixture gap, not a failure** — mark Steps 3-5 and 7
+  this exact fixture gap, not a failure** — mark Steps 3-6
   NOT-RUN rather than forcing a pass, and do not chase it as a product bug.
   A stack-bearing seed (e.g. `burst`) would be needed to exercise the
   ghost-producing path live — though `cull-017-autopilot-review.md` and
@@ -332,7 +335,7 @@ runs `sync smoke`/`launch smoke` again.
   vm_scenario_run.sh:282-343`) unconditionally stamps a new
   `run/<variant>-<timestamp>` directory and points
   `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` at it on every call — there is
-  no flag to reuse a prior run dir. Step 7's relaunch therefore goes
+  no flag to reuse a prior run dir. Step 5's relaunch therefore goes
   through `shell` (which creates no run dir) issuing the exact same `open
   -n ... --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=...` invocation
   `cmd_launch` itself uses (`:341`), pointed at the *existing* `run/smoke-*`
@@ -342,15 +345,22 @@ runs `sync smoke`/`launch smoke` again.
   run** — the controller will confirm it on first execution and correct
   this card if `open -n`'s working directory or TCC prompt behaves
   differently than `cmd_launch`'s own use of the identical command line.
+- **Relaunch precedes the decisions.** Step 5's quit/relaunch runs before
+  Step 6 or 7 touches any flag because a decided frame carries no ghost
+  (`AutopilotGhost.kind(in:)` returns `nil` once a flag is confirmed) — if
+  the relaunch ran after Step 6/7 instead, there would be no live ghost
+  left for it to prove survives.
 - **Idle-wedge.** Re-assert frontmost (`ax wait-vended`) on every poll
-  iteration in Steps 1, 2, and 6 — a backgrounded/idle instance parks its
+  iteration in Steps 1, 2, and 7 — a backgrounded/idle instance parks its
   AX tree and a plain `sleep` loop without re-assertion will eventually
   read an empty window subtree instead of a real "not yet" result.
 - **Virtualized grid.** Off-screen thumbnails are not in the AX tree at
-  all (README) — Step 3 must scroll each ghost tile into view by filename
-  before asserting its accessibility value, or a true positive will read as
-  a false "not found."
-- **Order matters for Step 5's P0 leg.** `U` on a still-tentative ghost and
+  all (README) — this is a rule for every grid-tile assertion in this
+  card, not a Step-3-only caveat: Step 3's badge reads, Step 5's
+  post-relaunch re-read, and Step 6's post-reject re-check must each
+  scroll their target tile into view by filename first, or a true positive
+  will read as a false "not found."
+- **Order matters for Step 6's P0 leg.** `U` on a still-tentative ghost and
   `U` on an already-confirmed flag take genuinely different code paths
   (Source's "Gone is gone, precisely" note) — only the former writes
   `removed_ai_labels` and is what suppresses a future re-proposal. Pressing
@@ -373,7 +383,7 @@ runs `sync smoke`/`launch smoke` again.
 NOT RUN — card authored 2026-08-06 alongside the SP-D0 ghost-derivation
 push; source-cited against the working tree at `287f574c`, not yet driven.
 Needs a live VM run. Prediction, stated plainly per this card's own Sharp
-edges: Steps 1-2 should run cleanly, but Steps 3-5 and 7 are very likely to
+edges: Steps 1-2 should run cleanly, but Steps 3-6 are very likely to
 land in the fixture-gap branch (`GHOSTN == GHOST0`) on the `smoke` variant
 as specified, for the structural reason cited above — that outcome is a
 fixture gap to document, not a defect to chase, and the card should be
