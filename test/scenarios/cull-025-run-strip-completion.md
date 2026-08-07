@@ -1,4 +1,4 @@
-# cull-025-run-strip-completion: the run strip's stops and windowing agree with the catalog; the completion summary's six counts (the cull view's only ✨ surface) and gated ceremony actions match the traversal
+# cull-025-run-strip-completion: the run strip's stops and windowing agree with the catalog; the completion summary's five counts and gated ceremony actions match the traversal
 
 **What this covers**: as a photographer blazing through a whole batch, the
 bottom run strip is my "how much is left" glance — one stop per stack or
@@ -9,10 +9,12 @@ per-stop suggestion chip — it was kind-blind and flag-blind and routinely
 disagreed with the completion stage's count, so Jesse chose removal over
 reconciling the two; see Source's "Rendering" bullet and the Sharp edges
 note below). When every frame in scope carries a confirmed decision, the
-completion summary replaces the stage with all six counts (picked /
-rejected / undecided / skipped / never-viewed / ✨ awaiting review — the
-cull view's only remaining ✨ surface) and a small set of ceremony actions
-that only appear when they have real work to do.
+completion summary replaces the stage with all five counts (picked /
+rejected / undecided / skipped / never-viewed) and a small set of ceremony
+actions that only appear when they have real work to do. There is no ✨
+surface anywhere in the completion stage — SP-D0 deleted the whole
+"awaiting review" ceremony from the source (see Source's "Completion
+summary" bullet below), not merely gated it to zero.
 
 Source (re-verified against the working tree on this branch, **2026-07-16**;
 every symbol below was re-grepped fresh, not carried over from any older
@@ -109,79 +111,33 @@ card):
   *entire* scope (every asset fell into the `.pick`/`.reject` branch, none
   into `nil`) — so `skipped` is **always exactly 0** at completion,
   regardless of what was actually Space-skipped along the way, and this is
-  a guaranteed invariant, not a fixture-specific observation.
-
-  **`sparkleAwaiting`'s kind-aware contract (2026-07-28, supersedes the
-  original Task 3 corollary below)**: `summary` takes two pending-proposal
-  sets split by `AutopilotProposalKind` at the `LibraryGridView`
-  `cullCompletion` call site — `pendingFlagProposalAssetIDs` (`.pick`/
-  `.reject`) and `pendingKeywordProposalAssetIDs` (`.keyword`). A pending
-  FLAG proposal is excluded once its asset's flag is user-confirmed (the
-  original Task 3 filter, unchanged); since completion structurally
-  guarantees every in-scope asset's flag IS confirmed (the same fact
-  `skipped`'s guarantee above leans on), **no pending flag proposal ever
-  contributes to `sparkleAwaiting` at completion, regardless of fixture**.
-  A pending KEYWORD proposal, in contrast, counts **regardless of the
-  asset's flag** — a keyword suggestion has nothing to do with the flag
-  decision — so `sparkleAwaiting` at completion is exactly the count of
-  in-scope assets still carrying a pending keyword proposal. It is **no
-  longer structurally guaranteed to be 0**: this card's own Leg A fixture
-  (Pre-state below) seeds only FLAG-kind proposals (`kind: 'reject'`/
-  `'pick'` on `smoke-4`/`smoke-16`), so the *predicted* `sparkleAwaiting` at
-  completion is still 0 for THIS fixture — but that is now a fixture fact,
-  not an invariant. **What failure looks like**: a regression that reverts
-  to kind-blind filtering (checking `confirmedProjection.flag == nil`
-  against the union of both sets, or against a single unsplit set) would
-  silently drop any pending keyword proposal on an already-decided asset,
-  under-reporting `sparkleAwaiting` and hiding `.reviewAISuggestions` even
-  though a genuine keyword suggestion sits unreviewed — the bug Finding 1
-  (`fix/cull-followups`,
-  `testSparkleAwaitingCountsPendingKeywordProposalEvenWithConfirmedFlag`,
-  `Tests/TeststripAppTests/CullCompletionTests.swift:241-255`) fixed. The
-  **mandatory negatives**
-  (`Tests/TeststripAppTests/CullCompletionTests.swift:147-172`
-  `testTentativeOnlyFlagCountsAsUndecidedAndSparkleAwaitingNeverPickedOrRejected`;
-  `:182-198`
-  `testSparkleAwaitingExcludesAssetWithPendingProposalAndConfirmedFlag`;
-  `:257-271`
-  `testSparkleAwaitingStillExcludesPendingFlagProposalWithConfirmedFlag`;
-  `:273-290`
-  `testSparkleAwaitingCountsMixedFlagAndKeywordProposalsExactly`):
-  a tentative-only flag (either value) counts in `undecided` **and**
-  `sparkleAwaiting`, **never** in `picks`/`rejects`, and its scope is not
-  complete; a pending FLAG proposal whose asset already carries a confirmed
-  flag is excluded from `sparkleAwaiting` even though the proposal row
-  itself is left `pending`, untouched; a pending KEYWORD proposal is
-  counted even when its asset's flag is confirmed; a mixed set of flag and
-  keyword proposals counts exactly the genuinely-awaiting subset. Actions
-  (`:82-91`): the core four (`export`/`moveRejects`/`moveRejectsToTrash`/
-  `reviewPicks`) always; `.reviewAISuggestions` appended only if
-  `sparkleAwaiting > 0`; `.savePicksAsSet` appended only if `picks > 0`.
-
-  *Original Task 3 corollary (2026-07-28, superseded by the kind-aware
-  contract above)*: this card previously claimed `sparkleAwaiting` was
-  **always exactly 0** the instant the completion stage renders, on the
-  theory that every asset in scope already has a confirmed flag by the
-  `undecided == 0` fact. That reasoning only ever covered FLAG proposals —
-  it never accounted for pending KEYWORD proposals, which Finding 1
-  corrected `summary` to count independently of the flag. The corollary is
-  false in general; see the kind-aware contract above for what actually
-  holds.
+  a guaranteed invariant, not a fixture-specific observation. By the exact
+  same reasoning, **zero ghosts ever survive to completion either**: a
+  ghost's flag is AI-unconfirmed, so `confirmedProjection.flag` reads `nil`
+  for it and it lands in `undecided`, not `.pick`/`.reject` — a scope still
+  carrying a ghost structurally cannot satisfy `undecided == 0`, so it never
+  reaches this stage. This is the SP-D0 replacement for the pre-drop
+  `sparkleAwaiting` field this card used to document at length (see the
+  dated reconciliation note in Run status): there is no ✨ count anywhere in
+  `CullCompletionPresentation` any more, and no `.reviewAISuggestions`
+  action — the whole ceremony was deleted from the source, not merely gated
+  to zero. **Actions** (`:62-67`): the core four
+  (`.export`/`.moveRejects`/`.moveRejectsToTrash`/`.reviewPicks`) always;
+  `.savePicksAsSet` appended only if `picks > 0`.
 - **Rendering the summary**, `cullCompletionStage`
-  (`LibraryGridView.swift:3940-4020`): exact text —
+  (`LibraryGridView.swift:3958-4004`): exact text —
   `Text("Nothing left to decide")`; `Text("\(picks) picks · \(rejects)
   rejects")`; a run-coverage line, `cullCompletionRunDetailText`
-  (`:4015-4020`): `"\(skipped) skipped · \(neverViewed) never viewed ·
-  \(sparkleAwaiting) AI \(sparkleAwaiting == 1 ? "suggestion" :
-  "suggestions") awaiting review"`. `undecided` itself is **never rendered
-  directly** here — the gate that reveals this whole stage already proves
-  it's 0, so a direct display would be redundant; this card confirms 0 via
-  the presentation math instead. Action button titles
-  (`:3992-4009`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
-  Trash…"`, `"Review Picks"`, `"Review AI Suggestions"`, `"Save Picks as
-  Set"`. `"Review AI Suggestions"` calls `reviewAutopilotRun()` →
-  `beginAutopilotReview()` (the same flow `cull-017-autopilot-review.md`
-  drives end-to-end — not re-driven here). `"Save Picks as Set"` calls
+  (`:4029-4031`): exactly `"\(skipped) skipped · \(neverViewed) never
+  viewed"` — no trailing segment of any kind. `undecided` itself is **never
+  rendered directly** here — the gate that reveals this whole stage already
+  proves it's 0, so a direct display would be redundant; this card confirms
+  0 via the presentation math instead. Action button titles
+  (`:4009-4028`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
+  Trash…"`, `"Review Picks"`, `"Save Picks as Set"` — exactly these five,
+  gated per the Actions rule above; there is no sixth
+  `"Review AI Suggestions"` button anywhere in the source. `"Save Picks as
+  Set"` calls
   `model.saveCullingPicksAsSet()` (`AppModel.swift:5660-5686`): with **no**
   active persisted culling session (burst seeds directly, bypassing
   `IngestService` — same gap `cull-021-stack-rail-nav.md` documents), it
@@ -195,43 +151,47 @@ card):
   .workSessionAssetMembershipSelector`, `Sources/TeststripCore/Catalog/
   CatalogRepository.swift:3405-3414`, the same path shape `cull-021`
   documents for `work-stack-` sets, applied here to a plain saved set).
-- **Fixture and seeding gap**: neither `autopilot_proposals` rows nor a
-  tentative-AI flag are produced by any seed command (`cull-026`'s
-  established finding for the flag half). `autopilot_proposals`
-  (`Sources/TeststripCore/Catalog/CatalogMigrations.swift:209-223`) has
-  **no foreign-key constraint** on `run_id` — it's a plain `TEXT` column —
-  so this card seeds it directly, mirroring `cull-026`'s local-template-patch
-  technique one table further, rather than relying on a live Evaluate+Run
-  Autopilot pass whose success on `burst`'s flat synthetic rectangles is
-  **not established** (`AutopilotProposalPlanner.cullProposals`,
+- **Fixture and seeding gap**: no seed command produces a tentative-AI flag
+  (`cull-026`'s established finding). `autopilot_proposals` no longer
+  exists as a table (`DROP TABLE IF EXISTS autopilot_proposals`, SP-D0,
+  `Sources/TeststripCore/Catalog/CatalogMigrations.swift:263`) — there is no
+  row left to seed at all. This card patches the local `burst` template's
+  `metadata_json` directly (Pre-state below), mirroring `cull-023`'s/
+  `cull-026`'s `aiUnconfirmedFields` template-patch technique, rather than
+  relying on a live Evaluate+Run Autopilot pass whose success on `burst`'s
+  flat synthetic rectangles is **not established**
+  (`AutopilotProposalPlanner.cullProposals`,
   `Sources/TeststripCore/Autopilot/AutopilotProposalPlanner.swift:60-73`,
   produces zero proposals for a stack with zero rankable signals — the same
   honest-branch risk `cull-021`/`cull-024` already flag for this exact
-  fixture). `reconstructAutopilotStateAfterLoad()` (`AppModel.swift:
-  9944-9960`, called unconditionally from `AppModel.load(catalog:)` at
-  `:4698`) reloads `pendingAutopilotProposals` from **any** pending rows at
-  launch — hand-seeded or not — so this technique is picked up exactly like
-  a real run's output. Side effect: since it also derives
-  `autopilotRunSummary` from the newest `run_id`'s rows, the plain
-  autopilot banner may render early (informational — not this card's
-  concern, see Sharp edges).
+  fixture). Because the ghost lives in `metadata_json` itself, no reload
+  step is needed for the grid-tile badges (`AutopilotGhost.kind(in:)` reads
+  the asset's own metadata directly — cull-029's Source); at launch,
+  `AppModel.load(catalog:)` also calls `refreshAutopilotGhostAssetIDs()`
+  (`AppModel.swift:4718`) to populate the sidebar's cached
+  `autopilotGhostAssetIDs`/count from `assetIDsWithAutopilotGhost()` — the
+  SP-D0 replacement for the deleted `reconstructAutopilotStateAfterLoad()`.
+  Unlike that deleted function, this hand-seeded ghost does **not** set
+  `model.autopilotRunSummary` (that field is populated only by a live
+  in-memory `runAutopilot()` call, never reconstructed from catalog state
+  on load — cull-029's Step 5 fact) — so, unlike the pre-SP-D0 build this
+  card used to describe, **no plain autopilot banner renders at launch**
+  for this hand-seeded fixture (see Sharp edges).
 
-## Pre-state — Leg A: `burst` (stacks, completion, six counts)
+## Pre-state — Leg A: `burst` (stacks, completion, five counts)
 ```bash
 rm -rf "${TMPDIR:-/tmp}/teststrip-vm-seeds/burst/Teststrip"
 script/vm_scenario_run.sh sync burst
 
 # burst's shared flag formula (SmokeCatalogSeeder.swift:147) leaves smoke-4
 # (group2: smoke-3,4,5,6) and smoke-16 (a standalone single) unflagged.
-# Seed a tentative AI reject on smoke-4 and a tentative AI pick on smoke-16,
-# each backed by a real pending autopilot_proposals row.
+# Seed a tentative AI reject (ghost) on smoke-4 and a tentative AI pick
+# (ghost) on smoke-16 — no autopilot_proposals row needed or possible, the
+# table is gone (SP-D0); the metadata_json UPDATE alone is the whole ghost.
 TEMPLATE_DB="${TMPDIR:-/tmp}/teststrip-vm-seeds/burst/Teststrip/catalog.sqlite"
 sqlite3 "$TEMPLATE_DB" "
   UPDATE assets SET metadata_json = json_set(metadata_json, '\$.flag','reject','\$.aiUnconfirmedFields',json('[\"flag\"]')) WHERE id = 'smoke-4';
-  UPDATE assets SET metadata_json = json_set(metadata_json, '\$.flag','pick','\$.aiUnconfirmedFields',json('[\"flag\"]')) WHERE id = 'smoke-16';
-  INSERT INTO autopilot_proposals (id, run_id, asset_id, kind, keyword, rationale, confidence, status, created_at, updated_at) VALUES
-    ('seeded-prop-4', 'seeded-run-1', 'smoke-4', 'reject', '', 'seeded fixture', 0.9, 'pending', strftime('%s','now'), strftime('%s','now')),
-    ('seeded-prop-16', 'seeded-run-1', 'smoke-16', 'pick', '', 'seeded fixture', 0.9, 'pending', strftime('%s','now'), strftime('%s','now'));"
+  UPDATE assets SET metadata_json = json_set(metadata_json, '\$.flag','pick','\$.aiUnconfirmedFields',json('[\"flag\"]')) WHERE id = 'smoke-16';"
 
 script/vm_scenario_run.sh sync burst
 script/vm_scenario_run.sh launch burst
@@ -249,7 +209,7 @@ later card in the same session that needs the pristine baseline.
      "SELECT id, json_extract(metadata_json,'\$.flag'),
              EXISTS(SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag')
       FROM assets WHERE id IN ('smoke-4','smoke-16') ORDER BY id;"   # expect reject|1 and pick|1
-   script/vm_scenario_run.sh sql burst "SELECT count(*) FROM autopilot_proposals WHERE status='pending';"   # expect 2
+   script/vm_scenario_run.sh sql burst "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # expect 2 — the ghost query cull-029 uses
    ```
    `ax wait-vended`; ⌘1 for Cull; `S` to "All frames". Confirm the initial
    selection is `smoke-0` (adjust the rest of this leg's navigation if not).
@@ -367,7 +327,7 @@ later card in the same session that needs the pristine baseline.
    `aiUnconfirmedFields` containing `flag` — nothing tentative survives to
    completion, by construction: the gate itself requires undecided==0 and
    a tentative flag always counts as undecided).
-8. **Run-coverage line — six counts in total.** First, the one piece that's
+8. **Run-coverage line — five counts in total.** First, the one piece that's
    a hard guarantee regardless of navigation path:
    ```bash
    script/vm_scenario_run.sh ax find --role AXStaticText --contains "0 skipped ·"
@@ -375,45 +335,39 @@ later card in the same session that needs the pristine baseline.
    (Source's structural guarantee — any Space-skip along the way was later
    decided by definition of reaching this stage; **fails if this doesn't
    match**, no exceptions.) Then read the full line and record what it
-   says for `neverViewed`/`sparkleAwaiting`:
+   says for `neverViewed`, and confirm it has no trailing segment beyond it:
    ```bash
-   script/vm_scenario_run.sh ax find --role AXStaticText --contains "AI suggestions awaiting review"
+   script/vm_scenario_run.sh ax find --role AXStaticText --contains "never viewed"
+   script/vm_scenario_run.sh ax find --role AXStaticText --contains "awaiting review"   # expect not-found — no ✨ ink anywhere at completion
    ```
    **Live-traced result (2026-07-28, settling the prior predicted-not-traced
-   status): the line reads exactly `"0 skipped · 2 never viewed · 0 AI
-   suggestions awaiting review"`** — `neverViewed = 2`, not the originally
-   hoped-for 0. This is not a fixture-independent guarantee (see Step 5's
-   live correction and the Sharp edges bullet for the exact mechanism):
-   `smoke-5` and `smoke-6` — both already baseline-decided, both siblings of
-   `smoke-4` in group2 — are never individually selected in this run's
-   navigation, because Step 4's `P` on `smoke-4` (the last undecided member
-   of group2) triggers auto-advance straight to the next stack's landing
-   frame (`smoke-7`) rather than the flat next asset (`smoke-5`), and no
-   later step re-enters group2. Per the card's own Sharp edges caveat,
-   `neverViewed` nonzero here is reportable, not a fail — the Steps 1/5 walk
-   was not skipped, it simply doesn't achieve full coverage the way the
-   original prose assumed. `sparkleAwaiting`
-   not reading exactly `0` **is** a fail for THIS fixture — this is the live
-   demonstration of the kind-aware filter's FLAG-proposal half (Source's
-   kind-aware contract): deciding `smoke-4`/`smoke-16` directly (Steps 4/6)
-   confirmed their **flags** but never touched the two seeded
-   `autopilot_proposals` rows themselves (only `beginAutopilotReview()`'s
-   commit/dismiss flow does that), so both rows should still read
-   `status='pending'` even though `sparkleAwaiting` correctly reads `0` —
-   both seeded proposals are FLAG kind (`kind='reject'` on `smoke-4`,
-   `kind='pick'` on `smoke-16`, per Pre-state's seed SQL), so this fixture
-   never exercises the KEYWORD half of the contract (a pending keyword
-   proposal would instead keep `sparkleAwaiting` nonzero here, by design).
-   Confirm the rows are untouched live:
+   status, against the pre-SP-D0 build): the line read exactly `"0 skipped ·
+   2 never viewed"` once the trailing sparkle segment is dropped** —
+   `neverViewed = 2`, not the originally hoped-for 0. This is not a
+   fixture-independent guarantee (see Step 5's live correction and the
+   Sharp edges bullet for the exact mechanism): `smoke-5` and `smoke-6` —
+   both already baseline-decided, both siblings of `smoke-4` in group2 —
+   are never individually selected in this run's navigation, because Step
+   4's `P` on `smoke-4` (the last undecided member of group2) triggers
+   auto-advance straight to the next stack's landing frame (`smoke-7`)
+   rather than the flat next asset (`smoke-5`), and no later step re-enters
+   group2. Per the card's own Sharp edges caveat, `neverViewed` nonzero here
+   is reportable, not a fail — the Steps 1/5 walk was not skipped, it simply
+   doesn't achieve full coverage the way the original prose assumed. Confirm
+   both ghosts seeded in Pre-state are gone from the catalog — not merely
+   "still pending" as the pre-drop `autopilot_proposals` model would have
+   shown, but **completely absent**, because Steps 4/6 decided `smoke-4`/
+   `smoke-16` directly via `P`, and `setFlagForSelectedAsset` unconditionally
+   clears `aiUnconfirmedFields` the instant any direct flag decision lands
+   (`AppModel.swift:7371-7374`) — regardless of whether the new value agrees
+   with the old tentative one:
    ```bash
-   script/vm_scenario_run.sh sql burst "SELECT count(*) FROM autopilot_proposals WHERE status='pending';"   # still 2
+   script/vm_scenario_run.sh sql burst "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # 0 — both ghosts cleared by Steps 4/6's direct decisions, not by a commit/dismiss gesture
    ```
 9. **Ceremony actions, gated correctly.** Confirm "Save Picks as Set" is
-   present (real work to do: `picks=14>0`) and "Review AI Suggestions" is
-   **absent** — the kind-aware filter: `sparkleAwaiting=0` since both
-   proposal-bearing assets (`smoke-4`/`smoke-16`) already carry confirmed
-   flags and both proposals are FLAG kind (not keyword), even with their
-   proposal rows still `pending` per Step 8:
+   present (real work to do: `picks=14>0`) and there is no "Review AI
+   Suggestions" button anywhere — not gated to absent, simply gone from the
+   source (Source's Actions rule above):
    ```bash
    script/vm_scenario_run.sh ax find --role AXButton --contains "Save Picks as Set"
    script/vm_scenario_run.sh ax find --role AXButton --contains "Review AI Suggestions"   # expect not-found
@@ -490,25 +444,24 @@ all.
   projection (a lingering tentative marker at the completion stage would be
   a genuine invariant violation, not a fixture quirk).
 - Step 8: **Fails if** `skipped` is nonzero (no exceptions — this is a
-  structural guarantee, see Source), or if `sparkleAwaiting` isn't exactly
-  0 for THIS fixture (the kind-aware filter's FLAG-proposal half — see
-  Source's kind-aware contract; this is a fixture fact since both seeded
-  proposals are FLAG kind, not a general invariant — a fixture seeding a
-  pending KEYWORD proposal on an already-decided asset should instead show
-  a nonzero `sparkleAwaiting`), or if the seeded `autopilot_proposals` rows
-  are no longer `pending` (would mean something silently
-  auto-committed/dismissed them — the filter must not touch the proposal
-  rows). `neverViewed` nonzero is reportable-not-fatal (see Sharp edges)
-  unless the Step 1/5 walk was skipped, in which case investigate before
-  dismissing it. **Traced live (2026-07-28): `neverViewed = 2`** (`smoke-5`,
+  structural guarantee, see Source), if the detail line shows any trailing
+  segment beyond "N never viewed" (there is no ✨ ink anywhere in the
+  completion stage — the whole ceremony is gone from the source, not
+  gated to zero), or if either seeded ghost is still present in
+  `metadata_json` after Steps 4/6 decided it directly (a ghost surviving a
+  direct `P`/`X` decision would be a real regression — `setFlagForSelectedAsset`
+  must unconditionally clear `aiUnconfirmedFields`). `neverViewed` nonzero
+  is reportable-not-fatal (see Sharp edges) unless the Step 1/5 walk was
+  skipped, in which case investigate before dismissing it. **Traced live
+  2026-07-28 against the pre-SP-D0 build: `neverViewed = 2`** (`smoke-5`,
   `smoke-6` — see Step 5's live correction and Sharp edges for the exact
   auto-advance mechanism); the Step 1/5 walk was run in full, so this is the
   settled, reportable value for this exact navigation, not an investigation
-  trigger.
+  trigger — this specific number is unaffected by the ghost-derivation
+  change and still needs a fresh live confirmation per the Run status note.
 - Step 9: **Fails if** "Save Picks as Set" is missing despite having real
-  work to do, if "Review AI Suggestions" is present (it must not be, for
-  THIS fixture — both proposal-bearing assets are already user-decided and
-  both proposals are FLAG kind, per the kind-aware contract), if the saved
+  work to do, if a "Review AI Suggestions" button is present anywhere (it
+  no longer exists in the source at all, for any fixture), if the saved
   set's membership disagrees with the confirmed-picks list, or if the set
   name isn't `"Catalog Picks"`.
 - Steps 11-13: **Fails if** any in-window stop is missing, any out-of-window
@@ -553,15 +506,21 @@ Run once per leg (separate launches); quit each instance before the next.
   not treat a nonzero `neverViewed` as a failure on its own; do treat `2` as
   this card's own settled, reproducible value for its documented sequence,
   not a fixture quirk to explain away.
-- **A plain autopilot banner may appear early**, above the stage, once
-  `reconstructAutopilotStateAfterLoad()` sees this card's hand-seeded
-  `autopilot_proposals` rows at launch — it doesn't distinguish a real
-  Autopilot run from a seeded one. This is expected, not a bug; it doesn't
-  interfere with any assertion here, and its own "Review"/"Undo all"
-  buttons are `cull-017-autopilot-review.md`'s territory, not re-driven.
-  **Confirmed live**: the banner read "Autopilot reviewed 2 frames · 1
-  keepers · 1 rejects · dupe…" and sat above the completion stage
-  throughout, with no interference with any assertion.
+- **The plain autopilot banner is run-time only and never survives
+  relaunch** (`reconstructAutopilotStateAfterLoad` was deleted in SP-D0 —
+  there is no reload step that reconstructs `model.autopilotRunSummary`
+  from catalog state); ghost badges survive natively via `metadata_json`
+  instead (cull-029's Source/Step 5). This card's fixture hand-seeds the
+  ghosts directly into `metadata_json` rather than driving a live
+  `runAutopilot()` call, so **no plain autopilot banner renders at launch
+  at all** for this fixture — unlike the pre-SP-D0 build this card
+  previously described (its own "Confirmed live" banner text below in Run
+  status quoted a banner produced by the deleted `reconstructAutopilotStateAfterLoad()`
+  reading the old hand-seeded `autopilot_proposals` rows; that evidence no
+  longer applies and needs a fresh live confirmation of "no banner at
+  launch" instead). The banner's own "Review"/"Undo all" buttons remain
+  `cull-017-autopilot-review.md`'s territory regardless, not re-driven
+  here.
 - **`saveCullingPicksAsSet()`'s ad-hoc branch calls `saveAndSelect(...)`
   (`AppModel.swift:5681`), which immediately applies the new set as the
   active library scope/selection** — the very next render is that new set's
@@ -584,23 +543,23 @@ Run once per leg (separate launches); quit each instance before the next.
 - **This card does not re-derive `AutopilotProposalPlanner`'s ranking
   logic** or drive a live Evaluate+Run Autopilot pass — `app-012-
   autopilot-evaluate-commands.md` and `cull-017-autopilot-review.md` own
-  that path end-to-end; this card only needs *some* pending proposal rows
-  to exist, and seeds them directly for determinism (Source above).
+  that path end-to-end; this card only needs *some* ghosts to exist, and
+  seeds them directly into `metadata_json` for determinism (Source above).
 - **The run strip's per-stop ✨ chip was removed entirely (kata #13,
-  2026-07-29), resolving the disagreement this bullet used to document.**
-  The chip's source set (a kind-blind, flag-blind
-  `pendingSparkleAssetIDs = Set(model.pendingAutopilotProposals.map(\.assetID))`
-  meaning "this frame has *some* pending AI proposal, full stop")
-  routinely disagreed with the completion stage's kind-aware
-  `sparkleAwaiting` count — confirmed live in this very card's Leg A
-  fixture: both `smoke-3–6` and `smoke-16` kept badging `"1 suggestion"`
-  on the run strip straight through to completion while the completion
-  line simultaneously read `"0 AI suggestions awaiting review"`. Rather
-  than reconcile the two counts, Jesse chose to drop the chip outright —
-  the completion stage's `sparkleAwaiting`
-  (`CullCompletionPresentation.summary`, Source above) is now the cull
-  view's only ✨ surface, so this disagreement can no longer occur and
-  there is nothing left for a live runner to reconcile here.
+  2026-07-29)**, and the completion stage's own ✨ surface it used to
+  disagree with (`sparkleAwaiting`) was deleted outright by SP-D0
+  (2026-08-06) — there is no ✨ ink left anywhere in the cull view for the
+  two to disagree about. Historically, the chip's source set (a kind-blind,
+  flag-blind `pendingSparkleAssetIDs =
+  Set(model.pendingAutopilotProposals.map(\.assetID))` meaning "this frame
+  has *some* pending AI proposal, full stop") routinely disagreed with the
+  completion stage's kind-aware `sparkleAwaiting` count — confirmed live in
+  this very card's Leg A fixture: both `smoke-3–6` and `smoke-16` kept
+  badging `"1 suggestion"` on the run strip straight through to completion
+  while the completion line simultaneously read `"0 AI suggestions awaiting
+  review"`. Jesse chose to drop the chip outright rather than reconcile the
+  two counts, and SP-D0 later finished the job by deleting `sparkleAwaiting`
+  itself — both halves of the old disagreement are gone now, not just one.
 
 ## Run status
 RUN 2026-07-28 (app 878f1939) — PASS-WITH-CARD-FIXES, no app bugs. See the
@@ -756,3 +715,30 @@ describe the app and this card's own step numbering as they stood on
 history, per this card's own established convention, and their
 step-number and chip mentions should be read against that older layout,
 not the current one above.
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 autopilot_proposals drop)**: this
+card was rewritten for the ghost-derivation model. `autopilot_proposals` no
+longer exists as a table (SP-D0 dropped it forward-only) — Leg A's seed
+technique changed from an `INSERT INTO autopilot_proposals` to a pure
+`metadata_json` UPDATE (mirroring `cull-023`'s/`cull-026`'s
+`aiUnconfirmedFields` template-patch technique), and every
+`SELECT ... FROM autopilot_proposals` query became the ghost query
+`EXISTS (SELECT 1 FROM json_each(metadata_json,'$.aiUnconfirmedFields')
+WHERE value='flag')`. `CullCompletionPresentation`'s `sparkleAwaiting`
+field, its kind-aware filtering contract, the `.reviewAISuggestions`
+action, and the "N AI suggestions awaiting review" detail-line segment are
+gone from the source entirely (not gated to zero) — the title, intro, and
+Source/Steps/Expected sections above now describe the five-count
+(picked/rejected/undecided/skipped/never-viewed), five-action
+(Export/Move Rejects…/Move Rejects to Trash…/Review Picks/Save Picks as
+Set) model as ground truth. The "plain autopilot banner may appear early"
+Sharp-edges bullet was replaced: `reconstructAutopilotStateAfterLoad()`
+(the mechanism that produced that banner from hand-seeded rows) was also
+deleted in SP-D0, so this fixture's hand-seeded ghost produces no banner
+at launch at all. **Supersedes prior status**: every PASS/live-run claim
+above this note — the 2026-07-28 `RUN`/`LIVE RUN` entries, their three
+"Reconciled" sub-notes, and the 2026-07-29 kata #13 note — was obtained
+against a build that predates the `autopilot_proposals` drop and still had
+`sparkleAwaiting`/`.reviewAISuggestions` in the source; none of it is valid
+evidence for this revision's five-count/no-ceremony model. Needs a fresh
+VM run.
