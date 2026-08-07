@@ -45,9 +45,12 @@ Source (current working tree, `feat/machine-label-provenance`):
   `.pick`/`.reject` proposal into `metadata.flag` **immediately**, marked
   `aiUnconfirmedFields = [.flag]`, unless the asset already carries a
   **confirmed** flag (`hasConfirmedFlag` guard, `:8764`) — this is the
-  headline behavior change from the pre-provenance model: `autopilot_proposals`
-  rows are still written for run tracking, but the catalog write no longer
-  waits for a Commit.
+  headline behavior change from the pre-provenance model: the tentative
+  write itself (the "ghost," `AutopilotGhost.kind(in:)`) lands in
+  `metadata_json` immediately; SP-D0 later dropped the `autopilot_proposals`
+  table outright, so there is no separate proposal row at all any more —
+  the ghost sitting in the asset's own metadata is the whole record, and the
+  catalog write never waited for a Commit in the first place.
 - **Tentative-flag exclusion (safety-critical)**: `rejectRelocationScope`
   (`:11106`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
   (`:11128`) before it can ever reach a `RejectRelocationPlan` — a tentative
@@ -300,18 +303,18 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
 13. **Culling ▸ Run Autopilot**: `ax press --role AXMenuItem --label "Run Autopilot"`
     (`runAutopilotOnCurrentScope`, on-demand — no import needed; contrast
     `cull-017-autopilot-review.md`'s stale claim that autopilot only runs
-    post-import). Record the run:
+    post-import). Record the ghosts this run produced — there is no `run_id`
+    to key on any more (`autopilot_proposals` no longer exists as a table,
+    SP-D0 dropped it forward-only); the ghost query selects them directly:
     ```bash
-    RUN_ID=$(script/vm_scenario_run.sh sql faces "SELECT run_id FROM autopilot_proposals ORDER BY created_at DESC LIMIT 1;")
-    script/vm_scenario_run.sh sql faces "SELECT asset_id, kind FROM autopilot_proposals WHERE run_id='$RUN_ID';"
+    script/vm_scenario_run.sh sql faces "SELECT id, json_extract(metadata_json,'\$.flag') FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
     ```
 14. **Find a genuinely tentative reject, distinct from the manual control:**
     ```bash
-    script/vm_scenario_run.sh sql faces "SELECT a.id, a.original_path FROM assets a
-      JOIN autopilot_proposals p ON p.asset_id = a.id AND p.run_id = '$RUN_ID' AND p.kind='reject'
-      WHERE a.id != '$MANUAL_ID'
-        AND json_extract(a.metadata_json,'\$.flag')='reject'
-        AND EXISTS (SELECT 1 FROM json_each(a.metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
+    script/vm_scenario_run.sh sql faces "SELECT id, original_path FROM assets
+      WHERE id != '$MANUAL_ID'
+        AND json_extract(metadata_json,'\$.flag')='reject'
+        AND EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
     ```
     If this returns nothing, the planner didn't propose a cut on this
     11-photo batch — note the fixture gap (real-photo quality variance isn't
@@ -541,3 +544,14 @@ at authoring time, not carried over from the implementation task reports).
 Pending live execution in the Tart VM per `test/scenarios/README.md`
 (`script/vm_scenario_run.sh`) — a human-triggered step separate from
 authoring this card.
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: `autopilot_proposals`
+no longer exists as a table (SP-D0 dropped it forward-only) — Steps 13-14's
+`run_id` lookup and `JOIN` against it became a direct ghost query against
+`metadata_json`/`aiUnconfirmedFields`; the Autopilot-fold-in Source bullet's
+"proposals are still written for run tracking" claim was corrected (there
+is no separate proposal row of any kind now, just the ghost in the asset's
+own metadata). Step 18's Commit gesture is unaffected — it still calls
+`commitAutopilotProposals`. Supersedes prior status: this card was already
+NOT RUN, so there is no prior PASS to invalidate — noted for the record per
+house style. Needs a fresh VM run.

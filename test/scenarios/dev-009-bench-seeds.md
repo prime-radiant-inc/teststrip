@@ -110,7 +110,7 @@ the `TeststripBench` executable target (`Sources/TeststripBench/main.swift`,
   ```
   (24 cached previews = 6 assets × 4 preview levels: micro/grid/medium/large,
   per `SmokeCatalogSeeder.renderedLevels`.) Step 5's `.tables` query lists
-  (captured live): `asset_sets`, `assets`, `autopilot_proposals`,
+  (captured live): `asset_sets`, `assets`,
   `catalog_meta`, `dismissed_face_assets`, `dismissed_faces`,
   `evaluation_failures`, `evaluation_signals`, `face_observations`,
   `geocode_queue`, `metadata_sync_state`, `people`, `person_assets`,
@@ -183,3 +183,12 @@ touched (bench seeds write to an arbitrary caller-chosen path, not the
   out of scope for this card per the task brief; it follows the same
   positional-arg/no-overwrite pattern as `seed-sample-catalog` if a future
   card needs it.
+
+## Run status
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: removed
+`autopilot_proposals` from Step 3's captured `.tables` inventory —
+SP-D0 dropped it forward-only, so a fresh `seed-app-catalog` run's schema no
+longer includes it. Supersedes prior status: LEDGER records this card
+`Tested-Pass`, but that result was captured against a schema that included
+`autopilot_proposals` — not valid evidence for the current table list.
+Needs a fresh host CLI run to re-capture `.tables`.

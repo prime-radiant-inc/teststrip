@@ -34,9 +34,11 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 4. **Run Autopilot on an unevaluated scope (item 39).** Before any
    evaluation (`sqlite3 "$DB" "SELECT count(*) FROM evaluation_signals;"`
    returns 0), click Culling ▸ Run Autopilot. Assert the status area shows
-   "Autopilot: no evaluated photos in view to run on" and:
+   "Autopilot: no evaluated photos in view to run on" and (`autopilot_proposals`
+   no longer exists as a table — SP-D0 dropped it forward-only — so the
+   ghost count is the ground truth instead):
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"   # still 0
+   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # still at its baseline (0 on a fresh --smoke seed)
    sqlite3 "$DB" "SELECT count(*) FROM assets WHERE metadata_json LIKE '%pick%';"  # baseline-unchanged
    ```
 5. **Evaluate Visible (item 40).** Press ⇧⌘E. Assert the Activity item goes
@@ -46,18 +48,18 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    ```
    Keep the app warm while polling.
 6. **Run Autopilot on an evaluated scope.** After step 5 completes, click
-   Run Autopilot again. Assert proposals appear as *provisional* state:
-   `autopilot_proposals` rows exist / KEEP-CUT badges render, and (per the
-   auto-apply-with-provenance model — `applyTentativeAutopilotProposals`) the
-   run has already written each proposed asset's tentative pick/reject
-   straight into `metadata_json.flag`, tagged `origin=ai` (`aiUnconfirmedFields`
-   contains `flag`) — not yet a *confirmed* verdict, and not yet synced to any
-   `.xmp` sidecar. Only the Review → Commit flow (cull-017's card) confirms it
-   (flips to `origin=user`, writes the sidecar):
+   Run Autopilot again. Assert ghosts appear as *provisional* state:
+   KEEP/CUT badges render, and (per the auto-apply-with-provenance model —
+   `applyTentativeAutopilotProposals`) the run has already written each
+   proposed asset's tentative pick/reject straight into `metadata_json.flag`,
+   tagged `origin=ai` (`aiUnconfirmedFields` contains `flag`) — this AI-origin,
+   unconfirmed flag **is** the ghost (`AutopilotGhost.kind(in:)`); not yet a
+   *confirmed* verdict, and not yet synced to any `.xmp` sidecar. Only the
+   Review → Commit flow (cull-017's card) confirms it (flips to `origin=user`,
+   writes the sidecar):
    ```bash
-   sqlite3 "$DB" "SELECT a.id, json_extract(a.metadata_json,'\$.flag') FROM assets a
-     JOIN autopilot_proposals p ON p.asset_id = a.id AND p.kind IN ('pick','reject')
-     WHERE EXISTS (SELECT 1 FROM json_each(a.metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
+   sqlite3 "$DB" "SELECT id, json_extract(metadata_json,'\$.flag') FROM assets
+     WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
    ```
 
 ## Expected
@@ -94,3 +96,14 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   `WorkspaceChromePolicy.showsFooter` — run step 4 from a workspace where
   the status is actually visible, or read `statusMessage` indirectly via a
   screenshot of the footer in Library.
+
+## Run status
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: `autopilot_proposals`
+no longer exists as a table (SP-D0 dropped it forward-only) — Step 4's and
+Step 6's queries became ghost queries against
+`metadata_json`/`aiUnconfirmedFields`, and Step 6's `JOIN` against the
+dropped table became a plain `WHERE EXISTS (...)` clause. Supersedes prior
+status: LEDGER records this card `Tested-Pass`/PASS, but that result was
+obtained against a build where `autopilot_proposals` still existed and Step
+6's query still worked — not valid evidence for this revision. Needs a
+fresh VM run.

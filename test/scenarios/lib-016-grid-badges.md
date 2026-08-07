@@ -43,10 +43,15 @@ rendered top-trailing via `sourceStatusBadge`:
 **Batch checkbox + autopilot KEEP/CUT** (top-leading `HStack`, lines 8682-8692):
 - `batchSelectionBadge` (line 8742): `checkmark.circle.fill`, black+orange,
   a11y label "Batch selected" — shown only when `isBatchSelected`.
-- `autopilotBadge` (line 8749, driven by `AutopilotBadgePresentation.badge`,
-  lines 3318-3329): `.pick` proposal → text **"KEEP"**, green; `.reject`
-  proposal → text **"CUT"**, red; `.keyword` proposal or `nil` → no badge.
-  Both render as a bold caption2 capsule over `black.opacity(0.55)`.
+- `autopilotBadge` (line 8749, driven by
+  `AutopilotBadgePresentation.badge(for:)`, `LibraryGridView.swift:3605-3618`,
+  fed by `AutopilotGhost.kind(in: asset.metadata)` — a `PickFlag?`, not a
+  proposal-table row): `.pick` → text **"KEEP"**, green; `.reject` → text
+  **"CUT"**, red; `nil` (no ghost) → no badge. There is no `.keyword` case
+  any more — ambient keywords never carried a badge and are not part of the
+  ghost type at all (`AutopilotGhost.kind` returns `PickFlag?`, not a kind
+  enum with a keyword case). Both render as a bold caption2 capsule over
+  `black.opacity(0.55)`.
 
 **Preview-status badge** (`AssetGridPreviewStatusPresentation.presentation`,
 lines 7111-7147) — shown only while `previewURL == nil`, 3 states (not the
@@ -123,10 +128,13 @@ and selection borders are exercisable against `--smoke`'s pre-seeded ratings.
   produces a `.moved`-adjacent state via its move-and-back gesture but doesn't
   assert on this specific badge. This is a fixture gap worth flagging, not
   something to fake around in this card.
-- The KEEP/CUT autopilot badge needs a pending Autopilot proposal in place
-  (`autopilotDecision` param) — `--smoke` alone won't have one; pair this
-  step with `autopilot-review-commit-undo.md`'s pre-state (run Autopilot
-  first) if this specific badge needs live verification.
+- The KEEP/CUT autopilot badge needs an asset carrying a ghost
+  (`aiUnconfirmedFields` contains `flag`, per `AutopilotGhost.kind(in:)`;
+  the `autopilotDecision` param) — `--smoke` alone won't have one; pair this
+  step with `cull-017-autopilot-review.md`'s pre-state (run Autopilot
+  first) or hand-seed a ghost into `metadata_json` directly (per
+  `cull-023`'s/`cull-026`'s template-patch technique) if this specific badge
+  needs live verification.
 - Preview-status badge states are timing-dependent and effectively
   unreachable once the worker catches up — a deliberately slow/broken preview
   fixture would be needed to force "Preview issue" reliably; none exists
@@ -139,3 +147,17 @@ constraint). All chrome values verified by direct source read at
 3318-3329`. Needs a live AX session plus `capture_app_window.sh` visual
 inspection for Steps 3-4 (border widths aren't AX-queryable) and a
 human-present retry for the timing-dependent Step 6.
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the autopilot
+badge's Source bullet was rewritten — `AutopilotBadgePresentation.badge(for:)`
+now takes a `PickFlag?` fed by `AutopilotGhost.kind(in: asset.metadata)`
+(`LibraryGridView.swift:3605-3618`, re-verified against the working tree;
+supersedes the stale `3318-3329` citation still quoted in the paragraph
+above, which predates this branch's line drift), not a proposal-table row,
+and the `.keyword`-proposal-carries-no-badge case no longer exists as a
+case at all (ghosts are flag-only). The Sharp-edges fixture-gap note now
+points at hand-seeding `metadata_json` directly or at
+`cull-017-autopilot-review.md`, not a deleted `autopilot-review-commit-undo.md`
+pre-state. Supersedes prior status: this card was already NOT RUN, so there
+is no prior PASS to invalidate — noted for the record per house style.
+Needs a fresh VM run.

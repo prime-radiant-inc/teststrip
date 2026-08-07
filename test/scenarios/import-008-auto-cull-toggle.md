@@ -16,9 +16,12 @@ the load-bearing check; do not weaken it.
 ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
-Baseline verified 2026-07-10 against a fresh `--smoke` seed:
-`autopilot_proposals` is empty (`SELECT count(*) FROM autopilot_proposals` →
-0). 11/24 seeded assets already carry a `flag` (`smoke-N.jpg`'s
+Baseline verified 2026-07-10 against a fresh `--smoke` seed (re-verified
+2026-08-06: `autopilot_proposals` no longer exists as a table — SP-D0
+dropped it forward-only — so the baseline is the ghost count instead):
+no asset carries a ghost (`SELECT count(*) FROM assets WHERE EXISTS (SELECT
+1 FROM json_each(metadata_json,'$.aiUnconfirmedFields') WHERE value='flag')`
+→ 0). 11/24 seeded assets already carry a `flag` (`smoke-N.jpg`'s
 `metadata_json` has `"flag":"reject"` or `"pick"` per the README's documented
 baseline) — this card's assertions must be scoped to the *newly imported*
 asset IDs, not the whole catalog, since the seed itself isn't a clean slate.
@@ -54,7 +57,8 @@ fixture needed.)
    (`runImportAutopilotIfArmedAndResolved`,
    `Sources/TeststripApp/AppModel.swift:8011-8020`) — then disarms itself, so
    poll until a `.recognition` work session tied to the import is
-   `completed` and `autopilot_proposals` has stabilized:
+   `completed` and the imported set's ghost count has stabilized (no live
+   table to poll any more — see Step 6's ghost query):
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM work_sessions WHERE kind='recognition' AND status IN ('queued','running');"
    ```
@@ -62,11 +66,11 @@ fixture needed.)
    ```bash
    sqlite3 "$DB" "SELECT id FROM assets WHERE original_path LIKE '%/card2/%' ORDER BY id;"
    ```
-6. **Scope assertion**: every `autopilot_proposals.asset_id` from this run
-   belongs to the imported set, and no proposal exists for any of the
-   24 pre-seeded smoke assets:
+6. **Scope assertion**: every ghost-carrying asset from this run belongs to
+   the imported set, and no ghost exists on any of the 24 pre-seeded smoke
+   assets:
    ```bash
-   sqlite3 "$DB" "SELECT DISTINCT asset_id FROM autopilot_proposals;"
+   sqlite3 "$DB" "SELECT id FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
    ```
 7. **Provisional-write negative assertion** (the load-bearing check): before
    any confirming click, none of the imported assets' `metadata_json` has a
@@ -80,24 +84,26 @@ fixture needed.)
    (`Sources/TeststripApp/AppModel.swift:7784-7838`, write at :7809-7812), and
    it only runs from an explicit commit gesture (Autopilot Review → Commit),
    never automatically post-import.
-8. Assert `autopilot_proposals.status = 'pending'` for every row from this
-   run (`AutopilotProposalStatus.pending`,
-   `Sources/TeststripCore/Autopilot/AutopilotProposal.swift:19-20`):
+8. Assert every ghost from this run is still unconfirmed
+   (`aiUnconfirmedFields` still contains `flag` — there is no separate
+   `status` column any more; the ghost's mere presence in `metadata_json`
+   **is** "pending", per `AutopilotGhost.kind(in:)`):
    ```bash
-   sqlite3 "$DB" "SELECT status, count(*) FROM autopilot_proposals GROUP BY status;"
+   sqlite3 "$DB" "SELECT id, json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
    ```
-9. Open the Autopilot Review UI and commit the proposals for the imported
-   set (the normal, explicit confirm gesture — see
-   `autopilot-review-commit-undo.md` for the click sequence). Re-run Step 7's
-   query: now assert the imported assets DO carry the committed `flag`
-   values, and `autopilot_proposals.status='committed'` for those rows.
+9. Open the Cull sidebar's "Autopilot Proposals" source (present whenever
+   any ghost exists) and commit the ghosts for the imported set (the normal,
+   explicit confirm gesture — see `cull-017-autopilot-review.md` for the
+   click sequence). Re-run Step 7's query: now assert the imported assets DO
+   carry the committed `flag` values, and none of them carry a ghost any
+   more (`aiUnconfirmedFields` no longer contains `flag` for those rows).
 
 ## Expected
 - Step 3: toggle label, default-off, and read-gated-disabled state must match
   exactly. **Fails if** the toggle is on by default (would silently cull an
   import the user didn't ask to auto-cull) or is enabled while reads are off
   (nothing to propose from).
-- Step 6: **fails if** any proposal's `asset_id` is one of the 24 pre-seeded
+- Step 6: **fails if** any ghost-carrying asset is one of the 24 pre-seeded
   smoke assets — proves the scope leaked beyond `armedAutopilotImportAssetIDs`
   to the whole visible catalog.
 - Step 7 (pre-commit): **fails if** any imported asset's `flag`/`rating`
@@ -141,12 +147,22 @@ Quit the launched instance.
 ## Run status
 SQL-GROUNDED, AX-UNRUN. Toggle label, default state, disabled-gating, the
 armed-scope machinery (`scheduleImportAutoEvaluationIfEnabled`,
-`runImportAutopilotIfArmedAndResolved`), the `autopilot_proposals` schema, and
-the commit-only write path (`commitAutopilotProposals`) were all confirmed by
-reading source with file:line references above on 2026-07-10. The
-`autopilot_proposals` baseline-empty and 11/24-flagged-at-seed facts were
-confirmed against a freshly seeded `--smoke` catalog the same day. The full
+`runImportAutopilotIfArmedAndResolved`), the (now-dropped) `autopilot_proposals`
+schema, and the commit-only write path (`commitAutopilotProposals`) were all
+confirmed by reading source with file:line references above on 2026-07-10. The
+ghost-baseline-empty and 11/24-flagged-at-seed facts were confirmed against
+a freshly seeded `--smoke` catalog the same day. The full
 import → armed-autopilot → provisional-check → commit click-through needs a
 human-present or isolated-console re-run; not run live this session due to
 concurrent-agent build contention on the shared `dist/Teststrip.app`. Schema
 per `Sources/TeststripCore/Catalog/CatalogMigrations.swift` (version 19).
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: `autopilot_proposals`
+no longer exists as a table (SP-D0 dropped it forward-only) — the baseline,
+Step 4's poll, Step 6's scope assertion, and Step 8's status check all
+became ghost queries against `metadata_json`/`aiUnconfirmedFields`; Step 9's
+"commit the proposals" now routes through the Cull sidebar's "Autopilot
+Proposals" source rather than an unspecified "Autopilot Review UI".
+Supersedes prior status: the 2026-07-10 SQL-grounded read cited the
+`autopilot_proposals` schema directly — not valid evidence for a table that
+no longer exists. Needs a fresh VM run.
