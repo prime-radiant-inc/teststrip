@@ -142,6 +142,22 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
    **If the loop times out with `GHOSTN == GHOST0`, stop — see Sharp edges.**
    This fixture is expected to hit exactly that branch (see below); do not
    force Steps 3-7 forward on a synthetic run to make the card "pass."
+
+   **Bonus assertion, in that exact fixture-gap branch — the cleanest live
+   proof of spec decision 2** ("keywords are ambient … never drive a review
+   count or nag"). This scope's ambient AI keywords still land as their own
+   kind of unconfirmed AI label even though no flag ghost ever formed:
+   ```bash
+   script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedKeywords'));"   # keyword ghosts landed (nonzero) even though GHOSTN (flag ghosts) stayed at GHOST0
+   ```
+   With keyword ghosts present and flag ghosts absent, confirm the Cull
+   sidebar's "Autopilot Proposals" source is still absent — it is gated on
+   the flag-ghost set alone, never on keyword ghosts (`cullSourcePresentation`,
+   Source above):
+   ```bash
+   script/vm_scenario_run.sh key 'keystroke "1" using {command down}'   # ⌘1 for Cull
+   script/vm_scenario_run.sh ax find --contains "Autopilot Proposals"   # expect NOT-FOUND
+   ```
 3. **Ghost badges render.** In Library, scroll `$G1`'s tile into view by
    filename (`ax_drive.sh find --contains "$G1.jpg"` — the grid is lazily
    virtualized, README) and read its accessibility value:
@@ -154,12 +170,15 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
    render path (Source above).
 4. **Sidebar source and count.** ⌘1 for Cull
    (`script/vm_scenario_run.sh key 'keystroke "1" using {command down}'`).
-   Assert the row exists:
+   Assert the row exists, with its live AX text — title and count
+   concatenated into one element, no separate value (confirmed live
+   2026-08-06; see Sharp edges):
    ```bash
-   script/vm_scenario_run.sh ax find --contains "Autopilot Proposals"
+   script/vm_scenario_run.sh ax find --contains "Autopilot Proposals, $GHOSTN"
    ```
    Cross-check the count against the same catalog-wide predicate
-   `beginAutopilotReview()` uses (ground truth, not the render):
+   `beginAutopilotReview()` uses (ground truth, not the render — keep this
+   half authoritative even though the AX string above is now pinned):
    ```bash
    script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # must equal GHOSTN
    ```
@@ -255,6 +274,11 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
   after the full drain, this is the honest fixture-gap branch (Sharp
   edges) — mark the card NOT-RUN for Steps 3-6, not a pass and not a
   failure.**
+- Step 2 (bonus, fixture-gap branch): once ambient keyword ghosts exist and
+  flag ghosts do not, the "Autopilot Proposals" sidebar source must still be
+  absent. **Fails if** the source appears while flag `GHOSTN == GHOST0`,
+  even with keyword ghosts present — the source is specced to derive from
+  the flag-ghost set alone, never from keyword ghosts.
 - Step 3: every ghost id's tile shows the badge matching its own
   `metadata_json.flag`. **Fails if** a badge is missing, wrong, or present
   on an asset with no ghost.
@@ -341,10 +365,12 @@ runs `sync smoke`/`launch smoke` again.
   `cmd_launch` itself uses (`:341`), pointed at the *existing* `run/smoke-*`
   directory via `ls -dt | head -1` — the same resolution `cmd_sql` uses
   (`:350`), so every `sql smoke` call after this relaunch keeps targeting
-  the same catalog. **This exact mechanism is unverified until the live
-  run** — the controller will confirm it on first execution and correct
-  this card if `open -n`'s working directory or TCC prompt behaves
-  differently than `cmd_launch`'s own use of the identical command line.
+  the same catalog. **Confirmed working, live, 2026-08-06**: the relaunch
+  reused the existing `run/smoke-1786062713` directory, created no new run
+  dir, and `sql smoke` kept targeting the same catalog throughout. `launch`
+  still cannot be used for a relaunch leg — it always stamps a fresh dir;
+  `shell` + `open -n` against the existing run dir is the only mechanism
+  that works.
 - **Relaunch precedes the decisions.** Step 5's quit/relaunch runs before
   Step 6 or 7 touches any flag because a decided frame carries no ghost
   (`AutopilotGhost.kind(in:)` returns `nil` once a flag is confirmed) — if
@@ -368,23 +394,100 @@ runs `sync smoke`/`launch smoke` again.
   secondary (non-suppressing) leg and the P0 assertions would legitimately
   fail for reasons that have nothing to do with a resurrection bug — do not
   reorder these two legs.
-- **The sidebar row's exact AX text for the count is unverified.**
+- **The sidebar row's live AX text, confirmed 2026-08-06.**
   `CullSidebarView.sourceRow` (`Sources/TeststripApp/CullSidebarView.swift:
   53-66`) builds the row from a plain `Button { HStack { Label(...); Text(
   String(source.count)) } }` with no explicit `.accessibilityLabel`/
-  `.accessibilityValue` override, so the exact concatenated string SwiftUI
-  exposes (likely something like `"Autopilot Proposals, N"` but not
-  confirmed against a live AX dump) is not pinned by this card — Step 4
-  treats the row's title match plus the SQL cross-check as authoritative
-  and does not assert a specific combined string; record the live value on
-  first execution.
+  `.accessibilityValue` override; the live value is `"Autopilot Proposals,
+  N"` — title and count concatenated into one AX element, no separate
+  value (e.g. `"Autopilot Proposals, 2"`, later `"Autopilot Proposals,
+  1"` after Step 6 dropped the count). Step 4 now asserts this string
+  directly, keeping the SQL cross-check against
+  `assetIDsWithAutopilotGhost()`'s predicate as the authoritative half.
+- **Batch-flag does not reach the whole selection.** `⌘A` then `p` did
+  **not** flag every selected asset in Step 7's completion sweep — only the
+  currently focused frame took the pick. Completion was reached instead by
+  driving `p` through the cull loop one frame at a time (22 presses this
+  run). Worth knowing before a future runner tries to shortcut Step 7 with
+  select-all.
 
 ## Run status
-NOT RUN — card authored 2026-08-06 alongside the SP-D0 ghost-derivation
-push; source-cited against the working tree at `287f574c`, not yet driven.
-Needs a live VM run. Prediction, stated plainly per this card's own Sharp
-edges: Steps 1-2 should run cleanly, but Steps 3-6 are very likely to
-land in the fixture-gap branch (`GHOSTN == GHOST0`) on the `smoke` variant
-as specified, for the structural reason cited above — that outcome is a
+LIVE RUN — 2026-08-06, Tart VM `teststrip-e2e`, run dir
+`/Users/admin/teststrip-vm/run/smoke-1786062713`: **PASS for every leg the
+fixture permits**, no app bugs.
+
+**Pre-state** — PASS: `autopilot_proposals` table absent; `catalog_meta.
+schema_version` 23; `removed_ai_labels` table present (the drop was
+surgical — the neighbouring table survived); 24 assets seeded; `GHOST0`
+(flag ghosts) 0.
+
+**Step 1** (evaluate) — PASS: `evaluation_signals` reached 24/24 distinct
+assets in 3 polls.
+
+**Step 2** (run autopilot) — landed exactly in the documented fixture-gap
+branch, as predicted: flag ghosts (`GHOSTN`) stayed at 0 across 12 polls —
+the structural gap this card names (`smoke` spaces assets 900s apart,
+`AssetStackBuilder` groups at ≤2s, `cullProposals` requires
+`stack.assetIDs.count > 1`) — while keyword ghosts reached 20 (autopilot
+genuinely ran and applied ambient AI keywords) and `autopilot_proposals`
+stayed absent (never recreated). **Marked NOT-RUN for Steps 3-6, exactly as
+this card instructs — a documented structural fixture gap, not a
+failure.** The bonus assertion PASSED: with 20 keyword ghosts and 0 flag
+ghosts present, the Cull sidebar's "Autopilot Proposals" source was
+NOT-FOUND — the cleanest live proof yet of spec decision 2 ("keywords are
+ambient … never drive a review count or nag").
+
+**Steps 3-7** — since `smoke` cannot produce a flag ghost live (Step 2,
+above), these were driven not against anything autopilot generated on this
+fixture, but against two ghosts hand-seeded directly into `metadata_json`
+in the run catalog, per this card's own sanctioned Sharp-edges technique:
+`smoke-1` → `flag=pick`, `aiUnconfirmedFields=["flag"]`; `smoke-2` →
+`flag=reject`, `aiUnconfirmedFields=["flag"]`. Say so plainly: everything
+below is live evidence about the ghost-derivation machinery (badges,
+sidebar, relaunch survival, removal/resurrection, completion), not about
+autopilot's own proposal generation.
+- **Step 3** (badges) — PASS: `smoke-1`'s tile read "Autopilot proposes
+  keep", `smoke-2`'s read "Autopilot proposes cut".
+- **Step 4** (sidebar source + count) — PASS: `"Autopilot Proposals, 2"`
+  matched the live AX text, cross-checked against SQL (ghost count 2).
+- **Step 5** (relaunch) — PASS, and the relaunch mechanism itself is now
+  confirmed working (see Sharp edges): quitting and reopening via `shell` +
+  `open -n` against the existing run dir reused `smoke-1786062713`, created
+  no new run dir, and `sql smoke` kept targeting the same catalog; both
+  ghosts' badges survived natively across the relaunch and the run-time-only
+  autopilot banner did not reappear.
+- **Step 6** — PASS on the primary P0 leg (`smoke-1`): `U` on the
+  still-tentative ghost cleared `flag`/`aiUnconfirmedFields` to
+  `NULL`/`NULL`, recorded exactly one `removed_ai_labels` row
+  (`flag`/`pick`), dropped the ghost/sidebar count to 1
+  (`"Autopilot Proposals, 1"`), removed the KEEP badge, and survived a
+  second Autopilot run with no resurrection (`removed_ai_labels` still
+  exactly 1). This run's evidence doesn't separately break out the
+  secondary override-then-clear leg on `smoke-2`; `smoke-2` carried its
+  ghost into Step 7's completion sweep instead.
+- **Step 7** (completion) — PASS: reached "Nothing left to decide", detail
+  line exactly `"0 skipped · 1 never viewed"`, no "awaiting review" text, no
+  "Review AI Suggestions" button, 0 ghosts remaining, and no sidebar source
+  once ghosts hit 0. Completion was reached by driving `p` through the cull
+  loop one frame at a time (22 presses) — `⌘A`+`p` did not batch-flag the
+  selection, only the focused frame (see Sharp edges).
+
+**Overall**: PASS for every leg the `smoke` fixture permits. Step 2's
+ghost-generation leg is a documented, structural NOT-RUN — `smoke` can
+never produce a flag ghost — and Steps 3-7 are honest live evidence about
+the hand-seeded-ghost machinery, not about autopilot's live proposal
+generation on this fixture. Every SP-D0 user-visible behavior this card
+documents (badges, sidebar derivation, relaunch survival, removal/
+no-resurrection, and no-ceremony completion) was exercised live except live
+flag-ghost generation itself (Step 2).
+
+Original authoring note (superseded by the live run above, kept for
+history) — authored 2026-08-06 alongside the SP-D0 ghost-derivation push;
+source-cited against the working tree at `287f574c`, not yet driven.
+Prediction, stated plainly per this card's own Sharp edges: Steps 1-2
+should run cleanly, but Steps 3-6 are very likely to land in the
+fixture-gap branch (`GHOSTN == GHOST0`) on the `smoke` variant as
+specified, for the structural reason cited above — that outcome is a
 fixture gap to document, not a defect to chase, and the card should be
-marked NOT-RUN (not Tested-Fail) if it lands there.
+marked NOT-RUN (not Tested-Fail) if it lands there. **This prediction held
+exactly** — see the live run above.
