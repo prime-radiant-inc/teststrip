@@ -188,7 +188,8 @@ final class AppModelFilterPersistenceTests: XCTestCase {
     }
 
     // A "Cull From" review-queue source is a filter-field scope (applySmartCollection
-    // sets flagFilter, not a snapshot set), so culling from it keeps that filter
+    // installs the collection's query predicates as detached library filter
+    // predicates, not a snapshot set), so culling from it keeps that filter
     // live and it persists back to Library — the same single-scope behavior the
     // queue has when reached from the Library sidebar. Locks the emergent
     // behavior documented in the spec's "Cull From sources" section.
@@ -202,16 +203,17 @@ final class AppModelFilterPersistenceTests: XCTestCase {
 
         try model.activateCullSource(.smartCollection(.picks))
 
-        // Preserve branch was taken (else branch would clear flagFilter and
-        // switch selectedAssetSetID to the hidden work-input snapshot).
-        XCTAssertEqual(model.flagFilter, .pick)
+        // Preserve branch was taken (else branch would clear the detached
+        // filter predicates and switch selectedAssetSetID to the hidden
+        // work-input snapshot).
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
 
         model.selectWorkspace(.library)
 
-        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
     }

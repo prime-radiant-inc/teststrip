@@ -6938,14 +6938,14 @@ final class AppModelTests: XCTestCase {
         try model.selectSidebarTarget(.smartCollection(.picks))
 
         XCTAssertNil(model.selectedAssetSetID)
-        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSidebarTarget(.smartCollection(.rejects))
 
-        XCTAssertEqual(model.flagFilter, .reject)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Reject"])
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [reject.id])
         XCTAssertEqual(model.totalAssetCount, 1)
@@ -6953,7 +6953,7 @@ final class AppModelTests: XCTestCase {
         try model.selectSidebarTarget(.smartCollection(.fiveStars))
 
         XCTAssertNil(model.flagFilter)
-        XCTAssertEqual(model.minimumRatingFilter, 5)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 5"])
         XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
@@ -6961,7 +6961,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
-        XCTAssertTrue(model.needsKeywordsFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Needs Keywords"])
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
@@ -6970,32 +6970,32 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertFalse(model.needsKeywordsFilter)
-        XCTAssertTrue(model.needsEvaluationFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Not analyzed yet"])
         XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 2)
 
         try model.selectSidebarTarget(.smartCollection(.facesFound))
 
-        XCTAssertEqual(model.evaluationKindFilter, .faceCount)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Faces Found"])
         XCTAssertEqual(model.assets.map(\.id), [faceFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSidebarTarget(.smartCollection(.ocrFound))
 
-        XCTAssertEqual(model.evaluationKindFilter, .ocrText)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["OCR Found"])
         XCTAssertEqual(model.assets.map(\.id), [ocrFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSidebarTarget(.smartCollection(.likelyIssues))
 
-        XCTAssertTrue(model.likelyIssuesFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
         XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSidebarTarget(.smartCollection(.providerFailures))
 
-        XCTAssertTrue(model.providerFailuresFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Analysis Failures"])
         XCTAssertFalse(model.likelyIssuesFilter)
         XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [providerFailure.id])
@@ -7011,7 +7011,7 @@ final class AppModelTests: XCTestCase {
         let plan = try model.findBestShots()
 
         XCTAssertEqual(plan.route, .smartCollection(.picks))
-        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
     }
@@ -9773,7 +9773,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.assets.map(\.id), [strong.id])
         XCTAssertEqual(model.selectedView, .grid)
-        XCTAssertTrue(model.potentialPicksFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Potential Picks"])
         XCTAssertNil(try repository.asset(id: strong.id).metadata.flag)
         XCTAssertEqual(model.suggestedSavedSearchName, "Potential Picks")
     }
@@ -14311,7 +14311,7 @@ final class AppModelTests: XCTestCase {
 
         try model.selectSidebarTarget(.smartCollection(.providerFailures))
 
-        XCTAssertTrue(model.providerFailuresFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Analysis Failures"])
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
         XCTAssertEqual(model.totalAssetCount, 1)
     }
