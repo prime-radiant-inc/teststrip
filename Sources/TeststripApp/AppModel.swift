@@ -9826,7 +9826,7 @@ public final class AppModel {
     /// user can review the provisional keeps/cuts (KEEP/CUT badges stay
     /// visible) and commit or dismiss them. The universe is catalog-wide, not
     /// the loaded scope — the review queue must never silently shrink to
-    /// whatever the grid happens to hold. Reads only; writes nothing.
+    /// whatever the grid happens to hold. Reads only; writes no catalog state.
     public func beginAutopilotReview() throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")

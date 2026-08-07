@@ -579,10 +579,9 @@ public final class CatalogRepository {
     }
 
     /// Confirmed-only counterpart of `assetCount(ids:flag:)` — an asset whose
-    /// `.flag` is still AI-unconfirmed (a tentative autopilot proposal, not a
-    /// user decision) does not count. Used for culling decision counts/undecided
-    /// triage, which must match the pre-autopilot-write semantics where a
-    /// pending proposal never counted as a decision.
+    /// `.flag` is still AI-unconfirmed (an autopilot ghost, not a user
+    /// decision) does not count. Used for culling decision counts/undecided
+    /// triage, which must treat an AI-unconfirmed flag as no decision at all.
     public func assetCount(ids: [AssetID], confirmedFlag flag: PickFlag) throws -> Int {
         var count = 0
         for chunk in Self.chunks(ids, size: 500) {

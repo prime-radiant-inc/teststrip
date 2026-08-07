@@ -41,7 +41,7 @@ Source (current working tree, `feat/machine-label-provenance`):
 - **Autopilot fold-in**: `AppModel.runAutopilotOnCurrentScope()`
   (`AppModel.swift:9772`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
   `app-012-autopilot-evaluate-commands.md`) → `runAutopilot(scope:)` →
-  `applyTentativeAutopilotProposals(_:runID:)` (`AppModel.swift:9712`) writes each
+  `applyTentativeAutopilotProposals(_:)` (`AppModel.swift:9712`) writes each
   `.pick`/`.reject` proposal into `metadata.flag` **immediately**, marked
   `aiUnconfirmedFields = [.flag]`, unless the asset already carries a
   **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:9728`) — this is the

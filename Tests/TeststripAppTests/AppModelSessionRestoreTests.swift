@@ -252,6 +252,11 @@ final class AppModelSessionRestoreTests: XCTestCase {
             AutopilotGhost.kind(in: try catalogB.repository.asset(id: ghostAsset.id).metadata),
             .pick
         )
+
+        // The banner is run-time only: `load(...)` restores ghosts from
+        // metadata_json and nothing else, so a relaunched model has no run
+        // summary to render a banner from.
+        XCTAssertNil(modelB.autopilotRunSummary)
     }
 
     func testSessionRestoreDisabledByDefaultDoesNotPersistOrRestore() throws {

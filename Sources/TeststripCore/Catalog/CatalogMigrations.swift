@@ -258,7 +258,10 @@ enum CatalogMigrations {
     // There is no back-out: `autopilot_proposals` went away with SP-D0,
     // because the machine's flag opinion is derived from the unconfirmed AI
     // flag in `metadata_json` (`AutopilotGhost`) and never stored in a status
-    // row. The stale rows were bookkeeping; the ghosts are untouched.
+    // row. The stale rows were bookkeeping; the ghosts are untouched. This
+    // runs on every open, forever — a future table added to `statements`
+    // whose name matches an entry here would be created and then silently
+    // dropped in the same open.
     static let dropStatements = [
         "DROP TABLE IF EXISTS autopilot_proposals"
     ]
