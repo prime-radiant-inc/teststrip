@@ -2640,6 +2640,38 @@ public final class CatalogRepository {
         return count
     }
 
+    /// The assets in `assetIDs` whose preview generation recorded an error —
+    /// the identity twin of `previewGenerationFailureAssetCount(assetIDs:)`,
+    /// which the unified shell's "⚠ Preview failed" import child needs so it
+    /// can open those photos in Grid rather than just badge a number.
+    public func previewGenerationFailureAssetIDs(assetIDs: [AssetID]) throws -> [AssetID] {
+        guard !assetIDs.isEmpty else { return [] }
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
+        var failedAssetIDs: [AssetID] = []
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                """
+                SELECT DISTINCT asset_id
+                FROM preview_generation_queue
+                WHERE asset_id IN (\(placeholders))
+                    AND attempt_count > 0
+                    AND COALESCE(last_error, '') != ''
+                ORDER BY asset_id ASC
+                """,
+                bindings: chunk.map(\.rawValue)
+            )
+            for row in rows {
+                guard let id = row["asset_id"] else {
+                    throw CatalogError.sqlite("preview generation failure row is missing asset_id")
+                }
+                failedAssetIDs.append(AssetID(rawValue: id))
+            }
+        }
+        return failedAssetIDs
+    }
+
     public func previewGenerationPendingAssetCount(assetIDs: [AssetID]) throws -> Int {
         guard !assetIDs.isEmpty else { return 0 }
         var seenAssetIDs = Set<AssetID>()

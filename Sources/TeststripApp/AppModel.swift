@@ -2268,6 +2268,9 @@ public final class AppModel {
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
     public var starredWork: [AppWorkActivity]
+    /// Every completed import, newest first — the Imports sidebar section's
+    /// source of truth. Refreshed alongside `recentWork`.
+    public private(set) var importSourceSummaries: [ImportSidebarSummary] = []
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     // SP-C: a Return that hit the render gate arms the commit; the moment the
@@ -5537,8 +5540,47 @@ public final class AppModel {
             activities: recentWork + starredWork,
             repository: catalog.repository
         )
+        try refreshImportSourceSummaries()
         refreshLatestImportPresentation()
         rebuildSidebarSections()
+    }
+
+    /// Rebuilds the Imports section from the unbounded completed-ingest query.
+    /// `recentWork` is limit-10 across all thirteen work kinds, so it cannot
+    /// promise even the three most recent imports.
+    public func refreshImportSourceSummaries() throws {
+        guard let catalog else { return }
+        let sessions = try catalog.repository.workSessions(kind: .ingest, statuses: [.completed])
+        importSourceSummaries = sessions.map { session in
+            ImportSidebarSummary(
+                sessionID: session.id,
+                createdAt: session.createdAt,
+                detail: session.detail,
+                assetCount: session.totalUnitCount ?? session.completedUnitCount,
+                issues: session.issues
+            )
+        }
+    }
+
+    /// The counts behind one import row's children. Every query here is a
+    /// smart source's own predicate scoped by `.importBatch`, so an
+    /// import-scoped count can never drift from its catalog-wide sibling.
+    public func importChildCounts(sessionID: WorkSessionID) throws -> ImportChildCounts {
+        guard let catalog else { return ImportChildCounts() }
+        let repository = catalog.repository
+        let session = try repository.session(id: sessionID)
+        let assetIDs = try latestImportOutputAssetIDs(activityID: sessionID.rawValue, repository: repository)
+        return ImportChildCounts(
+            stacks: try latestImportStacks(activityID: sessionID.rawValue, repository: repository).count,
+            skippedFiles: session.issues.filter { $0.kind == .skippedSourceFile }.count,
+            previewFailed: try repository.previewGenerationFailureAssetIDs(assetIDs: assetIDs).count,
+            likelyIssues: try repository.assetCount(
+                matching: SetQuery(predicates: [.importBatch(sessionID.rawValue)] + SmartCollection.likelyIssues.query.predicates)
+            ),
+            facesFound: try repository.assetCount(
+                matching: SetQuery(predicates: [.importBatch(sessionID.rawValue)] + SmartCollection.facesFound.query.predicates)
+            )
+        )
     }
 
     @discardableResult
