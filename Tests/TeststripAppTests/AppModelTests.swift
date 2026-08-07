@@ -6564,12 +6564,52 @@ final class AppModelTests: XCTestCase {
     // one switch, and this test is what stops a third one appearing.
     func testSmartCollectionCountAndListComeFromTheSamePredicate() throws {
         let pick = makeAsset(id: "smart-pick", path: "/Photos/Smart/pick.jpg", rating: 0, flag: .pick)
+        let pick2 = makeAsset(id: "smart-pick-2", path: "/Photos/Smart/pick-2.jpg", rating: 0, flag: .pick)
         let reject = makeAsset(id: "smart-reject", path: "/Photos/Smart/reject.jpg", rating: 0, flag: .reject)
+        let reject2 = makeAsset(id: "smart-reject-2", path: "/Photos/Smart/reject-2.jpg", rating: 0, flag: .reject)
         let fiveStar = makeAsset(id: "smart-five", path: "/Photos/Smart/five.jpg", rating: 5)
+        let fiveStar2 = makeAsset(id: "smart-five-2", path: "/Photos/Smart/five-2.jpg", rating: 5)
         let plain = makeAsset(id: "smart-plain", path: "/Photos/Smart/plain.jpg", rating: 1)
+        // The assets above only give potentialPicks/facesFound/ocrFound/
+        // likelyIssues/providerFailures a vacuous 0 == 0 (a break that forces
+        // every queue onto one predicate would slip past all five). Each gets
+        // two members and keywords so it doesn't also inflate needsKeywords —
+        // two per queue (rather than one) so a break that forces every queue
+        // onto potentialPicks' single-member query is caught even though
+        // potentialPicks' own count also happens to be nonzero.
+        let potentialPick = makeAsset(id: "smart-potential", path: "/Photos/Smart/potential.jpg", rating: 0, keywords: ["tagged"])
+        let faceFound = makeAsset(id: "smart-face", path: "/Photos/Smart/face.jpg", rating: 3, keywords: ["tagged"])
+        let faceFound2 = makeAsset(id: "smart-face-2", path: "/Photos/Smart/face-2.jpg", rating: 3, keywords: ["tagged"])
+        let ocrFound = makeAsset(id: "smart-ocr", path: "/Photos/Smart/ocr.jpg", rating: 3, keywords: ["tagged"])
+        let ocrFound2 = makeAsset(id: "smart-ocr-2", path: "/Photos/Smart/ocr-2.jpg", rating: 3, keywords: ["tagged"])
+        let likelyIssue = makeAsset(id: "smart-issue", path: "/Photos/Smart/issue.jpg", rating: 3, keywords: ["tagged"])
+        let likelyIssue2 = makeAsset(id: "smart-issue-2", path: "/Photos/Smart/issue-2.jpg", rating: 3, keywords: ["tagged"])
+        let providerFailure = makeAsset(id: "smart-failure", path: "/Photos/Smart/failure.jpg", rating: 3, keywords: ["tagged"])
+        let providerFailure2 = makeAsset(id: "smart-failure-2", path: "/Photos/Smart/failure-2.jpg", rating: 3, keywords: ["tagged"])
         let (model, _) = try makeModelWithCatalogAssets(
             named: "smart-source-agreement",
-            assets: [pick, reject, fiveStar, plain]
+            assets: [
+                pick, pick2, reject, reject2, fiveStar, fiveStar2, plain,
+                potentialPick, faceFound, faceFound2, ocrFound, ocrFound2,
+                likelyIssue, likelyIssue2, providerFailure, providerFailure2
+            ],
+            configureRepository: { repository in
+                let focusProvenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+                let visionProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+                try repository.recordEvaluationFailure(assetID: providerFailure.id, provider: "local-http-model", message: "model timed out")
+                try repository.recordEvaluationFailure(assetID: providerFailure2.id, provider: "local-http-model", message: "model timed out")
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: potentialPick.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: focusProvenance),
+                    EvaluationSignal(assetID: faceFound.id, kind: .faceCount, value: .count(2), confidence: 0.91, provenance: visionProvenance),
+                    EvaluationSignal(assetID: faceFound2.id, kind: .faceCount, value: .count(1), confidence: 0.85, provenance: visionProvenance),
+                    EvaluationSignal(assetID: ocrFound.id, kind: .ocrText, value: .text("invoice"), confidence: 0.94, provenance: visionProvenance),
+                    EvaluationSignal(assetID: ocrFound2.id, kind: .ocrText, value: .text("receipt"), confidence: 0.9, provenance: visionProvenance),
+                    EvaluationSignal(assetID: likelyIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: visionProvenance),
+                    EvaluationSignal(assetID: likelyIssue2.id, kind: .exposure, value: .score(0.05), confidence: 0.88, provenance: visionProvenance),
+                    EvaluationSignal(assetID: providerFailure.id, kind: .object, value: .label("person"), confidence: 0.77, provenance: visionProvenance),
+                    EvaluationSignal(assetID: providerFailure2.id, kind: .object, value: .label("car"), confidence: 0.7, provenance: visionProvenance)
+                ])
+            }
         )
 
         for queue in SmartCollection.allCases {

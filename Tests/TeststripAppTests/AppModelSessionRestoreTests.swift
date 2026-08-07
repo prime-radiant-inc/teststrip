@@ -97,6 +97,34 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertTrue(modelB.assets.allSatisfy { $0.metadata.rating == 5 })
     }
 
+    // Pins the claim in SessionRestoreState.detachedFilterPredicates' doc
+    // comment: a smart collection is only expressible through its query
+    // predicates, so without restoring them a relaunch silently drops the
+    // user back to the unfiltered library. `.picks` has no legacy boolean
+    // counterpart on SessionRestoreState (unlike, say, `.fiveStars`'
+    // `.ratingAtLeast` overlapping `minimumRatingFilter`), so this can only
+    // pass via `detachedFilterPredicates`.
+    func testRestoresSmartCollectionScope() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-smart-collection")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let pick = makeAsset(id: "asset-pick", filename: "pick.dng", flag: .pick)
+        let plain = makeAsset(id: "asset-plain", filename: "plain.dng")
+        try catalogA.repository.upsert([pick, plain])
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSidebarTarget(.smartCollection(.picks))
+        XCTAssertEqual(modelA.activeLibraryFilterChips, ["Pick"])
+        XCTAssertEqual(modelA.assets.map(\.id), [pick.id])
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.activeLibraryFilterChips, ["Pick"])
+        XCTAssertEqual(modelB.assets.map(\.id), [pick.id])
+        XCTAssertEqual(modelB.totalAssetCount, 1)
+    }
+
     func testRestoresSortOptionAndAppliesItToLoadedAssets() throws {
         let directory = try makeTemporaryDirectory(named: "restore-sort")
         let defaults = try makeIsolatedDefaults()
@@ -349,14 +377,14 @@ final class AppModelSessionRestoreTests: XCTestCase {
         try repository.upsert(assets)
     }
 
-    private func makeAsset(id: String, filename: String, rating: Int = 0) -> Asset {
+    private func makeAsset(id: String, filename: String, rating: Int = 0, flag: PickFlag? = nil) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
             originalURL: URL(fileURLWithPath: "/Photos/\(filename)"),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(id.count + 1), modificationDate: Date(timeIntervalSince1970: 0)),
             availability: .online,
-            metadata: AssetMetadata(rating: rating)
+            metadata: AssetMetadata(rating: rating, flag: flag)
         )
     }
 }
