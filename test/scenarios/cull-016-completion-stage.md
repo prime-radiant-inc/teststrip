@@ -34,9 +34,11 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    --contains "Nothing left to decide"`. **This card is the authoritative
    post-drop completion action set** (verified directly against
    `Sources/TeststripApp/CullCompletionPresentation.swift:9-16,62-67` and
-   `LibraryGridView.swift:4009-4028` — see `cull-025-run-strip-completion.md`,
-   which cross-references this card rather than duplicating the action-set
-   assertion): assert exactly the five titles — "Export", "Move Rejects…",
+   `LibraryGridView.swift:4009-4028` — see `cull-025-run-strip-completion.md`'s
+   "Rendering the summary" bullet, which cites this card's Step 3 as
+   authoritative for the action set and keeps its own copy of the five
+   titles in sync with it, rather than deriving them independently):
+   assert exactly the five titles — "Export", "Move Rejects…",
    "Move Rejects to Trash…", "Review Picks", "Save Picks as Set" — are
    present (`ax_drive.sh find --role AXButton --label "Export"` /
    `--label "Move Rejects…"` / `--label "Move Rejects to Trash…"` /

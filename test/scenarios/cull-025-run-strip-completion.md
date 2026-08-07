@@ -136,7 +136,12 @@ card):
   (`:4009-4028`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
   Trash…"`, `"Review Picks"`, `"Save Picks as Set"` — exactly these five,
   gated per the Actions rule above; there is no sixth
-  `"Review AI Suggestions"` button anywhere in the source. `"Save Picks as
+  `"Review AI Suggestions"` button anywhere in the source.
+  **`cull-016-completion-stage.md`'s Step 3 is the authoritative post-drop
+  action-set assertion** — this five-title list is copied here only so this
+  card stays drivable on its own, and must be kept in sync with that card's
+  Step 3 rather than re-derived independently; if the two ever disagree,
+  `cull-016` wins. `"Save Picks as
   Set"` calls
   `model.saveCullingPicksAsSet()` (`AppModel.swift:5660-5686`): with **no**
   active persisted culling session (burst seeds directly, bypassing

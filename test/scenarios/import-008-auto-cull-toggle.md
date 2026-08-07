@@ -143,6 +143,37 @@ Quit the launched instance.
   see `testAutopilotArmedImportRunsEvenWhenGlobalAutopilotIsDisabled` and
   `testUnarmedImportDoesNotRunAutopilotEvenWhenGlobalAutopilotIsEnabled` in
   `AppModelTests.swift`.)
+- **Step 7's pre-commit "still reads `\"flag\":null`" expectation appears to
+  contradict this card's own Steps 6/8/9 and the project's auto-apply-with-
+  provenance invariant — flagged, not fixed.** Step 7 asserts that before
+  any confirming click, none of the imported assets' `metadata_json` has a
+  `flag` written, and calls a failure there a P0. But Steps 6, 8, and 9 all
+  assume the opposite: that a ghost (a tentative, AI-unconfirmed `flag`
+  value already sitting in `metadata_json`) exists on the imported assets
+  *before* the commit gesture — Step 6 queries for ghost-carrying assets,
+  Step 8 asserts those ghosts' `aiUnconfirmedFields` still contains `flag`,
+  and Step 9 commits "the ghosts for the imported set". Reading the source
+  directly confirms the ghost side: `runArmedImportAutopilot`
+  (`Sources/TeststripApp/AppModel.swift:10141-10152`) calls `runAutopilot`
+  (`:9651-9699`), which calls `applyTentativeAutopilotProposals`
+  (`:9712-9759`) — that function writes `updatedMetadata.flag` and inserts
+  `.flag` into `aiUnconfirmedFields` (`:9733-9734`) via
+  `catalog.repository.updateMetadata` (`:9748`) **immediately**, for any
+  qualifying proposal, matching `CLAUDE.md`'s auto-apply-with-provenance
+  invariant (machine labels land at once, tagged `origin`/unconfirmed, and
+  only an explicit gesture confirms them — auto-apply is not the same as
+  "unwritten until confirmed"). This is a **pre-existing** issue — it
+  predates SP-D0 and is not something this branch introduced or should
+  guess-fix. What's established: the source read above says a ghost's
+  `flag` is written to `metadata_json` pre-commit. What's NOT established:
+  whether that's what a live run actually shows for *this exact* armed-
+  import path (Step 7 has never been driven live — see Run status), or
+  whether Step 7's author had something else in mind (e.g. a `rating` field,
+  or a build predating this write path) that a live run would clarify.
+  **The next live run of this card must resolve this empirically before
+  trusting either Step 7 or Steps 6/8/9 at face value** — do not report a
+  Step 7 `"flag":null` failure as a P0 without first checking whether it's
+  actually this contradiction surfacing.
 
 ## Run status
 SQL-GROUNDED, AX-UNRUN. Toggle label, default state, disabled-gating, the
@@ -166,3 +197,9 @@ Proposals" source rather than an unspecified "Autopilot Review UI".
 Supersedes prior status: the 2026-07-10 SQL-grounded read cited the
 `autopilot_proposals` schema directly — not valid evidence for a table that
 no longer exists. Needs a fresh VM run.
+
+**Flagged 2026-08-06 (Task 9 review)**: Step 7's pre-commit "flag stays
+null" expectation looks like it contradicts Steps 6/8/9 and the auto-apply-
+with-provenance invariant — see the new Sharp edges bullet above. Pre-
+existing, not caused by SP-D0; unresolved by any live run so far. The next
+live run must settle which side is right before either is trusted.
