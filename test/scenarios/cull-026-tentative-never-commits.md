@@ -23,53 +23,53 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   projection regardless of its raw value. `MetadataField.flag.rawValue`
   is `"flag"` (`:16-21`).
 - **Undecided-everywhere**: `AppModel.cullUndecidedCount`
-  (`AppModel.swift:6549-6562`) filters on `confirmedProjection.flag == nil`
+  (`AppModel.swift:6846-6851`) filters on `confirmedProjection.flag == nil`
   explicitly (doc comment: "A tentative AI flag ... counts as undecided
   too — it isn't a user decision yet"). The HUD's pick/reject counts come
   from `cullingProgressSummary` → `cullingDecisionCounts()` →
-  `cullingDecisionCount(flag:repository:)` (`:2701-2736`), which queries
+  `cullingDecisionCount(flag:repository:)` (`:2795-2801`), which queries
   **`assetCount(ids:confirmedFlag:)`**
-  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:563-582`) — SQL
+  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:586-605`) — SQL
   `json_extract(metadata_json,'$.flag') = ? AND NOT EXISTS (SELECT 1 FROM
   json_each(metadata_json,'$.aiUnconfirmedFields') WHERE json_each.value =
-  ?)` (the `confirmedFieldClauseSQL`, `CatalogRepository.swift:3017-3024`) —
+  ?)` (the `confirmedFieldClauseSQL`, `CatalogRepository.swift:2947-2948`) —
   a tentative reject is structurally excluded from `rejectCount`. The HUD
   renders this as `sessionClusterText`
   (`CullHUDPresentation.swift:54-56`, "✓ N · ✕ M · K left") with an explicit
   `.accessibilityLabel("\(pickCount) picks, \(rejectCount) rejects,
-  \(undecidedCount) left")` (`LibraryGridView.swift:4176-4182`). The
+  \(undecidedCount) left")` (`LibraryGridView.swift:4383-4389`). The
   progress bar's fill fraction is `reviewedCount / totalCount` where
   `reviewedCount = pickCount + rejectCount`
   (`AppModel.swift:126-128`) — so a tentative reject also doesn't move the
   progress bar, only `undecidedCount` (`= totalCount - pickCount -
   rejectCount`, `CullHUDPresentation.swift:34`) absorbs it.
 - **Move-rejects exclusion**: `rejectRelocationScope(destinationFolder:)`
-  (`AppModel.swift:11690-11734`) first queries raw `flag(.reject)` matches
-  (`:11695-11698`, which **does** include tentative rejects — the raw SQL
+  (`AppModel.swift:12030-12074`) first queries raw `flag(.reject)` matches
+  (`:12035-12038`, which **does** include tentative rejects — the raw SQL
   predicate doesn't know about provenance), then explicitly skips any match
   whose `aiUnconfirmedFields.contains(.flag)` inside the per-asset loop
-  (`:11712-11714`: "A tentative AI reject ... is excluded outright — it
+  (`:12048-12051`: "A tentative AI reject ... is excluded outright — it
   must never be moved or trashed. This is the safety-critical guard.").
   Critically, this skip is **silent** — it increments none of
   `unavailableCount`/`alreadyInDestinationCount`/`outsideScopeCount`, so the
   sheet's own count reconciliation gives no visible hint that N rejects
   were excluded for being tentative (contrast with `outsideScopeCount`,
   which the sheet **does** disclose, per its own doc comment,
-  `AppModel.swift:1501-1505`). `RejectRelocationPreflight.moveCount`
-  (`:1533`, `= plans.count`) and the trash-mode sheet's primary button title
+  `AppModel.swift:1518-1522`). `RejectRelocationPreflight.moveCount`
+  (`:1553`, `= plans.count`) and the trash-mode sheet's primary button title
   `"Move \(preflight.moveCount) to Trash"`
-  (`RejectRelocationSheetPresentation.init`, `LibraryGridView.swift:5248-
-  5273`, trash branch at `:5259-5264`) both derive from this
+  (`RejectRelocationSheetPresentation.init`, `LibraryGridView.swift:5561-
+  5586`, trash branch at `:5572-5577`) both derive from this
   already-filtered `scope`. Note the confirm-toggle's own label is a
   *different*, mode-agnostic string —
   `Toggle(preflight.confirmationText, isOn: $isRejectRelocationConfirmed)`
-  (`LibraryGridView.swift:3442`) always reads `"Move \(moveCount) reject
+  (`LibraryGridView.swift:3466`) always reads `"Move \(moveCount) reject
   \(moveCount == 1 ? "photo" : "photos") to Trash"` (`RejectRelocationPreflight
-  .confirmationText`, `AppModel.swift:1537-1539`, using `trashDisplayFolder`'s
+  .confirmationText`, `AppModel.swift:1557-1559`, using `trashDisplayFolder`'s
   last path component "Trash") even in trash mode — it does **not** say
   "Move N to Trash" the way the primary button does. `moveRejectsToTrash(_:)`
-  (`AppModel.swift:11963`) iterates **only** `zip(preflight.assetIDs,
-  preflight.plans)` (mirrors the folder-mode loop at `:11887`) — it never
+  (`AppModel.swift:12303`) iterates **only** `zip(preflight.assetIDs,
+  preflight.plans)` (mirrors the folder-mode loop at `:12227`) — it never
   re-queries the catalog, so an asset that never made it into the preflight
   structurally cannot be moved by this call, independent of catalog state
   at call time. Trash mode `deleteAsset`s the catalog row for whatever it
@@ -77,16 +77,16 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   same mechanism) — a row surviving after the move is itself proof it was
   never touched.
 - **Confirm/override provenance rule**: `setFlagForSelectedAsset(_ flag:)`
-  (`AppModel.swift:7027-7040`) unconditionally does
+  (`AppModel.swift:7352-7380`) unconditionally does
   `metadata.aiUnconfirmedFields.remove(.flag)` regardless of whether the new
-  value matches the old one — comment at `:7031-7033`: "agreeing with (or
+  value matches the old one — comment at `:7371-7373`: "agreeing with (or
   overriding) a tentative AI flag must confirm it, not just possibly change
   its value." The write isn't skipped as a no-op even when the flag value
   is unchanged, because `aiUnconfirmedFields` itself changed
   (`updateSelectedAssetMetadata`'s `updatedMetadata != originalAsset
-  .metadata` guard, `:7751`, compares the whole struct). A confirmed flag
+  .metadata` guard, `:8108`, compares the whole struct). A confirmed flag
   is sidecar-eligible: `syncMetadataSidecar`
-  (`AppModel.swift:8171-` ff.) queues (worker present) or writes
+  (`AppModel.swift:8533-` ff.) queues (worker present) or writes
   synchronously the `.xmp` sidecar's `ts:Pick` attribute
   (`Sources/TeststripCore/Metadata/XMPPacket.swift:73`) from
   `metadata.confirmedProjection`.

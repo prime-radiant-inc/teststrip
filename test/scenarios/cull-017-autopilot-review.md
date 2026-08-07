@@ -42,7 +42,7 @@ duplicate.)
 
 ## Pre-state
 - **This card drives the post-import armed-Autopilot path, not the on-demand
-  gesture.** `runAutopilot` (`AppModel.swift:9061`) has two entry points: an
+  gesture.** `runAutopilot` (`AppModel.swift:9651`) has two entry points: an
   on-demand one via Culling ▸ Run Autopilot (`runAutopilotOnCurrentScope()`,
   scope `.visible` — driven by `app-012-autopilot-evaluate-commands.md`), and
   the post-import armed run this card exercises (`runArmedImportAutopilot`,

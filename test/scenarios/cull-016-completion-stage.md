@@ -4,15 +4,17 @@
 frame in scope is decided I want a handoff (export / move rejects / review
 picks) instead of an empty stage, and I want it to get out of my way again if
 I want to keep working. Covers inventory items 46-51:
-`CullCompletionPresentation.presentation` (46, gating + 3-action set —
-`Sources/TeststripApp/CullCompletionPresentation.swift:26-40`),
-`applyCullCompletionReviewPicks` (47 — `AppModel.swift:4726` region /
-`:5484-5492`), the `isCullCompletionDismissed` `onChange` guards on
-scope/asset (48 — `LibraryGridView.swift:3502-3503,3572-3573`), the folded
+`CullCompletionPresentation.presentation` (46, gating + five-action set —
+`Sources/TeststripApp/CullCompletionPresentation.swift:88-103`, which
+delegates the action-set build to `.summary` at `:32-76` — the core four
+always, `.savePicksAsSet` appended at `:65-67` only when `picks > 0`),
+`applyCullCompletionReviewPicks` (47 — `AppModel.swift:6854-6861`), the
+`isCullCompletionDismissed` `onChange` guards on
+scope/asset (48 — `LibraryGridView.swift:3924-3925`), the folded
 autopilot + `CullingSessionCompletionSummary` banners inside the stage (49 —
-`LibraryGridView.swift:3611-3648`), `openCullingSessionPicks` (50 —
-`AppModel.swift:4726-4737`), and `cullRemainingSinglesFromCullingCompletion`
-(51 — `AppModel.swift:4746-4775`). Also verified: "Move Rejects…" physically
+`LibraryGridView.swift:3974-3987`), `openCullingSessionPicks` (50 —
+`AppModel.swift:5661-5671`), and `cullRemainingSinglesFromCullingCompletion`
+(51 — `AppModel.swift:5728-5753`). Also verified: "Move Rejects…" physically
 relocates rejected originals on disk, not just in the catalog.
 
 ## Pre-state
@@ -117,7 +119,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - **Items 49-51 (folded autopilot/session banners, "View Picks", "Cull
   Remaining Singles") are NOT exercised by this card.** They render only when
   `model.cullingSessionCompletion` (a `CullingSessionCompletionSummary`) is
-  non-nil, which is set at `AppModel.swift:10345` — that path is reached from
+  non-nil, which is set at `AppModel.swift:12806` — that path is reached from
   a stack-cull work-session flow, not from plain bulk-deciding singles via
   P/X in a fresh `--smoke` launch (confirmed by reading the surrounding code:
   it's set when a *work session* of kind stack-cull completes, not on the

@@ -39,12 +39,12 @@ Source (current working tree, `feat/machine-label-provenance`):
   are dropped before anything reaches disk, regardless of which write path
   fires.
 - **Autopilot fold-in**: `AppModel.runAutopilotOnCurrentScope()`
-  (`:8809`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
+  (`AppModel.swift:9772`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
   `app-012-autopilot-evaluate-commands.md`) → `runAutopilot(scope:)` →
-  `applyTentativeAutopilotProposals(_:runID:)` (`:8748`) writes each
+  `applyTentativeAutopilotProposals(_:runID:)` (`AppModel.swift:9712`) writes each
   `.pick`/`.reject` proposal into `metadata.flag` **immediately**, marked
   `aiUnconfirmedFields = [.flag]`, unless the asset already carries a
-  **confirmed** flag (`hasConfirmedFlag` guard, `:8764`) — this is the
+  **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:9728`) — this is the
   headline behavior change from the pre-provenance model: the tentative
   write itself (the "ghost," `AutopilotGhost.kind(in:)`) lands in
   `metadata_json` immediately; SP-D0 later dropped the `autopilot_proposals`
@@ -52,8 +52,8 @@ Source (current working tree, `feat/machine-label-provenance`):
   the ghost sitting in the asset's own metadata is the whole record, and the
   catalog write never waited for a Commit in the first place.
 - **Tentative-flag exclusion (safety-critical)**: `rejectRelocationScope`
-  (`:11106`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
-  (`:11128`) before it can ever reach a `RejectRelocationPlan` — a tentative
+  (`AppModel.swift:12030`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
+  (`AppModel.swift:12052`) before it can ever reach a `RejectRelocationPlan` — a tentative
   AI reject can never be included in Move Rejects (folder) or Move Rejects to
   Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`/
   `confirmationText` (`Sources/TeststripApp/AppModel.swift:1460-1466`) reflect

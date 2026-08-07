@@ -46,7 +46,7 @@ fixture needed.)
    toggles moved there under the SheetScaffold conversion,
    `Sources/TeststripApp/LibraryGridView.swift`). Assert the toggle exists
    with the exact label **"Autopilot cull after reading"**, defaults **off**
-   (`autopilotAfterImport ?? false`, and `ImportConfirmationDraft.swift:249`),
+   (`autopilotAfterImport ?? false`, and `ImportConfirmationDraft.swift:269`),
    and is `.disabled` whenever "Read imported frames automatically" is off
    (autopilot cannot run without the read pass that feeds it).
    Turn **on** both "Read imported frames automatically" (default on) and
@@ -55,7 +55,7 @@ fixture needed.)
    (evaluation) pass and the armed autopilot run to resolve. The armed run
    fires once every imported asset's evaluations have resolved — no earlier
    (`runImportAutopilotIfArmedAndResolved`,
-   `Sources/TeststripApp/AppModel.swift:8011-8020`) — then disarms itself, so
+   `Sources/TeststripApp/AppModel.swift:10131-10139`) — then disarms itself, so
    poll until a `.recognition` work session tied to the import is
    `completed` and the imported set's ghost count has stabilized (no live
    table to poll any more — see Step 6's ghost query):
@@ -122,11 +122,11 @@ Quit the launched instance.
 
 ## Sharp edges
 - The armed run guards on **both** "no pending evaluation" and "no in-flight
-  evaluation" (`Sources/TeststripApp/AppModel.swift:8013-8018`) before firing
+  evaluation" (`Sources/TeststripApp/AppModel.swift:10132-10135`) before firing
   once, then disarms (`armedAutopilotImportAssetIDs = nil`,
-  `autopilotArmedForActiveImport = false`, :8019-8020). If a second import is
+  `autopilotArmedForActiveImport = false`, :10136-10137). If a second import is
   armed while the first is still resolving, the two asset-ID sets union
-  (`.formUnion`, :8005) — a card that imports twice in quick succession with
+  (`.union`, :10122) — a card that imports twice in quick succession with
   the toggle on both times would see one combined autopilot run over both
   imports' assets, not two separate runs. This card only exercises a single
   import, so it doesn't hit that path, but a future card should if the union
@@ -137,7 +137,7 @@ Quit the launched instance.
   after reading" is armed for an import, it fires on that import's assets
   even if `model.autopilotEnabled` is false. `autopilotEnabled` only seeds the
   toggle's *initial* checked state when the sheet opens
-  (`LibraryGridView.swift:2531`); it is not a second gate. (Previously the
+  (`LibraryGridView.swift:2696`); it is not a second gate. (Previously the
   armed run additionally guarded on the global flag, so an explicit per-import
   opt-in silently no-op'd whenever the global default was off — fixed;
   see `testAutopilotArmedImportRunsEvenWhenGlobalAutopilotIsDisabled` and

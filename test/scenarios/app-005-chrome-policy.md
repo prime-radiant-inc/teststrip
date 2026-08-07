@@ -5,7 +5,7 @@ simplification sweep must hold in the assembled window, not just in unit
 tests. Inventory items 16-17: `WorkspaceChromePolicy` — the ten chrome
 booleans are Library-only, and `showsInspector` is true for every workspace
 except Cull (`WorkspaceChromePolicy`,
-`Sources/TeststripApp/LibraryGridView.swift:7208-7268`; inspector gating in
+`Sources/TeststripApp/LibraryGridView.swift:8357-8415`; inspector gating in
 `Sources/TeststripApp/main.swift:49-54`). Also the UX-simplification sweep (spec
 `docs/superpowers/specs/2026-07-08-teststrip-ux-simplification-proposal.md`) is
 a legibility pass over working machinery — most of it only exists in the

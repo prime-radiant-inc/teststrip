@@ -100,14 +100,14 @@ card):
   label.
 - **Completion summary**, `CullCompletionPresentation.summary`/
   `.presentation` (`Sources/TeststripApp/CullCompletionPresentation.swift:
-  43-133`): classifies every asset in `model.assets` (the **full session
-  array**, not scope-filtered — the doc comment at `:103-112` is explicit)
+  32-103`): classifies every asset in `model.assets` (the **full session
+  array**, not scope-filtered — the doc comment at `:78-87` is explicit)
   by `confirmedProjection.flag`: `.pick`/`.reject` increment picks/rejects
   and insert into `decidedAssetIDs`; `nil` (raw-undecided **or**
   tentative-AI) increments `undecided`. `neverViewed = scope ∖ viewed`,
   `skipped = skippedAssetIDs ∩ scope ∖ decidedAssetIDs`. **Structural facts
   this card leans on**: whenever `presentation(...)` returns non-nil (gated
-  on `undecided == 0`, `:121,130`), `decidedAssetIDs` is provably the
+  on `undecided == 0`, `:101`), `decidedAssetIDs` is provably the
   *entire* scope (every asset fell into the `.pick`/`.reject` branch, none
   into `nil`) — so `skipped` is **always exactly 0** at completion,
   regardless of what was actually Space-skipped along the way, and this is
