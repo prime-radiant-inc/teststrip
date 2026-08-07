@@ -99,14 +99,14 @@ final class LibraryResultHeaderTests: XCTestCase {
         XCTAssertTrue(presentation.saveActions.isEmpty)
     }
 
-    func testSuggestedTokensAbsorbReviewQueueAndSignalSuggestions() {
+    func testSuggestedTokensAbsorbSmartCollectionAndSignalSuggestions() {
         let presentation = LibraryResultHeaderPresentation(
             totalAssetCount: 100,
             librarySearchText: "",
             canSaveDynamicSet: false,
             canSaveSnapshotSet: false,
             canSaveManualSet: false,
-            reviewQueueCounts: [.fiveStars: 3, .needsKeywords: 4, .rejects: 2],
+            smartCollectionCounts: [.fiveStars: 3, .needsKeywords: 4, .rejects: 2],
             evaluationKindSummaries: [
                 CatalogEvaluationKindSummary(kind: .focus, assetCount: 7)
             ]
@@ -155,7 +155,7 @@ final class LibraryResultHeaderTests: XCTestCase {
             canSaveDynamicSet: false,
             canSaveSnapshotSet: false,
             canSaveManualSet: false,
-            reviewQueueCounts: [.fiveStars: 3]
+            smartCollectionCounts: [.fiveStars: 3]
         )
 
         XCTAssertFalse(presentation.suggestedTokens.isEmpty)
@@ -182,7 +182,7 @@ final class LibraryResultHeaderTests: XCTestCase {
             canSaveDynamicSet: false,
             canSaveSnapshotSet: false,
             canSaveManualSet: false,
-            reviewQueueCounts: [.fiveStars: 3],
+            smartCollectionCounts: [.fiveStars: 3],
             activeTokens: [activeRatingToken]
         )
 

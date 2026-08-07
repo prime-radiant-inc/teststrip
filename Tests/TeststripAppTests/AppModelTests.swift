@@ -32,7 +32,7 @@ final class AppModelTests: XCTestCase {
         })
     }
 
-    func testEmptyCatalogDoesNotShowDeadReviewQueueSidebarPlaceholders() throws {
+    func testEmptyCatalogDoesNotShowDeadSmartCollectionSidebarPlaceholders() throws {
         let (model, _) = try makeModelWithCatalogAssets(named: "empty-review-sidebar", assets: [])
 
         XCTAssertFalse(model.sidebarSections.contains { $0.title == "Review" })
@@ -2858,9 +2858,9 @@ final class AppModelTests: XCTestCase {
             catalogMetadata: catalogMetadata,
             sidecarMetadata: sidecarMetadata
         )
-        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertNil(reviewQueueCount("Rejects", in: model))
-        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Picks", in: model), "1")
+        XCTAssertNil(smartCollectionCount("Rejects", in: model))
+        XCTAssertEqual(smartCollectionCount("5 Stars", in: model), "1")
 
         try model.resolveSelectedMetadataConflictUsingSidecar()
 
@@ -2872,9 +2872,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.metadataSyncConflictItems(), [])
         XCTAssertEqual(model.metadataSyncConflictItems, [])
         XCTAssertEqual(model.pendingMetadataSyncItems, [])
-        XCTAssertNil(reviewQueueCount("Picks", in: model))
-        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
-        XCTAssertNil(reviewQueueCount("5 Stars", in: model))
+        XCTAssertNil(smartCollectionCount("Picks", in: model))
+        XCTAssertEqual(smartCollectionCount("Rejects", in: model), "1")
+        XCTAssertNil(smartCollectionCount("5 Stars", in: model))
         XCTAssertEqual(
             try repository.lastMetadataSyncFingerprint(assetID: asset.id),
             XMPSidecarStore.fingerprint(for: sidecarData)
@@ -5987,7 +5987,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.isAutopilotReviewActive)
     }
 
-    func testAmbientAIKeywordsNeverEnterTheReviewQueue() throws {
+    func testAmbientAIKeywordsNeverEnterTheSmartCollection() throws {
         let (model, repository, lead, alternate) = try makeAutopilotModelWithGhosts(named: "ghost-ambient-keywords")
         // Turn `lead` into a keyword-only AI asset: no flag ghost, one ambient
         // AI keyword.
@@ -6535,7 +6535,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
-    func testSelectingSidebarTargetAppliesReviewQueueWithoutConstructingSidebarRow() throws {
+    func testSelectingSidebarTargetAppliesSmartCollectionWithoutConstructingSidebarRow() throws {
         let evaluated = makeAsset(id: "evaluated-target", path: "/Photos/Target/evaluated.jpg", rating: 0)
         let unevaluated = makeAsset(id: "unevaluated-target", path: "/Photos/Target/unevaluated.jpg", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(
@@ -6547,13 +6547,76 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: evaluated.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance)
         ])
 
-        try model.selectSidebarTarget(.reviewQueue(.needsEvaluation))
+        try model.selectSidebarTarget(.smartCollection(.needsEvaluation))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.selectedView, .grid)
-        XCTAssertTrue(model.needsEvaluationFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Not analyzed yet"])
         XCTAssertEqual(model.assets.map(\.id), [unevaluated.id])
         XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    // MARK: - Unified shell: one SetQuery per smart source
+
+    // The count shown beside a smart-collection row and the list you get when
+    // you click it must come from the SAME expression. They agreed by hand
+    // before this change (two switches kept in sync); after it there is only
+    // one switch, and this test is what stops a third one appearing.
+    func testSmartCollectionCountAndListComeFromTheSamePredicate() throws {
+        let pick = makeAsset(id: "smart-pick", path: "/Photos/Smart/pick.jpg", rating: 0, flag: .pick)
+        let reject = makeAsset(id: "smart-reject", path: "/Photos/Smart/reject.jpg", rating: 0, flag: .reject)
+        let fiveStar = makeAsset(id: "smart-five", path: "/Photos/Smart/five.jpg", rating: 5)
+        let plain = makeAsset(id: "smart-plain", path: "/Photos/Smart/plain.jpg", rating: 1)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "smart-source-agreement",
+            assets: [pick, reject, fiveStar, plain]
+        )
+
+        for queue in SmartCollection.allCases {
+            try model.selectSidebarTarget(.smartCollection(queue))
+            XCTAssertEqual(
+                model.totalAssetCount,
+                model.smartCollectionCounts[queue] ?? -1,
+                "\(queue) list size disagrees with its sidebar count"
+            )
+        }
+    }
+
+    // Every smart source's predicate is written exactly once, and the click
+    // path reaches the catalog through it — not through a parallel set of
+    // filter-property mutations.
+    func testApplyingASmartCollectionInstallsItsQueryPredicates() throws {
+        let flagged = makeAsset(id: "detached-pick", path: "/Photos/Detached/pick.jpg", rating: 0, flag: .pick)
+        let (model, _) = try makeModelWithCatalogAssets(named: "smart-source-detached", assets: [flagged])
+
+        try model.selectSidebarTarget(.smartCollection(.likelyIssues))
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
+    }
+
+    func testEverySmartCollectionHasExactlyOneQuery() {
+        XCTAssertEqual(SmartCollection.picks.query, SetQuery(predicates: [.flag(.pick)]))
+        XCTAssertEqual(SmartCollection.potentialPicks.query, SetQuery(predicates: [.likelyPick]))
+        XCTAssertEqual(SmartCollection.rejects.query, SetQuery(predicates: [.flag(.reject)]))
+        XCTAssertEqual(SmartCollection.fiveStars.query, SetQuery(predicates: [.ratingAtLeast(5)]))
+        XCTAssertEqual(SmartCollection.needsKeywords.query, SetQuery(predicates: [.missingKeywords]))
+        XCTAssertEqual(SmartCollection.needsEvaluation.query, SetQuery(predicates: [.unevaluated]))
+        XCTAssertEqual(SmartCollection.facesFound.query, SetQuery(predicates: [.evaluationKind(.faceCount)]))
+        XCTAssertEqual(SmartCollection.ocrFound.query, SetQuery(predicates: [.evaluationKind(.ocrText)]))
+        XCTAssertEqual(SmartCollection.likelyIssues.query, SetQuery(predicates: [.likelyIssue]))
+        XCTAssertEqual(SmartCollection.providerFailures.query, SetQuery(predicates: [.evaluationFailure]))
+    }
+
+    // Analysis Failures survives as the tenth Smart Collection (spec decision
+    // 8) and keeps feeding the Activity Center's problems badge.
+    func testAnalysisFailuresIsASmartCollectionAndStillFeedsTheProblemBadge() throws {
+        let (model, _) = try makeModelWithCatalogAssets(named: "smart-source-analysis-failures", assets: [])
+        model.smartCollectionCounts = [.providerFailures: 3]
+
+        XCTAssertEqual(SmartCollection.providerFailures.presentation.title, "Analysis Failures")
+        XCTAssertEqual(model.activityCenterPresentation.badge, .problems(3))
     }
 
     func testActiveLibraryFilterRowsBridgeConcreteFiltersToExistingTargets() {
@@ -6564,9 +6627,9 @@ final class AppModelTests: XCTestCase {
         model.metadataSyncPendingFilter = true
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
-            ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
-            ActiveLibraryFilterRow(title: "Not analyzed yet", target: .reviewQueue(.needsEvaluation)),
+            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: .smartCollection(.fiveStars)),
+            ActiveLibraryFilterRow(title: "Not analyzed yet", target: .smartCollection(.needsEvaluation)),
             ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
             ActiveLibraryFilterRow(title: "Import: import-7", target: .workSession(WorkSessionID(rawValue: "import-7"))),
             ActiveLibraryFilterRow(title: "Source: Missing", target: .sourceAvailability(.missing)),
@@ -6576,20 +6639,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterChips, model.activeLibraryFilterRows.map(\.title))
     }
 
-    func testReviewQueueSignalFiltersUseUserFacingQueueNames() {
+    func testSmartCollectionSignalFiltersUseUserFacingQueueNames() {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
 
         model.evaluationKindFilter = .faceCount
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Faces Found", target: .reviewQueue(.facesFound))
+            ActiveLibraryFilterRow(title: "Faces Found", target: .smartCollection(.facesFound))
         ])
         XCTAssertEqual(model.suggestedSavedSearchName, "Faces Found")
 
         model.evaluationKindFilter = .ocrText
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "OCR Found", target: .reviewQueue(.ocrFound))
+            ActiveLibraryFilterRow(title: "OCR Found", target: .smartCollection(.ocrFound))
         ])
         XCTAssertEqual(model.suggestedSavedSearchName, "OCR Found")
     }
@@ -6616,9 +6679,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterRows, [
             ActiveLibraryFilterRow(title: "Ceremony Keepers", target: .assetSet(set.id)),
             ActiveLibraryFilterRow(title: "Search: ceremony"),
-            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
-            ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
-            ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords))
+            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: .smartCollection(.fiveStars)),
+            ActiveLibraryFilterRow(title: "Needs Keywords", target: .smartCollection(.needsKeywords))
         ])
     }
 
@@ -6628,7 +6691,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
             ActiveLibraryFilterRow(title: "Search: ceremony", isPlainSearchFallback: true),
-            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks))
+            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks))
         ])
     }
 
@@ -6637,8 +6700,8 @@ final class AppModelTests: XCTestCase {
         model.librarySearchText = "picks 5 stars"
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
-            ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars))
+            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: .smartCollection(.fiveStars))
         ])
         XCTAssertFalse(model.activeLibraryFilterRows.contains { $0.isPlainSearchFallback })
     }
@@ -6821,7 +6884,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
-    func testLoadExposesReviewQueuesAndSelectingQueueAppliesFilter() throws {
+    func testLoadExposesSmartCollectionsAndSelectingQueueAppliesFilter() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-review-queue-sidebar")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -6862,17 +6925,17 @@ final class AppModelTests: XCTestCase {
         // Review-queue rows are gone from the Library sidebar (Task 7 moves
         // them to the Cull sidebar in Task 13); the counts stay live on the
         // model and each queue's target still applies its filter directly.
-        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "2")
-        XCTAssertEqual(reviewQueueCount("Faces Found", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("OCR Found", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Likely Issues", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Analysis Failures", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Picks", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Rejects", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("5 Stars", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Needs Keywords", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Not analyzed yet", in: model), "2")
+        XCTAssertEqual(smartCollectionCount("Faces Found", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("OCR Found", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Likely Issues", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Analysis Failures", in: model), "1")
 
-        try model.selectSidebarTarget(.reviewQueue(.picks))
+        try model.selectSidebarTarget(.smartCollection(.picks))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.flagFilter, .pick)
@@ -6880,21 +6943,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.reviewQueue(.rejects))
+        try model.selectSidebarTarget(.smartCollection(.rejects))
 
         XCTAssertEqual(model.flagFilter, .reject)
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [reject.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.reviewQueue(.fiveStars))
+        try model.selectSidebarTarget(.smartCollection(.fiveStars))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertEqual(model.minimumRatingFilter, 5)
         XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.reviewQueue(.needsKeywords))
+        try model.selectSidebarTarget(.smartCollection(.needsKeywords))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
@@ -6902,7 +6965,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.reviewQueue(.needsEvaluation))
+        try model.selectSidebarTarget(.smartCollection(.needsEvaluation))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
@@ -6911,26 +6974,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 2)
 
-        try model.selectSidebarTarget(.reviewQueue(.facesFound))
+        try model.selectSidebarTarget(.smartCollection(.facesFound))
 
         XCTAssertEqual(model.evaluationKindFilter, .faceCount)
         XCTAssertEqual(model.assets.map(\.id), [faceFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.reviewQueue(.ocrFound))
+        try model.selectSidebarTarget(.smartCollection(.ocrFound))
 
         XCTAssertEqual(model.evaluationKindFilter, .ocrText)
         XCTAssertEqual(model.assets.map(\.id), [ocrFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.reviewQueue(.likelyIssues))
+        try model.selectSidebarTarget(.smartCollection(.likelyIssues))
 
         XCTAssertTrue(model.likelyIssuesFilter)
         XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.reviewQueue(.providerFailures))
+        try model.selectSidebarTarget(.smartCollection(.providerFailures))
 
         XCTAssertTrue(model.providerFailuresFilter)
         XCTAssertFalse(model.likelyIssuesFilter)
@@ -6947,7 +7010,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.canFindBestShots)
         let plan = try model.findBestShots()
 
-        XCTAssertEqual(plan.route, .reviewQueue(.picks))
+        XCTAssertEqual(plan.route, .smartCollection(.picks))
         XCTAssertEqual(model.flagFilter, .pick)
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
@@ -6983,13 +7046,13 @@ final class AppModelTests: XCTestCase {
 
         // Review-queue rows are gone from the Library sidebar (Task 7); the
         // "only queues with catalog-backed counts" behavior now lives purely
-        // in `reviewQueueCounts` (nil/absent entries for empty queues).
+        // in `smartCollectionCounts` (nil/absent entries for empty queues).
         // Both assets carry evaluation signals and reload() refreshes counts,
         // so "Not analyzed yet" is empty — it previously showed the stale
         // pre-signal count (persona-7's sidebar drift).
-        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertNil(reviewQueueCount("Not analyzed yet", in: model))
-        XCTAssertNil(reviewQueueCount("Rejects", in: model))
+        XCTAssertEqual(smartCollectionCount("Picks", in: model), "1")
+        XCTAssertNil(smartCollectionCount("Not analyzed yet", in: model))
+        XCTAssertNil(smartCollectionCount("Rejects", in: model))
     }
 
     func testSelectingAllPhotographsSidebarRowReturnsToGridAndClearsFilters() throws {
@@ -7015,7 +7078,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [filtered.id, unfiltered.id])
     }
 
-    func testReviewQueueCountsRefreshAfterMetadataChanges() throws {
+    func testSmartCollectionCountsRefreshAfterMetadataChanges() throws {
         let asset = makeAsset(
             id: "metadata-target",
             path: "/Photos/Job/metadata-target.jpg",
@@ -7027,17 +7090,17 @@ final class AppModelTests: XCTestCase {
             assets: [asset]
         )
 
-        XCTAssertNil(reviewQueueCount("Picks", in: model))
-        XCTAssertNil(reviewQueueCount("5 Stars", in: model))
-        XCTAssertNil(reviewQueueCount("Needs Keywords", in: model))
+        XCTAssertNil(smartCollectionCount("Picks", in: model))
+        XCTAssertNil(smartCollectionCount("5 Stars", in: model))
+        XCTAssertNil(smartCollectionCount("Needs Keywords", in: model))
 
         try model.setFlagForSelectedAsset(.pick)
         try model.setRatingForSelectedAsset(5)
         try model.setKeywordTextForSelectedAsset("")
 
-        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Picks", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("5 Stars", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Needs Keywords", in: model), "1")
     }
 
     @MainActor
@@ -7061,7 +7124,7 @@ final class AppModelTests: XCTestCase {
             provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
         )
 
-        XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Not analyzed yet", in: model), "1")
 
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
         try model.requestEvaluation(assetID: asset.id, provider: "apple-vision")
@@ -7072,7 +7135,7 @@ final class AppModelTests: XCTestCase {
         )))
 
         try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
-        XCTAssertNil(reviewQueueCount("Not analyzed yet", in: model))
+        XCTAssertNil(smartCollectionCount("Not analyzed yet", in: model))
     }
 
     /// Task 9: once an asset's evaluation lands (object-label signal +
@@ -7672,7 +7735,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [asset.id])
     }
 
-    func testConfirmSelectedPersonRemovesAssignedAssetsFromFaceReviewQueue() throws {
+    func testConfirmSelectedPersonRemovesAssignedAssetsFromFaceSmartCollection() throws {
         let selected = makeAsset(id: "selected-face-review", path: "/Volumes/NAS/Wedding/selected-face-review.jpg", rating: 4)
         let remaining = makeAsset(id: "remaining-face-review", path: "/Volumes/NAS/Wedding/remaining-face-review.jpg", rating: 4)
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
@@ -7686,7 +7749,7 @@ final class AppModelTests: XCTestCase {
                 ])
             }
         )
-        try model.selectSidebarTarget(.reviewQueue(.facesFound))
+        try model.selectSidebarTarget(.smartCollection(.facesFound))
         model.selectedAssetID = selected.id
 
         let person = try model.confirmSelectedAssetsAsPerson(named: "Maya", id: "person-maya")
@@ -7694,7 +7757,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(person, CatalogPerson(id: "person-maya", name: "Maya", assetCount: 1))
         XCTAssertEqual(model.catalogPeople, [person])
         XCTAssertEqual(model.assets.map(\.id), [remaining.id])
-        XCTAssertEqual(model.reviewQueueCounts[.facesFound], 1)
+        XCTAssertEqual(model.smartCollectionCounts[.facesFound], 1)
         XCTAssertEqual(model.catalogEvaluationKindSummaries, [
             CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1)
         ])
@@ -7947,7 +8010,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.peopleFaceSuggestions.count, 2)
     }
 
-    func testDismissSelectedFaceReviewAssetsPersistsAndRefreshesReviewQueue() throws {
+    func testDismissSelectedFaceReviewAssetsPersistsAndRefreshesSmartCollection() throws {
         let dismissed = makeAsset(id: "dismissed-face", path: "/Volumes/NAS/Wedding/dismissed.jpg", rating: 4)
         let active = makeAsset(id: "active-face", path: "/Volumes/NAS/Wedding/active.jpg", rating: 4)
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
@@ -7963,14 +8026,14 @@ final class AppModelTests: XCTestCase {
                 try repository.assignAssets([dismissed.id], toPersonID: "person-maya")
             }
         )
-        try model.selectSidebarTarget(.reviewQueue(.facesFound))
+        try model.selectSidebarTarget(.smartCollection(.facesFound))
         model.selectedAssetID = dismissed.id
 
         try model.dismissSelectedFaceReviewAssets()
 
         XCTAssertEqual(try repository.dismissedFaceAssetIDs(), [dismissed.id])
         XCTAssertEqual(model.assets.map(\.id), [active.id])
-        XCTAssertEqual(model.reviewQueueCounts[.facesFound], 1)
+        XCTAssertEqual(model.smartCollectionCounts[.facesFound], 1)
         XCTAssertEqual(model.catalogEvaluationKindSummaries, [
             CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1)
         ])
@@ -9693,7 +9756,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.suggestedSavedSearchName, "Likely Issues")
     }
 
-    func testPotentialPicksReviewQueueFiltersToLikelyKeepersWithoutWritingFlags() throws {
+    func testPotentialPicksSmartCollectionFiltersToLikelyKeepersWithoutWritingFlags() throws {
         let strong = makeAsset(id: "potential-strong", path: "/Photos/Job/strong.cr2", rating: 0)
         let weak = makeAsset(id: "potential-weak", path: "/Photos/Job/weak.cr2", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(
@@ -9706,7 +9769,7 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: weak.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance)
         ])
 
-        try model.selectSidebarTarget(.reviewQueue(.potentialPicks))
+        try model.selectSidebarTarget(.smartCollection(.potentialPicks))
 
         XCTAssertEqual(model.assets.map(\.id), [strong.id])
         XCTAssertEqual(model.selectedView, .grid)
@@ -9789,7 +9852,7 @@ final class AppModelTests: XCTestCase {
         ])))
     }
 
-    func testApplyingSmartCollectionRuleTextUsesReviewQueuePhrases() throws {
+    func testApplyingSmartCollectionRuleTextUsesSmartCollectionPhrases() throws {
         let faceIssue = makeAsset(
             id: "typed-rule-face-issue",
             path: "/Photos/Wedding/typed-rule-face-issue.jpg",
@@ -9865,7 +9928,7 @@ final class AppModelTests: XCTestCase {
             proposedName: "Suggested",
             ruleChips: model.activeLibraryFilterChips,
             matchCount: model.totalAssetCount,
-            reviewQueueCounts: model.reviewQueueCounts
+            smartCollectionCounts: model.smartCollectionCounts
         )
         let suggestion = try XCTUnwrap(presentation.suggestedTemplateRows.first { $0.title == "Picked keepers" })
 
@@ -10445,10 +10508,10 @@ final class AppModelTests: XCTestCase {
             CatalogFolder(path: "\(photoFolder.path)/", name: "photos", assetCount: 1)
         ])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Folders" }?.rowTitles, ["photos"])
-        XCTAssertNil(reviewQueueCount("Picks", in: model))
-        XCTAssertNil(reviewQueueCount("Rejects", in: model))
-        XCTAssertNil(reviewQueueCount("5 Stars", in: model))
-        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
+        XCTAssertNil(smartCollectionCount("Picks", in: model))
+        XCTAssertNil(smartCollectionCount("Rejects", in: model))
+        XCTAssertNil(smartCollectionCount("5 Stars", in: model))
+        XCTAssertEqual(smartCollectionCount("Needs Keywords", in: model), "1")
     }
 
     func testImportFolderOpensImportedSetWhenActiveFiltersWouldHideNewPhotos() throws {
@@ -14221,7 +14284,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testWorkerEvaluationFailureRecordsProviderFailureReviewQueue() async throws {
+    func testWorkerEvaluationFailureRecordsProviderFailureSmartCollection() async throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -14244,9 +14307,9 @@ final class AppModelTests: XCTestCase {
 
         try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
         XCTAssertEqual(try repository.assetCount(matching: SetQuery(predicates: [.evaluationFailure])), 1)
-        XCTAssertEqual(reviewQueueCount("Analysis Failures", in: model), "1")
+        XCTAssertEqual(smartCollectionCount("Analysis Failures", in: model), "1")
 
-        try model.selectSidebarTarget(.reviewQueue(.providerFailures))
+        try model.selectSidebarTarget(.smartCollection(.providerFailures))
 
         XCTAssertTrue(model.providerFailuresFilter)
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
@@ -18500,13 +18563,13 @@ final class AppModelTests: XCTestCase {
         let kept = makeAsset(id: "counts-kept", path: keptOriginal.path, rating: 0, flag: nil)
         let (model, _) = try makeModelWithCatalogAssets(named: "trash-sidebar-counts-model", assets: [reject, kept])
         try model.reload()
-        XCTAssertEqual(model.reviewQueueCounts[.rejects], 1)
-        XCTAssertEqual(model.reviewQueueCounts[.needsEvaluation], 2)
+        XCTAssertEqual(model.smartCollectionCounts[.rejects], 1)
+        XCTAssertEqual(model.smartCollectionCounts[.needsEvaluation], 2)
 
         _ = try model.moveRejectsToTrash(try model.rejectRelocationTrashPreflight())
 
-        XCTAssertEqual(model.reviewQueueCounts[.rejects], 0)
-        XCTAssertEqual(model.reviewQueueCounts[.needsEvaluation], 1)
+        XCTAssertEqual(model.smartCollectionCounts[.rejects], 0)
+        XCTAssertEqual(model.smartCollectionCounts[.needsEvaluation], 1)
     }
 
     // Session scoping for completion banners: work restored from the
@@ -18840,9 +18903,9 @@ final class AppModelTests: XCTestCase {
     // Review-queue rows are gone from the Library sidebar (Task 7 moves them
     // to the Cull sidebar in Task 13), but the underlying counts stay live on
     // the model - read those directly instead of a rendered sidebar row.
-    private func reviewQueueCount(_ title: String, in model: AppModel) -> String? {
-        guard let queue = ReviewQueue.allCases.first(where: { $0.presentation.title == title }),
-              let count = model.reviewQueueCounts[queue],
+    private func smartCollectionCount(_ title: String, in model: AppModel) -> String? {
+        guard let queue = SmartCollection.allCases.first(where: { $0.presentation.title == title }),
+              let count = model.smartCollectionCounts[queue],
               count > 0 else {
             return nil
         }
@@ -20016,12 +20079,12 @@ final class AppModelTests: XCTestCase {
     // MARK: - Activity Center presentation wiring
 
     @MainActor
-    func testActivityCenterPresentationWiresProviderFailureCountFromReviewQueueCounts() {
+    func testActivityCenterPresentationWiresProviderFailureCountFromSmartCollectionCounts() {
         let model = AppModel(
             sidebarSections: [],
             selectedView: .grid,
             assets: [],
-            reviewQueueCounts: [.providerFailures: 3]
+            smartCollectionCounts: [.providerFailures: 3]
         )
 
         XCTAssertEqual(model.activityCenterPresentation.badge, .problems(3))

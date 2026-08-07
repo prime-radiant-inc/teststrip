@@ -28,7 +28,8 @@ final class SessionRestoreStateTests: XCTestCase {
             potentialPicksFilter: true,
             providerFailuresFilter: true,
             metadataSyncPendingFilter: true,
-            metadataSyncConflictFilter: true
+            metadataSyncConflictFilter: true,
+            detachedFilterPredicates: [.likelyIssue, .importBatch("import-9")]
         )
 
         let data = try JSONEncoder().encode(state)
@@ -109,6 +110,23 @@ final class SessionRestoreStateTests: XCTestCase {
         XCTAssertNil(store.load())
     }
 
+    // A smart collection is now a set of predicates rather than a bag of
+    // boolean filter properties, so the predicates are what has to survive a
+    // relaunch — otherwise reopening the app drops you out of the collection.
+    func testDetachedPredicatesSurviveTheStoreRoundTrip() throws {
+        let defaults = try makeIsolatedDefaults()
+        let store = SessionRestoreStore(
+            defaults: defaults,
+            catalogRoot: URL(fileURLWithPath: "/tmp/catalog-detached", isDirectory: true)
+        )
+        var state = Self.minimalState(selectedView: .grid, searchText: "")
+        state.detachedFilterPredicates = [.evaluationFailure]
+
+        store.save(state)
+
+        XCTAssertEqual(store.load()?.detachedFilterPredicates, [.evaluationFailure])
+    }
+
     private static func minimalState(selectedView: LibraryViewMode, searchText: String) -> SessionRestoreState {
         SessionRestoreState(
             selectedView: selectedView,
@@ -134,7 +152,8 @@ final class SessionRestoreStateTests: XCTestCase {
             potentialPicksFilter: false,
             providerFailuresFilter: false,
             metadataSyncPendingFilter: false,
-            metadataSyncConflictFilter: false
+            metadataSyncConflictFilter: false,
+            detachedFilterPredicates: []
         )
     }
 

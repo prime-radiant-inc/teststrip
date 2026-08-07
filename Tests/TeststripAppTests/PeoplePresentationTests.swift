@@ -38,7 +38,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.countText), ["3 photos", "44 photos"])
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertEqual(presentation.reviewCards.map(\.filterKind), [.faceCount, .faceQuality])
-        XCTAssertEqual(presentation.reviewCards.map(\.target), [.reviewQueue(.facesFound), .evaluationKind(.faceQuality)])
+        XCTAssertEqual(presentation.reviewCards.map(\.target), [.smartCollection(.facesFound), .evaluationKind(.faceQuality)])
         XCTAssertFalse(presentation.reviewCards.contains(where: \.showsUnbuiltFaceActionLock))
         XCTAssertEqual(presentation.namedPeopleTitle, "ALL PEOPLE")
         XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")

@@ -307,7 +307,8 @@ final class AppModelSessionRestoreTests: XCTestCase {
             potentialPicksFilter: false,
             providerFailuresFilter: false,
             metadataSyncPendingFilter: false,
-            metadataSyncConflictFilter: false
+            metadataSyncConflictFilter: false,
+            detachedFilterPredicates: []
         )
     }
 

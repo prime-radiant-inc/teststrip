@@ -3,11 +3,11 @@ import XCTest
 @testable import TeststripApp
 
 final class CullSourcePresentationTests: XCTestCase {
-    func testSourcesIncludeRecentImportAndBothReviewQueueGroups() throws {
+    func testSourcesIncludeRecentImportAndBothSmartCollectionGroups() throws {
         let asset = makeAsset(id: "a1", path: "/Photos/Cull/a1.jpg", rating: 3)
         let (model, _) = try makeModelWithCatalogAssets(named: "cull-sources-basic", assets: [asset])
 
-        model.reviewQueueCounts = [
+        model.smartCollectionCounts = [
             .picks: 2,
             .potentialPicks: 1,
             .likelyIssues: 1,
@@ -16,12 +16,12 @@ final class CullSourcePresentationTests: XCTestCase {
 
         let sources = model.cullSourcePresentation.sources
 
-        XCTAssertTrue(sources.contains { $0.group == .topPicks && $0.target == .reviewQueue(.picks) })
-        XCTAssertTrue(sources.contains { $0.group == .topPicks && $0.target == .reviewQueue(.potentialPicks) })
-        XCTAssertTrue(sources.contains { $0.group == .needsEyes && $0.target == .reviewQueue(.likelyIssues) })
-        XCTAssertTrue(sources.contains { $0.group == .needsEyes && $0.target == .reviewQueue(.needsEvaluation) })
+        XCTAssertTrue(sources.contains { $0.group == .topPicks && $0.target == .smartCollection(.picks) })
+        XCTAssertTrue(sources.contains { $0.group == .topPicks && $0.target == .smartCollection(.potentialPicks) })
+        XCTAssertTrue(sources.contains { $0.group == .needsEyes && $0.target == .smartCollection(.likelyIssues) })
+        XCTAssertTrue(sources.contains { $0.group == .needsEyes && $0.target == .smartCollection(.needsEvaluation) })
 
-        let picksSource = try XCTUnwrap(sources.first { $0.target == .reviewQueue(.picks) })
+        let picksSource = try XCTUnwrap(sources.first { $0.target == .smartCollection(.picks) })
         XCTAssertEqual(picksSource.count, 2)
     }
 
@@ -93,8 +93,8 @@ final class CullSourcePresentationTests: XCTestCase {
 
     func testVisibleSourcesOmitsZeroCountRows() {
         let presentation = CullSourcePresentation(sources: [
-            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 3, target: .reviewQueue(.picks)),
-            CullSource(id: "b", group: .needsEyes, title: "Needs Evaluation", systemImage: "eye", count: 0, target: .reviewQueue(.needsEvaluation)),
+            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 3, target: .smartCollection(.picks)),
+            CullSource(id: "b", group: .needsEyes, title: "Needs Evaluation", systemImage: "eye", count: 0, target: .smartCollection(.needsEvaluation)),
             CullSource(id: "c", group: .selection, title: "Selection", systemImage: "checkmark.circle", count: 0, target: .selection)
         ])
 
@@ -103,12 +103,12 @@ final class CullSourcePresentationTests: XCTestCase {
 
     func testIsEmptyIsTrueOnlyWhenAllSourcesAreZeroCount() {
         let allZero = CullSourcePresentation(sources: [
-            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 0, target: .reviewQueue(.picks))
+            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 0, target: .smartCollection(.picks))
         ])
         XCTAssertTrue(allZero.isEmpty)
 
         let oneNonZero = CullSourcePresentation(sources: [
-            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 0, target: .reviewQueue(.picks)),
+            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 0, target: .smartCollection(.picks)),
             CullSource(id: "b", group: .selection, title: "Selection", systemImage: "checkmark.circle", count: 2, target: .selection)
         ])
         XCTAssertFalse(oneNonZero.isEmpty)
