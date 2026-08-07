@@ -3531,10 +3531,7 @@ public final class AppModel {
         guard let catalog,
               let summary,
               let count = try? catalog.repository.assetCount(
-                matching: SetQuery(predicates: [
-                    .importBatch(summary.activityID),
-                    .likelyIssue
-                ])
+                matching: SetQuery(predicates: [.importBatch(summary.activityID)] + SmartCollection.likelyIssues.query.predicates)
               ) else {
             return 0
         }
@@ -12059,12 +12056,12 @@ public final class AppModel {
         let scopeIDs = try currentAssetScopeIDs(repository: catalog.repository)
         let rejectIDs = try catalog.repository.assetIDs(
             ids: scopeIDs,
-            matching: SetQuery(predicates: [.flag(.reject)])
+            matching: SmartCollection.rejects.query
         )
         // Rejects that exist catalog-wide but fall outside the active
         // filter/scope — the sheet discloses this count instead of reading
         // as "there are no rejects" when a filter like Picks hides them all.
-        let allRejectCount = try catalog.repository.assetCount(matching: SetQuery(predicates: [.flag(.reject)]))
+        let allRejectCount = try catalog.repository.assetCount(matching: SmartCollection.rejects.query)
         let sidecarStore = XMPSidecarStore()
         let destinationRootPath = destinationFolder?.standardizedFileURL.path
         var scope = RejectRelocationScope()
