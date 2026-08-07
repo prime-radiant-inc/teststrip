@@ -5562,9 +5562,14 @@ public final class AppModel {
         }
     }
 
-    /// The counts behind one import row's children. Every query here is a
-    /// smart source's own predicate scoped by `.importBatch`, so an
-    /// import-scoped count can never drift from its catalog-wide sibling.
+    /// The counts behind one import row's children. `likelyIssues` and
+    /// `facesFound` are each a smart source's own predicate ANDed with
+    /// `.importBatch`, so neither can drift from its catalog-wide sibling.
+    /// The other three use different mechanisms: `stacks` runs the
+    /// stack-builder pipeline scoped by `activityID`; `skippedFiles` reads
+    /// the session's stored issue list; `previewFailed` takes `.count` of
+    /// the same asset-ID list the child row displays, so its count and
+    /// contents come from one query, not two.
     public func importChildCounts(sessionID: WorkSessionID) throws -> ImportChildCounts {
         guard let catalog else { return ImportChildCounts() }
         let repository = catalog.repository

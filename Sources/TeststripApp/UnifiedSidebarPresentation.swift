@@ -42,10 +42,14 @@ public struct ImportSidebarSummary: Equatable, Sendable {
     }
 }
 
-/// The counts behind an import row's disclosure children. Each is the smart
-/// source's own `SetQuery` ANDed with `.importBatch(sessionID)` — the shape
-/// `latestImportFlaggedReviewAssetCount` already uses — so no predicate is
-/// ever written a second time.
+/// The counts behind an import row's disclosure children. `likelyIssues` and
+/// `facesFound` are each the smart source's own `SetQuery` ANDed with
+/// `.importBatch(sessionID)` — the shape `latestImportFlaggedReviewAssetCount`
+/// already uses — so neither can drift from its catalog-wide sibling. The
+/// other three are not `SetQuery`s: `stacks` comes from the stack-builder
+/// pipeline scoped by `activityID`, `skippedFiles` from the session's stored
+/// issue list, and `previewFailed` from `.count` of the same asset-ID list
+/// the child row displays.
 public struct ImportChildCounts: Equatable, Sendable {
     public var stacks: Int
     public var skippedFiles: Int
