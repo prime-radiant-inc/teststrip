@@ -20,7 +20,7 @@ final class AutopilotProposalPlannerTests: XCTestCase {
 
         XCTAssertEqual(proposals.first { $0.assetID == alternate.id }?.kind, .pick)
         XCTAssertEqual(proposals.first { $0.assetID == lead.id }?.kind, .reject)
-        XCTAssertTrue(proposals.allSatisfy { $0.status == .pending && $0.runID.rawValue == "r" })
+        XCTAssertTrue(proposals.allSatisfy { $0.runID.rawValue == "r" })
     }
 
     func testProposesNoCullForSingletonFrames() {

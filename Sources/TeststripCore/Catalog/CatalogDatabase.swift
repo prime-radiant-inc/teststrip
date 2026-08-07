@@ -36,6 +36,9 @@ public final class CatalogDatabase: @unchecked Sendable {
         for statement in CatalogMigrations.statements {
             try execute(statement)
         }
+        for statement in CatalogMigrations.dropStatements {
+            try execute(statement)
+        }
         try addColumnIfMissing(table: "assets", column: "technical_metadata_json", definition: "TEXT")
         // Add the content-hash column before its index: an upgraded catalog
         // already has an assets table, so the CREATE TABLE above is a no-op and

@@ -5410,16 +5410,17 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.rejectCount, 1)
         XCTAssertEqual(summary.stackCount, 1)
         XCTAssertEqual(summary.bannerText, "1 keepers · 1 rejects · dupes→stacks")
-        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
-        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), .reject)
-        // The run applies its proposed flags to metadata immediately, tentatively.
+        // The run applies its proposed flags to metadata immediately, tentatively
+        // — a ghost, readable back from the metadata it was applied to.
         let leadMetadata = try repository.asset(id: lead.id).metadata
         let alternateMetadata = try repository.asset(id: alternate.id).metadata
         XCTAssertEqual(leadMetadata.flag, .reject)
         XCTAssertTrue(leadMetadata.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(AutopilotGhost.kind(in: leadMetadata), .reject)
         XCTAssertEqual(alternateMetadata.flag, .pick)
         XCTAssertTrue(alternateMetadata.aiUnconfirmedFields.contains(.flag))
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+        XCTAssertEqual(AutopilotGhost.kind(in: alternateMetadata), .pick)
+        XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
     }
 
     func testRunAutopilotAppliesTentativeFlagsCatalogOnlyNoSidecar() throws {
@@ -5476,14 +5477,19 @@ final class AppModelTests: XCTestCase {
 
         _ = try model.runAutopilot(scope: .visible)
 
-        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), .reject)
+        // The skipped proposal leaves no ghost: the user's confirmed flag
+        // stands untouched, and nothing marks lead as machine-proposed.
         let leadMetadata = try repository.asset(id: lead.id).metadata
         XCTAssertEqual(leadMetadata.flag, .pick)
         XCTAssertFalse(leadMetadata.aiUnconfirmedFields.contains(.flag))
+        XCTAssertNil(AutopilotGhost.kind(in: leadMetadata))
+        XCTAssertFalse(model.autopilotGhostAssetIDs.contains(lead.id))
         // The other asset in the stack is unaffected by the skip.
         let alternateMetadata = try repository.asset(id: alternate.id).metadata
         XCTAssertEqual(alternateMetadata.flag, .pick)
         XCTAssertTrue(alternateMetadata.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(AutopilotGhost.kind(in: alternateMetadata), .pick)
+        XCTAssertTrue(model.autopilotGhostAssetIDs.contains(alternate.id))
     }
 
     func testUndoAutopilotRunRevertsTentativeWrites() throws {
@@ -5509,7 +5515,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try repository.asset(id: lead.id).metadata.aiUnconfirmedFields.isEmpty)
         XCTAssertTrue(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.isEmpty)
         XCTAssertFalse(model.canUndoAutopilotRun)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+        // Undo removed the ghosts, so the sidebar's derived set must be empty
+        // too — a stale count leaves a phantom "Autopilot Proposals" row that
+        // only disappears when you click it.
+        XCTAssertTrue(model.autopilotGhostAssetIDs.isEmpty)
     }
 
     func testRunAutopilotOnCurrentScopeAppliesTentativeFlagsOnRun() throws {
@@ -5532,10 +5541,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary?.keeperCount, 1)
         XCTAssertEqual(summary?.rejectCount, 1)
         XCTAssertNotNil(model.autopilotRunSummary)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
         // The run applies its proposals tentatively, so the catalog generation bumps.
-        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
-        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        let leadMetadata = try repository.asset(id: lead.id).metadata
+        let alternateMetadata = try repository.asset(id: alternate.id).metadata
+        XCTAssertEqual(leadMetadata.flag, .reject)
+        XCTAssertEqual(alternateMetadata.flag, .pick)
+        XCTAssertEqual(AutopilotGhost.kind(in: leadMetadata), .reject)
+        XCTAssertEqual(AutopilotGhost.kind(in: alternateMetadata), .pick)
+        XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
         XCTAssertNotEqual(try repository.catalogGeneration(assetID: lead.id), leadGenerationBefore)
         XCTAssertNotEqual(try repository.catalogGeneration(assetID: alternate.id), alternateGenerationBefore)
     }
@@ -5579,14 +5592,13 @@ final class AppModelTests: XCTestCase {
 
     func testRunAutopilotOnCurrentScopeWithoutEvaluationsSetsStatusMessage() throws {
         let unevaluated = makeAsset(id: "noeval", path: "/Photos/Job/noeval.cr2", rating: 0)
-        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-noeval", assets: [unevaluated])
+        let (model, _) = try makeModelWithCatalogAssets(named: "run-autopilot-noeval", assets: [unevaluated])
         try model.selectSidebarTarget(.allPhotographs)
 
         let summary = try model.runAutopilotOnCurrentScope()
 
         XCTAssertNil(summary)
         XCTAssertNil(model.autopilotRunSummary)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
         XCTAssertEqual(model.statusMessage, "Autopilot: no evaluated photos in view to run on")
     }
 
@@ -5609,7 +5621,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.isAutopilotReviewActive)
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(Set(model.assets.map(\.id)), [lead.id, alternate.id])
-        XCTAssertEqual(model.autopilotReviewProposalCount, 2)
+        XCTAssertEqual(Set(model.autopilotGhostAssetIDs), [lead.id, alternate.id])
+        XCTAssertEqual(model.autopilotGhostCount, 2)
     }
 
     func testRunAutopilotIsIdempotentForTheSameScope() throws {
@@ -5629,15 +5642,18 @@ final class AppModelTests: XCTestCase {
         _ = try model.runAutopilot(scope: .visible)
         _ = try model.runAutopilot(scope: .visible)
 
-        // A re-run on the identical scope doesn't accumulate duplicate
-        // proposals, and the still-tentative keyword from the first run
-        // doesn't get filtered out of the second run's candidates (it isn't
-        // "already there" in the sense that would block re-proposing it —
-        // it's this same mechanism's own unconfirmed proposal).
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 3)
+        // A re-run on the identical scope doesn't accumulate duplicates, and
+        // the still-tentative keyword from the first run doesn't get filtered
+        // out of the second run's candidates (it isn't "already there" in the
+        // sense that would block re-proposing it — it's this same
+        // mechanism's own unconfirmed proposal).
         let leadMetadata = try repository.asset(id: lead.id).metadata
         XCTAssertEqual(leadMetadata.keywords.filter { $0 == "dog" }.count, 1)
         XCTAssertTrue(leadMetadata.aiUnconfirmedKeywords.contains("dog"))
+        // The ghost itself doesn't duplicate either — it's a single flag
+        // value in metadata, not an accumulating list of run history.
+        XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
+        XCTAssertEqual(model.autopilotGhostAssetIDs.count, 2)
     }
 
     func testCommitAllAutopilotProposalsConfirmsTentativeFlagsAsOneUndoGroup() throws {
@@ -5656,6 +5672,7 @@ final class AppModelTests: XCTestCase {
         // Tentative immediately after the run.
         XCTAssertTrue(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.contains(.flag))
         XCTAssertTrue(try repository.asset(id: lead.id).metadata.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
 
         let committed = try model.commitAllAutopilotProposals()
 
@@ -5666,8 +5683,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(confirmedAlternate.aiUnconfirmedFields.contains(.flag))
         XCTAssertEqual(confirmedLead.flag, .reject)
         XCTAssertFalse(confirmedLead.aiUnconfirmedFields.contains(.flag))
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
         XCTAssertEqual(model.lastUndoableActionLabel, "Autopilot")
+        // Committing confirms the flags — the ghosts are gone, not just hidden.
+        XCTAssertNil(AutopilotGhost.kind(in: confirmedAlternate))
+        XCTAssertNil(AutopilotGhost.kind(in: confirmedLead))
 
         // Exactly one undo group reverts the confirm step (back to tentative
         // — reverting all the way to pre-run is undoAutopilotRun's job).
@@ -5679,26 +5698,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(revertedLead.flag, .reject)
         XCTAssertTrue(revertedLead.aiUnconfirmedFields.contains(.flag))
         XCTAssertFalse(model.canUndoMetadataChange)
-    }
-
-    func testCommitAutopilotProposalsConfirmsTentativeKeyword() throws {
-        let asset = makeAsset(id: "commit-keyword", path: "/Photos/Job/commit-keyword.cr2", rating: 0)
-        let (model, repository) = try makeModelWithCatalogAssets(named: "commit-autopilot-keyword", assets: [asset]) { repository in
-            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "objects", version: "1", settingsHash: "default")
-            try repository.recordEvaluationSignals([
-                EvaluationSignal(assetID: asset.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
-            ])
-        }
-        try model.selectSidebarTarget(.allPhotographs)
-        _ = try model.runAutopilot(scope: .visible)
-        XCTAssertTrue(try repository.asset(id: asset.id).metadata.aiUnconfirmedKeywords.contains("dog"))
-
-        let committed = try model.commitAllAutopilotProposals()
-
-        XCTAssertEqual(committed, 1)
-        let confirmed = try repository.asset(id: asset.id).metadata
-        XCTAssertTrue(confirmed.keywords.contains("dog"))
-        XCTAssertFalse(confirmed.aiUnconfirmedKeywords.contains("dog"))
+        // The undo restores the ghosts along with the tentative flags.
+        XCTAssertEqual(AutopilotGhost.kind(in: revertedAlternate), .pick)
+        XCTAssertEqual(AutopilotGhost.kind(in: revertedLead), .reject)
     }
 
     func testCommitAllAutopilotProposalsSkipsDanglingProposalForMissingAsset() throws {
@@ -5728,7 +5730,7 @@ final class AppModelTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog)
         try model.selectSidebarTarget(.allPhotographs)
         _ = try model.runAutopilot(scope: .visible)
-        XCTAssertEqual(model.pendingAutopilotProposals.count, 2)
+        XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
 
         // Simulate a proposal left dangling by data corruption or a bypassed
         // cascade: delete the asset row directly (not via repository.deleteAsset,
@@ -5739,12 +5741,15 @@ final class AppModelTests: XCTestCase {
         let committed = try model.commitAllAutopilotProposals()
 
         XCTAssertEqual(committed, 1)
-        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
-        XCTAssertEqual(try repository.autopilotProposals(status: .pending), [])
-        XCTAssertEqual(try repository.autopilotProposals(status: .dismissed).count, 1)
+        let confirmedAlternate = try repository.asset(id: alternate.id).metadata
+        XCTAssertEqual(confirmedAlternate.flag, .pick)
+        XCTAssertNil(AutopilotGhost.kind(in: confirmedAlternate))
+        // The dangling row is already gone from the catalog entirely, so the
+        // catalog-wide ghost query has nothing left to report for either asset.
+        XCTAssertTrue(try repository.assetIDsWithAutopilotGhost().isEmpty)
     }
 
-    func testUndoAutopilotRunRevertsMetadataAndRestoresPendingProposals() throws {
+    func testUndoAutopilotRunRevertsMetadataAndRemovesGhosts() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "undoall-lead", path: "/Photos/Job/undoall-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let alternate = makeAsset(id: "undoall-alt", path: "/Photos/Job/undoall-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
@@ -5764,8 +5769,12 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
-        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        // The run's tentative writes are gone from metadata, so the ghosts
+        // they created are gone with them — nothing else records their
+        // existence.
+        XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: lead.id).metadata))
+        XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: alternate.id).metadata))
+        XCTAssertTrue(model.autopilotGhostAssetIDs.isEmpty)
         XCTAssertFalse(model.canUndoAutopilotRun)
     }
 
@@ -5882,10 +5891,185 @@ final class AppModelTests: XCTestCase {
         let leadMetadata = try repository.asset(id: lead.id).metadata
         XCTAssertNil(leadMetadata.flag)
         XCTAssertTrue(leadMetadata.aiUnconfirmedFields.isEmpty)
-        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), nil)
-        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
-        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        XCTAssertNil(AutopilotGhost.kind(in: leadMetadata))
+        XCTAssertFalse(model.autopilotGhostAssetIDs.contains(lead.id))
+        let alternateMetadata = try repository.asset(id: alternate.id).metadata
+        XCTAssertEqual(AutopilotGhost.kind(in: alternateMetadata), .pick)
+        XCTAssertTrue(model.autopilotGhostAssetIDs.contains(alternate.id))
+        XCTAssertEqual(alternateMetadata.flag, .pick)
         XCTAssertFalse(model.canUndoMetadataChange)
+    }
+
+    // MARK: - SP-D0: gone is gone
+
+    // The load-bearing behavior change. A direct user flag replaces the ghost;
+    // pressing U afterwards returns the frame to neutral undecided. Nothing
+    // resurrects — not the badge, not the review queue, not the sidebar count.
+    func testDirectFlagThenClearLeavesNoGhostAnywhere() throws {
+        let (model, repository, _, ghostAssetID) = try makeAutopilotModelWithGhosts(named: "ghost-gone-is-gone")
+        XCTAssertNotNil(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
+
+        model.select(ghostAssetID)
+        try model.setFlagForSelectedAsset(.reject)
+
+        // The override confirmed the flag: user origin, no ghost left.
+        let overridden = try repository.asset(id: ghostAssetID).metadata
+        XCTAssertEqual(overridden.flag, .reject)
+        XCTAssertNil(AutopilotGhost.kind(in: overridden))
+        XCTAssertEqual(overridden.confirmedProjection.flag, .reject)
+
+        try model.setFlagForSelectedAsset(nil)
+
+        // Neutral undecided. No flag, no ghost, no queue membership, no count.
+        let cleared = try repository.asset(id: ghostAssetID).metadata
+        XCTAssertNil(cleared.flag)
+        XCTAssertNil(AutopilotGhost.kind(in: cleared))
+        XCTAssertFalse(model.autopilotGhostAssetIDs.contains(ghostAssetID))
+        XCTAssertFalse(try repository.assetIDsWithAutopilotGhost().contains(ghostAssetID))
+        try model.beginAutopilotReview()
+        XCTAssertFalse(model.assets.map(\.id).contains(ghostAssetID))
+    }
+
+    // U on a still-tentative ghost is the REMOVE gesture: the value is
+    // recorded in removed_ai_labels so a later run can never resurrect it.
+    func testClearingATentativeGhostRecordsItsRemovalAndSuppressesTheNextRun() throws {
+        let (model, repository, leadAssetID, ghostAssetID) = try makeAutopilotModelWithGhosts(named: "ghost-suppression")
+        let ghostValue = try XCTUnwrap(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
+
+        model.select(ghostAssetID)
+        try model.setFlagForSelectedAsset(nil)
+
+        XCTAssertTrue(
+            try repository.removedAILabels(assetID: ghostAssetID)
+                .contains(RemovedAILabel(field: .flag, value: ghostValue.rawValue))
+        )
+        XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
+
+        // Never applied: the suppressed proposal produces no ghost at all, so
+        // no count can be inflated by it. Both frames of the pair must be in
+        // scope — the planner only re-proposes a pick/reject inside a
+        // multi-member stack, so `lead` has to be present for it to
+        // re-attempt (and, correctly, re-suppress) ghostAssetID's proposal.
+        // Assert the run actually reached the planner (keeperCount == 1, for
+        // ghostAssetID's re-proposed-then-suppressed pick) so a planner that
+        // silently stopped emitting for this scope fails loudly instead of
+        // passing quietly.
+        let rerun = try model.runAutopilot(scope: .assetIDs([leadAssetID, ghostAssetID]))
+        XCTAssertEqual(rerun.keeperCount, 1)
+
+        XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
+        XCTAssertFalse(model.autopilotGhostAssetIDs.contains(ghostAssetID))
+        XCTAssertFalse(try repository.assetIDsWithAutopilotGhost().contains(ghostAssetID))
+    }
+
+    // MARK: - SP-D0: the review queue is catalog-wide and flags-only
+
+    // The queue's universe is catalog-wide: narrowing the loaded scope to one
+    // ghost must not shrink the review queue to one ghost.
+    func testBeginAutopilotReviewLoadsGhostsOutsideTheLoadedScope() throws {
+        let (model, repository, lead, alternate) = try makeAutopilotModelWithGhosts(named: "ghost-catalog-wide")
+        let allGhostIDs = try repository.assetIDsWithAutopilotGhost()
+        XCTAssertEqual(Set(allGhostIDs), Set([lead, alternate]))
+        // Narrow the loaded scope through a real gesture: a one-asset manual
+        // set. `applyAssetSet` replaces `model.assets` with just that member.
+        let narrowSetID = AssetSetID(rawValue: "ghost-catalog-wide-narrow")
+        try repository.upsert(AssetSet.manual(id: narrowSetID, name: "Narrow", assetIDs: [lead]))
+        try model.applyAssetSet(id: narrowSetID)
+        XCTAssertEqual(model.assets.map(\.id), [lead])
+        // The sidebar count is catalog-wide too, not just the queue: with one
+        // frame loaded, the count still sees both ghosts.
+        XCTAssertEqual(model.autopilotGhostCount, allGhostIDs.count)
+
+        try model.beginAutopilotReview()
+
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set(allGhostIDs))
+        XCTAssertEqual(model.autopilotGhostCount, allGhostIDs.count)
+        XCTAssertTrue(model.isAutopilotReviewActive)
+    }
+
+    func testAmbientAIKeywordsNeverEnterTheReviewQueue() throws {
+        let (model, repository, lead, alternate) = try makeAutopilotModelWithGhosts(named: "ghost-ambient-keywords")
+        // Turn `lead` into a keyword-only AI asset: no flag ghost, one ambient
+        // AI keyword.
+        try repository.updateMetadata(assetID: lead) { metadata in
+            metadata.flag = nil
+            metadata.aiUnconfirmedFields.remove(.flag)
+            metadata.keywords.append("dog")
+            metadata.aiUnconfirmedKeywords.insert("dog")
+        }
+
+        try model.beginAutopilotReview()
+
+        XCTAssertEqual(model.assets.map(\.id), [alternate])
+        XCTAssertFalse(model.autopilotGhostAssetIDs.contains(lead))
+        // The ambient keyword itself is untouched — this spec changes nothing
+        // about how keywords are applied, displayed, confirmed, or removed.
+        XCTAssertTrue(try repository.asset(id: lead).metadata.keywords.contains("dog"))
+        XCTAssertTrue(try repository.asset(id: lead).metadata.aiUnconfirmedKeywords.contains("dog"))
+    }
+
+    // MARK: - SP-D0: dismiss records the removal
+
+    func testDismissRecordsRemovedAILabelSoNothingResurrects() throws {
+        // Real originals on disk (not the shared ghost fixture's
+        // non-existent `/Photos/Job/...` paths): the sidecar-absence
+        // assertion below must be able to fail if dismiss ever wrote one.
+        let directory = try makeTemporaryDirectory(named: "ghost-dismiss")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let leadURL = photosDirectory.appendingPathComponent("ghost-dismiss-lead.cr2")
+        let alternateURL = photosDirectory.appendingPathComponent("ghost-dismiss-alt.cr2")
+        try Data("lead raw bytes".utf8).write(to: leadURL)
+        try Data("alt raw bytes".utf8).write(to: alternateURL)
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "ghost-dismiss-lead", path: leadURL.path, rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "ghost-dismiss-alt", path: alternateURL.path, rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "ghost-dismiss-model", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        let ghostAssetID = alternate.id
+        let ghostValue = try XCTUnwrap(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
+
+        let dismissed = try model.dismissAutopilotProposals(assetIDs: [ghostAssetID])
+
+        XCTAssertEqual(dismissed, 1)
+        XCTAssertNil(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
+        XCTAssertTrue(
+            try repository.removedAILabels(assetID: ghostAssetID)
+                .contains(RemovedAILabel(field: .flag, value: ghostValue.rawValue))
+        )
+        // Dismiss writes no sidecar: nothing confirmed changed.
+        let sidecarURL = alternateURL.appendingPathExtension("xmp")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+    }
+
+    // MARK: - SP-D0: the sidebar source is derived from ghosts
+
+    func testSidebarAutopilotSourceAppearsOnlyWhileGhostsExist() throws {
+        let (model, _, _, _) = try makeAutopilotModelWithGhosts(named: "ghost-sidebar-source")
+        let ghostIDs = model.autopilotGhostAssetIDs
+        XCTAssertFalse(ghostIDs.isEmpty)
+
+        let source = try XCTUnwrap(
+            model.cullSourcePresentation.sources.first { $0.target == CullSource.Target.autopilotProposals }
+        )
+        // Pin the fixture's literal ghost count alongside the self-referential
+        // comparison so a wrong count (not just a wrong-vs-itself count) fails.
+        XCTAssertEqual(ghostIDs.count, 2)
+        XCTAssertEqual(source.count, ghostIDs.count)
+
+        _ = try model.dismissAutopilotProposals(assetIDs: ghostIDs)
+
+        XCTAssertTrue(model.autopilotGhostAssetIDs.isEmpty)
+        XCTAssertFalse(
+            model.cullSourcePresentation.sources.contains { $0.target == CullSource.Target.autopilotProposals }
+        )
     }
 
     func testAskFallsBackToDeterministicParserWithoutTranslator() throws {
@@ -19208,6 +19392,37 @@ final class AppModelTests: XCTestCase {
             workerSupervisor: workerSupervisor
         )
         return (result.model, result.repository)
+    }
+
+    // SP-D0 shared fixture: two evaluated near-dup frames run through
+    // autopilot, so `alternate` carries a `.pick` ghost and `lead` a
+    // `.reject` ghost.
+    private func makeAutopilotModelWithGhosts(
+        named name: String
+    ) throws -> (model: AppModel, repository: CatalogRepository, lead: AssetID, alternate: AssetID) {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(
+            id: "\(name)-lead",
+            path: "/Photos/Job/\(name)-lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let alternate = makeAsset(
+            id: "\(name)-alt",
+            path: "/Photos/Job/\(name)-alt.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(named: name, assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        return (model, repository, lead.id, alternate.id)
     }
 
     private func makeModelWithCatalogAssetsAndPreviewCache(

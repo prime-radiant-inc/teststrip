@@ -8,7 +8,8 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(AutopilotBadgePresentation.badge(for: .pick)?.isKeep, true)
         XCTAssertEqual(AutopilotBadgePresentation.badge(for: .reject)?.text, "CUT")
         XCTAssertEqual(AutopilotBadgePresentation.badge(for: .reject)?.isKeep, false)
-        XCTAssertNil(AutopilotBadgePresentation.badge(for: .keyword))
+        // There is no third kind that could reach this surface: the parameter
+        // is `PickFlag?`, so `nil` is the only no-ghost value.
         XCTAssertNil(AutopilotBadgePresentation.badge(for: nil))
     }
 

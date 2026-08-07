@@ -100,7 +100,7 @@ baseline, not against "0 rated" assumption.
 
 ## Sharp edges
 - Rating and pick/reject *from the plain grid* write immediately (no
-  confirmation sheet) — unlike Autopilot proposals, a direct keyboard rating
+  confirmation sheet) — unlike an autopilot ghost, a direct keyboard rating
   IS the confirming user gesture, so this is correct per the
   confirm-before-write invariant, not a violation. Worth calling out
   explicitly in Expected so a future reader doesn't mistake it for a bug.
@@ -118,3 +118,9 @@ read at `Sources/TeststripApp/GridKeyCaptureView.swift:60-113, 220-230,
 257-291`; `CullingKeyCaptureGate` isolation verified at
 `Sources/TeststripApp/CullingKeyCaptureView.swift:11-15`. Needs a live AX
 session to execute Steps 1-10.
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the Sharp-edges
+"unlike Autopilot proposals" wording became "unlike an autopilot ghost" —
+a terminology-only fix, no assertion or citation changed. Supersedes prior
+status: this card was already NOT RUN, so there is no prior PASS to
+invalidate — noted for the record per house style.

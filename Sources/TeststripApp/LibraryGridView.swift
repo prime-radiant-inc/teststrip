@@ -2367,7 +2367,7 @@ struct LibraryGridView: View {
                             previewStatus: model.gridPreviewStatus(for: asset.id),
                             isSelected: model.selectedAssetID == asset.id,
                             isBatchSelected: model.isBatchSelected(asset.id),
-                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                            autopilotDecision: AutopilotGhost.kind(in: asset.metadata)
                         )
                         .assetActivation(
                             for: asset,
@@ -2520,7 +2520,7 @@ struct LibraryGridView: View {
     private var autopilotReviewToolbar: some View {
         let selectedIDs = model.selectedBatchAssetIDsInCatalogOrder
         return HStack(spacing: 8) {
-            Text("Reviewing \(model.autopilotReviewProposalCount) proposals")
+            Text("Reviewing \(model.autopilotGhostCount) proposals")
                 .font(.caption.weight(.semibold))
             Spacer(minLength: 0)
             Button("Commit \(selectedIDs.count)") {
@@ -2530,8 +2530,8 @@ struct LibraryGridView: View {
             .controlSize(.small)
             .tint(.green)
             .disabled(selectedIDs.isEmpty)
-            .help("Commit the selected proposals' keeps, cuts, and keywords")
-            Button("Commit all \(model.autopilotReviewProposalCount)") {
+            .help("Commit the selected proposals' keeps and cuts")
+            Button("Commit all \(model.autopilotGhostCount)") {
                 commitAllAutopilotProposals()
             }
             .buttonStyle(.bordered)
@@ -3603,15 +3603,15 @@ struct LibraryGridView: View {
 }
 
 struct AutopilotBadgePresentation: Equatable {
-    // Maps a pending proposal's decision to the grid cell's KEEP/CUT badge.
-    // Keyword proposals and undecided cells carry no keep/cut badge.
-    static func badge(for kind: AutopilotProposalKind?) -> (text: String, isKeep: Bool)? {
-        switch kind {
+    // Maps the ghost's own value to the grid cell's KEEP/CUT badge. An asset
+    // with no ghost carries no badge.
+    static func badge(for ghost: PickFlag?) -> (text: String, isKeep: Bool)? {
+        switch ghost {
         case .pick:
             return (text: "KEEP", isKeep: true)
         case .reject:
             return (text: "CUT", isKeep: false)
-        case .keyword, nil:
+        case nil:
             return nil
         }
     }
@@ -3841,25 +3841,10 @@ private struct LoupeView: View {
     // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
-        // Exhaustive over `AutopilotProposalKind` so a future fourth kind
-        // forces a decision here rather than silently landing in the flag
-        // set and inheriting flag-gating.
-        var pendingFlagProposalAssetIDs = Set<AssetID>()
-        var pendingKeywordProposalAssetIDs = Set<AssetID>()
-        for proposal in model.pendingAutopilotProposals {
-            switch proposal.kind {
-            case .pick, .reject:
-                pendingFlagProposalAssetIDs.insert(proposal.assetID)
-            case .keyword:
-                pendingKeywordProposalAssetIDs.insert(proposal.assetID)
-            }
-        }
         return CullCompletionPresentation.presentation(
             assets: model.assets,
             viewedAssetIDs: model.cullRunTracker.viewedAssetIDs,
             skippedAssetIDs: model.cullRunTracker.skippedAssetIDs,
-            pendingFlagProposalAssetIDs: pendingFlagProposalAssetIDs,
-            pendingKeywordProposalAssetIDs: pendingKeywordProposalAssetIDs,
             scope: model.cullScope
         )
     }
@@ -3874,15 +3859,10 @@ private struct LoupeView: View {
                 // All buttons) reappears inside `cullCompletionStage` once
                 // completion takes over above the stage — gated on
                 // `model.autopilotRunSummary`, same as here — so its review
-                // affordance survives completion on its own, independent of
-                // sparkleAwaiting. Once the banner IS dismissed, the
-                // completion stage's own "Review AI Suggestions" ceremony
-                // button is the only way back, reachable exactly when
-                // `sparkleAwaiting > 0` (`CullCompletionPresentation
-                // .summary`, kind-aware): a pending KEYWORD proposal keeps
-                // it reachable regardless of the asset's flag decision, but
-                // a pending FLAG proposal superseded by a direct decision
-                // does not.
+                // affordance survives completion. Once the banner IS
+                // dismissed, review stays reachable from the Cull sidebar's
+                // "Autopilot Proposals" source; the completion stage carries
+                // no AI-suggestion ceremony of its own.
                 if completion == nil, let summary = model.autopilotRunSummary {
                     autopilotBanner(summary: summary)
                 }
@@ -3987,8 +3967,7 @@ private struct LoupeView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             // The run-coverage row: what "done" glossed over — frames Space
-            // skipped (and never decided), frames the run never landed on,
-            // and AI suggestions still awaiting review.
+            // skipped (and never decided) and frames the run never landed on.
             Text(cullCompletionRunDetailText(completion))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -4039,9 +4018,6 @@ private struct LoupeView: View {
             case .reviewPicks:
                 Button("Review Picks") { model.applyCullCompletionReviewPicks() }
                     .buttonStyle(.bordered)
-            case .reviewAISuggestions:
-                Button("Review AI Suggestions") { reviewAutopilotRun() }
-                    .buttonStyle(.bordered)
             case .savePicksAsSet:
                 Button("Save Picks as Set") { savePicksAsSet() }
                     .buttonStyle(.bordered)
@@ -4051,10 +4027,7 @@ private struct LoupeView: View {
     }
 
     private func cullCompletionRunDetailText(_ completion: CullCompletionPresentation) -> String {
-        let skippedText = "\(completion.skipped) skipped"
-        let neverViewedText = "\(completion.neverViewed) never viewed"
-        let sparkleText = "\(completion.sparkleAwaiting) AI \(completion.sparkleAwaiting == 1 ? "suggestion" : "suggestions") awaiting review"
-        return "\(skippedText) · \(neverViewedText) · \(sparkleText)"
+        "\(completion.skipped) skipped · \(completion.neverViewed) never viewed"
     }
 
     private func savePicksAsSet() {
@@ -7687,7 +7660,7 @@ private extension View {
             selectionState: selectionState,
             badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
             availability: asset.availability,
-            autopilotDecision: model.autopilotProposalDecision(for: asset.id),
+            autopilotDecision: AutopilotGhost.kind(in: asset.metadata),
             hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
         )
     }
@@ -8144,7 +8117,7 @@ private struct TimelineWorkspaceView: View {
                             previewStatus: model.gridPreviewStatus(for: asset.id),
                             isSelected: model.selectedAssetID == asset.id,
                             isBatchSelected: model.isBatchSelected(asset.id),
-                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                            autopilotDecision: AutopilotGhost.kind(in: asset.metadata)
                         )
                         .assetActivation(
                             for: asset,
@@ -8332,7 +8305,7 @@ enum AssetGridCellAccessibilityValue {
         selectionState: String,
         badges: AssetGridMetadataBadgePresentation,
         availability: SourceAvailability,
-        autopilotDecision: AutopilotProposalKind?,
+        autopilotDecision: PickFlag?,
         hasBondedStill: Bool
     ) -> String {
         var parts = [selectionState]
@@ -9667,7 +9640,7 @@ private struct AssetGridCell: View {
     var previewStatus: AssetGridPreviewStatusPresentation?
     var isSelected: Bool
     var isBatchSelected = false
-    var autopilotDecision: AutopilotProposalKind? = nil
+    var autopilotDecision: PickFlag? = nil
 
     var body: some View {
         GeometryReader { geometry in

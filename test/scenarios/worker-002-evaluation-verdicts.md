@@ -3,9 +3,14 @@
 **What this covers**: once an asset's thumbnail preview is cached, the worker
 runs an evaluation pass (`WorkerCommand.runEvaluation`) and the verdict
 surfaces as the grid cell's KEEP/CUT badge — **there is no literal per-cell
-"✦" glyph in this UI**; the keep/cut surface is the autopilot proposal badge
-(`AutopilotBadgePresentation`), driven by a *committed* `AutopilotProposalKind`
-of `.pick`/`.reject`, not a raw evaluation score glyph. This card also proves
+"✦" glyph in this UI**; the keep/cut surface is the autopilot badge
+(`AutopilotBadgePresentation`), driven by the asset's own ghost value
+(`AutopilotGhost.kind(in: asset.metadata)`, a `PickFlag?` — `.pick`/
+`.reject`), not a raw evaluation score glyph. The badge disappears the
+moment the flag is confirmed (by any direct decision or an explicit
+Commit) — it is not gated on being "committed" the way an earlier draft of
+this card assumed; a *tentative* (AI-unconfirmed) flag is exactly what
+renders the badge. This card also proves
 import's auto-evaluation trigger is deduped: an asset that already has an
 in-flight or completed evaluation does not get re-enqueued redundantly when a
 second scan/import trigger fires for it.
@@ -34,7 +39,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    folder (as in `worker-001-preview-lifecycle.md`) to get an unevaluated one.
 3. **Trigger evaluation and watch dedup.** Import auto-triggers evaluation
    once the preview is cached (`scheduleImportAutoEvaluationIfEnabled`,
-   `Sources/TeststripApp/AppModel.swift:7995-8009`); for an asset already in
+   `Sources/TeststripApp/AppModel.swift:10112-10125`); for an asset already in
    the grid, force it via the Evaluate action (`ax_drive.sh press --role
    AXButton --help "Evaluate"` on the loupe/inspector, or the equivalent grid
    command) — confirm the actual control's AXHelp against the running UI
@@ -44,7 +49,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    came from Step 2's fixture folder) while the first evaluation is still
    in-flight (`work_sessions` row with `status IN ('queued','running')` for
    that asset). This exercises the dedup path directly: `requestEvaluation`
-   (`Sources/TeststripApp/AppModel.swift:7556-7570`) builds a
+   (`Sources/TeststripApp/AppModel.swift:9568-9599`) builds a
    `WorkSessionID(rawValue: "evaluation-\(assetID)-\(provider)")` and returns
    immediately without enqueuing a second work item if that ID already has
    an active-status entry in `currentBackgroundWorkQueue`.
@@ -56,14 +61,15 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    (`sqlite3 "$DB" "SELECT count(*) FROM evaluation_signals WHERE asset_id = '$ASSET_ID';"`
    polling until > 0, staying frontmost via `wait-vended` each poll).
 7. **Surface the verdict.** Run (or wait for) Autopilot over this asset's
-   scope so a proposal is generated, then assert the grid cell's badge:
+   scope so a ghost is applied, then assert the grid cell's badge:
    `ax_drive.sh find --role AXStaticText --label "KEEP"` or `"CUT"` on the
-   cell (`AutopilotBadgePresentation.badge`,
-   `Sources/TeststripApp/LibraryGridView.swift:3318-3329` — `.pick` → `"KEEP"`,
-   `.reject` → `"CUT"`, keyword proposals and undecided cells carry no badge).
-   Cross-check against the catalog:
+   cell (`AutopilotBadgePresentation.badge(for:)`,
+   `Sources/TeststripApp/LibraryGridView.swift:3605-3618` — `.pick` →
+   `"KEEP"`, `.reject` → `"CUT"`, no ghost (confirmed flag, or a keyword,
+   which was never part of the ghost type) → no badge). Cross-check against
+   the catalog:
    ```bash
-   sqlite3 "$DB" "SELECT kind, status FROM autopilot_proposals WHERE asset_id = '$ASSET_ID';"
+   sqlite3 "$DB" "SELECT json_extract(metadata_json,'\$.flag'), json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id = '$ASSET_ID';"
    ```
 
 ## Expected
@@ -72,15 +78,17 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   appears; that means the dedup guard in `requestEvaluation` was bypassed.
 - Step 6: `evaluation_signals` gains a row for `$ASSET_ID`. **Fails if** it
   never appears — the worker never actually ran the evaluation command.
-- Step 7: the grid cell's badge text matches the `autopilot_proposals.kind`
-  for that asset (`pick`→`"KEEP"`, `reject`→`"CUT"`). **Fails if** the render
-  disagrees with the catalog row, or a keyword-kind proposal wrongly renders
-  a KEEP/CUT badge.
-- Per the confirm-before-write invariant: `autopilot_proposals.status` must
-  read `pending` (`AutopilotProposalStatus`, `Sources/TeststripCore/Autopilot/AutopilotProposal.swift:19-23`)
-  until an explicit Review/Commit gesture flips it to `committed`. This card
-  does not commit; assert the badge renders from the *pending proposal*, not
-  from a written verdict on the asset itself.
+- Step 7: the grid cell's badge text matches the asset's own ghost flag
+  value (`pick`→`"KEEP"`, `reject`→`"CUT"`). **Fails if** the render
+  disagrees with `metadata_json`, or a confirmed flag (no ghost) wrongly
+  renders a KEEP/CUT badge.
+- Per the confirm-before-write invariant: the ghost's mere presence is what
+  "pending" means now — `aiUnconfirmedFields` must still contain `flag` (no
+  separate `status` field exists any more; `AutopilotProposalStatus` was
+  deleted along with the `autopilot_proposals` table it gated) until an
+  explicit Review/Commit gesture clears it. This card does not commit;
+  assert the badge renders from the *tentative ghost*, not from a confirmed
+  verdict on the asset itself.
 
 ## Cleanup
 ```bash
@@ -107,3 +115,13 @@ SQL and source citations were ground-truthed headlessly against a seeded
 directly from `AppModel.swift`). The AX/live-driving steps (2-4, 7) need a
 human-present or console-unlocked re-run — not executed in this session (no
 host GUI available).
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: `autopilot_proposals`
+no longer exists as a table (SP-D0 dropped it forward-only) — Step 7's
+cross-check became a `metadata_json`/`aiUnconfirmedFields` query, and the
+intro's stale "driven by a *committed* `AutopilotProposalKind`" framing
+(which contradicted this card's own later "pending, not committed" Expected
+bullet even before this branch) was corrected to "driven by the ghost's own
+value, gone the moment the flag is confirmed." Supersedes prior status: the
+2026-07-10 SQL-grounded citations quote the dropped table's schema — not
+valid evidence for this revision. Needs a fresh VM run.

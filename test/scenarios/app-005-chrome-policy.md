@@ -5,7 +5,7 @@ simplification sweep must hold in the assembled window, not just in unit
 tests. Inventory items 16-17: `WorkspaceChromePolicy` — the ten chrome
 booleans are Library-only, and `showsInspector` is true for every workspace
 except Cull (`WorkspaceChromePolicy`,
-`Sources/TeststripApp/LibraryGridView.swift:7208-7268`; inspector gating in
+`Sources/TeststripApp/LibraryGridView.swift:8357-8415`; inspector gating in
 `Sources/TeststripApp/main.swift:49-54`). Also the UX-simplification sweep (spec
 `docs/superpowers/specs/2026-07-08-teststrip-ux-simplification-proposal.md`) is
 a legibility pass over working machinery — most of it only exists in the
@@ -16,9 +16,9 @@ old jargon is gone: the marquee **Find Best Shots** action, the collapsed
 the absence of the three-Imports tangle. (There is no static "Review" sidebar
 row — the sidebar's review-queue rows are named Picks/Likely Issues/etc. and
 only render once their counts are non-zero; the sole surviving "Review"
-control is the autopilot-proposals banner button, which appears only when a
-proposal batch is pending.) It also exercises the core promise that Find Best
-Shots never dead-ends the user on a bare "0 keepers".
+control is the autopilot banner button, which appears only while ghosts
+exist.) It also exercises the core promise that Find Best Shots never
+dead-ends the user on a bare "0 keepers".
 
 ## Pre-state
 - Fresh build, seeded isolated catalog so the grid and sidebar render real rows:
@@ -99,3 +99,16 @@ Quit the launched instance.
   button never dead-ends.
 - Activity (⇧⌘0 toolbar item) is global chrome and intentionally NOT gated by
   the policy — do not count its presence in Cull/People as a leak.
+
+## Run status
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the intro's
+"the autopilot-proposals banner button ... appears only when a proposal
+batch is pending" became "the autopilot banner button ... appears only
+while ghosts exist" — the banner itself (`model.autopilotRunSummary`) was
+never table-backed, but the old phrasing described the same underlying
+concept (a pending proposal batch) that `autopilot_proposals` used to name;
+SP-D0 dropped that table forward-only, and the concept is now the ghost.
+Supersedes prior status: LEDGER records this card `Tested-Fail`
+(script/card drift on a different surface, unrelated to autopilot) — that
+result is untouched by this wording fix. Needs a fresh VM run regardless,
+per the existing script drift.

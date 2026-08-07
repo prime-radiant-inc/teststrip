@@ -2,8 +2,8 @@
 
 **What this covers**: Jesse's one-button "show me the keepers". Inventory
 item 38: `Culling ▸ Find Best Shots` (⇧⌘B) is read-only and routes via
-`FindBestShotsRouter.plan` (`Sources/TeststripApp/AppModel.swift:641-684,
-7708-7737`): (a) potential picks exist → Potential Picks queue; (b) none but
+`FindBestShotsRouter.plan` (`Sources/TeststripApp/AppModel.swift:793-821`):
+(a) potential picks exist → Potential Picks queue; (b) none but
 committed picks exist → Picks queue; (c) nothing ranks and nothing left to
 evaluate → status message "These look too distinct to auto-rank — rate a few
 to rank" — never a bare zero. When unevaluated frames remain it also triggers
@@ -75,3 +75,21 @@ Keep the app warm during the evaluation wait (re-assert frontmost each poll).
 - Evaluation needs the worker and cached previews (`canRequestCurrentScope…`);
   on a cold catalog wait for preview generation first or the evaluate-first
   branch silently degrades to outcome C.
+
+## Run status
+**Reviewed 2026-08-06 (Task 9, SP-D0 ghost derivation sweep) — no rename
+applied, deviating from the task brief.** The brief called for this card's
+three uses of "proposals" (Steps 4/5, Sharp edges) to become "ghosts", on
+the assumption they referred to autopilot's proposal mechanism. Source
+check: `ReviewQueue.potentialPicks` compiles to `SetQuery(predicates:
+[.likelyPick])` (`Sources/TeststripCore/Catalog/CatalogRepository.swift:3155-3175`)
+— a quality-score threshold query (`json_extract(metadata_json,'$.flag')
+IS NULL AND EXISTS (... evaluation_signals ...)`) with no reference to
+`AutopilotProposal`, `autopilot_proposals`, or `AutopilotGhost` anywhere.
+This card's "proposals" is generic English for "the candidates sitting in
+the Potential Picks queue," an entirely different, unrelated ranking
+feature — renaming it to "ghosts" would assert a relationship to the
+autopilot mechanism that does not exist in source. Left unchanged; flagging
+for Jesse rather than silently complying with an instruction the source
+doesn't support. Otherwise no `autopilot_proposals` table reference exists
+anywhere in this card. Needs a fresh VM run (unrelated to this review).

@@ -87,7 +87,7 @@ final class CullSourcePresentationTests: XCTestCase {
             model.cullSourcePresentation.sources.first { $0.target == CullSource.Target.autopilotProposals }
         )
         XCTAssertEqual(proposalsSource.group, .autopilotProposals)
-        XCTAssertEqual(proposalsSource.count, model.pendingAutopilotProposals.count)
+        XCTAssertEqual(proposalsSource.count, model.autopilotGhostAssetIDs.count)
         XCTAssertGreaterThan(proposalsSource.count, 0)
     }
 

@@ -136,7 +136,6 @@ public struct AutopilotProposalPlanner {
             keyword: keyword,
             rationale: rationale,
             confidence: confidence,
-            status: .pending,
             createdAt: now,
             updatedAt: now
         )

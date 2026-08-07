@@ -1,8 +1,8 @@
 # cull-015-sidebar-sources: Cull sidebar's "Cull From" source groups (zero-count omission, "Nothing to cull" empty state)
 
 **What this covers**: As a photographer culling a shoot I want to jump
-straight into a specific working set — recent import, autopilot proposals
-awaiting review, the review queues, or my current Library selection — from
+straight into a specific working set — recent import, autopilot ghosts
+pending review, the review queues, or my current Library selection — from
 the Cull sidebar without manually rebuilding a filter each time, and I want
 zero-count groups to simply not appear (not render disabled) so the sidebar
 never shows a dead-end row; when every source is empty I want an honest
@@ -39,8 +39,11 @@ through `presentation.visibleSources` (count > 0 only). `cullSourcePresentation`
 - `.recentImport`: present only if `latestImportCompletionSummary != nil`
   (title/count from that summary) — **absent entirely** on a bare `--smoke`
   launch with no in-session import, not just disabled.
-- `.autopilotProposals`: present only if `!pendingAutopilotProposals.isEmpty`
-  — same "absent, not disabled" pattern; title always "Autopilot Proposals".
+- `.autopilotProposals`: present only if `!autopilotGhostAssetIDs.isEmpty`
+  (the ghost-carrying asset count — `autopilotGhostAssetIDs` replaced
+  `pendingAutopilotProposals` when SP-D0 dropped the `autopilot_proposals`
+  table) — same "absent, not disabled" pattern; title always "Autopilot
+  Proposals".
 - `.topPicks`: always two rows, `ReviewQueue.picks` and `.potentialPicks`,
   count from `reviewQueueCounts[queue]`.
 - `.needsEyes`: always two rows, `.likelyIssues` and `.needsEvaluation`.
@@ -192,3 +195,13 @@ script/ax_drive.sh press --role AXButton --help "Cull" # ⌘1
 
 ## Run status
 UNRUN — needs human-present execution per test/scenarios/README.md
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the
+`.autopilotProposals` group's presence predicate changed from
+`!pendingAutopilotProposals.isEmpty` to `!autopilotGhostAssetIDs.isEmpty` —
+`pendingAutopilotProposals` was deleted along with the `autopilot_proposals`
+table it queried. No step or Expected bullet needed a query rewrite (this
+card only ever asserts against the rendered AX text, never SQL, for this
+group). Supersedes prior status: card was already UNRUN, so there is no
+prior PASS to invalidate — this note exists for the record per the task's
+house style. Needs a fresh VM run.

@@ -3,33 +3,46 @@
 **What this covers**: as a photographer who just imported a shoot with
 Autopilot armed, I want machine-proposed keeps/cuts surfaced as provisional
 grid badges I can scan, then either commit them (selected subset or all) or
-dismiss/undo. Covers the design-1b autopilot loop merged at migration 17 —
-`runAutopilot` (`AppModel.swift:9061`) → provisional `autopilot_proposals`
-rows, plus (per the later auto-apply-with-provenance model,
-`applyTentativeAutopilotProposals`, `AppModel.swift:9131`) each proposed
-asset's tentative pick/reject already written into `metadata_json.flag`,
-tagged `origin=ai` (`aiUnconfirmedFields` contains `flag`) — the `AutopilotBannerView`
-Review/Undo-all/Dismiss controls (item 52 —
-`LibraryGridView.swift:3356-3441`, `AppModel.swift:9243`
-`dismissAutopilotRunSummary`) → grid-cell KEEP/CUT badges from
-`AutopilotBadgePresentation.badge(for:)` (item 53 —
-`LibraryGridView.swift:3319-3329`, wired via `autopilotDecision:` on
-`AssetGridCell` at `:3311`) → the review toolbar's Commit selected / Commit
-all / Dismiss selected controls, `commitAutopilotProposals`
-(`AppModel.swift:9289`) being the gesture that *confirms* the tentative
-writes rather than first-writing them (item 54 —
-`LibraryGridView.swift:2360-2394`). The load-bearing assertion is now the
-**auto-apply-with-provenance** invariant, not confirm-before-write: a run's
-keep/cut proposals land in `metadata_json` immediately, `origin=ai`
-(unconfirmed) and never synced to the `.xmp` sidecar; an explicit Commit is
-what confirms them (flips to `origin=user`, writes the sidecar); Undo all
-must revert the run's tentative writes back to the pre-run state. (See
+dismiss/undo. `runAutopilot` (`AppModel.swift:9651`) plans in-memory
+`AutopilotProposal`s (`AutopilotProposalPlanner`, never persisted — SP-D0
+dropped the `autopilot_proposals` status table outright,
+`DROP TABLE IF EXISTS autopilot_proposals`, forward-only, no back-out) and
+immediately applies each `.pick`/`.reject` straight into the asset's own
+`metadata_json.flag` (`applyTentativeAutopilotProposals`,
+`AppModel.swift:9712`), tagged `origin=ai` (`aiUnconfirmedFields` contains
+`flag`) — this AI-origin, unconfirmed flag **is** the "ghost"
+(`AutopilotGhost.kind(in:)`,
+`Sources/TeststripCore/Autopilot/AutopilotGhost.swift:15`), the single
+source of truth for "the machine proposed a flag." There is no longer, and
+now can never again be, a persisted "proposal" row distinct from the ghost
+sitting in the asset's own metadata. The `AutopilotBannerView` Review/Undo
+all/Dismiss controls (item 52 — `LibraryGridView.swift:3643-3682`,
+`AppModel.swift:9817` `dismissAutopilotRunSummary`) → grid-cell KEEP/CUT
+badges from `AutopilotBadgePresentation.badge(for:)` (item 53 —
+`LibraryGridView.swift:3605-3618`, wired via
+`autopilotDecision: AutopilotGhost.kind(in: asset.metadata)` on
+`AssetGridCell` at `:2370`/`:7663`/`:8120`) → the review toolbar's Commit
+selected / Commit all / Dismiss selected controls, `commitAutopilotProposals(assetIDs:)`
+(`AppModel.swift:9857`) being the gesture that *confirms* the ghost (clears
+`aiUnconfirmedFields`, writes the sidecar) rather than first-writing
+anything, and `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9903`)
+being the gesture that *removes* it (records `removed_ai_labels`, the same
+recorded-removal mechanism a direct `U` uses). The load-bearing assertion is
+the **auto-apply-with-provenance** invariant: a run's keep/cut proposals
+land in `metadata_json` immediately, `origin=ai` (unconfirmed) and never
+synced to the `.xmp` sidecar; an explicit Commit confirms them (flips to
+`origin=user`, writes the sidecar); Dismiss removes them (records
+`removed_ai_labels`, no sidecar, and suppresses a future re-proposal); Undo
+all reverts the run's tentative writes back to the pre-run state. (See
 `people-020-ai-label-provenance.md`, which drives this same mechanism
-end-to-end and flagged this card as stale on this one point.)
+end-to-end, and `cull-029-autopilot-ghost-derivation.md`, which owns the
+ghost-derivation architecture end-to-end on-demand — this card is the
+armed-import-triggered, Review-toolbar-specific companion, not a
+duplicate.)
 
 ## Pre-state
 - **This card drives the post-import armed-Autopilot path, not the on-demand
-  gesture.** `runAutopilot` (`AppModel.swift:9061`) has two entry points: an
+  gesture.** `runAutopilot` (`AppModel.swift:9651`) has two entry points: an
   on-demand one via Culling ▸ Run Autopilot (`runAutopilotOnCurrentScope()`,
   scope `.visible` — driven by `app-012-autopilot-evaluate-commands.md`), and
   the post-import armed run this card exercises (`runArmedImportAutopilot`,
@@ -54,9 +67,11 @@ end-to-end and flagged this card as stale on this one point.)
 ## Steps
 1. **Arm autopilot and record the baseline.** `script/ax_drive.sh wait-vended`,
    then arm the setting: `script/ax_drive.sh press --role AXCheckBox --contains
-   "Autopilot"`. Baseline (ground truth):
+   "Autopilot"`. Baseline (ground truth — `autopilot_proposals` no longer
+   exists as a table, SP-D0 dropped it forward-only, so the baseline is the
+   ghost count, the same query `cull-029`'s Step 2 uses):
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"                       # PROP0 (expect 0)
+   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # GHOST0 (expect 0)
    sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"          # GEN0 (write signal)
    ```
 2. **Import the fixture** (drives the whole Import Path flow — path field →
@@ -66,73 +81,69 @@ end-to-end and flagged this card as stale on this one point.)
    ./script/submit_import_path.sh Teststrip "$IMP"
    ```
 3. **Wait for the imported set to evaluate and autopilot to run.** Poll until
-   proposals appear:
+   ghosts appear:
    ```bash
-   for i in $(seq 1 60); do p=$(sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"); [ "$p" -gt 0 ] && break; sleep 2; done
+   for i in $(seq 1 60); do g=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"); [ "$g" -gt "$GHOST0" ] && break; sleep 2; done
    ```
    Also expect the banner: `script/ax_drive.sh wait --role AXStaticText
    --contains "Autopilot"`.
-4. **Assert proposals exist, each landed as a *tentative, unconfirmed* write,
+4. **Assert ghosts exist, each landed as a *tentative, unconfirmed* write,
    and the grid badges are provisional (items 52-53).** In Library workspace,
-   for each imported asset with a pick/reject proposal, assert the grid cell
-   shows a KEEP or CUT badge matching `autopilot_proposals.kind`
+   for each imported asset carrying a ghost, assert the grid cell shows a
+   KEEP or CUT badge matching the ghost's own flag value
    (`ax_drive.sh find --contains "KEEP"` / `"CUT"` scoped near that tile —
    scroll it into view first per the README's virtualized-grid gotcha):
    ```bash
-   sqlite3 "$DB" "SELECT asset_id, kind FROM autopilot_proposals WHERE run_id = (SELECT run_id FROM autopilot_proposals ORDER BY created_at DESC LIMIT 1);"
-   sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"                        # > PROP0
+   sqlite3 "$DB" "SELECT id, json_extract(metadata_json,'\$.flag') FROM assets
+     WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
+   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # > GHOST0
    sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"           # > GEN0 (the run's own tentative writes)
    ```
-   Cross-check: every asset in the run with a pick/reject proposal already has
-   `metadata_json.flag` set to that proposal's value, but tagged `origin=ai`
-   (`aiUnconfirmedFields` contains `flag`) — this is the run's own tentative
-   write, not yet a confirmed verdict, and not yet synced to any `.xmp`
-   sidecar:
-   ```bash
-   sqlite3 "$DB" "SELECT a.id, json_extract(a.metadata_json,'\$.flag') FROM assets a
-     JOIN autopilot_proposals p ON p.asset_id = a.id AND p.kind IN ('pick','reject')
-     WHERE EXISTS (SELECT 1 FROM json_each(a.metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
-   ```
-   The grid badge itself still reads `autopilot_proposals` directly
-   (`autopilotProposalDecision(for:)`), independent of the tentative
-   `metadata_json` write — so the badge assertion above is unaffected by this
-   card's reconciliation, only the "nothing written yet" framing was wrong.
+   The ghost query above already **is** the tentative-write cross-check — a
+   ghost is by definition `metadata_json.flag` set with `aiUnconfirmedFields`
+   containing `flag` (`AutopilotGhost.kind(in:)`), not yet a confirmed
+   verdict and not yet synced to any `.xmp` sidecar. There is no separate
+   join needed the way the pre-drop `autopilot_proposals` table required.
+   The grid badge itself reads the ghost directly
+   (`AutopilotBadgePresentation.badge(for: AutopilotGhost.kind(in:
+   asset.metadata))`) — no table is consulted anywhere in this render path.
 5. **Banner Dismiss (item 52), not the review path.** Before opening review,
    click the banner's "Dismiss" (`ax_drive.sh press --role AXButton --contains
    "Dismiss"` scoped to the banner, not the review toolbar which doesn't exist
    yet at this point). Assert the banner disappears
    (`ax_drive.sh find --contains "Autopilot"` in the banner region now fails)
-   but `autopilot_proposals` rows and `SUM(catalog_generation)` are
-   unchanged — dismissing the banner only hides the summary UI
-   (`dismissAutopilotRunSummary`), it does not delete proposals or write
-   anything:
+   but the ghosts and `SUM(catalog_generation)` are unchanged — dismissing the
+   banner only clears `model.autopilotRunSummary`
+   (`dismissAutopilotRunSummary`); it does not touch `autopilotGhostAssetIDs`,
+   remove any ghost, or write anything:
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"                        # unchanged from step 4
+   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # unchanged from step 4
    sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"           # unchanged from step 4 (already > GEN0 from the run's own tentative writes; Dismiss adds no further write)
    ```
-   The grid badges (item 53) must still render — they read `autopilot_proposals`
-   directly via `autopilotProposalDecision(for:)`, not through the banner.
-6. **Re-run is not available from a dismissed banner** — relaunch is overkill
-   for a card; instead accept the banner is gone for the rest of this run and
-   drive review directly via whatever affordance opens it (grep confirmed
-   `beginAutopilotReview()` is only wired from the banner's Review button and
-   from `cullCompletionStage`'s folded banner — if the plain banner is gone,
-   the review path may only be reachable by not dismissing it. **Reorder the
-   card in practice**: run steps 4-6 non-destructively (inspect only, don't
-   dismiss), THEN branch: dismiss-and-verify-nothing-changes as one leaf,
-   separately open Review as another leaf, on two independent runs of steps
-   1-4 if the driving agent finds Dismiss is a dead end once clicked. Note
-   this ordering risk explicitly when actually driving the card.
-7. **Open review (undismissed banner).** `script/ax_drive.sh press --role
-   AXButton --contains "Review"`; then `script/ax_drive.sh wait --role
-   AXStaticText --contains "Reviewing"`. Batch-select a subset (not all) of
-   the proposed assets in the grid (shift-click or ⌘-click per whatever the
-   grid's multi-select gesture is).
+   The grid badges (item 53) must still render — they read the ghost
+   directly via `AutopilotGhost.kind(in:)`, not through the banner.
+6. **Review is reachable after Dismiss — the open question this card used to
+   flag is resolved.** Dismissing the banner only clears
+   `model.autopilotRunSummary`; it leaves `autopilotGhostAssetIDs` (and the
+   ghosts themselves) untouched, so the Cull sidebar's "Autopilot Proposals"
+   source stays present and clickable
+   (`cullSourcePresentation`/`CullSource.Target.autopilotProposals`,
+   `AppModel.swift:5858-5859` `activateCullSource` → `beginAutopilotReview()`)
+   — a banner Dismiss is **not** a one-way door to Review; it is simply one
+   of three independent entry points into `beginAutopilotReview()` (the
+   standalone banner's own "Review" button and `cullCompletionStage`'s
+   folded banner are the other two, neither re-driven here). ⌘1 for Cull,
+   then click the sidebar row: `script/ax_drive.sh press --contains
+   "Autopilot Proposals"`; then `script/ax_drive.sh wait --role
+   AXStaticText --contains "Reviewing"`.
+7. **Batch-select a subset (not all) of the ghost-carrying assets** in the
+   grid (shift-click or ⌘-click per whatever the grid's multi-select gesture
+   is).
 8. **Commit selected (item 54, partial commit).**
    `script/ax_drive.sh press --role AXButton --contains "Commit"` matching the
-   "Commit N" button (N = selection count, not the full proposal count —
+   "Commit N" button (N = selection count, not the full ghost count —
    distinguish from "Commit all N" by exact label). The selected assets'
-   `metadata_json.flag`/keyword already reflected the proposal tentatively
+   `metadata_json.flag`/keyword already reflected the ghost tentatively
    (step 4); Commit is what *confirms* it — assert only the selected assets'
    `aiUnconfirmedFields` no longer contains `flag` (and their `catalog_generation`
    bumps again, and their `.xmp` sidecar now reflects the value), while the
@@ -154,28 +165,31 @@ end-to-end and flagged this card as stale on this one point.)
     ```
 
 ## Expected
-- Step 3: `autopilot_proposals` becomes > 0 and the banner appears within ~120s.
-  **Fails if** proposals stay 0 or an error alert shows.
-- Step 4: proposals > `PROP0`, `SUM(catalog_generation)` > `GEN0` (the run's
-  own tentative writes), every proposed pick/reject asset's `metadata_json.flag`
-  is already set but `aiUnconfirmedFields` contains `flag` and no `.xmp`
-  reflects it yet, and every proposed asset's grid cell shows the matching
-  KEEP/CUT badge. **Fails if** a proposed asset's `flag` is set without
-  `aiUnconfirmedFields` containing `flag` (a tentative verdict silently landed
-  as confirmed — report immediately, do not soften it), if a sidecar already
-  exists for it, or a badge doesn't match `autopilot_proposals.kind`, or a
-  `keyword`-kind proposal wrongly shows a KEEP/CUT badge (source says keyword
-  proposals carry no badge).
+- Step 3: the ghost count becomes > `GHOST0` and the banner appears within
+  ~120s. **Fails if** it stays at `GHOST0` or an error alert shows.
+- Step 4: ghost count > `GHOST0`, `SUM(catalog_generation)` > `GEN0` (the
+  run's own tentative writes), every ghost-carrying asset's
+  `metadata_json.flag` is already set with `aiUnconfirmedFields` containing
+  `flag` and no `.xmp` reflects it yet, and every ghost-carrying asset's grid
+  cell shows the matching KEEP/CUT badge. **Fails if** a ghost's `flag` is
+  set without `aiUnconfirmedFields` containing `flag` (a tentative verdict
+  silently landed as confirmed — report immediately, do not soften it), if a
+  sidecar already exists for it, or a badge doesn't match the ghost's own
+  flag value.
 - Step 5: banner Dismiss hides the banner but changes nothing further in the
-  catalog (proposal rows and the generation sum are unchanged from step 4)
-  and the grid badges persist. **Fails if** Dismiss deletes proposal
-  rows, writes any metadata, or also clears the grid badges.
-- Step 7: "Reviewing N proposals" appears with N ≥ 1.
+  catalog (the ghost count and the generation sum are unchanged from step 4)
+  and the grid badges persist. **Fails if** Dismiss clears any ghost, writes
+  any metadata, or also clears the grid badges.
+- Step 6: the "Autopilot Proposals" sidebar row is present and clickable
+  after Dismiss, and clicking it reaches "Reviewing N proposals" with N ≥ 1.
+  **Fails if** the row is absent, disabled, or clicking it fails to open
+  review — that would mean Dismiss really is a one-way door, contradicting
+  Source's resolution of the prior open question.
 - Step 8: "Commit N" (N = current selection) confirms only the selected
   assets — their `aiUnconfirmedFields` drops `flag` and their `.xmp` now
   reflects the value, while unselected assets in the same run stay
   tentative/unconfirmed. **Fails if** the partial commit confirms every
-  proposal instead of just the selection (Commit selected and Commit all
+  ghost instead of just the selection (Commit selected and Commit all
   behave identically — the commit scoping is broken).
 - Step 9: `GEN1 > GEN0` after "Commit all N" confirms the rest (note this
   inequality was already true after step 4's tentative writes — it does not
@@ -184,6 +198,14 @@ end-to-end and flagged this card as stale on this one point.)
 - Step 11: the generation sum settles back toward `GEN0` (Undo reverted both
   the run's tentative writes and any confirmed commits). Quote `GEN0`, the
   post-step-8 sum, `GEN1`, and the final sum side by side.
+- **Dismiss (review toolbar), documented but not driven live by this card**:
+  `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9903`) records
+  `removed_ai_labels` for each dismissed ghost's flag value and writes no
+  sidecar — the same recorded-removal mechanism a direct `U` on a tentative
+  flag uses (source-verified; this card never presses "Dismiss selected"
+  live, only banner Dismiss and Commit — see Sharp edges for the gap and
+  `cull-029-autopilot-ghost-derivation.md`'s Step 6 P0 leg for the
+  equivalent `U`-based coverage of the same underlying gesture).
 
 ## Cleanup
 ```bash
@@ -212,19 +234,29 @@ Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
   auto-evaluates because "Read imported frames" defaults on; if proposals stay
   0, confirm the import finished (`SELECT count(*) FROM assets` grew) and give
   evaluation time to drain before concluding failure.
-- **Open question (step 6): whether Review is still reachable after the
-  banner's Dismiss.** `beginAutopilotReview()` appears wired only from the
-  standalone banner's Review button (`LibraryGridView.swift:2296-2301`) and
-  the folded banner inside the completion stage
-  (`LibraryGridView.swift:3582-3587`) — not from anywhere else. If Dismiss
-  genuinely removes the only path to Review for that run, items 52 (Dismiss)
-  and 54 (Review→Commit) may be mutually exclusive per run and this card's
-  steps 5-11 need two separate import runs rather than one sequential run.
-  Flagging for the runner rather than guessing; resolve empirically on first
-  execution and fix the step ordering here if so.
+- **Resolved (step 6): Review stays reachable after the banner's Dismiss.**
+  `beginAutopilotReview()` has three independent entry points — the
+  standalone banner's Review button, `cullCompletionStage`'s folded banner,
+  and the Cull sidebar's "Autopilot Proposals" source
+  (`activateCullSource(.autopilotProposals)`, `AppModel.swift:5858-5859`).
+  Dismissing the banner only clears `model.autopilotRunSummary`
+  (`dismissAutopilotRunSummary`) — it never touches `autopilotGhostAssetIDs`
+  or any ghost, so the sidebar row (present whenever
+  `!autopilotGhostAssetIDs.isEmpty`, `AppModel.swift:5885-5892`) survives
+  Dismiss and stays clickable. Items 52 (Dismiss) and 54 (Review→Commit) are
+  **not** mutually exclusive; one sequential import run (steps 1-11 as
+  ordered above) exercises both without a second import.
 - "Commit N" / "Dismiss selected" in the review toolbar are both disabled
   when the batch selection is empty (`.disabled(selectedIDs.isEmpty)`) —
   don't forget to select before asserting those buttons are pressable.
+- **This card never drives "Dismiss selected" live**, despite its own title
+  promising "review (selected/all), commit, dismiss, undo" — Steps 1-11
+  only ever exercise Commit selected/Commit all/Undo all. Real coverage gap,
+  not a card-authoring shortcut: a future revision should add a leg that
+  seeds a second batch of ghosts, presses "Dismiss selected" on a subset,
+  and asserts `removed_ai_labels` gains one row per dismissed ghost's flag
+  value with no sidecar written (see the new Expected bullet above for the
+  source-verified fact this leg would pin).
 
 ## Run status
 NOT RUN AGAINST THE RECONCILED CONTENT — reconciled 2026-07-15 to the
@@ -238,3 +270,26 @@ composition and Dismiss-hides-nothing-but-the-summary behavior are
 unaffected. Supersedes prior status: an earlier UNRUN note (source-read
 2026-07-10) covered the *old* confirm-before-write framing — not valid
 evidence for this revision. Needs a human-present re-run.
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: rewritten
+wholesale to ghost ground truth. `autopilot_proposals` no longer exists as a
+table (SP-D0 dropped it forward-only) — every `SELECT ... FROM
+autopilot_proposals` query (baseline, poll loop, and the Step 4 cross-check)
+became the ghost query `EXISTS (SELECT 1 FROM
+json_each(metadata_json,'$.aiUnconfirmedFields') WHERE value='flag')`, the
+same predicate `cull-029-autopilot-ghost-derivation.md` pins; the grid
+badge's source changed from `autopilotProposalDecision(for:)` (deleted) to
+`AutopilotGhost.kind(in: asset.metadata)` (Steps 4-5). Step 6's prior open
+question — "is Review reachable after Dismiss" — is **resolved**: the Cull
+sidebar's "Autopilot Proposals" source is a third, independent entry point
+into `beginAutopilotReview()` that Dismiss never disturbs, so Step 6 now
+drives that route directly instead of speculating about a two-import
+workaround; Steps 7-11 renumbered down by one to absorb the merge of the
+old "open review" step into the new Step 6. Added an Expected bullet and a
+Sharp-edges gap note documenting that `dismissAutopilotProposals` now
+records `removed_ai_labels` (behavior change 6 of the ghost-derivation
+spec) — this card still doesn't drive "Dismiss selected" live, a real
+pre-existing gap this reconciliation surfaced rather than closed.
+**Supersedes prior status**: the 2026-07-15 reconciliation above, and any
+run against it, predates the `autopilot_proposals` drop and the sidebar
+Review route — not valid evidence for this revision. Needs a fresh VM run.

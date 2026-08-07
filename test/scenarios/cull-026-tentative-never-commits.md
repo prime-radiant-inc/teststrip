@@ -23,53 +23,53 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   projection regardless of its raw value. `MetadataField.flag.rawValue`
   is `"flag"` (`:16-21`).
 - **Undecided-everywhere**: `AppModel.cullUndecidedCount`
-  (`AppModel.swift:6549-6562`) filters on `confirmedProjection.flag == nil`
+  (`AppModel.swift:6846-6851`) filters on `confirmedProjection.flag == nil`
   explicitly (doc comment: "A tentative AI flag ... counts as undecided
   too — it isn't a user decision yet"). The HUD's pick/reject counts come
   from `cullingProgressSummary` → `cullingDecisionCounts()` →
-  `cullingDecisionCount(flag:repository:)` (`:2701-2736`), which queries
+  `cullingDecisionCount(flag:repository:)` (`:2795-2801`), which queries
   **`assetCount(ids:confirmedFlag:)`**
-  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:563-582`) — SQL
+  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:586-605`) — SQL
   `json_extract(metadata_json,'$.flag') = ? AND NOT EXISTS (SELECT 1 FROM
   json_each(metadata_json,'$.aiUnconfirmedFields') WHERE json_each.value =
-  ?)` (the `confirmedFieldClauseSQL`, `CatalogRepository.swift:3017-3024`) —
+  ?)` (the `confirmedFieldClauseSQL`, `CatalogRepository.swift:2947-2948`) —
   a tentative reject is structurally excluded from `rejectCount`. The HUD
   renders this as `sessionClusterText`
   (`CullHUDPresentation.swift:54-56`, "✓ N · ✕ M · K left") with an explicit
   `.accessibilityLabel("\(pickCount) picks, \(rejectCount) rejects,
-  \(undecidedCount) left")` (`LibraryGridView.swift:4176-4182`). The
+  \(undecidedCount) left")` (`LibraryGridView.swift:4383-4389`). The
   progress bar's fill fraction is `reviewedCount / totalCount` where
   `reviewedCount = pickCount + rejectCount`
   (`AppModel.swift:126-128`) — so a tentative reject also doesn't move the
   progress bar, only `undecidedCount` (`= totalCount - pickCount -
   rejectCount`, `CullHUDPresentation.swift:34`) absorbs it.
 - **Move-rejects exclusion**: `rejectRelocationScope(destinationFolder:)`
-  (`AppModel.swift:11690-11734`) first queries raw `flag(.reject)` matches
-  (`:11695-11698`, which **does** include tentative rejects — the raw SQL
+  (`AppModel.swift:12030-12074`) first queries raw `flag(.reject)` matches
+  (`:12035-12038`, which **does** include tentative rejects — the raw SQL
   predicate doesn't know about provenance), then explicitly skips any match
   whose `aiUnconfirmedFields.contains(.flag)` inside the per-asset loop
-  (`:11712-11714`: "A tentative AI reject ... is excluded outright — it
+  (`:12048-12051`: "A tentative AI reject ... is excluded outright — it
   must never be moved or trashed. This is the safety-critical guard.").
   Critically, this skip is **silent** — it increments none of
   `unavailableCount`/`alreadyInDestinationCount`/`outsideScopeCount`, so the
   sheet's own count reconciliation gives no visible hint that N rejects
   were excluded for being tentative (contrast with `outsideScopeCount`,
   which the sheet **does** disclose, per its own doc comment,
-  `AppModel.swift:1501-1505`). `RejectRelocationPreflight.moveCount`
-  (`:1533`, `= plans.count`) and the trash-mode sheet's primary button title
+  `AppModel.swift:1518-1522`). `RejectRelocationPreflight.moveCount`
+  (`:1553`, `= plans.count`) and the trash-mode sheet's primary button title
   `"Move \(preflight.moveCount) to Trash"`
-  (`RejectRelocationSheetPresentation.init`, `LibraryGridView.swift:5248-
-  5273`, trash branch at `:5259-5264`) both derive from this
+  (`RejectRelocationSheetPresentation.init`, `LibraryGridView.swift:5561-
+  5586`, trash branch at `:5572-5577`) both derive from this
   already-filtered `scope`. Note the confirm-toggle's own label is a
   *different*, mode-agnostic string —
   `Toggle(preflight.confirmationText, isOn: $isRejectRelocationConfirmed)`
-  (`LibraryGridView.swift:3442`) always reads `"Move \(moveCount) reject
+  (`LibraryGridView.swift:3466`) always reads `"Move \(moveCount) reject
   \(moveCount == 1 ? "photo" : "photos") to Trash"` (`RejectRelocationPreflight
-  .confirmationText`, `AppModel.swift:1537-1539`, using `trashDisplayFolder`'s
+  .confirmationText`, `AppModel.swift:1557-1559`, using `trashDisplayFolder`'s
   last path component "Trash") even in trash mode — it does **not** say
   "Move N to Trash" the way the primary button does. `moveRejectsToTrash(_:)`
-  (`AppModel.swift:11963`) iterates **only** `zip(preflight.assetIDs,
-  preflight.plans)` (mirrors the folder-mode loop at `:11887`) — it never
+  (`AppModel.swift:12303`) iterates **only** `zip(preflight.assetIDs,
+  preflight.plans)` (mirrors the folder-mode loop at `:12227`) — it never
   re-queries the catalog, so an asset that never made it into the preflight
   structurally cannot be moved by this call, independent of catalog state
   at call time. Trash mode `deleteAsset`s the catalog row for whatever it
@@ -77,34 +77,38 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   same mechanism) — a row surviving after the move is itself proof it was
   never touched.
 - **Confirm/override provenance rule**: `setFlagForSelectedAsset(_ flag:)`
-  (`AppModel.swift:7027-7040`) unconditionally does
+  (`AppModel.swift:7352-7380`) unconditionally does
   `metadata.aiUnconfirmedFields.remove(.flag)` regardless of whether the new
-  value matches the old one — comment at `:7031-7033`: "agreeing with (or
+  value matches the old one — comment at `:7371-7373`: "agreeing with (or
   overriding) a tentative AI flag must confirm it, not just possibly change
   its value." The write isn't skipped as a no-op even when the flag value
   is unchanged, because `aiUnconfirmedFields` itself changed
   (`updateSelectedAssetMetadata`'s `updatedMetadata != originalAsset
-  .metadata` guard, `:7751`, compares the whole struct). A confirmed flag
+  .metadata` guard, `:8108`, compares the whole struct). A confirmed flag
   is sidecar-eligible: `syncMetadataSidecar`
-  (`AppModel.swift:8171-` ff.) queues (worker present) or writes
+  (`AppModel.swift:8533-` ff.) queues (worker present) or writes
   synchronously the `.xmp` sidecar's `ts:Pick` attribute
   (`Sources/TeststripCore/Metadata/XMPPacket.swift:73`) from
   `metadata.confirmedProjection`.
-- **The separate "remove/decline" gesture exists in the model but has no
-  wired UI for flags.** `AppModel.removeAIField(_:for:)`
-  (`AppModel.swift:8034-8058`) is the literal CLAUDE.md "or removes it"
-  path — clears the field and records `removed_ai_labels`
-  (`Sources/TeststripCore/Catalog/CatalogMigrations.swift:247-255`) keyed
-  by the rejected value (`"pick"`/`"reject"` for a flag,
-  `AppModel.swift:8060-8071`) "so a future promoter (autopilot) can
-  recognize and skip re-proposing that same value." Grepping every call
-  site: the **only** UI wiring is for `.caption`
-  (`InspectorView.swift:1169`) — nothing in the shipped culling-flow-shell
-  calls `removeAIField(.flag, for:)`. This card therefore tests the two
-  gestures that **are** wired for a pick/reject flag — re-asserting the
-  same decision (`P`/`X` again) and choosing the opposite one — both of
-  which go through `setFlagForSelectedAsset`, not `removeAIField`, and so
-  neither writes a `removed_ai_labels` row. See Sharp edges.
+- **The separate "remove/decline" gesture — SP-D0 wired it for flags too
+  (2026-08-06 correction; this bullet previously claimed it had no flag
+  UI at all).** `AppModel.removeAIField(_:for:)` (`AppModel.swift:8391-8420`)
+  is the literal CLAUDE.md "or removes it" path — clears the field and
+  records `removed_ai_labels`
+  (`Sources/TeststripCore/Catalog/CatalogMigrations.swift:231-238`) keyed
+  by the rejected value (`"pick"`/`"reject"` for a flag) "so a future
+  promoter (autopilot) can recognize and skip re-proposing that same
+  value." `AppModel.setFlagForSelectedAsset(_:)` now routes a `U`
+  (`.clearFlag`) on a **still-tentative** ghost through exactly this path
+  (`AppModel.swift:7362-7366` — `if flag == nil, ...
+  aiUnconfirmedFields.contains(.flag) { try removeAIField(.flag, for:
+  selectedAsset.id) }`); `U` on an already-**confirmed** flag still takes
+  the plain-clear branch this bullet originally described, which goes
+  through `setFlagForSelectedAsset`'s ordinary write, not `removeAIField`,
+  and writes no `removed_ai_labels` row. This card only exercises confirm
+  and override (never a still-tentative `U`), so neither of *this card's*
+  own two gestures writes a `removed_ai_labels` row — but the gesture
+  itself is no longer unwired; see Sharp edges for where it's covered.
 - **Fixture and seeding gap**: no existing `TeststripBench` seed command
   produces a pre-flagged tentative-AI asset (`SmokeCatalogSeeder`'s formula,
   `Sources/TeststripBench/SmokeCatalogSeeder.swift:145-147`:
@@ -321,20 +325,22 @@ rm -rf "${TMPDIR:-/tmp}/teststrip-vm-seeds/smoke/Teststrip"
 ```
 
 ## Sharp edges
-- **This card cannot exercise the "remove/decline" gesture
-  (`removeAIField(.flag,...)` / `removed_ai_labels`) for a pick/reject
-  flag** — grepped every call site and only `.caption` is wired to any
-  control in the shipped UI (`InspectorView.swift:1169`). "Confirming then
-  rejecting" per this card's brief is interpreted as the two gestures that
-  *are* reachable: re-asserting the same decision (confirms) and choosing
-  the opposite decision (also confirms, to a different value) — both go
-  through `setFlagForSelectedAsset`, not `removeAIField`, so neither
-  records a `removed_ai_labels` row. If a future task wires a "decline the
-  AI's suggestion, stay undecided" control for flags, this card's steps
-  6-7 should grow a third leg exercising `removeAIField(.flag,...)`
-  directly and asserting the `removed_ai_labels` row exists (so a future
-  autopilot re-proposal is suppressed) — flagging this as a real gap, not
-  a card-authoring shortcut.
+- **This card doesn't exercise the "remove/decline" gesture
+  (`removeAIField(.flag,...)` / `removed_ai_labels`) — but the leg this
+  bullet used to ask a "future task" to add now exists elsewhere
+  (2026-08-06 update).** This card's own steps 6-7 only ever confirm
+  (re-assert the same decision) or override (choose the opposite decision)
+  — both go through `setFlagForSelectedAsset`'s ordinary write, not
+  `removeAIField`, so neither records a `removed_ai_labels` row here, and
+  that remains true. What's changed: `U` on a still-tentative ghost is now
+  wired to `removeAIField(.flag, for:)` (`AppModel.swift:7362-7366`, see
+  Source above), and `cull-029-autopilot-ghost-derivation.md`'s Step 6 P0
+  leg drives exactly that gesture end-to-end — pressing `U` on a
+  still-tentative ghost, asserting `metadata_json` clears, `removed_ai_labels`
+  gains exactly one row, and a second Autopilot run does not resurrect it.
+  This card's cross-reference to `cull-017-autopilot-review.md` (below,
+  the "shared local `smoke` seed template" bullet) stays valid and
+  unaffected by this change.
 - **The preflight's tentative-exclusion is silent** — unlike
   `outsideScopeCount`, which the sheet discloses in its summary text, the
   aiUnconfirmedFields skip in `rejectRelocationScope` produces no visible
@@ -430,3 +436,19 @@ directly reading `Metadata.swift`, `AppModel.swift` (`cullUndecidedCount`,
 `CullHUDPresentation.swift`, `LibraryGridView.swift`
 (`RejectRelocationSheetPresentation`), `XMPPacket.swift`, and
 `SmokeCatalogSeeder.swift`.
+
+**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation) — the live PASS
+above is unaffected.** None of this card's 8 driven steps ever queried
+`autopilot_proposals` or any autopilot machinery — the confirmed-flag SQL
+predicate (`assetCount(ids:confirmedFlag:)`) and the HUD/preflight
+assertions are untouched by SP-D0, so the 2026-07-28 PASS evidence still
+stands and does not need a fresh VM run on that basis alone. What changed
+is documentation only: the Source bullet's claim that "the only UI wiring
+is for `.caption`... nothing in the shipped culling-flow-shell calls
+`removeAIField(.flag, for:)`" was corrected — `U` on a still-tentative
+ghost is now wired to exactly that call — and the matching Sharp-edges gap
+note was updated to point at `cull-029-autopilot-ghost-derivation.md`'s
+Step 6 P0 leg, which now covers that gesture end-to-end. Re-verified
+`removeAIField`'s citation (`AppModel.swift:8391-8420`, was `8034-8058`)
+and `removed_ai_labels`'s (`CatalogMigrations.swift:231-238`, was
+`247-255`) against the current tree while making this correction.

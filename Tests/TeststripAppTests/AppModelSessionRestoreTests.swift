@@ -230,6 +230,35 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelC.librarySearchText, "")
     }
 
+    // SP-D0: ghost badges survive relaunch natively — the unconfirmed AI flag
+    // lives in metadata_json, so nothing has to be reconstructed for them.
+    func testGhostsSurviveRelaunch() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-ghosts")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        var ghostAsset = makeAsset(id: "ghost-1", filename: "ghost-1.dng")
+        ghostAsset.metadata.flag = .pick
+        ghostAsset.metadata.aiUnconfirmedFields = [.flag]
+        let plainAsset = makeAsset(id: "plain-1", filename: "plain-1.dng")
+        try catalogA.repository.upsert([ghostAsset, plainAsset])
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        XCTAssertEqual(modelA.autopilotGhostAssetIDs, [ghostAsset.id])
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.autopilotGhostAssetIDs, [ghostAsset.id])
+        XCTAssertEqual(
+            AutopilotGhost.kind(in: try catalogB.repository.asset(id: ghostAsset.id).metadata),
+            .pick
+        )
+
+        // The banner is run-time only: `load(...)` restores ghosts from
+        // metadata_json and nothing else, so a relaunched model has no run
+        // summary to render a banner from.
+        XCTAssertNil(modelB.autopilotRunSummary)
+    }
+
     func testSessionRestoreDisabledByDefaultDoesNotPersistOrRestore() throws {
         let directory = try makeTemporaryDirectory(named: "restore-disabled-by-default")
         let catalogA = try makeCatalog(directory: directory)
