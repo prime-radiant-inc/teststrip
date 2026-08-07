@@ -51,6 +51,13 @@ any set.
    child row is dropped (YAGNI — the scoped mechanic falls out of source
    selection + the existing Batch Metadata entries); Compare / A/B Compare /
    Cull-grid stay transient Cull-lens sub-modes (`g`/`c`/`b`), not lenses.
+9. **Plan-review follow-ups (Jesse, 2026-08-07, post-plan):** Folders and
+   Recent Work stay as sidebar sections; saved dynamic searches relocate
+   into Smart Collections; the Map explicit-ID gap is fixed in this push;
+   the code renames `.reviewQueue` → `.smartCollection` to follow the
+   domain word. Controller-accepted engineering calls: the lens switcher
+   is a button row (a segmented Picker can't disable one segment), and
+   bell-receipt retention is a display cap of 5.
 
 ## Design
 
@@ -97,7 +104,15 @@ Sections, top to bottom:
   Saving the current search as a live smart collection **already exists**
   (the result header's Save ▾ dynamic-search action); the section header
   surfaces the same action as "+ New from search…" — reuse, don't rebuild.
-- **Sets** — saved `asset_sets` (static membership), starred first.
+- **Sets** — saved `asset_sets` with **static** membership, starred first.
+  Saved *dynamic* searches render under Smart Collections, not here — the
+  taxonomy is live query = smart collection, frozen membership = set
+  (existing dynamic-set rows relocate; Jesse 2026-08-07).
+- **Folders** — the existing live folder tree, unchanged (omitted from the
+  first draft of this list by accident, kept by decision).
+- **Recent Work** — non-import work sessions (imports have their own
+  section); remains the cull-session reopen path until SP-D builds real
+  resume.
 - **Selection** — transient, bottom, only while a selection exists.
 
 Clicking any source shows it in the current lens. Counts render at the
@@ -205,6 +220,11 @@ Evaluate import (run local reads), Manual Compare over the import.
    relaunches on the same source in Grid (run resume arrives with SP-D).
 9. Receipts (completed imports) appear in the Activity Center; its badge
    stays problems-only.
+10. Reopening a culling session from Recent Work keeps the current lens
+    (was: forced the loupe) — a consequence of source/lens orthogonality.
+11. Map becomes scoped for explicit-ID sources too (saved sets, the
+    Selection); today it silently shows the whole catalog for those — a
+    pre-existing gap, fixed in this push (Jesse 2026-08-07).
 
 ## Invariants (unchanged, re-asserted in tests)
 
