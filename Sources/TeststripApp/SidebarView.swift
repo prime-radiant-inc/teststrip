@@ -38,12 +38,18 @@ struct SidebarView: View {
             }
             // The auto-grouped stack rows moved here verbatim from the deleted
             // Cull sidebar. They are a run surface rather than a source list,
-            // so they stay outside `sidebarSections`.
-            let stackEntries = model.cullingStackListEntries()
-            if !stackEntries.isEmpty {
-                Section("Stacks · Auto-Grouped") {
-                    ForEach(stackEntries) { entry in
-                        stackRow(entry)
+            // so they stay outside `sidebarSections` — and, as in the deleted
+            // CullSidebarView, they render only while the Cull lens is
+            // selected. Gating here (rather than after the call) keeps
+            // `cullingStackListEntries()` — which queries the catalog — off
+            // every other lens's body evaluation.
+            if model.selectedLens == .cull {
+                let stackEntries = model.cullingStackListEntries()
+                if !stackEntries.isEmpty {
+                    Section("Stacks · Auto-Grouped") {
+                        ForEach(stackEntries) { entry in
+                            stackRow(entry)
+                        }
                     }
                 }
             }
@@ -98,6 +104,7 @@ struct SidebarView: View {
                 title: title,
                 help: "New Set from Selection…",
                 accessibilityLabel: "New Set from Selection",
+                hintBinding: $isShowingSavedSetsNoSelectionHint,
                 action: addSavedSetTapped
             )
         case Self.smartCollectionsSectionTitle:
@@ -105,6 +112,7 @@ struct SidebarView: View {
                 title: title,
                 help: "New from search…",
                 accessibilityLabel: "New from search",
+                hintBinding: nil,
                 action: { model.requestSaveSearch() }
             )
         default:
@@ -112,30 +120,51 @@ struct SidebarView: View {
         }
     }
 
+    // `hintBinding` is `nil` for every header but Sets: the no-selection hint
+    // popover is Sets-specific ("save them as a set"), so only the header
+    // that can trigger it may present it. A single shared `@State` bound to
+    // two `.popover(isPresented:)` modifiers would make both headers' add
+    // buttons present together — that was the bug.
     private func headerWithAddButton(
         title: String,
         help: String,
         accessibilityLabel: String,
+        hintBinding: Binding<Bool>?,
         action: @escaping () -> Void
     ) -> some View {
         HStack {
             Text(title)
             Spacer()
-            Button(action: action) {
-                Image(systemName: "plus.circle")
-            }
-            .buttonStyle(.plain)
-            .help(help)
-            .accessibilityLabel(accessibilityLabel)
-            .popover(isPresented: $isShowingSavedSetsNoSelectionHint) {
+            addButton(help: help, accessibilityLabel: accessibilityLabel, hintBinding: hintBinding, action: action)
+        }
+    }
+
+    @ViewBuilder
+    private func addButton(
+        help: String,
+        accessibilityLabel: String,
+        hintBinding: Binding<Bool>?,
+        action: @escaping () -> Void
+    ) -> some View {
+        let button = Button(action: action) {
+            Image(systemName: "plus.circle")
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
+
+        if let hintBinding {
+            button.popover(isPresented: hintBinding) {
                 VStack(spacing: 12) {
                     Text("Select photos, then save them as a set")
                     Button("OK") {
-                        isShowingSavedSetsNoSelectionHint = false
+                        hintBinding.wrappedValue = false
                     }
                 }
                 .padding()
             }
+        } else {
+            button
         }
     }
 

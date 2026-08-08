@@ -339,9 +339,16 @@ public enum UnifiedSidebarPresentation {
         recentWork: [AppWorkActivity],
         starredWork: [AppWorkActivity]
     ) -> [AppWorkActivity] {
-        let recentSlice = Array(recentWork.prefix(5))
+        // Ingest-kind sessions are filtered out before the 5-row windows are
+        // taken, not after — otherwise a run of imports fills both windows
+        // with rows the caller's kind filter then discards, leaving Recent
+        // Work empty even though older non-ingest sessions are sitting just
+        // past the window in the unbounded query.
+        let recentSlice = Array(recentWork.filter { $0.kind != .ingest }.prefix(5))
         let recentIDs = Set(recentSlice.map(\.id))
-        return recentSlice + starredWork.filter { !recentIDs.contains($0.id) }.prefix(5)
+        return recentSlice + starredWork
+            .filter { $0.kind != .ingest && !recentIDs.contains($0.id) }
+            .prefix(5)
     }
 
     private static func folderRows(
