@@ -400,17 +400,17 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         notCoveredBy tokens: [LibraryQueryToken]
     ) -> [ActiveLibraryFilterRow] {
         let tokenTitles = Set(tokens.map(\.display))
-        let tokenTargets = tokens.flatMap(sidebarTargets(for:))
+        let tokenSources = tokens.flatMap(librarySources(for:))
         return rows.filter { row in
             if tokenTitles.contains(row.title) { return false }
-            if let target = row.target, tokenTargets.contains(target) { return false }
+            if let target = row.target, tokenSources.contains(target) { return false }
             return true
         }
     }
 
-    /// Every `SidebarRowTarget` a legacy row for this token's filter could
-    /// carry (mirrors `AppModel.activeLibraryFilterRows`'s target choices).
-    private static func sidebarTargets(for token: LibraryQueryToken) -> [SidebarRowTarget] {
+    /// Every `LibrarySource` a legacy row for this token's filter could carry
+    /// (mirrors `AppModel.activeLibraryFilterRows`'s target choices).
+    private static func librarySources(for token: LibraryQueryToken) -> [LibrarySource] {
         switch (token.field, token.value) {
         case (.rating, .int(let rating)):
             return rating == 5 ? [.smartCollection(.fiveStars)] : []
@@ -419,13 +419,14 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         case (.source, .source(let source)):
             return [.sourceAvailability(source)]
         case (.signal, .signal(let kind)):
+            let evaluationSource = LibrarySource.evaluationKind(kind, titled: kind.filterChipLabel)
             switch kind {
             case .faceCount:
-                return [.evaluationKind(kind), .smartCollection(.facesFound)]
+                return [evaluationSource, .smartCollection(.facesFound)]
             case .ocrText:
-                return [.evaluationKind(kind), .smartCollection(.ocrFound)]
+                return [evaluationSource, .smartCollection(.ocrFound)]
             default:
-                return [.evaluationKind(kind)]
+                return [evaluationSource]
             }
         case (.xmpPending, _):
             return [.metadataSyncPending]

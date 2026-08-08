@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 import TeststripCore
 
-public enum LibraryViewMode: String, CaseIterable, Sendable {
+public enum LibraryViewMode: String, CaseIterable, Codable, Sendable {
     case grid
     case loupe
     case libraryLoupe
@@ -13,79 +13,10 @@ public enum LibraryViewMode: String, CaseIterable, Sendable {
     case map
     case people
     /// The asset grid scoped to the active cull session (Task 18) — same grid
-    /// rendering as `.grid`, but a distinct case so it stays in the `.cull`
-    /// workspace (autopilot badges, cull sidebar, cull session scope) instead
-    /// of jumping to Library the way plain `.grid` does.
+    /// rendering as `.grid`, but a distinct case so it stays in the Cull lens
+    /// (autopilot badges, cull sidebar, cull session scope) instead of jumping
+    /// to the Grid lens the way plain `.grid` does.
     case cullGrid
-}
-
-extension LibraryViewMode: Codable {
-    // Search used to be its own route (`.search`); it's now just the Library
-    // grid with a query in the token field (Task 9). Copilot/Review was its
-    // own route (`.copilot`) until the Cull sidebar's source picker absorbed
-    // it (Task 13). A persisted session from before those migrations decodes
-    // its stored "search"/"copilot" rawValue as `.grid` instead of failing
-    // the whole `SessionRestoreState` decode.
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-        if rawValue == "search" || rawValue == "copilot" {
-            self = .grid
-            return
-        }
-        guard let mode = LibraryViewMode(rawValue: rawValue) else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unknown LibraryViewMode rawValue: \(rawValue)"
-            )
-        }
-        self = mode
-    }
-}
-
-/// The two top-level workspaces the UI is organized around; each
-/// `LibraryViewMode` belongs to exactly one. People is *not* a workspace — it
-/// is a Library sub-view (peer of Grid/Loupe/Timeline/Map), so it lives under
-/// `.library` and is reached from the sub-view toggle, not the ⌘1/⌘2 switcher.
-public enum Workspace: String, CaseIterable, Sendable {
-    case cull
-    case library
-
-    /// The sub-view shown when a workspace is selected for the first time.
-    var defaultSubView: LibraryViewMode {
-        switch self {
-        case .cull: return .loupe
-        case .library: return .grid
-        }
-    }
-
-    /// Display name shared by the toolbar switcher and the View menu.
-    public var title: String {
-        switch self {
-        case .cull: return "Cull"
-        case .library: return "Library"
-        }
-    }
-
-    /// ⌘1/2, shared by the toolbar switcher and the View menu so the two
-    /// never drift out of sync.
-    public var keyEquivalent: KeyEquivalent {
-        switch self {
-        case .cull: return "1"
-        case .library: return "2"
-        }
-    }
-}
-
-extension LibraryViewMode {
-    public var workspace: Workspace {
-        switch self {
-        case .loupe, .compare, .abCompare, .cullGrid:
-            return .cull
-        case .grid, .timeline, .map, .libraryLoupe, .people:
-            return .library
-        }
-    }
 }
 
 /// Which chrome `LoupeView` shows: the culling loupe (`.loupe`) gets the full
@@ -1018,23 +949,6 @@ public struct ProposedPersonPhoto: Identifiable, Equatable {
     public var id: String { asset.id.rawValue }
 }
 
-public enum SidebarRowTarget: Equatable, Sendable {
-    case allPhotographs
-    case search
-    case timeline
-    case people
-    case places
-    case placeholder
-    case smartCollection(SmartCollection)
-    case folder(String)
-    case sourceAvailability(SourceAvailability)
-    case evaluationKind(EvaluationKind)
-    case metadataSyncPending
-    case metadataSyncConflicts
-    case assetSet(AssetSetID)
-    case workSession(WorkSessionID)
-}
-
 public enum SidebarRowContextActionKind: Equatable, Sendable {
     case renameAssetSet(AssetSetID)
     case duplicateAssetSet(AssetSetID)
@@ -1079,7 +993,7 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var detailText: String?
     public var countText: String?
     public var tone: SidebarRowTone
-    public var target: SidebarRowTarget
+    public var target: LibrarySource?
     public var liveMockupPlaceholder: LiveMockupPlaceholder?
     /// Indentation level for tree-shaped sections (currently only Folders).
     /// Zero for every other section's flat rows.
@@ -1094,7 +1008,7 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
         detailText: String? = nil,
         countText: String? = nil,
         tone: SidebarRowTone = .neutral,
-        target: SidebarRowTarget = .placeholder,
+        target: LibrarySource? = nil,
         liveMockupPlaceholder: LiveMockupPlaceholder? = nil,
         depth: Int = 0,
         disclosure: SidebarRowDisclosure = .none
@@ -1111,7 +1025,7 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     }
 
     public var isSelectable: Bool {
-        target != .placeholder
+        target != nil
     }
 }
 
@@ -1123,7 +1037,7 @@ public enum SidebarRowDisclosure: Equatable, Sendable {
 
 public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
     public var title: String
-    public var target: SidebarRowTarget?
+    public var target: LibrarySource?
     /// True when this row is the unparsed leftover of the top-bar search text (LibrarySearchIntent's
     /// residual text), which is matched as plain filename/text search rather than a structured filter.
     public var isPlainSearchFallback: Bool
@@ -1136,7 +1050,7 @@ public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
         isPlainSearchFallback ? "Not a filter — matching file names and photo text" : nil
     }
 
-    public init(title: String, target: SidebarRowTarget? = nil, isPlainSearchFallback: Bool = false) {
+    public init(title: String, target: LibrarySource? = nil, isPlainSearchFallback: Bool = false) {
         self.title = title
         self.target = target
         self.isPlainSearchFallback = isPlainSearchFallback
@@ -2084,34 +1998,28 @@ public final class AppModel {
     public var sidebarSections: [SidebarSection]
     public var selectedView: LibraryViewMode {
         didSet {
-            // .compare/.abCompare aren't sticky restore targets (item 1's
-            // ⌘1 root cause): they're transient comparator overlays, not a
-            // "home" sub-view. Without this, re-pressing ⌘1 while already in
-            // Cull workspace but trapped in A/B Compare set
-            // `selectedView = lastSubView[.cull]`, which *was* `.abCompare`
-            // (recorded on the way in) — a silent no-op that read as ⌘1
-            // being dead, when it was actually just restoring the trap.
-            if selectedView != .compare && selectedView != .abCompare {
-                lastSubView[selectedView.workspace] = selectedView
+            // .compare/.abCompare aren't sticky restore targets (the ⌘1 dead-key
+            // root cause): they're transient comparator overlays, not a "home"
+            // sub-mode. Without this, re-pressing ⌘1 while trapped in A/B
+            // Compare restored the trap instead of escaping it.
+            if selectedView.lens == .cull, selectedView != .compare, selectedView != .abCompare {
+                lastCullViewMode = selectedView
             }
             updateCompareSetAfterViewChange(from: oldValue)
             persistSessionState()
-            if selectedView.workspace != oldValue.workspace {
-                rebuildSidebarSections()
-            }
             // The loupe's toast task re-fires whenever the view reappears,
             // re-rendering whatever feedback is still stored here — so a
             // stale decision toast (including the once-per-session hint
             // below) replayed on every re-entry to Cull. Expire it when the
-            // workspace is left.
-            if oldValue.workspace == .cull, selectedView.workspace != .cull {
+            // lens is left.
+            if oldValue.lens == .cull, selectedView.lens != .cull {
                 lastCullingMetadataDecision = nil
             }
             // The ? keymap overlay is the loupe's whole manual, but nothing
             // advertised it (persona-8) — announce it once per session on
-            // first entry to the Cull workspace, via the decision toast.
-            if selectedView.workspace == .cull,
-               oldValue.workspace != .cull,
+            // first entry to the Cull lens, via the decision toast.
+            if selectedView.lens == .cull,
+               oldValue.lens != .cull,
                !hasShownCullKeyboardHint {
                 hasShownCullKeyboardHint = true
                 lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
@@ -2127,47 +2035,49 @@ public final class AppModel {
 
     /// Once per session: the keymap-overlay hint shown on first entry to Cull.
     private var hasShownCullKeyboardHint = false
-    /// Which workspace `selectedView` currently belongs to.
-    public var selectedWorkspace: Workspace {
-        selectedView.workspace
+
+    /// What the user is looking at, as opposed to how. Stored rather than
+    /// reconstructed from filter state, so the scope line can name it and a
+    /// relaunch can restore it.
+    public private(set) var selectedSource: LibrarySource = .allPhotos
+
+    /// Which lens `selectedView` currently belongs to.
+    public var selectedLens: LibraryLens {
+        selectedView.lens
     }
 
     /// Whether the Culling menu's shortcut items (Navigation/Ratings/Color
     /// Labels/Flags/Loupe/Scope) should be enabled right now. SwiftUI menu
-    /// `.keyboardShortcut` bindings are workspace-blind — they fire from
-    /// anywhere the app is frontmost, unlike `CullingKeyCaptureView`'s local
-    /// key monitor, which `CullingKeyCaptureGate` scopes to the Cull
-    /// workspace's loupe/compare/A-B sub-views. Mirroring that same gate here
-    /// keeps the menu (bare "P"/"X"/etc, no modifiers) from writing flags or
-    /// promoting frames while e.g. the Library Loupe is frontmost.
+    /// `.keyboardShortcut` bindings are lens-blind — they fire from anywhere
+    /// the app is frontmost, unlike `CullingKeyCaptureView`'s local key
+    /// monitor, which `CullingKeyCaptureGate` scopes to the Cull lens's
+    /// loupe/compare/A-B sub-modes. Mirroring that same gate here keeps the
+    /// menu (bare "P"/"X"/etc, no modifiers) from writing flags or promoting
+    /// frames while e.g. the Loupe lens is frontmost.
     public var isCullingMenuShortcutActive: Bool {
-        CullingKeyCaptureGate.isActive(workspace: selectedWorkspace, selectedView: selectedView)
+        CullingKeyCaptureGate.isActive(lens: selectedLens, selectedView: selectedView)
     }
 
-    /// The sidebar sections for a given workspace. Library is navigation
-    /// only (Collections/Saved Sets/Folders) — shared by every Library view,
-    /// People included; Cull has its own sidebar (CullSidebarView).
-    public func sidebarSections(for workspace: Workspace) -> [SidebarSection] {
-        switch workspace {
-        case .library:
-            return Self.defaultSidebarSections(
-                totalAssetCount: totalAssetCount,
-                savedAssetSets: savedAssetSets,
-                assetSetCounts: assetSetCounts,
-                workSessionScopeCounts: workSessionScopeCounts,
-                catalogFolders: catalogFolders,
-                expandedFolderPaths: expandedFolderPaths,
-                recentWork: recentWork,
-                starredWork: starredWork,
-                matchedWork: workHistorySearchResults
-            )
-        case .cull:
-            return []
-        }
+    /// One sidebar, every lens. Sources are nouns; lenses are verbs; the
+    /// sidebar lists nouns, so it does not vary with the lens.
+    public func buildSidebarSections() -> [SidebarSection] {
+        Self.defaultSidebarSections(
+            totalAssetCount: totalAssetCount,
+            savedAssetSets: savedAssetSets,
+            assetSetCounts: assetSetCounts,
+            workSessionScopeCounts: workSessionScopeCounts,
+            catalogFolders: catalogFolders,
+            expandedFolderPaths: expandedFolderPaths,
+            recentWork: recentWork,
+            starredWork: starredWork,
+            matchedWork: workHistorySearchResults
+        )
     }
-    /// The last sub-view shown in each workspace, so switching workspaces
-    /// and back restores where the user left off.
-    private var lastSubView: [Workspace: LibraryViewMode] = [:]
+
+    /// The cull sub-mode to return to when the Cull lens is re-entered. The
+    /// other five lenses have exactly one route each, so one property replaces
+    /// the old per-workspace dictionary.
+    private var lastCullViewMode: LibraryViewMode = .loupe
     public var assets: [Asset]
     public var totalAssetCount: Int
     /// Primary asset IDs that have >=1 bonded secondary (a RAW with a bonded
@@ -2177,9 +2087,9 @@ public final class AppModel {
     public private(set) var assetIDsWithBondedSecondaries: Set<AssetID> = []
     // Global view history so ⌘⇧[ / ⌘⇧] step back and forth through the
     // sidebar destinations the user has visited this session.
-    private var navigationBackStack: [SidebarRowTarget] = []
-    private var navigationForwardStack: [SidebarRowTarget] = []
-    private var currentNavigationTarget: SidebarRowTarget?
+    private var navigationBackStack: [LibrarySource] = []
+    private var navigationForwardStack: [LibrarySource] = []
+    private var currentNavigationTarget: LibrarySource?
     private var isRestoringNavigation = false
     public var selectedAssetID: AssetID? {
         didSet {
@@ -2241,7 +2151,7 @@ public final class AppModel {
     private(set) var cullRunTracker = CullRunTracker()
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
-    /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
+    /// `.inspector()` and gated by `LensChromePolicy.showsInspector`.
     public var isInspectorVisible = false
     /// Which stacked inspector section the ⌥⌘1..3 menu items (or a
     /// conflict deep-link) most recently asked to scroll to. Read alongside
@@ -2602,13 +2512,12 @@ public final class AppModel {
 
     // Bumped by Edit ▸ Find ⌘F so LibraryGridView's @FocusState can move
     // keyboard focus into the query field. The query field only exists in the
-    // Library *browse* views — not the Cull views, and not People (a Library
-    // view that suppresses browse chrome) — so from anywhere that can't show
-    // it, switch to the grid first rather than silently doing nothing.
+    // browse lenses — not Cull, not People — so from anywhere that can't show
+    // it, switch to the Grid lens first rather than silently doing nothing.
     public private(set) var focusSearchRequestToken = 0
     public func requestFocusSearch() {
-        if !WorkspaceChromePolicy.showsSearchField(selectedView) {
-            selectedView = .grid
+        if !LensChromePolicy.showsSearchField(selectedView) {
+            selectLens(.grid)
         }
         focusSearchRequestToken += 1
     }
@@ -2635,16 +2544,15 @@ public final class AppModel {
     }
 
     public private(set) var exportRequestToken = 0
-    // Export's sheet is a popover hosted on the Library toolbar's Export
-    // button, which only the browse views show
-    // (WorkspaceChromePolicy.showsExportButton) — not Cull, not People. So
-    // bumping the token alone is a silent no-op while Cull is frontmost —
-    // Maya's persona-1 finding ("File > Export does nothing in the Cull
-    // workspace"). Switch to the grid first, so the token-consuming onChange
-    // has somewhere to attach.
+    // Export's sheet is a popover hosted on the toolbar's Export button, which
+    // only the browse lenses show (LensChromePolicy.showsExportButton) — not
+    // Cull, not People. So bumping the token alone is a silent no-op while
+    // Cull is frontmost — Maya's persona-1 finding ("File > Export does
+    // nothing in the Cull workspace"). Switch to the Grid lens first, so the
+    // token-consuming onChange has somewhere to attach.
     public func requestExport() {
-        if !WorkspaceChromePolicy.showsExportButton(selectedView) {
-            selectedView = .grid
+        if !LensChromePolicy.showsExportButton(selectedView) {
+            selectLens(.grid)
         }
         exportRequestToken += 1
     }
@@ -3076,13 +2984,15 @@ public final class AppModel {
     }
 
     /// Deep-links from the Activity Center's conflict row(s) back to the
-    /// affected assets: switches to Library, filters to the XMP-conflict
+    /// affected assets: switches to the Grid lens, filters to the XMP-conflict
     /// scope, selects the assets, and reveals the inspector.
     public func revealConflicts(_ assetIDs: [AssetID]) throws {
         guard !assetIDs.isEmpty else { return }
-        // Land in Grid regardless of which Library subview was last used —
-        // the conflicted selection is only visible there.
+        // A deep link with an explicit destination, not a plain source
+        // selection: land in Grid regardless of the current lens, because the
+        // conflicted selection is only visible there.
         selectedView = .grid
+        selectedSource = .metadataSyncConflicts
         selectedAssetID = assetIDs.first
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
@@ -3303,7 +3213,13 @@ public final class AppModel {
     public var activeLibraryFilterRows: [ActiveLibraryFilterRow] {
         var rows: [ActiveLibraryFilterRow] = []
         if let selectedAssetSet {
-            Self.append(ActiveLibraryFilterRow(title: selectedAssetSet.name, target: .assetSet(selectedAssetSet.id)), to: &rows)
+            Self.append(
+                ActiveLibraryFilterRow(
+                    title: selectedAssetSet.name,
+                    target: .assetSet(selectedAssetSet.id, titled: selectedAssetSet.name)
+                ),
+                to: &rows
+            )
         }
         if let selectedDynamicSetQuery {
             for predicate in selectedDynamicSetQuery.predicates {
@@ -3324,7 +3240,7 @@ public final class AppModel {
         }
         for (index, chip) in searchIntent.chips.enumerated() {
             let target = searchIntent.predicates.indices.contains(index)
-                ? Self.sidebarTarget(for: searchIntent.predicates[index])
+                ? Self.librarySource(for: searchIntent.predicates[index])
                 : nil
             Self.append(ActiveLibraryFilterRow(title: chip, target: target), to: &rows)
         }
@@ -3347,7 +3263,7 @@ public final class AppModel {
         }
         if let flagFilter {
             Self.append(
-                ActiveLibraryFilterRow(title: flagFilter.rawValue.capitalized, target: Self.sidebarTarget(for: .flag(flagFilter))),
+                ActiveLibraryFilterRow(title: flagFilter.rawValue.capitalized, target: Self.librarySource(for: .flag(flagFilter))),
                 to: &rows
             )
         }
@@ -4990,7 +4906,8 @@ public final class AppModel {
     }
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
-        try selectSidebarTarget(row.target)
+        guard let source = row.target else { return }
+        try selectSource(source)
     }
 
     /// Expands or collapses a Folders-sidebar tree row without changing the
@@ -5005,30 +4922,39 @@ public final class AppModel {
         rebuildSidebarSections()
     }
 
-    public func selectSidebarTarget(_ target: SidebarRowTarget) throws {
-        try applySidebarTarget(target)
-        recordNavigation(to: target)
+    public func selectSource(_ source: LibrarySource) throws {
+        try applySource(source)
+        recordNavigation(to: source)
     }
 
-    /// Switches to a workspace, restoring whichever sub-view was last shown
-    /// there (defaulting to each workspace's primary view).
-    public func selectWorkspace(_ workspace: Workspace) {
-        selectedView = lastSubView[workspace] ?? workspace.defaultSubView
+    /// ⌘1–⌘6 and the toolbar switcher. Switching lenses never changes the
+    /// selected source or the selection; the Cull lens returns to whichever
+    /// sub-mode it was last in.
+    public func selectLens(_ lens: LibraryLens) {
+        selectedView = lens == .cull ? lastCullViewMode : lens.defaultViewMode
     }
 
-    /// ⌘I. Toggles the on-demand inspector, reachable in every workspace
-    /// (Task 5 unified it onto the Cull loupe alongside Library/People).
+    /// The switcher's per-lens enabled state for the current source.
+    public var lensAvailabilities: [LensAvailability] {
+        LensRules.availabilities(
+            sourceIsDiagnostic: selectedSource.isDiagnostic,
+            sourceAssetCount: assets.count
+        )
+    }
+
+    /// ⌘I. Toggles the on-demand inspector, reachable in every lens
+    /// (Task 5 unified it onto the Cull loupe alongside the browse lenses).
     public func toggleInspector() {
         isInspectorVisible.toggle()
     }
 
     /// ⌥⌘1..3 (or a conflict deep-link). Scrolls the on-demand inspector to
-    /// a stacked section, presenting the inspector if the current workspace
-    /// can show one.
+    /// a stacked section, presenting the inspector if the current lens can
+    /// show one.
     public func scrollInspector(to section: InspectorTab) {
         inspectorScrollTarget = section
         inspectorScrollRequestToken += 1
-        if WorkspaceChromePolicy.showsInspector(selectedView) {
+        if LensChromePolicy.showsInspector(selectedView) {
             isInspectorVisible = true
         }
     }
@@ -5057,7 +4983,7 @@ public final class AppModel {
         try restoreNavigation(to: next)
     }
 
-    private func recordNavigation(to target: SidebarRowTarget) {
+    private func recordNavigation(to target: LibrarySource) {
         guard !isRestoringNavigation else { return }
         if let current = currentNavigationTarget, current != target {
             navigationBackStack.append(current)
@@ -5066,51 +4992,46 @@ public final class AppModel {
         currentNavigationTarget = target
     }
 
-    private func restoreNavigation(to target: SidebarRowTarget) throws {
+    private func restoreNavigation(to target: LibrarySource) throws {
         isRestoringNavigation = true
         defer { isRestoringNavigation = false }
-        try applySidebarTarget(target)
+        try applySource(target)
         currentNavigationTarget = target
     }
 
-    private func applySidebarTarget(_ target: SidebarRowTarget) throws {
-        switch target {
-        case .allPhotographs:
+    /// Applies a source's scope and records it as the selected source.
+    /// Deliberately never touches `selectedView` except for the one spec'd
+    /// exception: a source the current lens disables on falls back to Grid.
+    private func applySource(_ source: LibrarySource) throws {
+        // Catalog-less models (previews, demo fixtures) have no scope to
+        // apply, but the source is still the answer to "what am I looking
+        // at" — the navigation history and the scope line both read it.
+        guard catalog != nil else {
+            selectedSource = source
+            return
+        }
+        switch source.kind {
+        case .allPhotos:
             selectedAssetSetID = nil
-            selectedView = .grid
             try clearLibraryFilters()
-        case .search:
-            // Search's permanent home is the Library grid's token query
-            // field and result header (Task 9) — SidebarRowTarget.search
-            // just routes there now instead of a dedicated route.
-            selectedAssetSetID = nil
-            selectedView = .grid
-        case .timeline:
-            selectedAssetSetID = nil
-            selectedView = .timeline
-        case .people:
+        case .search(let query):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
-            selectedView = .people
-            refreshPeopleFaceSuggestions()
-        case .places:
-            selectedAssetSetID = nil
-            clearLibraryQueryFilters()
-            selectedView = .map
-            try refreshPlaceData()
-        case .smartCollection(let queue):
-            try applySmartCollection(queue)
+            detachedLibraryFilterPredicates = query.predicates
+            try reload()
+        case .smartCollection(let collection):
+            try applySmartCollection(collection)
+        case .autopilotSuggestions:
+            try beginAutopilotReview()
         case .folder(let path):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             folderFilterText = path
-            selectedView = .grid
             try reload()
         case .sourceAvailability(let availability):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             availabilityFilter = availability
-            selectedView = .grid
             try reload()
         case .evaluationKind(let kind):
             try applyEvaluationKindFilter(kind)
@@ -5118,20 +5039,29 @@ public final class AppModel {
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             metadataSyncPendingFilter = true
-            selectedView = .grid
             try reload()
         case .metadataSyncConflicts:
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             metadataSyncConflictFilter = true
-            selectedView = .grid
             try reload()
         case .assetSet(let id):
             try applyAssetSet(id: id)
         case .workSession(let id):
             try applyWorkSession(id: id)
-        case .placeholder:
-            break
+        case .importChild(let sessionID, let child):
+            try applyImportChild(sessionID: sessionID, child: child)
+        case .selection:
+            try applySelectionSource()
+        }
+        selectedSource = source
+        let resolvedLens = LensRules.resolvedLens(
+            selectedLens,
+            sourceIsDiagnostic: source.isDiagnostic,
+            sourceAssetCount: assets.count
+        )
+        if resolvedLens != selectedLens {
+            selectLens(resolvedLens)
         }
     }
 
@@ -5146,9 +5076,57 @@ public final class AppModel {
             residualText: nil,
             predicates: [.workSession(id.rawValue)]
         )
-        selectedView = session.kind == .culling ? .loupe : .grid
         try reload()
         statusMessage = session.detail.isEmpty ? session.title : session.detail
+    }
+
+    /// An import row's disclosure child. The two diagnostic children have no
+    /// catalog scope of their own — skipped files aren't in the catalog and a
+    /// failed preview's frame is only interesting as a problem row — so they
+    /// scope to the import and let the Grid render the issue list.
+    private func applyImportChild(sessionID: WorkSessionID, child: ImportChildKind) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        switch child {
+        case .stacks, .skippedFiles:
+            detachedLibraryFilterPredicates = [.importBatch(sessionID.rawValue)]
+        case .likelyIssues:
+            detachedLibraryFilterPredicates =
+                [.importBatch(sessionID.rawValue)] + SmartCollection.likelyIssues.query.predicates
+        case .facesFound:
+            detachedLibraryFilterPredicates =
+                [.importBatch(sessionID.rawValue)] + SmartCollection.facesFound.query.predicates
+        case .previewFailed:
+            let importAssetIDs = try latestImportOutputAssetIDs(
+                activityID: sessionID.rawValue,
+                repository: catalog.repository
+            )
+            let failedAssetIDs = try catalog.repository.previewGenerationFailureAssetIDs(assetIDs: importAssetIDs)
+            let setID = AssetSetID(rawValue: "import-preview-failed-\(sessionID.rawValue)")
+            try catalog.repository.upsert(
+                AssetSet.manual(id: setID, name: ImportChildKind.previewFailed.title, assetIDs: failedAssetIDs)
+            )
+            try applyAssetSet(id: setID)
+            return
+        }
+        try reload()
+    }
+
+    /// The transient Selection source: the current batch selection, or the
+    /// single selected frame.
+    private func applySelectionSource() throws {
+        let selectionIDs = selectedBatchAssetIDsInCatalogOrder.isEmpty
+            ? (selectedAssetID.map { [$0] } ?? [])
+            : selectedBatchAssetIDsInCatalogOrder
+        guard !selectionIDs.isEmpty, let catalog else { return }
+        let setID = AssetSetID(rawValue: "selection-source-\(UUID().uuidString)")
+        try catalog.repository.upsert(
+            AssetSet.manual(id: setID, name: "Selection", assetIDs: selectionIDs)
+        )
+        try applyAssetSet(id: setID)
     }
 
     @discardableResult
@@ -5324,14 +5302,14 @@ public final class AppModel {
 
     public func canToggleWorkSessionStarred(_ row: SidebarRow) -> Bool {
         guard catalog != nil,
-              case .workSession(let id) = row.target else {
+              case .workSession(let id)? = row.target?.kind else {
             return false
         }
         return persistedWorkActivityIDs.contains(id.rawValue)
     }
 
     public func sidebarContextActions(for row: SidebarRow) -> [SidebarRowContextAction] {
-        switch row.target {
+        switch row.target?.kind {
         case .assetSet(let id):
             guard canToggleAssetSetStarred(row),
                   let assetSet = savedAssetSets.first(where: { $0.id == id }) else {
@@ -5423,7 +5401,7 @@ public final class AppModel {
 
     public func canToggleAssetSetStarred(_ row: SidebarRow) -> Bool {
         guard catalog != nil,
-              case .assetSet(let id) = row.target else {
+              case .assetSet(let id)? = row.target?.kind else {
             return false
         }
         return savedAssetSets.contains { $0.id == id }
@@ -5537,7 +5515,6 @@ public final class AppModel {
         }
         selectedAssetSetID = id
         clearLibraryQueryFilters()
-        selectedView = .grid
         try reload()
     }
 
@@ -5770,6 +5747,10 @@ public final class AppModel {
             throw TeststripError.invalidState("the completed session has no picks")
         }
         try applyAssetSet(id: picksSetID)
+        // A deep link with an explicit destination, not a plain source
+        // selection: the end-of-run "view your picks" action means the
+        // contact sheet, never the loupe the run just finished in.
+        selectedView = .grid
         cullingSessionCompletion = nil
         statusMessage = "Viewing \(completion.title) Picks"
     }
@@ -9906,8 +9887,8 @@ public final class AppModel {
             try? requestCurrentScopeAssetEvaluations()
         }
         switch plan.route {
-        case .smartCollection(let queue):
-            try selectSidebarTarget(.smartCollection(queue))
+        case .smartCollection(let collection):
+            try selectSource(.smartCollection(collection))
         case .nothingRanked(let message):
             statusMessage = message
         }
@@ -11117,10 +11098,13 @@ public final class AppModel {
         try reload()
     }
 
+    /// A Map drill-down with an explicit destination: the drawn area becomes
+    /// the selected source and the Grid renders what fell inside it.
     public func selectPlaceBounds(_ bounds: GeoBounds) throws {
         selectedAssetSetID = nil
         geoBoundsFilter = bounds
         selectedView = .grid
+        selectedSource = .search(SetQuery(predicates: [.withinGeoBounds(bounds)]), titled: "Map area")
         try reload()
     }
 
@@ -11160,7 +11144,6 @@ public final class AppModel {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         evaluationKindFilter = kind
-        selectedView = .grid
         try reload()
     }
 
@@ -11173,7 +11156,7 @@ public final class AppModel {
     public func removeActiveLibraryFilter(_ row: ActiveLibraryFilterRow) throws {
         var removed = false
         if let selectedAssetSet,
-           row.title == selectedAssetSet.name || row.target == .assetSet(selectedAssetSet.id) {
+           row.title == selectedAssetSet.name || row.target == .assetSet(selectedAssetSet.id, titled: selectedAssetSet.name) {
             self.selectedAssetSetID = nil
             removed = true
         } else if removeSelectedDynamicSetRuleFilter(row) {
@@ -11195,7 +11178,6 @@ public final class AppModel {
         // `activeLibraryFilterRows` renders them as removable chips, so the
         // list and the sidebar count are two readings of one expression.
         detachedLibraryFilterPredicates = collection.query.predicates
-        selectedView = .grid
         try reload()
     }
 
@@ -11451,9 +11433,9 @@ public final class AppModel {
         case .text(let text):
             ActiveLibraryFilterRow(title: "Search: \(text)")
         case .ratingAtLeast(let rating):
-            ActiveLibraryFilterRow(title: "Rating >= \(rating)", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Rating >= \(rating)", target: librarySource(for: predicate))
         case .flag(let flag):
-            ActiveLibraryFilterRow(title: flag.rawValue.capitalized, target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: flag.rawValue.capitalized, target: librarySource(for: predicate))
         case .colorLabel(let label):
             ActiveLibraryFilterRow(title: "\(label.rawValue.capitalized) Label")
         case .keyword(let keyword):
@@ -11461,9 +11443,9 @@ public final class AppModel {
         case .person(let name):
             ActiveLibraryFilterRow(title: "Person: \(name)")
         case .missingKeywords:
-            ActiveLibraryFilterRow(title: "Needs Keywords", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Needs Keywords", target: librarySource(for: predicate))
         case .availability(let availability):
-            ActiveLibraryFilterRow(title: "Source: \(availability.rawValue.capitalized)", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Source: \(availability.rawValue.capitalized)", target: librarySource(for: predicate))
         case .folderPrefix(let path):
             ActiveLibraryFilterRow(title: "Folder: \(URL(fileURLWithPath: path).lastPathComponent)")
         case .camera(let camera):
@@ -11481,31 +11463,34 @@ public final class AppModel {
         case .evaluationKind(let kind):
             activeLibraryFilterRow(forEvaluationKind: kind)
         case .unevaluated:
-            ActiveLibraryFilterRow(title: "Not analyzed yet", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Not analyzed yet", target: librarySource(for: predicate))
         case .likelyIssue:
-            ActiveLibraryFilterRow(title: "Likely Issues", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Likely Issues", target: librarySource(for: predicate))
         case .likelyPick:
-            ActiveLibraryFilterRow(title: "Potential Picks", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Potential Picks", target: librarySource(for: predicate))
         case .evaluationFailure:
-            ActiveLibraryFilterRow(title: "Analysis Failures", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Analysis Failures", target: librarySource(for: predicate))
         case .metadataSyncPending:
-            ActiveLibraryFilterRow(title: "XMP Pending", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "XMP Pending", target: librarySource(for: predicate))
         case .metadataSyncConflict:
-            ActiveLibraryFilterRow(title: "XMP Conflicts", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "XMP Conflicts", target: librarySource(for: predicate))
         case .importBatch(let id):
-            ActiveLibraryFilterRow(title: "Import: \(id)", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Import: \(id)", target: librarySource(for: predicate))
         case .workSession(let id):
-            ActiveLibraryFilterRow(title: "Session: \(id)", target: sidebarTarget(for: predicate))
-        case .assetSet(let id):
-            ActiveLibraryFilterRow(title: "Set: \(id.rawValue)", target: nil)
+            ActiveLibraryFilterRow(title: "Session: \(id)", target: librarySource(for: predicate))
+        case .assetSet:
+            // No chip: `activeLibraryFilterRows` already renders the selected
+            // set by name, with a live removable target. A second row here
+            // would double-render the same scope (Jesse's ruling 2026-08-07).
+            nil
         }
     }
 
     private static func activeLibraryFilterRow(forEvaluationKind kind: EvaluationKind) -> ActiveLibraryFilterRow {
-        if let queue = smartCollection(forEvaluationKind: kind) {
-            return ActiveLibraryFilterRow(title: queue.presentation.title, target: .smartCollection(queue))
+        if let collection = smartCollection(forEvaluationKind: kind) {
+            return ActiveLibraryFilterRow(title: collection.presentation.title, target: .smartCollection(collection))
         }
-        return ActiveLibraryFilterRow(title: kind.filterChipLabel, target: .evaluationKind(kind))
+        return ActiveLibraryFilterRow(title: kind.filterChipLabel, target: .evaluationKind(kind, titled: kind.filterChipLabel))
     }
 
     private static func filterName(for kind: EvaluationKind) -> String {
@@ -11523,40 +11508,38 @@ public final class AppModel {
         }
     }
 
-    private static func sidebarTarget(for predicate: SetQuery.Predicate) -> SidebarRowTarget? {
+    private static func librarySource(for predicate: SetQuery.Predicate) -> LibrarySource? {
         switch predicate {
         case .ratingAtLeast(let rating):
-            rating == 5 ? .smartCollection(.fiveStars) : nil
+            rating == 5 ? LibrarySource.smartCollection(.fiveStars) : nil
         case .flag(.pick):
-            .smartCollection(.picks)
+            LibrarySource.smartCollection(.picks)
         case .flag(.reject):
-            .smartCollection(.rejects)
+            LibrarySource.smartCollection(.rejects)
         case .missingKeywords:
-            .smartCollection(.needsKeywords)
+            LibrarySource.smartCollection(.needsKeywords)
         case .availability(let availability):
-            .sourceAvailability(availability)
+            LibrarySource.sourceAvailability(availability)
         case .evaluationKind(let kind):
-            if let queue = smartCollection(forEvaluationKind: kind) {
-                .smartCollection(queue)
+            if let collection = smartCollection(forEvaluationKind: kind) {
+                LibrarySource.smartCollection(collection)
             } else {
-                .evaluationKind(kind)
+                LibrarySource.evaluationKind(kind, titled: kind.filterChipLabel)
             }
         case .unevaluated:
-            .smartCollection(.needsEvaluation)
+            LibrarySource.smartCollection(.needsEvaluation)
         case .likelyIssue:
-            .smartCollection(.likelyIssues)
+            LibrarySource.smartCollection(.likelyIssues)
         case .likelyPick:
-            .smartCollection(.potentialPicks)
+            LibrarySource.smartCollection(.potentialPicks)
         case .evaluationFailure:
-            .smartCollection(.providerFailures)
+            LibrarySource.smartCollection(.providerFailures)
         case .metadataSyncPending:
-            .metadataSyncPending
+            LibrarySource.metadataSyncPending
         case .metadataSyncConflict:
-            .metadataSyncConflicts
-        case .importBatch(let id):
-            .workSession(WorkSessionID(rawValue: id))
-        case .workSession(let id):
-            .workSession(WorkSessionID(rawValue: id))
+            LibrarySource.metadataSyncConflicts
+        case .importBatch(let id), .workSession(let id):
+            LibrarySource.workSession(WorkSessionID(rawValue: id), titled: id)
         default:
             nil
         }
@@ -11608,7 +11591,7 @@ public final class AppModel {
             captureDateEndFilter = nil
             removed = true
         }
-        switch row.target {
+        switch row.target?.kind {
         case .smartCollection(.picks):
             if flagFilter == .pick {
                 flagFilter = nil
@@ -13282,7 +13265,7 @@ public final class AppModel {
     }
 
     private func rebuildSidebarSections() {
-        sidebarSections = sidebarSections(for: selectedWorkspace)
+        sidebarSections = buildSidebarSections()
     }
 
     private func refreshCatalogFolders() {
@@ -14248,18 +14231,17 @@ public final class AppModel {
         sourceRoots: [CatalogSourceRoot] = [],
         sourceRootBookmarkRepairPaths: Set<String> = []
     ) -> [SidebarSection] {
-        // Library is navigation only: Collections (All Photographs, Recent
-        // Import, Starred, Recent Work), Saved Sets, Folders. Search/Review/
-        // Timeline/People/Places routes moved to the workspace switcher, the
-        // Library view toggle, and the Cull source picker; review-queue data
-        // (`smartCollectionCounts`) stays available for the Cull sidebar even
-        // though its Library rows are gone.
+        // The sidebar lists sources only: Collections (All Photos, Recent
+        // Import, Starred, Recent Work), Saved Sets, Folders. Timeline/People/
+        // Places were lenses masquerading as sidebar rows and are now lenses
+        // (⌘1–⌘6); smart-collection data (`smartCollectionCounts`) stays
+        // available for the Cull source picker.
         var collectionsRows = [
             SidebarRow(
                 id: "library-all",
-                title: "All Photographs",
+                title: "All Photos",
                 countText: totalAssetCount.map(sidebarCountText),
-                target: .allPhotographs
+                target: .allPhotos
             )
         ]
         if let recentImportRow = recentlyAddedSidebarRow(recentWork) {
@@ -14351,16 +14333,16 @@ public final class AppModel {
     }
 
     private static func smartCollectionSidebarRows(smartCollectionCounts: [SmartCollection: Int]) -> [SidebarRow] {
-        smartCollectionSidebarOrder.compactMap { queue in
-            guard let count = smartCollectionCounts[queue],
+        smartCollectionSidebarOrder.compactMap { collection in
+            guard let count = smartCollectionCounts[collection],
                   count > 0 else {
                 return nil
             }
             return SidebarRow(
-                id: "review-\(queue.rawValue)",
-                title: queue.presentation.title,
+                id: "review-\(collection.rawValue)",
+                title: collection.presentation.title,
                 countText: sidebarCountText(count),
-                target: .smartCollection(queue)
+                target: .smartCollection(collection)
             )
         }
     }
@@ -14425,13 +14407,14 @@ public final class AppModel {
         }) else {
             return nil
         }
+        let title = activity.detail.isEmpty ? "Latest import" : activity.detail
         return SidebarRow(
             id: "library-recently-added",
             title: "Recent Import",
-            detailText: activity.detail.isEmpty ? "Latest import" : activity.detail,
+            detailText: title,
             countText: sidebarCountText(activity.totalUnitCount ?? activity.completedUnitCount),
             tone: .positive,
-            target: .workSession(WorkSessionID(rawValue: activity.id))
+            target: .workSession(WorkSessionID(rawValue: activity.id), titled: title)
         )
     }
 
@@ -14450,7 +14433,7 @@ public final class AppModel {
             detailText: assetSet.sidebarDetailText,
             countText: count.map(sidebarCountText),
             tone: assetSet.isDynamic ? .accent : .neutral,
-            target: .assetSet(assetSet.id)
+            target: .assetSet(assetSet.id, titled: assetSet.name)
         )
     }
 
@@ -14495,13 +14478,14 @@ public final class AppModel {
     ) -> [SidebarRow] {
         activities.map { activity in
             let sessionID = WorkSessionID(rawValue: activity.id)
+            let title = workSidebarTitle(for: activity)
             return SidebarRow(
                 id: "\(idPrefix)-\(activity.id)",
-                title: workSidebarTitle(for: activity),
+                title: title,
                 detailText: activity.sidebarDetailText,
                 countText: activity.sidebarCountText(scopeCount: scopeCounts[sessionID]),
                 tone: activity.sidebarTone,
-                target: .workSession(sessionID)
+                target: .workSession(sessionID, titled: title)
             )
         }
     }

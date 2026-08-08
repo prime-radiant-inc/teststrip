@@ -174,7 +174,7 @@ struct SidebarView: View {
     }
 
     private func toggleFolderExpansion(_ row: SidebarRow) {
-        guard case .folder(let path) = row.target else { return }
+        guard case .folder(let path)? = row.target?.kind else { return }
         model.toggleFolderExpansion(path: path)
     }
 
@@ -343,20 +343,17 @@ struct SidebarView: View {
         deletingAssetSetName = ""
     }
 
-    private func iconName(for target: SidebarRowTarget) -> String {
-        switch target {
-        case .allPhotographs:
+    private func iconName(for source: LibrarySource?) -> String {
+        guard let source else { return "circle" }
+        switch source.kind {
+        case .allPhotos:
             return "photo.on.rectangle"
         case .search:
             return "magnifyingglass"
-        case .timeline:
-            return "calendar"
-        case .people:
-            return "person.2"
-        case .places:
-            return "map"
-        case .smartCollection(let queue):
-            return smartCollectionIconName(queue)
+        case .smartCollection(let collection):
+            return collection.presentation.systemImage
+        case .autopilotSuggestions:
+            return "wand.and.stars"
         case .folder:
             return "folder"
         case .sourceAvailability:
@@ -371,13 +368,11 @@ struct SidebarView: View {
             return "rectangle.stack"
         case .workSession:
             return "clock.arrow.circlepath"
-        case .placeholder:
-            return "circle"
+        case .importChild(_, let child):
+            return child.systemImage
+        case .selection:
+            return "checkmark.circle"
         }
-    }
-
-    private func smartCollectionIconName(_ queue: SmartCollection) -> String {
-        queue.presentation.systemImage
     }
 
     private func evaluationKindIconName(_ kind: EvaluationKind) -> String {

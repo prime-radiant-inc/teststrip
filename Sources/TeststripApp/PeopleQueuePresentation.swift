@@ -106,7 +106,7 @@ struct PeopleQueuePresentation: Equatable {
 enum PeopleQueueConfirmAction: Equatable {
     case confirmSuggestion(PeopleFaceSuggestion)
     case nameSuggestion(PeopleFaceSuggestion)
-    case selectReview(SidebarRowTarget)
+    case selectReview(LibrarySource)
     case none
 }
 

@@ -270,7 +270,7 @@ struct LoupeZoomStageView: View {
     // zoomed view doesn't track pan/zoom for boxes (out of scope for now).
     @ViewBuilder
     private func faceBoxOverlay(viewportSize: CGSize, image: NSImage) -> some View {
-        if WorkspaceChromePolicy.showsInspector(model.selectedView), model.isInspectorVisible {
+        if LensChromePolicy.showsInspector(model.selectedView), model.isInspectorVisible {
             let rows = model.photoFacesPresentation(for: asset.id).rows
             if !rows.isEmpty {
                 FaceBoxOverlayView(

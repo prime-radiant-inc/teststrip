@@ -116,9 +116,9 @@ struct PeopleView: View {
         case .nameSuggestion(let suggestion):
             nameSuggestionQuery = ""
             namingSuggestion = suggestion
-        case .selectReview(let target):
+        case .selectReview(let source):
             do {
-                try model.selectSidebarTarget(target)
+                try model.selectSource(source)
             } catch {
                 model.errorMessage = error.localizedDescription
             }
@@ -558,9 +558,9 @@ struct PeopleView: View {
     }
 
     private func selectPeopleReviewCard(_ card: PeopleReviewCard) {
-        guard let target = card.target else { return }
+        guard let source = card.target else { return }
         do {
-            try model.selectSidebarTarget(target)
+            try model.selectSource(source)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -768,7 +768,9 @@ struct PeoplePresentation: Equatable {
                 countText: Self.photoCountDescription(photosWithDetectedFaces),
                 suggestedActionTitle: "Review faces",
                 filterKind: faceSignalKind,
-                target: faceSignalKind == .faceCount ? .smartCollection(.facesFound) : .evaluationKind(faceSignalKind),
+                target: faceSignalKind == .faceCount
+                    ? .smartCollection(.facesFound)
+                    : .evaluationKind(faceSignalKind, titled: faceSignalKind.filterChipLabel),
                 gradientColors: [.orange, .brown]
             ))
         }
@@ -779,7 +781,7 @@ struct PeoplePresentation: Equatable {
                 countText: Self.photoCountDescription(photosWithFaceQualitySignals),
                 suggestedActionTitle: "Review quality",
                 filterKind: .faceQuality,
-                target: .evaluationKind(.faceQuality),
+                target: .evaluationKind(.faceQuality, titled: EvaluationKind.faceQuality.filterChipLabel),
                 gradientColors: [.orange, .yellow]
             ))
         }
@@ -895,7 +897,7 @@ struct PeopleReviewCard: Equatable, Identifiable {
     var countText: String
     var suggestedActionTitle: String
     var filterKind: EvaluationKind?
-    var target: SidebarRowTarget?
+    var target: LibrarySource?
     var showsUnbuiltFaceActionLock = false
     var gradientColors: [Color]
 
