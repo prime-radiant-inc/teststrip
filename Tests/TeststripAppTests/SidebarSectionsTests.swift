@@ -2,13 +2,16 @@ import XCTest
 @testable import TeststripCore
 @testable import TeststripApp
 
-/// Covers `AppModel.buildSidebarSections()` - one sidebar shared by every lens
-/// (Task 5 deletes the per-workspace split: Library is navigation only —
-/// Collections/Saved Sets/Folders — and no longer varies by lens).
+/// Covers `AppModel.buildSidebarSections()` - one sidebar shared by every
+/// lens. Section composition (which rows, in which section, with which
+/// counts) is pinned exhaustively in `UnifiedSidebarPresentationTests`
+/// against the pure builder; this file exercises the same builder through a
+/// live `AppModel` so catalog-backed inputs (saved queries, folders) are
+/// wired in correctly.
 final class SidebarSectionsTests: XCTestCase {
-    func testLibrarySidebarSectionsAreExactlyCollectionsSavedSetsFolders() throws {
+    func testSidebarSectionsAreTheUnifiedShellsSections() throws {
         let asset = makeAsset(id: "hero", path: "/Photos/hero.jpg", rating: 5)
-        let (model, _) = try makeModelWithCatalogAssets(named: "sidebar-sections-library", assets: [asset])
+        let (model, _) = try makeModelWithCatalogAssets(named: "sidebar-sections-unified", assets: [asset])
         model.minimumRatingFilter = 5
         try model.applyLibraryFilters()
         _ = try model.saveCurrentLibraryQuery(named: "Five Stars", starred: false)
@@ -16,14 +19,14 @@ final class SidebarSectionsTests: XCTestCase {
 
         let sections = model.buildSidebarSections()
 
-        XCTAssertEqual(sections.map(\.title), ["Collections", "Saved Sets", "Folders"])
+        XCTAssertEqual(sections.first?.title, "Library")
+        XCTAssertEqual(sections.first?.rows.first?.title, "All Photos")
+        XCTAssertEqual(sections.first?.rows.first?.target, LibrarySource.allPhotos)
 
-        let collections = try XCTUnwrap(sections.first { $0.title == "Collections" })
-        XCTAssertEqual(collections.rows.first?.id, "library-all")
-        XCTAssertEqual(collections.rows.first?.target, .allPhotos)
-
-        let savedSets = try XCTUnwrap(sections.first { $0.title == "Saved Sets" })
-        XCTAssertEqual(savedSets.rowTitles, ["Five Stars"])
+        // A saved dynamic search is a smart collection, not a static set.
+        let smart = try XCTUnwrap(sections.first { $0.title == "Smart Collections" })
+        XCTAssertTrue(smart.rowTitles.contains("Five Stars"))
+        XCTAssertNil(sections.first { $0.title == "Sets" })
 
         let folders = try XCTUnwrap(sections.first { $0.title == "Folders" })
         XCTAssertEqual(folders.rowTitles, ["photos"])
@@ -46,8 +49,8 @@ final class SidebarSectionsTests: XCTestCase {
         try model.applyLibraryFilters()
         let savedSet = try model.saveCurrentLibraryQuery(named: "Five Stars", starred: true)
 
-        let collections = try XCTUnwrap(model.buildSidebarSections().first { $0.title == "Collections" })
-        let starredRow = try XCTUnwrap(collections.rows.first { $0.target == .assetSet(savedSet.id, titled: savedSet.name) })
+        let smartCollections = try XCTUnwrap(model.buildSidebarSections().first { $0.title == "Smart Collections" })
+        let starredRow = try XCTUnwrap(smartCollections.rows.first { $0.target == .assetSet(savedSet.id, titled: savedSet.name) })
         let actions = model.sidebarContextActions(for: starredRow)
 
         XCTAssertTrue(actions.contains { $0.kind == .renameAssetSet(savedSet.id) })

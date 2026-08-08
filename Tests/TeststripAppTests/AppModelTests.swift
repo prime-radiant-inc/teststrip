@@ -6053,21 +6053,17 @@ final class AppModelTests: XCTestCase {
         let (model, _, _, _) = try makeAutopilotModelWithGhosts(named: "ghost-sidebar-source")
         let ghostIDs = model.autopilotGhostAssetIDs
         XCTAssertFalse(ghostIDs.isEmpty)
-
-        let source = try XCTUnwrap(
-            model.cullSourcePresentation.sources.first { $0.target == CullSource.Target.autopilotProposals }
-        )
         // Pin the fixture's literal ghost count alongside the self-referential
         // comparison so a wrong count (not just a wrong-vs-itself count) fails.
         XCTAssertEqual(ghostIDs.count, 2)
-        XCTAssertEqual(source.count, ghostIDs.count)
+
+        let smartCollections = try XCTUnwrap(model.buildSidebarSections().first { $0.title == "Smart Collections" })
+        XCTAssertTrue(smartCollections.rowTitles.contains("AI Suggestions"))
 
         _ = try model.dismissAutopilotProposals(assetIDs: ghostIDs)
 
         XCTAssertTrue(model.autopilotGhostAssetIDs.isEmpty)
-        XCTAssertFalse(
-            model.cullSourcePresentation.sources.contains { $0.target == CullSource.Target.autopilotProposals }
-        )
+        XCTAssertFalse(model.buildSidebarSections().contains { $0.rowTitles.contains("AI Suggestions") })
     }
 
     func testAskFallsBackToDeterministicParserWithoutTranslator() throws {

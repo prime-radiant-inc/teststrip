@@ -201,7 +201,11 @@ final class AppModelFilterPersistenceTests: XCTestCase {
             assets: [pick, unflagged]
         )
 
-        try model.activateCullSource(.smartCollection(.picks))
+        // Selecting a source never changes the lens (orthogonality), so
+        // "Cull From" a queue is select-then-switch, not the deleted
+        // `activateCullSource` one-call router.
+        try model.selectSource(.smartCollection(.picks))
+        model.selectLens(.cull)
 
         // Preserve branch was taken (else branch would clear the detached
         // filter predicates and switch selectedAssetSetID to the hidden

@@ -242,16 +242,104 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(model.selectedSource, .assetSet(saved.id, titled: "Keepers"))
     }
 
+    // `applyImportChild` is reachable only through `selectSource` today, so
+    // `applySource`'s blanket trailing write (`selectedSource = source`)
+    // masks whether the applier's own assignment is correct — this pins the
+    // observable contract regardless, ahead of the direct sidebar-row caller
+    // Task 6 adds.
+    func testSelectingAnImportChildSourceUpdatesSelectedSourceToMatch() throws {
+        let asset = makeAsset(id: "import-child-source", path: "/Photos/Inside/a.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "source-import-child", assets: [asset])
+        let sessionID = WorkSessionID(rawValue: "import-1")
+
+        try model.selectSource(.importChild(session: sessionID, child: .stacks))
+
+        XCTAssertEqual(model.selectedSource, .importChild(session: sessionID, child: .stacks))
+    }
+
+    // Same masking as the import-child case above: `applySelectionSource`
+    // owns `selectedSource` itself, but nothing currently proves it against
+    // `applySource`'s blanket trailing write.
+    func testSelectingTheSelectionSourceUpdatesSelectedSourceToMatch() throws {
+        let asset = makeAsset(id: "selection-source", path: "/Photos/Inside/a.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "source-selection-source", assets: [asset])
+        model.selectedAssetID = asset.id
+
+        try model.selectSource(.selection)
+
+        XCTAssertEqual(model.selectedSource, .selection)
+    }
+
+    // Correction A9: `applySource`'s `.autopilotSuggestions` arm used to call
+    // `beginAutopilotReview()`, which wrote `selectedView = .grid` directly —
+    // violating orthogonality (selecting a source must never change the
+    // lens). The lens fallback for AI Suggestions must run through the same
+    // `LensRules` mechanism every other source uses, so a non-disabling lens
+    // like Timeline survives selecting it, and the ghost scope — not
+    // whatever was loaded before — is what actually lands in `assets`.
+    func testSelectingAutopilotSuggestionsAppliesTheGhostScopeWithoutChangingANonDisablingLens() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(
+            id: "ai-suggestions-lead",
+            path: "/Photos/Cull/ai-suggestions-lead.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let alternate = makeAsset(
+            id: "ai-suggestions-alt",
+            path: "/Photos/Cull/ai-suggestions-alt.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "source-ai-suggestions",
+            assets: [lead, alternate]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        try model.selectSource(.allPhotos)
+        _ = try model.runAutopilotOnCurrentScope()
+        let ghostIDs = model.autopilotGhostAssetIDs
+        XCTAssertFalse(ghostIDs.isEmpty)
+
+        model.selectLens(.timeline)
+        try model.selectSource(.autopilotSuggestions)
+
+        XCTAssertEqual(model.selectedLens, .timeline, "selecting AI Suggestions must not move the lens")
+        XCTAssertEqual(model.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(
+            Set(model.assets.map(\.id)),
+            Set(ghostIDs),
+            "must scope to the ghost assets, not whatever was loaded before"
+        )
+    }
+
     // MARK: - Fixtures
 
-    private func makeAsset(id: String, path: String, availability: SourceAvailability = .online) -> Asset {
+    private func makeAsset(
+        id: String,
+        path: String,
+        availability: SourceAvailability = .online,
+        technicalMetadata: AssetTechnicalMetadata? = nil
+    ) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
             originalURL: URL(fileURLWithPath: path),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(id.count + 1), modificationDate: Date(timeIntervalSince1970: 1)),
             availability: availability,
-            metadata: AssetMetadata()
+            metadata: AssetMetadata(),
+            technicalMetadata: technicalMetadata
+        )
+    }
+
+    private static func technicalMetadata(capturedAt: Date) -> AssetTechnicalMetadata {
+        AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            capturedAt: capturedAt,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
         )
     }
 
