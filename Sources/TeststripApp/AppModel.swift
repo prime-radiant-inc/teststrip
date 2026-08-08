@@ -11133,10 +11133,24 @@ public final class AppModel {
         cellSize: Double = AppModel.defaultPlaceClusterCellSize
     ) throws {
         guard let catalog else { return }
-        let query = currentLibraryQuery()
+        let query = currentMapQuery()
         catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize, matching: query)
         catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit, matching: query)
         geotaggedCoverage = try catalog.repository.geotaggedCoverage(matching: query)
+    }
+
+    /// The Map lens is source-scoped like every other lens. A dynamic scope
+    /// already reaches SQL through `currentLibraryQuery()`; a static one — a
+    /// saved manual/snapshot set, or the Selection — lived only in
+    /// `selectedExplicitAssetIDs`, which `currentLibraryQuery()` cannot see,
+    /// so the Map silently showed every geotagged photo in the catalog for
+    /// those sources.
+    private func currentMapQuery() -> SetQuery? {
+        var predicates = currentLibraryQuery()?.predicates ?? []
+        if selectedExplicitAssetIDs != nil, let selectedAssetSetID {
+            predicates.append(.assetSet(selectedAssetSetID))
+        }
+        return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
     }
 
     static let defaultPlaceClusterCellSize = 10.0
@@ -11482,6 +11496,8 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "Import: \(id)", target: sidebarTarget(for: predicate))
         case .workSession(let id):
             ActiveLibraryFilterRow(title: "Session: \(id)", target: sidebarTarget(for: predicate))
+        case .assetSet(let id):
+            ActiveLibraryFilterRow(title: "Set: \(id.rawValue)", target: nil)
         }
     }
 
@@ -12038,6 +12054,8 @@ public final class AppModel {
             "import:\(searchFieldValue(id))"
         case .workSession(let id):
             "session:\(searchFieldValue(id))"
+        case .assetSet:
+            nil
         }
     }
 

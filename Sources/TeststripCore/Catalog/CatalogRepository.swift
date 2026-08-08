@@ -1472,21 +1472,46 @@ public final class CatalogRepository {
         guard !assetIDs.isEmpty, limit > 0 else { return [] }
         var seenAssetIDs = Set<AssetID>()
         let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
-        var observations: [CatalogFaceObservation] = []
+        // Each chunk's `LIMIT ?` only bounds that chunk's own newest rows, so
+        // above 500 scoped ids the chunks must be merged by `created_at`
+        // before truncating to `limit` — otherwise an earlier chunk that
+        // alone satisfies `limit` masks a later chunk's globally newer rows.
+        var ranked: [RankedFaceObservation] = []
         for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
             let rows = try database.rows(
                 Self.unassignedFaceObservationsSQL(scopeClause: "\n  AND face_observations.asset_id IN (\(placeholders))"),
                 bindings: provenanceBindings + chunk.map(\.rawValue) + ["\(limit)"]
             )
-            observations.append(contentsOf: try rows.map(decodeFaceObservation))
+            ranked.append(contentsOf: try rows.map(decodeRankedFaceObservation))
         }
-        return Array(observations.prefix(limit))
+        ranked.sort { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            if lhs.observation.assetID != rhs.observation.assetID { return lhs.observation.assetID.rawValue < rhs.observation.assetID.rawValue }
+            return lhs.observation.faceIndex < rhs.observation.faceIndex
+        }
+        return ranked.prefix(limit).map(\.observation)
+    }
+
+    /// Pairs a decoded observation with its `created_at` purely to re-rank
+    /// `unassignedFaceObservations`'s chunked scope merge across the 500-id
+    /// chunk boundary; `CatalogFaceObservation` itself has no `created_at`
+    /// and every other caller of `decodeFaceObservation` has no use for it.
+    private struct RankedFaceObservation {
+        let observation: CatalogFaceObservation
+        let createdAt: Double
+    }
+
+    private func decodeRankedFaceObservation(_ row: [String: String]) throws -> RankedFaceObservation {
+        guard let createdAtValue = row["created_at"], let createdAt = Double(createdAtValue) else {
+            throw CatalogError.sqlite("face observation row is missing created_at")
+        }
+        return RankedFaceObservation(observation: try decodeFaceObservation(row), createdAt: createdAt)
     }
 
     private static func unassignedFaceObservationsSQL(scopeClause: String) -> String {
         """
-        SELECT asset_id, face_index, face_json, provenance_json
+        SELECT asset_id, face_index, face_json, provenance_json, created_at
         FROM face_observations
         WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?\(scopeClause)
           AND NOT EXISTS (
@@ -3373,6 +3398,9 @@ public final class CatalogRepository {
                     to: &clauses,
                     bindings: &bindings
                 )
+            case .assetSet(let setID):
+                clauses.append(Self.assetSetMembershipClause())
+                bindings.append(contentsOf: [setID.rawValue, setID.rawValue])
             }
         }
 
@@ -3452,6 +3480,22 @@ public final class CatalogRepository {
         JOIN json_each(asset_sets.membership_json, '\(membershipPath)') session_assets
         WHERE work_sessions.id = ?
         """
+    }
+
+    /// The static half of a saved set's membership, resolved the same way
+    /// `workSessionAssetMembershipSelector` resolves a work session's sets:
+    /// `json_each` on a membership path that doesn't exist (a `.dynamic` set)
+    /// yields zero rows, so a dynamic set simply matches nothing here.
+    private static func assetSetMembershipClause() -> String {
+        let selectors = ["$.manual._0", "$.snapshot._0"].map { membershipPath in
+            """
+            SELECT json_extract(set_assets.value, '$.rawValue')
+            FROM asset_sets
+            JOIN json_each(asset_sets.membership_json, '\(membershipPath)') set_assets
+            WHERE asset_sets.id = ?
+            """
+        }
+        return "assets.id IN (\n\(selectors.joined(separator: "\nUNION\n"))\n)"
     }
 
     private static func likePattern(containing text: String) -> String {
