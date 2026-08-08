@@ -15,11 +15,11 @@ struct SidebarView: View {
     @State private var deletingAssetSetName = ""
     @State private var isShowingSavedSetsNoSelectionHint = false
 
-    // Saved Sets is the only sidebar section with its own creation
-    // affordance (persona-2 item 2): saving a set previously required
-    // already having a selection and using the result-header "Save ▾"
-    // control, with no menu or sidebar path to discover it.
-    private static let savedSetsSectionTitle = "Saved Sets"
+    // Two sections carry a creation affordance: Sets (save the current
+    // selection) and Smart Collections (save the current search). Both reuse
+    // the popovers the result header's Save ▾ menu already opens.
+    private static let setsSectionTitle = UnifiedSidebarPresentation.setsSectionTitle
+    private static let smartCollectionsSectionTitle = UnifiedSidebarPresentation.smartCollectionsSectionTitle
 
     var body: some View {
         List {
@@ -33,10 +33,17 @@ struct SidebarView: View {
                             .liveMockupPlaceholder(row.liveMockupPlaceholder)
                     }
                 } header: {
-                    if section.title == Self.savedSetsSectionTitle {
-                        savedSetsSectionHeader(title: section.title)
-                    } else {
-                        Text(section.title)
+                    sectionHeader(title: section.title)
+                }
+            }
+            // The auto-grouped stack rows moved here verbatim from the deleted
+            // Cull sidebar. They are a run surface rather than a source list,
+            // so they stay outside `sidebarSections`.
+            let stackEntries = model.cullingStackListEntries()
+            if !stackEntries.isEmpty {
+                Section("Stacks · Auto-Grouped") {
+                    ForEach(stackEntries) { entry in
+                        stackRow(entry)
                     }
                 }
             }
@@ -83,18 +90,43 @@ struct SidebarView: View {
         }
     }
 
-    private func savedSetsSectionHeader(title: String) -> some View {
+    @ViewBuilder
+    private func sectionHeader(title: String) -> some View {
+        switch title {
+        case Self.setsSectionTitle:
+            headerWithAddButton(
+                title: title,
+                help: "New Set from Selection…",
+                accessibilityLabel: "New Set from Selection",
+                action: addSavedSetTapped
+            )
+        case Self.smartCollectionsSectionTitle:
+            headerWithAddButton(
+                title: title,
+                help: "New from search…",
+                accessibilityLabel: "New from search",
+                action: { model.requestSaveSearch() }
+            )
+        default:
+            Text(title)
+        }
+    }
+
+    private func headerWithAddButton(
+        title: String,
+        help: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
         HStack {
             Text(title)
             Spacer()
-            Button {
-                addSavedSetTapped()
-            } label: {
+            Button(action: action) {
                 Image(systemName: "plus.circle")
             }
             .buttonStyle(.plain)
-            .help("New Set from Selection…")
-            .accessibilityLabel("New Set from Selection")
+            .help(help)
+            .accessibilityLabel(accessibilityLabel)
             .popover(isPresented: $isShowingSavedSetsNoSelectionHint) {
                 VStack(spacing: 12) {
                     Text("Select photos, then save them as a set")
@@ -173,11 +205,6 @@ struct SidebarView: View {
         }
     }
 
-    private func toggleFolderExpansion(_ row: SidebarRow) {
-        guard case .folder(let path)? = row.target?.kind else { return }
-        model.toggleFolderExpansion(path: path)
-    }
-
     // Folders-sidebar tree rows need an expand/collapse control that's
     // independent of the row's own selection tap target, so the disclosure
     // triangle is a sibling button rather than nested inside the selection
@@ -192,7 +219,7 @@ struct SidebarView: View {
             sidebarRowButton(row)
         } else {
             HStack(spacing: 4) {
-                folderDisclosureControl(for: row)
+                disclosureControl(for: row)
                 sidebarRowButton(row)
             }
             .padding(.leading, CGFloat(row.depth) * 14)
@@ -213,13 +240,13 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private func folderDisclosureControl(for row: SidebarRow) -> some View {
+    private func disclosureControl(for row: SidebarRow) -> some View {
         switch row.disclosure {
         case .none:
             Color.clear.frame(width: 12, height: 12)
         case .collapsed, .expanded:
             Button {
-                toggleFolderExpansion(row)
+                model.toggleSidebarExpansion(row)
             } label: {
                 Image(systemName: row.disclosure == .expanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
@@ -230,6 +257,56 @@ struct SidebarView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(row.disclosure == .expanded ? "Collapse \(row.title)" : "Expand \(row.title)")
         }
+    }
+
+    private func stackRow(_ entry: CullingStackListEntry) -> some View {
+        Button {
+            do {
+                try model.selectCullingStackSet(id: entry.setID)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.black.opacity(0.55))
+                    if let previewURL = model.gridPreviewURL(for: entry.leadAssetID) {
+                        CachedPreviewImage(
+                            previewURL: previewURL,
+                            scaling: .fit,
+                            cacheGeneration: model.previewCacheGeneration(for: entry.leadAssetID)
+                        )
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 36, height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(entry.frameCountText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if entry.isDecided {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(entry.isSelected ? Color.orange.opacity(0.18) : Color.clear)
+        .accessibilityLabel(entry.title)
+        .accessibilityValue(entry.isDecided ? "Decided" : "Undecided")
     }
 
     @ViewBuilder

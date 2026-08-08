@@ -152,6 +152,9 @@ struct LibraryGridView: View {
         .onChange(of: model.newSetFromSelectionRequestToken) { _, _ in
             showManualSetPopover()
         }
+        .onChange(of: model.saveSearchRequestToken) { _, _ in
+            showSaveSearchPopover()
+        }
         .onChange(of: model.moveRejectsToTrashRequestToken) { _, _ in
             beginRejectRelocationToTrash()
         }

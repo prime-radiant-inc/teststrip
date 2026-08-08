@@ -1,7 +1,8 @@
 import TeststripCore
 
 /// A stack-aware filmstrip counter: the run strip's status-bar position text,
-/// computed from the same auto-grouped stacks that feed `CullSidebarView`.
+/// computed from the same auto-grouped stacks that feed the sidebar's
+/// "Stacks · Auto-Grouped" section.
 struct CullFilmstripPresentation: Equatable {
     /// The status bar's compact "N of T · stack S of Σ · frame F of M":
     /// overall position, which stack, and position within that stack (the

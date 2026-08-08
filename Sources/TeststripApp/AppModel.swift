@@ -674,64 +674,6 @@ public extension SmartCollection {
     }
 }
 
-/// The groupings the Cull sidebar's source picker presents. Recent Import,
-/// Autopilot Proposals, and Selection are singletons; Top Picks and Needs
-/// Eyes each carry the pair of review queues Copilot used to read
-/// (picks/potentialPicks, likelyIssues/needsEvaluation) so the sidebar
-/// row-per-queue reuses the same counts.
-public enum CullSourceGroup: String, Equatable, Sendable {
-    case recentImport
-    case autopilotProposals
-    case topPicks
-    case needsEyes
-    case diagnostics
-    case selection
-}
-
-public struct CullSource: Equatable, Sendable, Identifiable {
-    public enum Target: Equatable, Sendable {
-        case recentImport
-        case autopilotProposals
-        case smartCollection(SmartCollection)
-        case selection
-    }
-
-    public var id: String
-    public var group: CullSourceGroup
-    public var title: String
-    public var systemImage: String
-    public var count: Int
-    public var target: Target
-
-    public init(id: String, group: CullSourceGroup, title: String, systemImage: String, count: Int, target: Target) {
-        self.id = id
-        self.group = group
-        self.title = title
-        self.systemImage = systemImage
-        self.count = count
-        self.target = target
-    }
-}
-
-public struct CullSourcePresentation: Equatable, Sendable {
-    public var sources: [CullSource]
-
-    public init(sources: [CullSource]) {
-        self.sources = sources
-    }
-
-    /// Sources actually worth showing: zero-count rows are omitted rather
-    /// than rendered disabled, so the sidebar never shows a dead-end row.
-    public var visibleSources: [CullSource] {
-        sources.filter { $0.count > 0 }
-    }
-
-    /// True when there is nothing actionable to cull from any source.
-    public var isEmpty: Bool {
-        visibleSources.isEmpty
-    }
-}
-
 /// The plan the "Find Best Shots" marquee action follows: whether to kick off
 /// evaluation over the current scope, and where to land the user. It never
 /// dead-ends — when nothing ranks and there is nothing left to evaluate it
@@ -2061,16 +2003,26 @@ public final class AppModel {
     /// One sidebar, every lens. Sources are nouns; lenses are verbs; the
     /// sidebar lists nouns, so it does not vary with the lens.
     public func buildSidebarSections() -> [SidebarSection] {
-        Self.defaultSidebarSections(
+        UnifiedSidebarPresentation.sections(
             totalAssetCount: totalAssetCount,
+            importSummaries: importSourceSummaries,
+            runningImport: visibleImportActivity,
+            expandedImportSessionIDs: expandedImportSessionIDs,
+            importChildCounts: importChildCountsBySessionID,
+            isShowingAllImports: isShowingAllImports,
+            smartCollectionCounts: smartCollectionCounts,
+            autopilotGhostCount: autopilotGhostAssetIDs.count,
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
-            workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
             expandedFolderPaths: expandedFolderPaths,
             recentWork: recentWork,
             starredWork: starredWork,
-            matchedWork: workHistorySearchResults
+            matchedWork: workHistorySearchResults,
+            workSessionScopeCounts: workSessionScopeCounts,
+            selectionCount: selectedBatchAssetIDs.isEmpty
+                ? (selectedAssetID != nil ? 1 : 0)
+                : selectedBatchAssetIDs.count
         )
     }
 
@@ -2175,12 +2127,28 @@ public final class AppModel {
     /// Drives the Activity Center popover (toolbar item + Window ▸ Activity).
     public var isActivityCenterPresented = false
     public private(set) var isExporting = false
-    public var activeWork: AppWorkActivity?
+    /// The Imports section's in-progress row reads this through
+    /// `visibleImportActivity`, so every mutation — start, each progress
+    /// tick, and the nil-out on finish — has to recompose the sidebar. This
+    /// is what keeps the row's count live and what retires it on completion.
+    public var activeWork: AppWorkActivity? {
+        didSet {
+            rebuildSidebarSections()
+        }
+    }
     public var recentWork: [AppWorkActivity]
     public var starredWork: [AppWorkActivity]
     /// Every completed import, newest first — the Imports sidebar section's
     /// source of truth. Refreshed alongside `recentWork`.
     public private(set) var importSourceSummaries: [ImportSidebarSummary] = []
+    /// Which import rows are disclosed. Child counts are queried lazily, only
+    /// for expanded rows, so a catalog with hundreds of imports does not pay
+    /// five queries per row on every sidebar rebuild.
+    public private(set) var expandedImportSessionIDs: Set<String> = []
+    public private(set) var importChildCountsBySessionID: [String: ImportChildCounts] = [:]
+    /// Whether the Imports section is showing every import rather than the
+    /// three most recent plus the overflow row.
+    public private(set) var isShowingAllImports = false
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     // SP-C: a Return that hit the render gate arms the commit; the moment the
@@ -2569,6 +2537,13 @@ public final class AppModel {
     public private(set) var newSetFromSelectionRequestToken = 0
     public func requestNewSetFromSelection() {
         newSetFromSelectionRequestToken += 1
+    }
+
+    /// Bumped by the Smart Collections header's "+ New from search…", which
+    /// opens the existing save-search popover rather than a second builder.
+    public private(set) var saveSearchRequestToken = 0
+    public func requestSaveSearch() {
+        saveSearchRequestToken += 1
     }
 
     public private(set) var moveRejectsToTrashRequestToken = 0
@@ -3195,7 +3170,7 @@ public final class AppModel {
     }
 
     public var starredAssetSets: [AssetSet] {
-        Self.visibleSavedAssetSets(savedAssetSets).filter(\.starred)
+        UnifiedSidebarPresentation.visibleSavedAssetSets(savedAssetSets).filter(\.starred)
     }
 
     public var canSaveCurrentLibraryQuery: Bool {
@@ -4314,23 +4289,10 @@ public final class AppModel {
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
         let resolvedPendingMetadataSyncCount = pendingMetadataSyncCount ?? pendingMetadataSyncItems.count
         let resolvedMetadataSyncConflictCount = metadataSyncConflictCount ?? metadataSyncConflictItems.count
-        self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
-            totalAssetCount: resolvedTotalAssetCount,
-            savedAssetSets: savedAssetSets,
-            assetSetCounts: assetSetCounts,
-            workSessionScopeCounts: workSessionScopeCounts,
-            catalogFolders: catalogFolders,
-            catalogTimelineDays: catalogTimelineDays,
-            sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            smartCollectionCounts: smartCollectionCounts,
-            pendingMetadataSyncItems: pendingMetadataSyncItems,
-            metadataSyncConflictItems: metadataSyncConflictItems,
-            pendingMetadataSyncCount: resolvedPendingMetadataSyncCount,
-            metadataSyncConflictCount: resolvedMetadataSyncConflictCount,
-            recentWork: recentWork,
-            starredWork: starredWork
-        ) : sidebarSections
+        // Seeded only so the stored property is initialized; the
+        // `rebuildSidebarSections()` at the end of this initializer is what
+        // actually composes the sidebar from the state assigned below.
+        self.sidebarSections = sidebarSections
         self.selectedView = selectedView
         self.assets = assets
         self.totalAssetCount = resolvedTotalAssetCount
@@ -4520,11 +4482,13 @@ public final class AppModel {
             availability: .online,
             metadata: AssetMetadata(rating: 4, colorLabel: .green, flag: .pick, keywords: ["demo"])
         )
-        return AppModel(
-            sidebarSections: defaultSidebarSections(totalAssetCount: 1),
+        let model = AppModel(
+            sidebarSections: [],
             selectedView: .grid,
             assets: [asset]
         )
+        model.rebuildSidebarSections()
+        return model
     }
 
     public static func load(repository: CatalogRepository) throws -> AppModel {
@@ -4551,23 +4515,7 @@ public final class AppModel {
         )
         let totalAssetCount = try repository.assetCount()
         return AppModel(
-            sidebarSections: defaultSidebarSections(
-                totalAssetCount: totalAssetCount,
-                savedAssetSets: savedAssetSets,
-                assetSetCounts: assetSetCounts,
-                workSessionScopeCounts: workSessionScopeCounts,
-                catalogFolders: catalogFolders,
-                catalogTimelineDays: catalogTimelineDays,
-                sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-                catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-                smartCollectionCounts: smartCollectionCounts,
-                pendingMetadataSyncItems: metadataSyncState.pendingItems,
-                metadataSyncConflictItems: metadataSyncState.conflictItems,
-                pendingMetadataSyncCount: metadataSyncState.pendingCount,
-                metadataSyncConflictCount: metadataSyncState.conflictCount,
-                recentWork: recentWork,
-                starredWork: starredWork
-            ),
+            sidebarSections: [],
             selectedView: .grid,
             assets: assets,
             totalAssetCount: totalAssetCount,
@@ -4630,23 +4578,7 @@ public final class AppModel {
         )
         let totalAssetCount = try catalog.repository.assetCount()
         let model = AppModel(
-            sidebarSections: defaultSidebarSections(
-                totalAssetCount: totalAssetCount,
-                savedAssetSets: savedAssetSets,
-                assetSetCounts: assetSetCounts,
-                workSessionScopeCounts: workSessionScopeCounts,
-                catalogFolders: catalogFolders,
-                catalogTimelineDays: catalogTimelineDays,
-                sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-                catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-                smartCollectionCounts: smartCollectionCounts,
-                pendingMetadataSyncItems: metadataSyncState.pendingItems,
-                metadataSyncConflictItems: metadataSyncState.conflictItems,
-                pendingMetadataSyncCount: metadataSyncState.pendingCount,
-                metadataSyncConflictCount: metadataSyncState.conflictCount,
-                recentWork: recentWork,
-                starredWork: starredWork
-            ),
+            sidebarSections: [],
             selectedView: .grid,
             assets: assets,
             totalAssetCount: totalAssetCount,
@@ -4692,6 +4624,11 @@ public final class AppModel {
         try model.enqueuePendingGeocoding()
         try model.restoreSessionStateIfAvailable()
         try model.refreshAutopilotGhostAssetIDs()
+        // The Imports section reads `importSourceSummaries`, which the
+        // initializer cannot compute (it takes no repository), so a launch
+        // would otherwise show no imports until the next work-session refresh.
+        try model.refreshImportSourceSummaries()
+        model.rebuildSidebarSections()
         if let sessionRestoreDefaults {
             model.autopilotEnabled = sessionRestoreDefaults.bool(forKey: autopilotEnabledDefaultsKey)
             model.defaultCreator = sessionRestoreDefaults.string(forKey: defaultCreatorDefaultsKey) ?? ""
@@ -4922,6 +4859,31 @@ public final class AppModel {
         rebuildSidebarSections()
     }
 
+    /// One disclosure gesture for every tree-shaped sidebar row: Folders,
+    /// import rows, and the "All imports…" overflow row. Purely a rendering
+    /// concern, so it never reloads the library scope.
+    public func toggleSidebarExpansion(_ row: SidebarRow) {
+        if case .folder(let path)? = row.target?.kind {
+            toggleFolderExpansion(path: path)
+            return
+        }
+        if case .workSession(let sessionID)? = row.target?.kind {
+            if expandedImportSessionIDs.contains(sessionID.rawValue) {
+                expandedImportSessionIDs.remove(sessionID.rawValue)
+            } else {
+                expandedImportSessionIDs.insert(sessionID.rawValue)
+                importChildCountsBySessionID[sessionID.rawValue] =
+                    (try? importChildCounts(sessionID: sessionID)) ?? ImportChildCounts()
+            }
+            rebuildSidebarSections()
+            return
+        }
+        if row.id == UnifiedSidebarPresentation.allImportsRowID {
+            isShowingAllImports.toggle()
+            rebuildSidebarSections()
+        }
+    }
+
     public func selectSource(_ source: LibrarySource) throws {
         try applySource(source)
         recordNavigation(to: source)
@@ -5023,7 +4985,7 @@ public final class AppModel {
         case .smartCollection(let collection):
             try applySmartCollection(collection)
         case .autopilotSuggestions:
-            try beginAutopilotReview()
+            try applyAutopilotSuggestionsScope()
         case .folder(let path):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
@@ -5593,7 +5555,8 @@ public final class AppModel {
                 createdAt: session.createdAt,
                 detail: session.detail,
                 assetCount: session.totalUnitCount ?? session.completedUnitCount,
-                issues: session.issues
+                issues: session.issues,
+                producedOutputSet: !session.outputSetIDs.isEmpty
             )
         }
     }
@@ -5971,97 +5934,6 @@ public final class AppModel {
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         try applyAssetSet(id: setID)
         return try beginCullingSession(named: "Cull These")
-    }
-
-    /// Activates a Cull sidebar source: reuses the same routes Copilot's
-    /// Top Picks / Needs Eyes panels and "Cull remaining from latest import"
-    /// action used, scoping a fresh culling session to the source's assets.
-    /// Autopilot proposals route into the confirm-before-write review flow
-    /// instead of a culling session — nothing is written until the user
-    /// keeps them.
-    public func activateCullSource(_ target: CullSource.Target) throws {
-        switch target {
-        case .recentImport:
-            try beginCullingFromLatestImportCompletion()
-        case .autopilotProposals:
-            try beginAutopilotReview()
-        case .smartCollection(let queue):
-            try applySmartCollection(queue)
-            _ = try beginCullingSession(named: queue.presentation.title)
-        case .selection:
-            try cullCurrentSelection()
-        }
-    }
-
-    /// The Cull sidebar's source picker: recent import, the Top Picks /
-    /// Needs Eyes review-queue groups Copilot used to read, and whatever the
-    /// Library currently has selected.
-    public var cullSourcePresentation: CullSourcePresentation {
-        var sources: [CullSource] = []
-        if let summary = latestImportCompletionSummary {
-            sources.append(CullSource(
-                id: "recent-import",
-                group: .recentImport,
-                title: summary.title,
-                systemImage: "tray.and.arrow.down",
-                count: summary.importedPhotoCount,
-                target: .recentImport
-            ))
-        }
-        // The confirm-before-write review path for machine labels: present
-        // only while ghosts exist so it never renders as a dead row.
-        if !autopilotGhostAssetIDs.isEmpty {
-            sources.append(CullSource(
-                id: "autopilot-proposals",
-                group: .autopilotProposals,
-                title: "Autopilot Proposals",
-                systemImage: "wand.and.stars",
-                count: autopilotGhostAssetIDs.count,
-                target: .autopilotProposals
-            ))
-        }
-        for queue in [SmartCollection.picks, .potentialPicks] {
-            sources.append(CullSource(
-                id: "queue-\(queue.rawValue)",
-                group: .topPicks,
-                title: queue.presentation.title,
-                systemImage: queue.presentation.systemImage,
-                count: smartCollectionCounts[queue] ?? 0,
-                target: .smartCollection(queue)
-            ))
-        }
-        for queue in [SmartCollection.likelyIssues, .needsEvaluation] {
-            sources.append(CullSource(
-                id: "queue-\(queue.rawValue)",
-                group: .needsEyes,
-                title: queue.presentation.title,
-                systemImage: queue.presentation.systemImage,
-                count: smartCollectionCounts[queue] ?? 0,
-                target: .smartCollection(queue)
-            ))
-        }
-        for queue in [SmartCollection.rejects, .fiveStars, .needsKeywords, .facesFound, .ocrFound, .providerFailures] {
-            sources.append(CullSource(
-                id: "queue-\(queue.rawValue)",
-                group: .diagnostics,
-                title: queue.presentation.title,
-                systemImage: queue.presentation.systemImage,
-                count: smartCollectionCounts[queue] ?? 0,
-                target: .smartCollection(queue)
-            ))
-        }
-        let selectionCount = selectedBatchAssetIDs.isEmpty
-            ? (selectedAssetID != nil ? 1 : 0)
-            : selectedBatchAssetIDs.count
-        sources.append(CullSource(
-            id: "selection",
-            group: .selection,
-            title: "Selection",
-            systemImage: "checkmark.circle",
-            count: selectionCount,
-            target: .selection
-        ))
-        return CullSourcePresentation(sources: sources)
     }
 
     public func openAssetInLoupe(_ assetID: AssetID) {
@@ -9956,6 +9828,15 @@ public final class AppModel {
     /// the loaded scope — the review queue must never silently shrink to
     /// whatever the grid happens to hold. Reads only; writes no catalog state.
     public func beginAutopilotReview() throws {
+        try applyAutopilotSuggestionsScope()
+        selectedView = .grid
+    }
+
+    /// The scope half of `beginAutopilotReview()`, without the lens write.
+    /// Selecting the AI Suggestions source must leave the lens alone
+    /// (orthogonality); only the explicit "Review" action moves the user to
+    /// Grid, where the KEEP/CUT badges and the commit bar live.
+    private func applyAutopilotSuggestionsScope() throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -9967,7 +9848,6 @@ public final class AppModel {
         replaceAssets(loadedAssets)
         totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
         isAutopilotReviewActive = true
-        selectedView = .grid
     }
 
     /// Confirms the ghosts on the given assets: each one's tentative
@@ -10351,6 +10231,10 @@ public final class AppModel {
             pendingPreviewGenerationQueueStatesRefresh = false
             try? refreshPreviewGenerationQueueStates()
         }
+        // A worker-driven ingest never touches `activeWork` — it surfaces
+        // only through the republished queue — so this is the Imports
+        // in-progress row's liveness hook for that path.
+        rebuildSidebarSections()
     }
 
     private func clearPreviewLookupCaches() {
@@ -13323,7 +13207,13 @@ public final class AppModel {
     }
 
     private func rebuildSidebarSections() {
-        sidebarSections = buildSidebarSections()
+        // Guarded because the hot callers — every work-progress tick and
+        // every background-queue republication — usually compose an
+        // identical sidebar, and `@Observable` notifies on assignment
+        // rather than on change.
+        let sections = buildSidebarSections()
+        guard sections != sidebarSections else { return }
+        sidebarSections = sections
     }
 
     private func refreshCatalogFolders() {
@@ -13371,6 +13261,10 @@ public final class AppModel {
         try refreshAutopilotGhostAssetIDs()
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         refreshLatestImportPresentation()
+        for sessionID in expandedImportSessionIDs {
+            importChildCountsBySessionID[sessionID] =
+                (try? importChildCounts(sessionID: WorkSessionID(rawValue: sessionID))) ?? ImportChildCounts()
+        }
         rebuildSidebarSections()
     }
 
@@ -14055,6 +13949,12 @@ public final class AppModel {
             workSessionScopeCounts[sessionID] = try catalog.repository.assetCount(
                 matching: SetQuery(predicates: [.workSession(recordedActivity.id)])
             )
+            // The session was just written, so this is where a finished
+            // import becomes an Imports row — the conversion from the
+            // in-progress row `activeWork` was driving a moment ago.
+            if recordedActivity.kind == .ingest {
+                try refreshImportSourceSummaries()
+            }
             rebuildSidebarSections()
         } catch {
             rebuildSidebarSections()
@@ -14268,143 +14168,6 @@ public final class AppModel {
         previewURL(for: assetID, levels: [.large, .medium, .grid, .micro]) != nil
     }
 
-    private static func defaultSidebarSections(
-        totalAssetCount: Int? = nil,
-        savedAssetSets: [AssetSet] = [],
-        assetSetCounts: [AssetSetID: Int] = [:],
-        workSessionScopeCounts: [WorkSessionID: Int] = [:],
-        catalogFolders: [CatalogFolder] = [],
-        expandedFolderPaths: Set<String> = [],
-        catalogTimelineDays: [CatalogTimelineDay] = [],
-        sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
-        catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
-        smartCollectionCounts: [SmartCollection: Int] = [:],
-        pendingMetadataSyncItems: [MetadataSyncItem] = [],
-        metadataSyncConflictItems: [MetadataSyncItem] = [],
-        pendingMetadataSyncCount: Int? = nil,
-        metadataSyncConflictCount: Int? = nil,
-        recentWork: [AppWorkActivity] = [],
-        starredWork: [AppWorkActivity] = [],
-        matchedWork: [AppWorkActivity] = [],
-        sourceRoots: [CatalogSourceRoot] = [],
-        sourceRootBookmarkRepairPaths: Set<String> = []
-    ) -> [SidebarSection] {
-        // The sidebar lists sources only: Collections (All Photos, Recent
-        // Import, Starred, Recent Work), Saved Sets, Folders. Timeline/People/
-        // Places were lenses masquerading as sidebar rows and are now lenses
-        // (⌘1–⌘6); smart-collection data (`smartCollectionCounts`) stays
-        // available for the Cull source picker.
-        var collectionsRows = [
-            SidebarRow(
-                id: "library-all",
-                title: "All Photos",
-                countText: totalAssetCount.map(sidebarCountText),
-                target: .allPhotos
-            )
-        ]
-        if let recentImportRow = recentlyAddedSidebarRow(recentWork) {
-            collectionsRows.append(recentImportRow)
-        }
-        let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
-        let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }
-        collectionsRows.append(contentsOf: starredRows)
-        if matchedWork.isEmpty {
-            collectionsRows.append(contentsOf: mergedRecentWorkSidebarRows(
-                recentWork: recentWork,
-                starredWork: starredWork,
-                scopeCounts: workSessionScopeCounts
-            ))
-        } else {
-            // An active Library query narrows Recent Work to the sessions
-            // matching its plain-text remainder (the SearchWorkspace "Work
-            // History" rail's home after Task 9), keeping their reopen targets.
-            collectionsRows.append(contentsOf: Self.workSidebarRows(
-                for: matchedWork,
-                idPrefix: "work-matched",
-                scopeCounts: workSessionScopeCounts
-            ))
-        }
-
-        var sections = [SidebarSection(title: "Collections", rows: collectionsRows)]
-        if !visibleSavedAssetSets.isEmpty {
-            sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }))
-        }
-        if !catalogFolders.isEmpty {
-            sections.append(SidebarSection(
-                title: "Folders",
-                rows: folderTreeSidebarRows(catalogFolders: catalogFolders, expandedFolderPaths: expandedFolderPaths)
-            ))
-        }
-        return sections
-    }
-
-    /// Folds the Recent Work and Starred Work rows into one list: the most
-    /// recent sessions, plus any starred session old enough to have fallen
-    /// out of that recent window (deduplicated by session id).
-    private static func mergedRecentWorkSidebarRows(
-        recentWork: [AppWorkActivity],
-        starredWork: [AppWorkActivity],
-        scopeCounts: [WorkSessionID: Int]
-    ) -> [SidebarRow] {
-        let recentSlice = Array(recentWork.prefix(5))
-        let recentIDs = Set(recentSlice.map(\.id))
-        let extraStarred = starredWork.filter { !recentIDs.contains($0.id) }
-        return Self.workSidebarRows(for: recentSlice, idPrefix: "work-recent", scopeCounts: scopeCounts)
-            + Self.workSidebarRows(for: Array(extraStarred.prefix(5)), idPrefix: "work-starred", scopeCounts: scopeCounts)
-    }
-
-    /// Flattens the folder tree into sidebar rows, only descending into a
-    /// node's children when its full path is in `expandedFolderPaths` -
-    /// expand-on-demand, so a deep or wide tree never renders more than the
-    /// rows the user has actually opened.
-    private static func folderTreeSidebarRows(
-        catalogFolders: [CatalogFolder],
-        expandedFolderPaths: Set<String>
-    ) -> [SidebarRow] {
-        FolderTreePresentation.build(from: catalogFolders).flatMap { node in
-            folderTreeSidebarRows(for: node, depth: 0, expandedFolderPaths: expandedFolderPaths)
-        }
-    }
-
-    private static func folderTreeSidebarRows(
-        for node: FolderTreeNode,
-        depth: Int,
-        expandedFolderPaths: Set<String>
-    ) -> [SidebarRow] {
-        let isExpanded = expandedFolderPaths.contains(node.fullPath)
-        let disclosure: SidebarRowDisclosure = node.hasChildren ? (isExpanded ? .expanded : .collapsed) : .none
-        let row = SidebarRow(
-            id: "folder-\(node.fullPath)",
-            title: node.title,
-            detailText: node.fullPath,
-            countText: sidebarCountText(node.assetCount),
-            target: .folder(node.fullPath),
-            depth: depth,
-            disclosure: disclosure
-        )
-        guard isExpanded else {
-            return [row]
-        }
-        return [row] + node.children.flatMap { child in
-            folderTreeSidebarRows(for: child, depth: depth + 1, expandedFolderPaths: expandedFolderPaths)
-        }
-    }
-
-    private static func smartCollectionSidebarRows(smartCollectionCounts: [SmartCollection: Int]) -> [SidebarRow] {
-        smartCollectionSidebarOrder.compactMap { collection in
-            guard let count = smartCollectionCounts[collection],
-                  count > 0 else {
-                return nil
-            }
-            return SidebarRow(
-                id: "review-\(collection.rawValue)",
-                title: collection.presentation.title,
-                countText: sidebarCountText(count),
-                target: .smartCollection(collection)
-            )
-        }
-    }
-
     private static let smartCollectionSidebarOrder: [SmartCollection] = [
         .picks,
         .potentialPicks,
@@ -14457,48 +14220,8 @@ public final class AppModel {
         }
     }
 
-    private static func recentlyAddedSidebarRow(_ recentWork: [AppWorkActivity]) -> SidebarRow? {
-        guard let activity = recentWork.first(where: { activity in
-            isImportCompletionActivity(activity)
-                && !activity.outputSetIDs.isEmpty
-                && (activity.totalUnitCount ?? activity.completedUnitCount) > 0
-        }) else {
-            return nil
-        }
-        let title = activity.detail.isEmpty ? "Latest import" : activity.detail
-        return SidebarRow(
-            id: "library-recently-added",
-            title: "Recent Import",
-            detailText: title,
-            countText: sidebarCountText(activity.totalUnitCount ?? activity.completedUnitCount),
-            tone: .positive,
-            target: .workSession(WorkSessionID(rawValue: activity.id), titled: title)
-        )
-    }
-
-    private static func visibleSavedAssetSets(_ assetSets: [AssetSet]) -> [AssetSet] {
-        assetSets.filter {
-            !$0.id.rawValue.hasPrefix("work-output-")
-                && !$0.id.rawValue.hasPrefix("work-input-")
-                && !$0.id.rawValue.hasPrefix("work-stack-")
-                && !$0.id.rawValue.hasPrefix("import-preview-failed-")
-                && !$0.id.rawValue.hasPrefix("selection-source-")
-        }
-    }
-
-    private static func sidebarRow(for assetSet: AssetSet, count: Int?) -> SidebarRow {
-        SidebarRow(
-            id: "asset-set-\(assetSet.id.rawValue)",
-            title: assetSet.name,
-            detailText: assetSet.sidebarDetailText,
-            countText: count.map(sidebarCountText),
-            tone: assetSet.isDynamic ? .accent : .neutral,
-            target: .assetSet(assetSet.id, titled: assetSet.name)
-        )
-    }
-
     private static func assetSetCounts(_ assetSets: [AssetSet], repository: CatalogRepository) throws -> [AssetSetID: Int] {
-        let visibleAssetSets = visibleSavedAssetSets(assetSets)
+        let visibleAssetSets = UnifiedSidebarPresentation.visibleSavedAssetSets(assetSets)
         var counts: [AssetSetID: Int] = [:]
         for assetSet in visibleAssetSets {
             counts[assetSet.id] = try assetCount(for: assetSet, repository: repository)
@@ -14529,38 +14252,6 @@ public final class AppModel {
             }
         }
         return counts
-    }
-
-    private static func workSidebarRows(
-        for activities: [AppWorkActivity],
-        idPrefix: String,
-        scopeCounts: [WorkSessionID: Int]
-    ) -> [SidebarRow] {
-        activities.map { activity in
-            let sessionID = WorkSessionID(rawValue: activity.id)
-            let title = workSidebarTitle(for: activity)
-            return SidebarRow(
-                id: "\(idPrefix)-\(activity.id)",
-                title: title,
-                detailText: activity.sidebarDetailText,
-                countText: activity.sidebarCountText(scopeCount: scopeCounts[sessionID]),
-                tone: activity.sidebarTone,
-                target: .workSession(sessionID, titled: title)
-            )
-        }
-    }
-
-    fileprivate static func sidebarCountText(_ count: Int) -> String {
-        count.formatted(.number.notation(.compactName))
-    }
-
-    private static func workSidebarTitle(for activity: AppWorkActivity) -> String {
-        let trimmedTitle = activity.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedDetail = activity.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedTitle == "Import photos", !trimmedDetail.isEmpty {
-            return trimmedDetail
-        }
-        return trimmedTitle.isEmpty && !trimmedDetail.isEmpty ? trimmedDetail : activity.title
     }
 
     fileprivate static func workKindTitle(_ kind: WorkSessionKind) -> String {
@@ -14595,7 +14286,7 @@ public final class AppModel {
     }
 }
 
-private extension AssetSet {
+extension AssetSet {
     var sidebarDetailText: String {
         switch membership {
         case .dynamic:
@@ -14608,7 +14299,7 @@ private extension AssetSet {
     }
 }
 
-private extension AppWorkActivity {
+extension AppWorkActivity {
     var sidebarDetailText: String? {
         switch status {
         case .running:
@@ -14628,10 +14319,10 @@ private extension AppWorkActivity {
 
     func sidebarCountText(scopeCount: Int?) -> String? {
         if let scopeCount {
-            return AppModel.sidebarCountText(scopeCount)
+            return UnifiedSidebarPresentation.countText(scopeCount)
         }
         guard let totalUnitCount, totalUnitCount > 0 else {
-            return completedUnitCount > 0 ? AppModel.sidebarCountText(completedUnitCount) : nil
+            return completedUnitCount > 0 ? UnifiedSidebarPresentation.countText(completedUnitCount) : nil
         }
         return "\(completedUnitCount)/\(totalUnitCount)"
     }
