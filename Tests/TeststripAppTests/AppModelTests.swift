@@ -8786,6 +8786,167 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .people)
     }
 
+    // Pins the bug commit 3de5609d fixed: mergedWorkActivities took
+    // recentWork.prefix(5) before filtering out ingest-kind sessions, so a
+    // run of five-or-more recent imports filled the window with rows the
+    // caller's kind filter then discarded entirely, leaving Recent Work
+    // empty even though real (non-ingest) work sat just past the window.
+    func testWorkSidebarRecentWindowSurvivesImportsAheadOfRealWork() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-work-sidebar-recent-crowded-by-imports")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        // Five real (non-ingest) sessions, older...
+        for index in 1...5 {
+            try repository.save(WorkSession(
+                id: WorkSessionID(rawValue: "real-work-\(index)"),
+                kind: .culling,
+                intent: "Real work \(index)",
+                title: "Real Work \(index)",
+                detail: "Real work \(index)",
+                status: .completed,
+                inputSetIDs: [],
+                outputSetIDs: [],
+                completedUnitCount: index,
+                totalUnitCount: index,
+                failureCount: 0,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                updatedAt: Date(timeIntervalSince1970: TimeInterval(index))
+            ))
+        }
+        // ...then a run of five more-recent imports ahead of them.
+        for index in 1...5 {
+            try repository.save(WorkSession(
+                id: WorkSessionID(rawValue: "import-\(index)"),
+                kind: .ingest,
+                intent: "Import \(index)",
+                title: "Import \(index)",
+                detail: "Imported photos",
+                status: .completed,
+                inputSetIDs: [],
+                outputSetIDs: [],
+                completedUnitCount: index,
+                totalUnitCount: index,
+                failureCount: 0,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(100 + index)),
+                updatedAt: Date(timeIntervalSince1970: TimeInterval(100 + index))
+            ))
+        }
+
+        let model = try AppModel.load(repository: repository)
+
+        // Ruling 2 sanity: the cache itself still carries all 10 rows (5
+        // imports, 5 real) — only the section-building filter/window changed.
+        XCTAssertEqual(model.recentWork.count, 10)
+        let rows = recentWorkCollectionRows(model)
+        XCTAssertFalse(rows.isEmpty, "a run of completed imports must not empty Recent Work")
+        XCTAssertEqual(rows.map(\.id), [
+            "work-real-work-5",
+            "work-real-work-4",
+            "work-real-work-3",
+            "work-real-work-2",
+            "work-real-work-1"
+        ])
+        for index in 1...5 {
+            XCTAssertFalse(rows.contains { $0.id == "work-import-\(index)" })
+        }
+    }
+
+    // Same bug, starred path: mergedWorkActivities took starredWork.prefix(5)
+    // before the kind filter too, so a run of five-or-more starred imports
+    // filled that window and hid starred real work sitting just past it.
+    func testWorkSidebarStarredWindowSurvivesImportsAheadOfRealWork() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-work-sidebar-starred-crowded-by-imports")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        // Five recent, unstarred sessions fill the recentWork window on
+        // their own, so what follows exercises the starredWork window, not
+        // the recentWork one.
+        for index in 1...5 {
+            try repository.save(WorkSession(
+                id: WorkSessionID(rawValue: "recent-filler-\(index)"),
+                kind: .culling,
+                intent: "Recent filler \(index)",
+                title: "Recent Filler \(index)",
+                detail: "Recent filler \(index)",
+                status: .completed,
+                inputSetIDs: [],
+                outputSetIDs: [],
+                completedUnitCount: index,
+                totalUnitCount: index,
+                failureCount: 0,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(100 + index)),
+                updatedAt: Date(timeIntervalSince1970: TimeInterval(100 + index))
+            ))
+        }
+        // Two starred, genuine work sessions, older...
+        try repository.save(WorkSession(
+            id: WorkSessionID(rawValue: "starred-real-a"),
+            kind: .export,
+            intent: "Starred real a",
+            title: "Starred Real A",
+            detail: "Starred real a",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 1,
+            totalUnitCount: 1,
+            failureCount: 0,
+            starred: true,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 10)
+        ))
+        try repository.save(WorkSession(
+            id: WorkSessionID(rawValue: "starred-real-b"),
+            kind: .relocation,
+            intent: "Starred real b",
+            title: "Starred Real B",
+            detail: "Starred real b",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 1,
+            totalUnitCount: 1,
+            failureCount: 0,
+            starred: true,
+            createdAt: Date(timeIntervalSince1970: 20),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        ))
+        // ...then a run of five more-recent starred imports ahead of them.
+        for index in 1...5 {
+            try repository.save(WorkSession(
+                id: WorkSessionID(rawValue: "starred-import-\(index)"),
+                kind: .ingest,
+                intent: "Starred import \(index)",
+                title: "Starred Import \(index)",
+                detail: "Imported photos",
+                status: .completed,
+                inputSetIDs: [],
+                outputSetIDs: [],
+                completedUnitCount: index,
+                totalUnitCount: index,
+                failureCount: 0,
+                starred: true,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(50 + index)),
+                updatedAt: Date(timeIntervalSince1970: TimeInterval(50 + index))
+            ))
+        }
+
+        let model = try AppModel.load(repository: repository)
+
+        // Ruling 2 sanity: the cache itself still carries all 7 starred rows
+        // (5 imports, 2 real) — only the section-building filter/window
+        // changed.
+        XCTAssertEqual(model.starredWork.count, 7)
+        let starredRows = starredWorkCollectionRows(model)
+        XCTAssertFalse(starredRows.isEmpty, "a run of starred imports must not empty the starred work window")
+        XCTAssertEqual(starredRows.map(\.id), ["work-starred-real-b", "work-starred-real-a"])
+        for index in 1...5 {
+            XCTAssertFalse(starredRows.contains { $0.id == "work-starred-import-\(index)" })
+        }
+    }
+
     func testSettingWorkSessionStarredRefreshesWorkLists() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-star-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
