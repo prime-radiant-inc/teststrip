@@ -44,7 +44,9 @@ final class ImportSourceScopingTests: XCTestCase {
         try repository.save(makeImportSession(
             id: "import-titled",
             detail: "Imported from /Cards/CARD-A",
-            createdAt: Date(timeIntervalSince1970: 1_754_000_000)
+            createdAt: Date(timeIntervalSince1970: 1_754_000_000),
+            completedUnitCount: 4,
+            totalUnitCount: 9
         ))
 
         try model.refreshImportSourceSummaries()
@@ -53,7 +55,23 @@ final class ImportSourceScopingTests: XCTestCase {
         XCTAssertTrue(summary.title.hasSuffix("Imported from /Cards/CARD-A"), summary.title)
         XCTAssertTrue(summary.title.contains(" · "), summary.title)
         XCTAssertNotEqual(summary.title, "Import photos")
-        XCTAssertEqual(summary.assetCount, 0, "makeImportSession leaves the session's unit counts at their defaults")
+        XCTAssertEqual(summary.assetCount, 9, "assetCount prefers totalUnitCount (9) over completedUnitCount (4)")
+    }
+
+    func testImportSummaryAssetCountFallsBackToCompletedUnitCountWhenTotalIsNil() throws {
+        let (model, repository) = try makeModelWithCatalogAssets(named: "import-title-fallback", assets: [])
+        try repository.save(makeImportSession(
+            id: "import-fallback",
+            detail: "Imported from /Cards/CARD-B",
+            createdAt: Date(timeIntervalSince1970: 1_754_000_000),
+            completedUnitCount: 6,
+            totalUnitCount: nil
+        ))
+
+        try model.refreshImportSourceSummaries()
+
+        let summary = try XCTUnwrap(model.importSourceSummaries.first)
+        XCTAssertEqual(summary.assetCount, 6, "assetCount falls back to completedUnitCount when totalUnitCount is nil")
     }
 
     // Import-scoped counts are the smart source's own SetQuery ANDed with
@@ -130,7 +148,13 @@ final class ImportSourceScopingTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func makeImportSession(id: String, detail: String, createdAt: Date) -> WorkSession {
+    private func makeImportSession(
+        id: String,
+        detail: String,
+        createdAt: Date,
+        completedUnitCount: Int = 0,
+        totalUnitCount: Int? = nil
+    ) -> WorkSession {
         WorkSession(
             id: WorkSessionID(rawValue: id),
             kind: .ingest,
@@ -140,6 +164,8 @@ final class ImportSourceScopingTests: XCTestCase {
             status: .completed,
             inputSetIDs: [],
             outputSetIDs: [],
+            completedUnitCount: completedUnitCount,
+            totalUnitCount: totalUnitCount,
             createdAt: createdAt,
             updatedAt: createdAt
         )
