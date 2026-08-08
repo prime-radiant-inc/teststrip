@@ -2424,6 +2424,11 @@ public final class AppModel {
     }
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
+    /// The people present in the currently selected source — what the People
+    /// lens lists. `catalogPeople` stays catalog-wide on purpose: naming,
+    /// merging, and autocomplete must still reach a person who isn't in this
+    /// shoot.
+    public private(set) var peopleInCurrentSource: [CatalogPerson] = []
     /// True for the duration of `importFacesFromContacts()` — drives the People
     /// menu's busy guard so a large address book can't be re-imported mid-run.
     public private(set) var isImportingContacts = false
@@ -3870,13 +3875,24 @@ public final class AppModel {
         return namesByID
     }
 
+    /// The asset scope every People read runs against. `nil` means the whole
+    /// catalog — the People × All Photos global queue — and avoids materializing
+    /// every asset id just to hand it back as an `IN` list.
+    public func peopleScopeAssetIDs() throws -> [AssetID]? {
+        guard let catalog else { return nil }
+        guard selectedExplicitAssetIDs != nil || currentLibraryQuery() != nil else { return nil }
+        return try currentAssetScopeIDs(repository: catalog.repository)
+    }
+
     public func refreshPeopleFaceSuggestions() {
         guard let catalog else { return }
         do {
             let provenance = AppleVisionEvaluationProvider.faceProvenance
+            let scopeAssetIDs = try peopleScopeAssetIDs()
             let unassigned = try catalog.repository.unassignedFaceObservations(
                 provenance: provenance,
-                limit: Self.maximumFaceSuggestionInputCount
+                limit: Self.maximumFaceSuggestionInputCount,
+                assetIDs: scopeAssetIDs
             )
             let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
             let suggestions = FaceSuggestionBuilder().suggestions(
@@ -3894,7 +3910,11 @@ public final class AppModel {
                 personNamesByID: personNamesByID,
                 rejectedPairs: rejectedPairs
             )
-            peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(provenance: provenance)
+            peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(
+                provenance: provenance,
+                assetIDs: scopeAssetIDs
+            )
+            peopleInCurrentSource = try catalog.repository.people(assetIDs: scopeAssetIDs)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -10974,6 +10994,11 @@ public final class AppModel {
             if selectedView == .map {
                 try refreshPlaceData()
             }
+            // The People lens is source-scoped like every other lens, and `reload()`
+            // is the single funnel every source change passes through.
+            if selectedView == .people {
+                refreshPeopleFaceSuggestions()
+            }
             return
         }
         let loadedAssets: [Asset]
@@ -10993,6 +11018,11 @@ public final class AppModel {
         // `reload()` changes, not just on first appearance.
         if selectedView == .map {
             try refreshPlaceData()
+        }
+        // The People lens is source-scoped like every other lens, and `reload()`
+        // is the single funnel every source change passes through.
+        if selectedView == .people {
+            refreshPeopleFaceSuggestions()
         }
     }
 

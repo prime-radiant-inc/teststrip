@@ -18,7 +18,7 @@ struct PeopleView: View {
     private var presentation: PeoplePresentation {
         PeoplePresentation(
             totalAssetCount: model.totalAssetCount,
-            namedPeople: model.catalogPeople,
+            namedPeople: model.peopleInCurrentSource,
             evaluationSummaries: model.catalogEvaluationKindSummaries,
             canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
             faceSuggestions: model.peopleFaceSuggestions,

@@ -1229,24 +1229,55 @@ public final class CatalogRepository {
         }
     }
 
+    /// Confirmed people. `assetIDs == nil` is catalog-wide (the People lens
+    /// over All Photos); a non-nil scope answers "who is in this shoot" — only
+    /// people with at least one asset in the scope, counted within it.
+    public func people(assetIDs: [AssetID]? = nil) throws -> [CatalogPerson] {
+        guard let assetIDs else {
+            return try decodePeople(try database.rows(Self.peopleSQL(scoped: false)))
+        }
+        guard !assetIDs.isEmpty else { return [] }
+        var countsByPerson: [String: Int] = [:]
+        var namesByPerson: [String: String] = [:]
+        for chunk in Self.chunks(assetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                Self.peopleSQL(scoped: true, placeholders: placeholders),
+                bindings: chunk.map(\.rawValue)
+            )
+            for person in try decodePeople(rows) {
+                namesByPerson[person.id] = person.name
+                countsByPerson[person.id, default: 0] += person.assetCount
+            }
+        }
+        return countsByPerson
+            .compactMap { id, count -> CatalogPerson? in
+                guard count > 0, let name = namesByPerson[id] else { return nil }
+                return CatalogPerson(id: id, name: name, assetCount: count)
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     // Load-bearing, not merely defensive: evaluation's AI path
     // (insertAIFace) doesn't write a person_assets row for a bonded
     // secondary, but a user confirming a secondary's own face suggestion
-    // (confirmFace) does — this guard is what keeps that confirmed
-    // secondary from inflating a person's count, matching the
+    // (confirmFace) does — the bonded_to_asset_id guard is what keeps that
+    // confirmed secondary from inflating a person's count, matching the
     // folder/timeline/place/coverage/source-root aggregates.
-    public func people() throws -> [CatalogPerson] {
-        let rows = try database.rows(
-            """
-            SELECT people.id, people.name, COUNT(assets.id) AS asset_count
-            FROM people
-            LEFT JOIN person_assets ON person_assets.person_id = people.id
-            LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
-            GROUP BY people.id, people.name
-            ORDER BY people.name COLLATE NOCASE ASC
-            """
-        )
-        return try rows.map { row in
+    private static func peopleSQL(scoped: Bool, placeholders: String = "") -> String {
+        let scopeClause = scoped ? " AND person_assets.asset_id IN (\(placeholders))" : ""
+        return """
+        SELECT people.id, people.name, COUNT(assets.id) AS asset_count
+        FROM people
+        LEFT JOIN person_assets ON person_assets.person_id = people.id\(scopeClause)
+        LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
+        GROUP BY people.id, people.name
+        ORDER BY people.name COLLATE NOCASE ASC
+        """
+    }
+
+    private func decodePeople(_ rows: [[String: String]]) throws -> [CatalogPerson] {
+        try rows.map { row in
             guard let id = row["id"], let name = row["name"], let countString = row["asset_count"], let assetCount = Int(countString) else {
                 throw CatalogError.sqlite("person row is missing required columns")
             }
@@ -1420,45 +1451,70 @@ public final class CatalogRepository {
     // the bonded_to_asset_id exclusion a RAW+JPEG pair's pixel-identical
     // face would surface twice; the primary's own observation already
     // covers the shot.
-    public func unassignedFaceObservations(provenance: ProviderProvenance, limit: Int) throws -> [CatalogFaceObservation] {
-        let rows = try database.rows(
-            """
-            SELECT asset_id, face_index, face_json, provenance_json
-            FROM face_observations
-            WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
-              AND NOT EXISTS (
-                  SELECT 1 FROM assets
-                  WHERE assets.id = face_observations.asset_id
-                    AND assets.bonded_to_asset_id IS NOT NULL
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM person_faces
-                  WHERE person_faces.asset_id = face_observations.asset_id
-                    AND person_faces.face_index = face_observations.face_index
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM person_assets
-                  WHERE person_assets.asset_id = face_observations.asset_id
-                    AND NOT EXISTS (
-                        SELECT 1 FROM person_faces
-                        WHERE person_faces.asset_id = face_observations.asset_id
-                    )
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM dismissed_faces
-                  WHERE dismissed_faces.asset_id = face_observations.asset_id
-                    AND dismissed_faces.face_index = face_observations.face_index
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM dismissed_face_assets
-                  WHERE dismissed_face_assets.asset_id = face_observations.asset_id
-              )
-            ORDER BY created_at DESC, asset_id ASC, face_index ASC
-            LIMIT ?
-            """,
-            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash, "\(limit)"]
-        )
-        return try rows.map(decodeFaceObservation)
+    //
+    // `assetIDs == nil` is catalog-wide (People × All Photos, the global
+    // grouping queue); a non-nil scope is the shoot the user is looking at.
+    public func unassignedFaceObservations(
+        provenance: ProviderProvenance,
+        limit: Int,
+        assetIDs: [AssetID]? = nil
+    ) throws -> [CatalogFaceObservation] {
+        let provenanceBindings = [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
+        guard let assetIDs else {
+            let rows = try database.rows(
+                Self.unassignedFaceObservationsSQL(scopeClause: ""),
+                bindings: provenanceBindings + ["\(limit)"]
+            )
+            return try rows.map(decodeFaceObservation)
+        }
+        guard !assetIDs.isEmpty, limit > 0 else { return [] }
+        var observations: [CatalogFaceObservation] = []
+        for chunk in Self.chunks(assetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                Self.unassignedFaceObservationsSQL(scopeClause: "\n  AND face_observations.asset_id IN (\(placeholders))"),
+                bindings: provenanceBindings + chunk.map(\.rawValue) + ["\(limit)"]
+            )
+            observations.append(contentsOf: try rows.map(decodeFaceObservation))
+        }
+        return Array(observations.prefix(limit))
+    }
+
+    private static func unassignedFaceObservationsSQL(scopeClause: String) -> String {
+        """
+        SELECT asset_id, face_index, face_json, provenance_json
+        FROM face_observations
+        WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?\(scopeClause)
+          AND NOT EXISTS (
+              SELECT 1 FROM assets
+              WHERE assets.id = face_observations.asset_id
+                AND assets.bonded_to_asset_id IS NOT NULL
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM person_faces
+              WHERE person_faces.asset_id = face_observations.asset_id
+                AND person_faces.face_index = face_observations.face_index
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM person_assets
+              WHERE person_assets.asset_id = face_observations.asset_id
+                AND NOT EXISTS (
+                    SELECT 1 FROM person_faces
+                    WHERE person_faces.asset_id = face_observations.asset_id
+                )
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM dismissed_faces
+              WHERE dismissed_faces.asset_id = face_observations.asset_id
+                AND dismissed_faces.face_index = face_observations.face_index
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM dismissed_face_assets
+              WHERE dismissed_face_assets.asset_id = face_observations.asset_id
+          )
+        ORDER BY created_at DESC, asset_id ASC, face_index ASC
+        LIMIT ?
+        """
     }
 
     /// The CONFIRMED (`person_faces.origin = 'user'`) face rows for a provenance
@@ -1687,16 +1743,40 @@ public final class CatalogRepository {
         }
     }
 
-    public func faceObservationAssetCount(provenance: ProviderProvenance) throws -> Int {
-        let rows = try database.rows(
-            """
-            SELECT COUNT(DISTINCT asset_id) AS asset_count
-            FROM face_observations
-            WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
-            """,
-            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
-        )
-        return rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
+    public func faceObservationAssetCount(
+        provenance: ProviderProvenance,
+        assetIDs: [AssetID]? = nil
+    ) throws -> Int {
+        let provenanceBindings = [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
+        guard let assetIDs else {
+            let rows = try database.rows(
+                """
+                SELECT COUNT(DISTINCT asset_id) AS asset_count
+                FROM face_observations
+                WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+                """,
+                bindings: provenanceBindings
+            )
+            return rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
+        }
+        guard !assetIDs.isEmpty else { return 0 }
+        // Chunks are disjoint sets of asset ids, so per-chunk DISTINCT counts
+        // sum without double counting.
+        var count = 0
+        for chunk in Self.chunks(assetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                """
+                SELECT COUNT(DISTINCT asset_id) AS asset_count
+                FROM face_observations
+                WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+                  AND asset_id IN (\(placeholders))
+                """,
+                bindings: provenanceBindings + chunk.map(\.rawValue)
+            )
+            count += rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
+        }
+        return count
     }
 
     /// Guarded machine-proposed face-to-person link: an `origin='ai'` `person_faces`
