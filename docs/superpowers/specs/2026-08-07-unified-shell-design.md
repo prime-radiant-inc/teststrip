@@ -94,7 +94,13 @@ Sections, top to bottom:
   Backed by the existing unbounded
   `workSessions(kind: .ingest, statuses: [.completed])` query — not the
   mixed-kind, limit-10 `recentWork` cache, which cannot promise three
-  imports.
+  imports. While an ingest is running, Imports shows one non-selectable
+  in-progress row at the top (title + live progress count) that becomes
+  the completed, selectable row when the session finishes (Jesse
+  2026-08-08). A completed session with no output set — nothing actually
+  imported — gets no row; the bell receipt is its only record (Jesse
+  2026-08-08). Completed imports appear here and nowhere else; Recent
+  Work excludes ingest sessions.
 - **Smart Collections** — the old Cull From rows, which were always live
   queries: Picks, Potential Picks, Likely Issues, Not analyzed yet,
   Rejects, 5 Stars, Needs Keywords, Faces Found, OCR Found, **Analysis
