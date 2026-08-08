@@ -1237,9 +1237,11 @@ public final class CatalogRepository {
             return try decodePeople(try database.rows(Self.peopleSQL(scoped: false)))
         }
         guard !assetIDs.isEmpty else { return [] }
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
         var countsByPerson: [String: Int] = [:]
         var namesByPerson: [String: String] = [:]
-        for chunk in Self.chunks(assetIDs, size: 500) {
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
             let rows = try database.rows(
                 Self.peopleSQL(scoped: true, placeholders: placeholders),
@@ -1468,8 +1470,10 @@ public final class CatalogRepository {
             return try rows.map(decodeFaceObservation)
         }
         guard !assetIDs.isEmpty, limit > 0 else { return [] }
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
         var observations: [CatalogFaceObservation] = []
-        for chunk in Self.chunks(assetIDs, size: 500) {
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
             let rows = try database.rows(
                 Self.unassignedFaceObservationsSQL(scopeClause: "\n  AND face_observations.asset_id IN (\(placeholders))"),
@@ -1760,10 +1764,12 @@ public final class CatalogRepository {
             return rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
         }
         guard !assetIDs.isEmpty else { return 0 }
-        // Chunks are disjoint sets of asset ids, so per-chunk DISTINCT counts
-        // sum without double counting.
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
+        // Deduping before chunking makes each chunk a disjoint set of asset
+        // ids, so per-chunk DISTINCT counts sum without double counting.
         var count = 0
-        for chunk in Self.chunks(assetIDs, size: 500) {
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
             let rows = try database.rows(
                 """
