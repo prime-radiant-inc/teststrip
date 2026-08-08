@@ -48,6 +48,49 @@ final class ScopedPeopleQueryTests: XCTestCase {
         )
     }
 
+    private struct TestFaceObservationPayload: Codable {
+        var boundingBox: FaceBoundingBox
+        var captureQuality: Double?
+        var embedding: [Double]
+    }
+
+    // Bypasses `replaceFaceObservations` to pin an exact `created_at`, the
+    // same way `CatalogDatabaseTests.insertTestAsset` pins asset timestamps —
+    // the public API always stamps the current wall clock.
+    private func insertFaceObservation(
+        _ database: CatalogDatabase,
+        assetID: AssetID,
+        createdAt: String,
+        provenanceJSON: String
+    ) throws {
+        let payload = TestFaceObservationPayload(
+            boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+            captureQuality: 0.9,
+            embedding: [0.1, 0.2, 0.3]
+        )
+        let faceJSON = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        try database.execute(
+            """
+            INSERT INTO face_observations (
+                asset_id, face_index, face_json, provenance_json,
+                provider, model, version, settings_hash, created_at, updated_at
+            )
+            VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            bindings: [
+                assetID.rawValue,
+                faceJSON,
+                provenanceJSON,
+                provenance.provider,
+                provenance.model,
+                provenance.version,
+                provenance.settingsHash,
+                createdAt,
+                createdAt
+            ]
+        )
+    }
+
     func testPeopleScopedToASubsetOnlyReturnsPeoplePresentInIt() throws {
         let repository = try makeRepository(named: "scoped-people")
         let shootFrame = asset(path: "/Photos/Shoot/a.jpg")
@@ -103,6 +146,7 @@ final class ScopedPeopleQueryTests: XCTestCase {
 
         XCTAssertEqual(scoped.map(\.assetID), [shootFrame.id])
         XCTAssertEqual(Set(global.map(\.assetID)), Set([shootFrame.id, otherFrame.id]))
+        XCTAssertEqual(try repository.unassignedFaceObservations(provenance: provenance, limit: 100, assetIDs: []), [])
     }
 
     func testScopedUnassignedFaceObservationsStillRespectTheLimit() throws {
@@ -118,6 +162,42 @@ final class ScopedPeopleQueryTests: XCTestCase {
         let scoped = try repository.unassignedFaceObservations(provenance: provenance, limit: 2, assetIDs: ids)
 
         XCTAssertEqual(scoped.count, 2)
+    }
+
+    // Task 3 review: `unassignedFaceObservations` binds the *full* `limit` to
+    // each chunk's own `LIMIT ?`, appends chunks in input order, and
+    // truncates with `prefix(limit)` — so once a scope crosses the 500-id
+    // chunk boundary, an earlier chunk that alone satisfies `limit` masks a
+    // later chunk's newer rows entirely, rather than the merge picking the
+    // true global-newest `limit` rows. This seeds 505 scoped assets — 500 in
+    // the first chunk (older `created_at`) and 5 in the second chunk (the
+    // globally newest `created_at`) — so the correct top 10 spans both
+    // chunks while the current merge returns only the first chunk's top 10.
+    func testUnassignedFaceObservationsAcrossChunksReturnGlobalNewestNotJustTheFirstChunk() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "scoped-unassigned-chunked")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenanceJSON = String(data: try JSONEncoder().encode(provenance), encoding: .utf8)!
+
+        let firstChunkAssets = (0..<500).map { asset(path: "/Photos/Chunk1/\($0).jpg") }
+        let secondChunkAssets = (0..<5).map { asset(path: "/Photos/Chunk2/\($0).jpg") }
+        try repository.upsert(firstChunkAssets + secondChunkAssets)
+        try database.transaction {
+            for (index, frame) in firstChunkAssets.enumerated() {
+                try insertFaceObservation(database, assetID: frame.id, createdAt: "\(1000 + index)", provenanceJSON: provenanceJSON)
+            }
+            for (index, frame) in secondChunkAssets.enumerated() {
+                try insertFaceObservation(database, assetID: frame.id, createdAt: "\(2000 + index)", provenanceJSON: provenanceJSON)
+            }
+        }
+
+        let scope = (firstChunkAssets + secondChunkAssets).map(\.id)
+        let expectedNewestFirst = secondChunkAssets.reversed().map(\.id) + firstChunkAssets.suffix(5).reversed().map(\.id)
+
+        let scoped = try repository.unassignedFaceObservations(provenance: provenance, limit: 10, assetIDs: scope)
+
+        XCTAssertEqual(scoped.map(\.assetID), expectedNewestFirst)
     }
 
     func testFaceObservationAssetCountHonoursTheScope() throws {
