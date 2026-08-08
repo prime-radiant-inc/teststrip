@@ -5100,12 +5100,15 @@ public final class AppModel {
         switch child {
         case .stacks, .skippedFiles:
             detachedLibraryFilterPredicates = [.importBatch(sessionID.rawValue)]
+            try reload()
         case .likelyIssues:
             detachedLibraryFilterPredicates =
                 [.importBatch(sessionID.rawValue)] + SmartCollection.likelyIssues.query.predicates
+            try reload()
         case .facesFound:
             detachedLibraryFilterPredicates =
                 [.importBatch(sessionID.rawValue)] + SmartCollection.facesFound.query.predicates
+            try reload()
         case .previewFailed:
             let importAssetIDs = try latestImportOutputAssetIDs(
                 activityID: sessionID.rawValue,
@@ -5116,10 +5119,18 @@ public final class AppModel {
             try catalog.repository.upsert(
                 AssetSet.manual(id: setID, name: ImportChildKind.previewFailed.title, assetIDs: failedAssetIDs)
             )
+            // `applyAssetSet` already reloads and claims `selectedSource` for
+            // its own `.assetSet` kind; the trailing assignment below
+            // reclaims it as `.importChild` so `isDiagnostic` reads
+            // `.previewFailed`'s diagnostic status, not `.assetSet`'s
+            // (never diagnostic).
             try applyAssetSet(id: setID)
-            return
         }
-        try reload()
+        // Every path above has already reloaded successfully (directly, or
+        // via `applyAssetSet` for `.previewFailed`), so this always
+        // describes a scope that's actually on screen — the same
+        // write-after-reload convention every other applier follows.
+        selectedSource = .importChild(session: sessionID, child: child)
     }
 
     /// The transient Selection source: the current batch selection, or the
@@ -5139,7 +5150,13 @@ public final class AppModel {
             AssetSet.manual(id: setID, name: "Selection", assetIDs: selectionIDs)
         )
         savedAssetSets.removeAll { $0.id == setID }
+        // `applyAssetSet` already reloads and claims `selectedSource` for
+        // its own `.assetSet` kind; the trailing assignment below reclaims
+        // it as `.selection` so the lens switcher (and everything else
+        // reading `selectedSource`) sees the Selection source the caller
+        // actually asked for, not the synthetic set backing it.
         try applyAssetSet(id: setID)
+        selectedSource = .selection
     }
 
     @discardableResult
@@ -5527,13 +5544,17 @@ public final class AppModel {
             rebuildSidebarSections()
         }
         selectedAssetSetID = id
+        clearLibraryQueryFilters()
+        try reload()
         // `applyAssetSet` is called directly (bypassing `applySource`) from
         // every culling-session entry point and several deep links, so it
         // owns `selectedSource` itself rather than leaving it to whichever
-        // caller remembers to set it.
+        // caller remembers to set it. Written after a successful `reload()`:
+        // if `reload()` throws, `assets` still holds the previous source's
+        // rows (`reload()` only calls `replaceAssets` once its catalog reads
+        // succeed), so `selectedSource` must stay put too rather than
+        // claiming a scope that was never actually loaded.
         selectedSource = .assetSet(id, titled: assetSet.name)
-        clearLibraryQueryFilters()
-        try reload()
     }
 
     public func refreshSavedAssetSets() throws {
