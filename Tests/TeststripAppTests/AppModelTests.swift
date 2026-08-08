@@ -8682,13 +8682,19 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.recentWork.map(\.id), [recent.id.rawValue, starred.id.rawValue])
         XCTAssertEqual(model.starredWork.map(\.id), [starred.id.rawValue])
-        XCTAssertEqual(recentWorkCollectionRows(model).map(\.title), [recent.detail, starred.title])
+        // Ruling 2: completed imports live under Imports and nowhere else —
+        // Recent Work excludes ingest-kind sessions even though the model's
+        // own recentWork cache (asserted above) still carries them.
+        XCTAssertFalse(
+            recentWorkCollectionRows(model).contains { $0.id == "work-\(recent.id.rawValue)" },
+            "a completed ingest session must not appear in Recent Work"
+        )
+        XCTAssertEqual(recentWorkCollectionRows(model).map(\.title), [starred.title])
         XCTAssertEqual(recentWorkCollectionRows(model).map(\.target), [
-            .workSession(recent.id, titled: recent.detail),
             .workSession(starred.id, titled: starred.title)
         ])
         XCTAssertEqual(starredWorkCollectionRows(model).map(\.title), [starred.title])
-        XCTAssertEqual(recentWorkCollectionRows(model).map(\.isSelectable), [true, true])
+        XCTAssertEqual(recentWorkCollectionRows(model).map(\.isSelectable), [true])
         XCTAssertEqual(starredWorkCollectionRows(model).map(\.isSelectable), [true])
     }
 
@@ -17586,11 +17592,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .grid)
     }
 
-    func testCompletedImportWithoutOutputSetDoesNotShowRecentlyAddedLibraryRow() throws {
+    func testImportsSectionSkipsCompletedSessionWithNoOutputSet() throws {
         let asset = makeAsset(id: "no-output", path: "/Volumes/Archive/Import/no-output.jpg", rating: 0)
+        let imported = makeAsset(id: "with-output", path: "/Volumes/Archive/Import/with-output.jpg", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(
-            named: "app-model-recently-added-no-output",
-            assets: [asset],
+            named: "app-model-imports-section-no-output",
+            assets: [asset, imported],
             configureRepository: { repository in
                 try repository.save(WorkSession(
                     id: WorkSessionID(rawValue: "empty-import-session"),
@@ -17607,13 +17614,44 @@ final class AppModelTests: XCTestCase {
                     createdAt: Date(timeIntervalSince1970: 10),
                     updatedAt: Date(timeIntervalSince1970: 20)
                 ))
+                // A second, qualifying session so the Imports section
+                // genuinely exists — the assertion below must pin the
+                // exclusion of the empty session, not merely the (weaker,
+                // vacuous) absence of the whole section.
+                let outputSet = AssetSet.manual(
+                    id: AssetSetID(rawValue: "with-output-set"),
+                    name: "Imported photos",
+                    assetIDs: [imported.id]
+                )
+                try repository.upsert(outputSet)
+                try repository.save(WorkSession(
+                    id: WorkSessionID(rawValue: "with-output-session"),
+                    kind: .ingest,
+                    intent: "Import photos",
+                    title: "Import photos",
+                    detail: "Imported 1 photo from Import",
+                    status: .completed,
+                    inputSetIDs: [],
+                    outputSetIDs: [outputSet.id],
+                    completedUnitCount: 1,
+                    totalUnitCount: 1,
+                    failureCount: 0,
+                    createdAt: Date(timeIntervalSince1970: 30),
+                    updatedAt: Date(timeIntervalSince1970: 40)
+                ))
             }
         )
 
         XCTAssertNotNil(try? repository.session(id: WorkSessionID(rawValue: "empty-import-session")))
-        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
 
-        XCTAssertFalse(collectionsSection.rowTitles.contains("Recent Import"))
+        // Ruling 3: a completed session with no output set — nothing
+        // actually imported — gets no Imports row; the bell receipt is its
+        // only record. The guard moved here from the deleted "Recent
+        // Import" row (Collections section) it used to live in, but the
+        // claim is the same.
+        XCTAssertFalse(importsSection.rows.contains { $0.id == "import-empty-import-session" })
+        XCTAssertTrue(importsSection.rows.contains { $0.id == "import-with-output-session" })
     }
 
     func testLatestImportCompletionSummarySeparatesExistingReimportedPhotos() throws {
@@ -17998,13 +18036,88 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.kind, .ingest)
         XCTAssertEqual(activity.status, .running)
         XCTAssertEqual(activity.detail, "Importing from photos")
-        XCTAssertTrue(model.sidebarSections.first { $0.title == "Collections" }?.rowTitles.contains("Importing from photos") ?? false)
+        // Ruling 1: while the ingest runs, Imports shows one non-selectable
+        // in-progress row at the top — a half-finished import is not a
+        // stable set to select.
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        XCTAssertEqual(importsSection.rows.count, 1)
+        let runningRow = try XCTUnwrap(importsSection.rows.first)
+        XCTAssertTrue(runningRow.title.contains("Importing from photos"), runningRow.title)
+        XCTAssertFalse(runningRow.isSelectable)
         let persisted = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
         XCTAssertEqual(persisted.status, .running)
         XCTAssertEqual(persisted.detail, "Importing from photos")
 
         model.cancelActiveWork()
         try await waitForActivityStatus(.cancelled, in: model)
+    }
+
+    // Ruling 1's third claim: the in-progress row's count is live off the
+    // active work, and it converts into the normal completed, selectable
+    // row (no reload required) once the session finishes.
+    @MainActor
+    func testRunningImportRowBecomesSelectableCompletedRowWhenImportFinishes() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-running-import-row-conversion")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "running-import-row-asset"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { paths, _, _, progress in
+                Task.detached {
+                    let backgroundCatalog = try AppCatalog.open(paths: paths)
+                    try backgroundCatalog.repository.upsert(importedAsset)
+                    progress(LibraryImportProgress(
+                        completedUnitCount: 1,
+                        totalUnitCount: 1,
+                        detail: "Cataloging 1 of 1 photo",
+                        catalogedAssetIDs: [importedAsset.id]
+                    ))
+                    try await Task.sleep(nanoseconds: 20_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [importedAsset], previewFailures: []),
+                        assets: try backgroundCatalog.repository.allAssets(limit: 500),
+                        totalAssetCount: try backgroundCatalog.repository.assetCount()
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+        let activityID = try XCTUnwrap(model.activeWork?.id)
+        try await waitForActiveWorkProgress(
+            completedUnitCount: 1,
+            totalUnitCount: 1,
+            detail: "Cataloging 1 of 1 photo",
+            in: model
+        )
+
+        let runningImportsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let runningRow = try XCTUnwrap(runningImportsSection.rows.first)
+        XCTAssertEqual(runningRow.countText, "1/1")
+        XCTAssertFalse(runningRow.isSelectable)
+
+        try await waitForActivityStatus(.completed, in: model)
+
+        let completedImportsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        XCTAssertEqual(completedImportsSection.rows.count, 1)
+        let completedRow = try XCTUnwrap(completedImportsSection.rows.first)
+        XCTAssertTrue(completedRow.isSelectable)
+        XCTAssertEqual(
+            completedRow.target,
+            .workSession(WorkSessionID(rawValue: activityID), titled: completedRow.title)
+        )
     }
 
     @MainActor
