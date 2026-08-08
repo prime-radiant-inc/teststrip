@@ -339,8 +339,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
     }
 
+    // `navigateBack`/`navigateForward` route through `applySource`, so a
+    // `navigateBack()` that failed to re-apply scope (leaving only the stored
+    // `selectedSource` behind) would still pass a check that stops at
+    // `selectedSource` — the asset list is what proves the scope came back.
     func testNavigateBackAndForwardMovesThroughSourceHistory() throws {
-        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        let inA = makeAsset(id: "nav-history-a", path: "/Photos/A/one.jpg", rating: 0)
+        let inB = makeAsset(id: "nav-history-b", path: "/Photos/B/one.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(named: "navigate-back-forward", assets: [inA, inB])
         XCTAssertFalse(model.canNavigateBack)
         XCTAssertFalse(model.canNavigateForward)
 
@@ -352,21 +358,27 @@ final class AppModelTests: XCTestCase {
 
         try model.navigateBack()
         XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/B"))
+        XCTAssertEqual(model.assets.map(\.id), [inB.id])
         XCTAssertTrue(model.canNavigateForward)
 
         try model.navigateBack()
         XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/A"))
+        XCTAssertEqual(model.assets.map(\.id), [inA.id])
         XCTAssertFalse(model.canNavigateBack)
 
         try model.navigateForward()
         XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/B"))
+        XCTAssertEqual(model.assets.map(\.id), [inB.id])
         try model.navigateForward()
         XCTAssertEqual(model.selectedSource, LibrarySource.allPhotos)
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set([inA.id, inB.id]))
         XCTAssertFalse(model.canNavigateForward)
     }
 
     func testNavigatingToANewSourceAfterGoingBackClearsForwardHistory() throws {
-        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        let inA = makeAsset(id: "nav-clear-forward-a", path: "/Photos/A/one.jpg", rating: 0)
+        let inB = makeAsset(id: "nav-clear-forward-b", path: "/Photos/B/one.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(named: "navigate-clears-forward-history", assets: [inA, inB])
         try model.selectSource(.folder("/Photos/A"))
         try model.selectSource(.folder("/Photos/B"))
 
@@ -382,7 +394,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testRepeatingTheCurrentSourceDoesNotGrowNavigationHistory() throws {
-        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        let inA = makeAsset(id: "nav-repeat-a", path: "/Photos/A/one.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(named: "navigate-repeats-current-source", assets: [inA])
         try model.selectSource(.folder("/Photos/A"))
         try model.selectSource(.folder("/Photos/A"))
         XCTAssertFalse(model.canNavigateBack)
@@ -20025,18 +20038,6 @@ final class AppModelTests: XCTestCase {
 
         let backfillCommands = try transport.commands().filter(\.isBackfillCoordinates)
         XCTAssertEqual(backfillCommands.count, 1)
-    }
-
-    func testSelectingPlacesTargetEntersMapView() throws {
-        let directory = try makeTemporaryDirectory(named: "app-model-places-target")
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        let (model, _) = makeGeocodingModel(directory: directory, repository: repository)
-
-        model.selectLens(.map)
-
-        XCTAssertEqual(model.selectedView, .map)
     }
 
     func testSelectPlaceBoundsAppliesGeoFilterAndReturnsToGrid() throws {

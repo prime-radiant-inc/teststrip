@@ -79,6 +79,49 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [inside.id])
     }
 
+    // Every applier reached through `applySource` — not just the two the
+    // switcher's Grid-fallback path exercises — must leave the lens alone.
+    // Timeline never disables (only Cull disables, and only on diagnostic or
+    // empty sources), so if the lens moves here, an applier reintroduced a
+    // hardcoded `selectedView` write rather than letting `LensRules` decide.
+    func testSelectingAnySourceKindNeverChangesANonDisablingLens() throws {
+        let picked = makeAsset(id: "source-kind-picked", path: "/Photos/Inside/picked.jpg")
+        let focused = makeAsset(id: "source-kind-focused", path: "/Photos/Inside/focused.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "source-keeps-lens-every-kind",
+            assets: [picked, focused]
+        )
+        try repository.updateMetadata(assetID: picked.id) { $0.flag = .pick }
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: focused.id,
+                kind: .focus,
+                value: .score(0.5),
+                confidence: 0.9,
+                provenance: ProviderProvenance(provider: "local-http", model: "focus", version: "1", settingsHash: "default")
+            )
+        ])
+        let setID = AssetSetID(rawValue: "source-kind-set")
+        try repository.upsert(AssetSet.manual(id: setID, name: "Keepers", assetIDs: [picked.id]))
+
+        // None of these four sources is diagnostic or empty, so Timeline —
+        // which never disables in the first place — has no legitimate reason
+        // to move.
+        let sources: [LibrarySource] = [
+            .folder("/Photos/Inside"),
+            .smartCollection(.picks),
+            .assetSet(setID, titled: "Keepers"),
+            .evaluationKind(.focus, titled: "Focus")
+        ]
+
+        model.selectLens(.timeline)
+        for source in sources {
+            try model.selectSource(source)
+            XCTAssertEqual(model.selectedLens, .timeline, "\(source.title) changed the lens")
+            XCTAssertFalse(model.assets.isEmpty, "\(source.title) resolved to an empty source")
+        }
+    }
+
     func testSelectingADiagnosticSourceFallsTheCullLensBackToGrid() throws {
         let asset = makeAsset(id: "fallback", path: "/Photos/a.jpg")
         let (model, _) = try makeModelWithCatalogAssets(named: "source-lens-fallback", assets: [asset])

@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+@testable import TeststripCore
 @testable import TeststripApp
 
 // Six lenses over one source, ⌘1–⌘6 in the same order. The Cull|Library
@@ -73,7 +74,8 @@ final class LibraryLensTests: XCTestCase {
     }
 
     func testSelectingALensNeverChangesTheSource() throws {
-        let model = AppModel.demo()
+        let picked = makeAsset(id: "lens-source-picked", path: "/Photos/picked.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "lens-never-changes-source", assets: [picked])
         let source = LibrarySource.smartCollection(.picks)
         try model.selectSource(source)
 
@@ -127,5 +129,43 @@ final class LibraryLensTests: XCTestCase {
     func testLoupePresentationChromeFlagByMode() {
         XCTAssertTrue(LoupePresentation(mode: .loupe).showsCullChrome)
         XCTAssertFalse(LoupePresentation(mode: .libraryLoupe).showsCullChrome)
+    }
+
+    // MARK: - Fixtures
+
+    private func makeAsset(id: String, path: String) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: path),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: Int64(id.count + 1), modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata(flag: .pick)
+        )
+    }
+
+    private func makeModelWithCatalogAssets(
+        named name: String,
+        assets: [Asset]
+    ) throws -> (AppModel, CatalogRepository) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-library-lens-\(name)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(assets)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
+        return (model, repository)
     }
 }
