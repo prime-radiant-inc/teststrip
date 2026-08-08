@@ -10,7 +10,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
         try seedAssets(count: 5, in: catalogA.repository)
 
         let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
-        try modelA.selectSidebarTarget(.search)
+        try modelA.selectSource(.allPhotos)
         modelA.librarySearchText = "patagonia"
         modelA.minimumRatingFilter = 4
         modelA.flagFilter = .pick
@@ -113,7 +113,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
         try catalogA.repository.upsert([pick, plain])
 
         let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
-        try modelA.selectSidebarTarget(.smartCollection(.picks))
+        try modelA.selectSource(.smartCollection(.picks))
         XCTAssertEqual(modelA.activeLibraryFilterChips, ["Pick"])
         XCTAssertEqual(modelA.assets.map(\.id), [pick.id])
 
@@ -248,7 +248,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
         try seedAssets(count: 3, in: catalogB.repository)
 
         let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
-        try modelA.selectSidebarTarget(.search)
+        try modelA.selectSource(.allPhotos)
         modelA.librarySearchText = "only in A"
         try modelA.applyLibraryFilters()
 
@@ -293,7 +293,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
         try seedAssets(count: 3, in: catalogA.repository)
 
         let modelA = try AppModel.load(catalog: catalogA)
-        try modelA.selectSidebarTarget(.search)
+        try modelA.selectSource(.allPhotos)
         modelA.librarySearchText = "should not survive"
         try modelA.applyLibraryFilters()
 

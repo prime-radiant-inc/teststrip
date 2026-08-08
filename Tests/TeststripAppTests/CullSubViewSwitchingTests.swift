@@ -1,8 +1,8 @@
 import XCTest
 @testable import TeststripApp
 
-// Task 18: g/c/b switch Cull's sub-views (grid/compare/A-B) without leaving
-// the Cull workspace. CullingKeyCaptureView carries g/c/b while in
+// Task 18: g/c/b switch Cull's sub-modes (grid/compare/A-B) without leaving
+// the Cull lens. CullingKeyCaptureView carries g/c/b while in
 // loupe/compare/A-B; GridKeyCaptureView carries the same letters (plus
 // Escape) to get back out of the cull grid, since that view's key capture
 // belongs to GridKeyCaptureView, not CullingKeyCaptureView (matching the
@@ -14,13 +14,13 @@ final class CullSubViewSwitchingTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(key: .character("b")), .showABCompare)
     }
 
-    func testApplyingCullingShortcutSwitchesSubViewWithoutLeavingCullWorkspace() throws {
+    func testApplyingCullingShortcutSwitchesSubViewWithoutLeavingTheCullLens() throws {
         let model = AppModel.demo()
         model.selectedView = .loupe
 
         try model.applyCullingShortcut(.showCullGrid)
         XCTAssertEqual(model.selectedView, .cullGrid)
-        XCTAssertEqual(model.selectedWorkspace, .cull)
+        XCTAssertEqual(model.selectedLens, .cull)
 
         try model.applyCullingShortcut(.showCompare)
         XCTAssertEqual(model.selectedView, .compare)
@@ -59,8 +59,8 @@ final class CullSubViewSwitchingTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
-    func testCullGridBelongsToCullWorkspace() {
-        XCTAssertEqual(LibraryViewMode.cullGrid.workspace, .cull)
+    func testCullGridBelongsToTheCullLens() {
+        XCTAssertEqual(LibraryViewMode.cullGrid.lens, .cull)
     }
 
     // Persona-3 item 3: pure index arithmetic for scrolling the ? overlay,

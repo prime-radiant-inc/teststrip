@@ -79,7 +79,7 @@ final class CullSourcePresentationTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         _ = try model.runAutopilotOnCurrentScope()
 
@@ -131,7 +131,7 @@ final class CullSourcePresentationTests: XCTestCase {
 
         _ = try model.cullCurrentSelection()
 
-        XCTAssertEqual(model.selectedWorkspace, .cull)
+        XCTAssertEqual(model.selectedLens, .cull)
         XCTAssertEqual(Set(model.assets.map(\.id)), Set([keeper.id, reject.id]))
     }
 
@@ -145,7 +145,7 @@ final class CullSourcePresentationTests: XCTestCase {
 
         _ = try model.cullCurrentSelection()
 
-        XCTAssertEqual(model.selectedWorkspace, .cull)
+        XCTAssertEqual(model.selectedLens, .cull)
         XCTAssertEqual(model.assets.map(\.id), [onlyAsset.id])
     }
 

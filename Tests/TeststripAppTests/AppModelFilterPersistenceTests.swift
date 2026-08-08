@@ -34,10 +34,10 @@ final class AppModelFilterPersistenceTests: XCTestCase {
             XCTAssertEqual(model.assets.map(\.id), expectedAssetIDs, line: line)
         }
 
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
         assertFiltersUnchanged()
 
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
         assertFiltersUnchanged()
     }
 
@@ -52,7 +52,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         model.minimumRatingFilter = 4
         try model.applyLibraryFilters()
 
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
 
         XCTAssertFalse(model.assets.isEmpty)
         XCTAssertTrue(model.assets.allSatisfy { $0.metadata.rating >= 4 })
@@ -180,7 +180,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
 
         _ = try model.beginCullingSession(named: "Scope Cull")
 
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
 
         XCTAssertEqual(model.minimumRatingFilter, 4)
         XCTAssertNil(model.selectedAssetSetID)
@@ -211,7 +211,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
 
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
         XCTAssertNil(model.selectedAssetSetID)

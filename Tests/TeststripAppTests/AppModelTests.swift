@@ -11,7 +11,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.sidebarSections.map(\.title).contains("Collections"))
         XCTAssertFalse(model.sidebarSections.map(\.title).contains("Work"))
         let collectionsSection = model.sidebarSections.first { $0.title == "Collections" }
-        XCTAssertEqual(collectionsSection?.rows.first { $0.title == "All Photographs" }?.countText, "1")
+        XCTAssertEqual(collectionsSection?.rows.first { $0.title == "All Photos" }?.countText, "1")
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.selectedAsset?.id, model.assets.first?.id)
     }
@@ -339,53 +339,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
     }
 
-    func testNavigateBackAndForwardMovesThroughSidebarViewHistory() throws {
+    func testNavigateBackAndForwardMovesThroughSourceHistory() throws {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
         XCTAssertFalse(model.canNavigateBack)
         XCTAssertFalse(model.canNavigateForward)
 
-        try model.selectSidebarTarget(.people)
-        try model.selectSidebarTarget(.timeline)
-        try model.selectSidebarTarget(.search)
-        XCTAssertEqual(model.selectedView, .grid)
+        try model.selectSource(.folder("/Photos/A"))
+        try model.selectSource(.folder("/Photos/B"))
+        try model.selectSource(.allPhotos)
         XCTAssertTrue(model.canNavigateBack)
         XCTAssertFalse(model.canNavigateForward)
 
         try model.navigateBack()
-        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/B"))
         XCTAssertTrue(model.canNavigateForward)
 
         try model.navigateBack()
-        XCTAssertEqual(model.selectedView, .people)
+        XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/A"))
         XCTAssertFalse(model.canNavigateBack)
 
         try model.navigateForward()
-        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/B"))
         try model.navigateForward()
-        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.selectedSource, LibrarySource.allPhotos)
         XCTAssertFalse(model.canNavigateForward)
     }
 
-    func testNavigatingToANewViewAfterGoingBackClearsForwardHistory() throws {
+    func testNavigatingToANewSourceAfterGoingBackClearsForwardHistory() throws {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
-        try model.selectSidebarTarget(.people)
-        try model.selectSidebarTarget(.timeline)
+        try model.selectSource(.folder("/Photos/A"))
+        try model.selectSource(.folder("/Photos/B"))
 
         try model.navigateBack()
-        XCTAssertEqual(model.selectedView, .people)
+        XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/A"))
         XCTAssertTrue(model.canNavigateForward)
 
-        try model.selectSidebarTarget(.search)
+        try model.selectSource(.allPhotos)
         XCTAssertFalse(model.canNavigateForward)
 
         try model.navigateBack()
-        XCTAssertEqual(model.selectedView, .people)
+        XCTAssertEqual(model.selectedSource, LibrarySource.folder("/Photos/A"))
     }
 
-    func testRepeatingTheCurrentViewDoesNotGrowNavigationHistory() throws {
+    func testRepeatingTheCurrentSourceDoesNotGrowNavigationHistory() throws {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
-        try model.selectSidebarTarget(.people)
-        try model.selectSidebarTarget(.people)
+        try model.selectSource(.folder("/Photos/A"))
+        try model.selectSource(.folder("/Photos/A"))
         XCTAssertFalse(model.canNavigateBack)
     }
 
@@ -789,20 +788,6 @@ final class AppModelTests: XCTestCase {
         model.selectedView = .abCompare
 
         try model.applyCullingShortcut(.exitCullSubView)
-
-        XCTAssertEqual(model.selectedView, .loupe)
-    }
-
-    // ⌘1's root cause: lastSubView[.cull] was recorded as .abCompare on the
-    // way in, so re-selecting the already-active Cull workspace round-tripped
-    // right back into the trap. .compare/.abCompare must not be sticky.
-    func testReselectingCullWorkspaceEscapesABCompareTrap() throws {
-        let model = AppModel.demo()
-        model.selectedView = .cullGrid
-        model.selectedView = .loupe
-        model.selectedView = .abCompare
-
-        model.selectWorkspace(.cull)
 
         XCTAssertEqual(model.selectedView, .loupe)
     }
@@ -2663,14 +2648,14 @@ final class AppModelTests: XCTestCase {
                 previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
             )
         ))
-        model.selectWorkspace(.cull)
-        XCTAssertEqual(model.selectedWorkspace, .cull)
+        model.selectLens(.cull)
+        XCTAssertEqual(model.selectedLens, .cull)
         XCTAssertFalse(model.isInspectorVisible)
         model.scrollInspector(to: .describe)
 
         try model.revealConflicts([first.id, second.id])
 
-        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.selectedLens, .grid)
         XCTAssertEqual(model.selectedBatchAssetIDs, [first.id, second.id])
         XCTAssertTrue(model.isInspectorVisible)
         XCTAssertTrue(model.metadataSyncConflictFilter)
@@ -2681,15 +2666,15 @@ final class AppModelTests: XCTestCase {
         // Conflicted assets are only visible in the Grid subview, so a reveal
         // must land there even when Library last showed another subview.
         model.selectedView = .timeline
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
         try model.revealConflicts([first.id])
         XCTAssertEqual(model.selectedView, .grid)
 
-        // Empty reveal is a no-op: no workspace switch or filter churn.
-        model.selectWorkspace(.cull)
+        // Empty reveal is a no-op: no lens switch or filter churn.
+        model.selectLens(.cull)
         model.isInspectorVisible = false
         try model.revealConflicts([])
-        XCTAssertEqual(model.selectedWorkspace, .cull)
+        XCTAssertEqual(model.selectedLens, .cull)
         XCTAssertFalse(model.isInspectorVisible)
     }
 
@@ -4765,7 +4750,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(fixture.model.selectedAssetSetID)
         XCTAssertEqual(fixture.model.librarySearchText, "session:\(session.id.rawValue)")
         XCTAssertEqual(fixture.model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: LibrarySource.workSession(session.id, titled: session.id.rawValue))
         ])
         XCTAssertEqual(fixture.model.assets.map(\.id), [
             fixture.firstLead.id,
@@ -5302,7 +5287,7 @@ final class AppModelTests: XCTestCase {
         let first = makeAsset(id: "undo-batch-a", path: "/Photos/Job/undo-batch-a.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let second = makeAsset(id: "undo-batch-b", path: "/Photos/Job/undo-batch-b.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
         let (model, repository) = try makeModelWithCatalogAssets(named: "undo-batch-metadata", assets: [first, second])
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         let applied = try model.applyVisibleBatchMetadata(keywordText: "patagonia", caption: "", creator: "", copyright: "")
         XCTAssertEqual(applied, 2)
@@ -5327,7 +5312,7 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: first.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance),
             EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.7, provenance: provenance)
         ])
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         let applied = try model.acceptVisibleBatchKeywordSuggestion("mountain")
         XCTAssertEqual(applied, 2)
@@ -5402,7 +5387,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         let summary = try model.runAutopilot(scope: .visible)
 
@@ -5442,7 +5427,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: lead.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         let leadSidecarURL = leadURL.appendingPathExtension("xmp")
         let alternateSidecarURL = alternateURL.appendingPathExtension("xmp")
 
@@ -5473,7 +5458,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         _ = try model.runAutopilot(scope: .visible)
 
@@ -5503,7 +5488,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         XCTAssertTrue(model.canUndoAutopilotRun)
         XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
@@ -5532,7 +5517,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         let leadGenerationBefore = try repository.catalogGeneration(assetID: lead.id)
         let alternateGenerationBefore = try repository.catalogGeneration(assetID: alternate.id)
 
@@ -5567,7 +5552,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         let summary = try model.runAutopilot(scope: .visible)
 
@@ -5593,7 +5578,7 @@ final class AppModelTests: XCTestCase {
     func testRunAutopilotOnCurrentScopeWithoutEvaluationsSetsStatusMessage() throws {
         let unevaluated = makeAsset(id: "noeval", path: "/Photos/Job/noeval.cr2", rating: 0)
         let (model, _) = try makeModelWithCatalogAssets(named: "run-autopilot-noeval", assets: [unevaluated])
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         let summary = try model.runAutopilotOnCurrentScope()
 
@@ -5613,7 +5598,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
 
         try model.beginAutopilotReview()
@@ -5637,7 +5622,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: lead.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         _ = try model.runAutopilot(scope: .visible)
         _ = try model.runAutopilot(scope: .visible)
@@ -5667,7 +5652,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         // Tentative immediately after the run.
         XCTAssertTrue(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.contains(.flag))
@@ -5728,7 +5713,7 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         XCTAssertEqual(Set(model.autopilotGhostAssetIDs), Set([lead.id, alternate.id]))
 
@@ -5760,7 +5745,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         _ = try model.commitAllAutopilotProposals()
         XCTAssertTrue(model.canUndoAutopilotRun)
@@ -5798,7 +5783,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: lead.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
         XCTAssertTrue(try repository.asset(id: lead.id).metadata.aiUnconfirmedKeywords.contains("dog"))
@@ -5855,7 +5840,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
 
@@ -5879,7 +5864,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
 
@@ -6031,7 +6016,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         let ghostAssetID = alternate.id
         let ghostValue = try XCTUnwrap(AutopilotGhost.kind(in: try repository.asset(id: ghostAssetID).metadata))
@@ -6075,7 +6060,7 @@ final class AppModelTests: XCTestCase {
     func testAskFallsBackToDeterministicParserWithoutTranslator() throws {
         let asset = makeAsset(id: "ask-fallback", path: "/Photos/Job/ask-fallback.cr2", rating: 5)
         let (model, _) = try makeModelWithCatalogAssets(named: "ask-fallback", assets: [asset])
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         try model.applyNaturalLanguageAsk("rating:5")
 
@@ -6086,7 +6071,7 @@ final class AppModelTests: XCTestCase {
     func testAskUsesConfiguredTranslatorAndRendersSameChipVocabulary() throws {
         let asset = makeAsset(id: "ask-translated", path: "/Photos/Job/ask-translated.cr2", rating: 4, keywords: ["dog"])
         let (model, _) = try makeModelWithCatalogAssets(named: "ask-translated", assets: [asset])
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         model.autopilotQueryTranslator = StubQueryTranslator(query: "rating:4 keyword:dog")
 
         try model.applyNaturalLanguageAsk("four star dog photos")
@@ -6099,7 +6084,7 @@ final class AppModelTests: XCTestCase {
     func testAskFallsBackToRawTextWhenTranslatorFails() throws {
         let asset = makeAsset(id: "ask-error", path: "/Photos/Job/ask-error.cr2", rating: 5)
         let (model, _) = try makeModelWithCatalogAssets(named: "ask-error", assets: [asset])
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         model.autopilotQueryTranslator = FailingQueryTranslator()
 
         try model.applyNaturalLanguageAsk("rating:5")
@@ -6372,7 +6357,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.person("Anna")])))
         XCTAssertEqual(model.librarySearchText, "")
 
-        try model.selectSidebarTarget(.assetSet(savedSet.id))
+        try model.selectSource(.assetSet(savedSet.id, titled: savedSet.name))
 
         XCTAssertEqual(model.assets.map(\.id), [annaPhoto.id])
         XCTAssertEqual(model.totalAssetCount, 1)
@@ -6547,7 +6532,7 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: evaluated.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance)
         ])
 
-        try model.selectSidebarTarget(.smartCollection(.needsEvaluation))
+        try model.selectSource(.smartCollection(.needsEvaluation))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.selectedView, .grid)
@@ -6613,7 +6598,7 @@ final class AppModelTests: XCTestCase {
         )
 
         for queue in SmartCollection.allCases {
-            try model.selectSidebarTarget(.smartCollection(queue))
+            try model.selectSource(.smartCollection(queue))
             XCTAssertEqual(
                 model.totalAssetCount,
                 model.smartCollectionCounts[queue] ?? -1,
@@ -6629,7 +6614,7 @@ final class AppModelTests: XCTestCase {
         let flagged = makeAsset(id: "detached-pick", path: "/Photos/Detached/pick.jpg", rating: 0, flag: .pick)
         let (model, _) = try makeModelWithCatalogAssets(named: "smart-source-detached", assets: [flagged])
 
-        try model.selectSidebarTarget(.smartCollection(.likelyIssues))
+        try model.selectSource(.smartCollection(.likelyIssues))
 
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertNil(model.selectedAssetSetID)
@@ -6667,14 +6652,14 @@ final class AppModelTests: XCTestCase {
         model.metadataSyncPendingFilter = true
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks)),
-            ActiveLibraryFilterRow(title: "Rating >= 5", target: .smartCollection(.fiveStars)),
-            ActiveLibraryFilterRow(title: "Not analyzed yet", target: .smartCollection(.needsEvaluation)),
-            ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
-            ActiveLibraryFilterRow(title: "Import: import-7", target: .workSession(WorkSessionID(rawValue: "import-7"))),
-            ActiveLibraryFilterRow(title: "Source: Missing", target: .sourceAvailability(.missing)),
-            ActiveLibraryFilterRow(title: "Face Quality", target: .evaluationKind(.faceQuality)),
-            ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending)
+            ActiveLibraryFilterRow(title: "Pick", target: LibrarySource.smartCollection(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: LibrarySource.smartCollection(.fiveStars)),
+            ActiveLibraryFilterRow(title: "Not analyzed yet", target: LibrarySource.smartCollection(.needsEvaluation)),
+            ActiveLibraryFilterRow(title: "Session: cull-42", target: LibrarySource.workSession(WorkSessionID(rawValue: "cull-42"), titled: "cull-42")),
+            ActiveLibraryFilterRow(title: "Import: import-7", target: LibrarySource.workSession(WorkSessionID(rawValue: "import-7"), titled: "import-7")),
+            ActiveLibraryFilterRow(title: "Source: Missing", target: LibrarySource.sourceAvailability(.missing)),
+            ActiveLibraryFilterRow(title: "Face Quality", target: LibrarySource.evaluationKind(.faceQuality, titled: "Face Quality")),
+            ActiveLibraryFilterRow(title: "XMP Pending", target: LibrarySource.metadataSyncPending)
         ])
         XCTAssertEqual(model.activeLibraryFilterChips, model.activeLibraryFilterRows.map(\.title))
     }
@@ -6685,14 +6670,14 @@ final class AppModelTests: XCTestCase {
         model.evaluationKindFilter = .faceCount
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Faces Found", target: .smartCollection(.facesFound))
+            ActiveLibraryFilterRow(title: "Faces Found", target: LibrarySource.smartCollection(.facesFound))
         ])
         XCTAssertEqual(model.suggestedSavedSearchName, "Faces Found")
 
         model.evaluationKindFilter = .ocrText
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "OCR Found", target: .smartCollection(.ocrFound))
+            ActiveLibraryFilterRow(title: "OCR Found", target: LibrarySource.smartCollection(.ocrFound))
         ])
         XCTAssertEqual(model.suggestedSavedSearchName, "OCR Found")
     }
@@ -6717,11 +6702,11 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Ceremony Keepers", target: .assetSet(set.id)),
+            ActiveLibraryFilterRow(title: "Ceremony Keepers", target: LibrarySource.assetSet(set.id, titled: "Ceremony Keepers")),
             ActiveLibraryFilterRow(title: "Search: ceremony"),
-            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks)),
-            ActiveLibraryFilterRow(title: "Rating >= 5", target: .smartCollection(.fiveStars)),
-            ActiveLibraryFilterRow(title: "Needs Keywords", target: .smartCollection(.needsKeywords))
+            ActiveLibraryFilterRow(title: "Pick", target: LibrarySource.smartCollection(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: LibrarySource.smartCollection(.fiveStars)),
+            ActiveLibraryFilterRow(title: "Needs Keywords", target: LibrarySource.smartCollection(.needsKeywords))
         ])
     }
 
@@ -6731,7 +6716,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
             ActiveLibraryFilterRow(title: "Search: ceremony", isPlainSearchFallback: true),
-            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks))
+            ActiveLibraryFilterRow(title: "Pick", target: LibrarySource.smartCollection(.picks))
         ])
     }
 
@@ -6740,8 +6725,8 @@ final class AppModelTests: XCTestCase {
         model.librarySearchText = "picks 5 stars"
 
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks)),
-            ActiveLibraryFilterRow(title: "Rating >= 5", target: .smartCollection(.fiveStars))
+            ActiveLibraryFilterRow(title: "Pick", target: LibrarySource.smartCollection(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: LibrarySource.smartCollection(.fiveStars))
         ])
         XCTAssertFalse(model.activeLibraryFilterRows.contains { $0.isPlainSearchFallback })
     }
@@ -6975,7 +6960,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(smartCollectionCount("Likely Issues", in: model), "1")
         XCTAssertEqual(smartCollectionCount("Analysis Failures", in: model), "1")
 
-        try model.selectSidebarTarget(.smartCollection(.picks))
+        try model.selectSource(.smartCollection(.picks))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
@@ -6983,21 +6968,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.smartCollection(.rejects))
+        try model.selectSource(.smartCollection(.rejects))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Reject"])
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [reject.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.smartCollection(.fiveStars))
+        try model.selectSource(.smartCollection(.fiveStars))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 5"])
         XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.smartCollection(.needsKeywords))
+        try model.selectSource(.smartCollection(.needsKeywords))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
@@ -7005,7 +6990,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.smartCollection(.needsEvaluation))
+        try model.selectSource(.smartCollection(.needsEvaluation))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
@@ -7014,26 +6999,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 2)
 
-        try model.selectSidebarTarget(.smartCollection(.facesFound))
+        try model.selectSource(.smartCollection(.facesFound))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Faces Found"])
         XCTAssertEqual(model.assets.map(\.id), [faceFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.smartCollection(.ocrFound))
+        try model.selectSource(.smartCollection(.ocrFound))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["OCR Found"])
         XCTAssertEqual(model.assets.map(\.id), [ocrFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.smartCollection(.likelyIssues))
+        try model.selectSource(.smartCollection(.likelyIssues))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
         XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        try model.selectSidebarTarget(.smartCollection(.providerFailures))
+        try model.selectSource(.smartCollection(.providerFailures))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Analysis Failures"])
         XCTAssertFalse(model.likelyIssuesFilter)
@@ -7110,7 +7095,7 @@ final class AppModelTests: XCTestCase {
         // The sidebar is empty while in Cull's sub-views (Task 7); the All
         // Photographs target still works directly regardless of which
         // sidebar rows are currently rendered.
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
 
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.librarySearchText, "")
@@ -7583,8 +7568,8 @@ final class AppModelTests: XCTestCase {
     func testCanToggleAssetSetStarredOnlyForSavedSetRowsWithCatalog() throws {
         let asset = makeAsset(id: "uncataloged", path: "/Photos/uncataloged.jpg", rating: 0)
         let modelWithoutCatalog = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset])
-        let assetSetRow = SidebarRow(id: "saved", title: "Saved", target: .assetSet(AssetSetID(rawValue: "saved")))
-        let libraryRow = SidebarRow(id: "all", title: "All", target: .allPhotographs)
+        let assetSetRow = SidebarRow(id: "saved", title: "Saved", target: .assetSet(AssetSetID(rawValue: "saved"), titled: "Saved"))
+        let libraryRow = SidebarRow(id: "all", title: "All", target: .allPhotos)
 
         XCTAssertFalse(modelWithoutCatalog.canToggleAssetSetStarred(assetSetRow))
         XCTAssertFalse(modelWithoutCatalog.canToggleAssetSetStarred(libraryRow))
@@ -7789,7 +7774,7 @@ final class AppModelTests: XCTestCase {
                 ])
             }
         )
-        try model.selectSidebarTarget(.smartCollection(.facesFound))
+        try model.selectSource(.smartCollection(.facesFound))
         model.selectedAssetID = selected.id
 
         let person = try model.confirmSelectedAssetsAsPerson(named: "Maya", id: "person-maya")
@@ -8041,15 +8026,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
     }
 
-    func testSelectingPeopleSidebarTargetRefreshesFaceSuggestions() throws {
-        let (model, _, _, _, _) = try makeFaceSuggestionModel(named: "app-model-face-people-entry")
-        XCTAssertEqual(model.peopleFaceSuggestions, [])
-
-        try model.selectSidebarTarget(.people)
-
-        XCTAssertEqual(model.peopleFaceSuggestions.count, 2)
-    }
-
     func testDismissSelectedFaceReviewAssetsPersistsAndRefreshesSmartCollection() throws {
         let dismissed = makeAsset(id: "dismissed-face", path: "/Volumes/NAS/Wedding/dismissed.jpg", rating: 4)
         let active = makeAsset(id: "active-face", path: "/Volumes/NAS/Wedding/active.jpg", rating: 4)
@@ -8066,7 +8042,7 @@ final class AppModelTests: XCTestCase {
                 try repository.assignAssets([dismissed.id], toPersonID: "person-maya")
             }
         )
-        try model.selectSidebarTarget(.smartCollection(.facesFound))
+        try model.selectSource(.smartCollection(.facesFound))
         model.selectedAssetID = dismissed.id
 
         try model.dismissSelectedFaceReviewAssets()
@@ -8678,8 +8654,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.starredWork.map(\.id), [starred.id.rawValue])
         XCTAssertEqual(recentWorkCollectionRows(model).map(\.title), [recent.detail, starred.title])
         XCTAssertEqual(recentWorkCollectionRows(model).map(\.target), [
-            .workSession(recent.id),
-            .workSession(starred.id)
+            .workSession(recent.id, titled: recent.detail),
+            .workSession(starred.id, titled: starred.title)
         ])
         XCTAssertEqual(starredWorkCollectionRows(model).map(\.title), [starred.title])
         XCTAssertEqual(recentWorkCollectionRows(model).map(\.isSelectable), [true, true])
@@ -8916,10 +8892,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:cull-session")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: cull-session", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: cull-session", target: LibrarySource.workSession(session.id, titled: "cull-session"))
         ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
-        XCTAssertEqual(model.selectedView, .loupe)
+        // Behaviour change: selecting a source never changes the lens (Task
+        // 5's orthogonality contract) — the model started in Grid and stays
+        // there, unlike the old force-into-loupe-for-culling-sessions rule.
+        XCTAssertEqual(model.selectedView, .grid)
     }
 
     func testSearchWorkspaceExposesMatchingWorkHistoryRows() throws {
@@ -8985,15 +8964,18 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.workHistorySearchResults.map(\.id), [session.id.rawValue])
         XCTAssertEqual(model.workHistorySearchResults.first?.title, "Cull Ceremony")
-        try model.selectSidebarTarget(.workSession(session.id))
+        try model.selectSource(.workSession(session.id, titled: session.title))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:ceremony-cull")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: ceremony-cull", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: ceremony-cull", target: LibrarySource.workSession(session.id, titled: "ceremony-cull"))
         ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
-        XCTAssertEqual(model.selectedView, .loupe)
+        // Behaviour change: selecting a source never changes the lens — the
+        // model started in Grid and stays there (Task 5's orthogonality
+        // contract deletes the old force-into-loupe-for-culling rule).
+        XCTAssertEqual(model.selectedView, .grid)
     }
 
     func testActiveQueryReplacesRecentWorkSidebarRowsWithMatchedSessions() throws {
@@ -9069,13 +9051,13 @@ final class AppModelTests: XCTestCase {
     }
 
     private func workSessionTargetID(_ row: SidebarRow) -> WorkSessionID? {
-        if case .workSession(let id) = row.target {
+        if case .workSession(let id) = row.target?.kind {
             return id
         }
         return nil
     }
 
-    func testSelectingCullingWorkSessionReopensLoupeView() throws {
+    func testSelectingCullingWorkSessionKeepsTheCurrentLens() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-select-culling-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -9116,6 +9098,11 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
+        // Behaviour change 10: reopening a culling session from Recent Work
+        // used to force the loupe; orthogonality means selecting a source
+        // never changes the lens, so a deliberately different starting lens
+        // must survive the reopen.
+        model.selectLens(.timeline)
         let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
 
         XCTAssertEqual(row.countText, "1")
@@ -9125,10 +9112,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:cull-session")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: cull-session", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: cull-session", target: LibrarySource.workSession(session.id, titled: "cull-session"))
         ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
-        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(model.selectedView, .timeline)
     }
 
     func testApplyingDynamicSavedSetLoadsMatchingCatalogAssets() throws {
@@ -9809,7 +9796,7 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: weak.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance)
         ])
 
-        try model.selectSidebarTarget(.smartCollection(.potentialPicks))
+        try model.selectSource(.smartCollection(.potentialPicks))
 
         XCTAssertEqual(model.assets.map(\.id), [strong.id])
         XCTAssertEqual(model.selectedView, .grid)
@@ -10347,7 +10334,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: LibrarySource.workSession(session.id, titled: session.id.rawValue))
         ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
@@ -10425,7 +10412,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: LibrarySource.workSession(session.id, titled: session.id.rawValue))
         ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
     }
@@ -13781,7 +13768,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: LibrarySource.workSession(session.id, titled: session.id.rawValue))
         ])
         XCTAssertEqual(model.assets.map(\.id), [first.id, second.id])
         XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, ["mountain"])
@@ -14349,7 +14336,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: SetQuery(predicates: [.evaluationFailure])), 1)
         XCTAssertEqual(smartCollectionCount("Analysis Failures", in: model), "1")
 
-        try model.selectSidebarTarget(.smartCollection(.providerFailures))
+        try model.selectSource(.smartCollection(.providerFailures))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Analysis Failures"])
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
@@ -17453,7 +17440,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(reloaded.selectedAssetSetID)
         XCTAssertEqual(reloaded.librarySearchText, "session:\(session.id.rawValue)")
         XCTAssertEqual(reloaded.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: LibrarySource.workSession(session.id, titled: session.id.rawValue))
         ])
         XCTAssertEqual(reloaded.assets.map(\.originalURL), [image])
     }
@@ -17489,7 +17476,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:\(summary.activityID)")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(summary.activityID)", target: .workSession(WorkSessionID(rawValue: summary.activityID)))
+            ActiveLibraryFilterRow(title: "Session: \(summary.activityID)", target: LibrarySource.workSession(WorkSessionID(rawValue: summary.activityID), titled: summary.activityID))
         ])
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedView, .grid)
@@ -17507,10 +17494,13 @@ final class AppModelTests: XCTestCase {
         let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
         let recentlyAddedRow = try XCTUnwrap(collectionsSection.rows.first { $0.title == "Recent Import" })
 
-        XCTAssertEqual(collectionsSection.rowTitles.prefix(2), ["All Photographs", "Recent Import"])
+        XCTAssertEqual(collectionsSection.rowTitles.prefix(2), ["All Photos", "Recent Import"])
         XCTAssertEqual(recentlyAddedRow.detailText, "Imported 2 photos from Import")
         XCTAssertEqual(recentlyAddedRow.countText, "2")
-        XCTAssertEqual(recentlyAddedRow.target, .workSession(WorkSessionID(rawValue: "latest-import-session")))
+        XCTAssertEqual(
+            recentlyAddedRow.target,
+            .workSession(WorkSessionID(rawValue: "latest-import-session"), titled: "Imported 2 photos from Import")
+        )
     }
 
     func testSelectingRecentlyAddedLibraryRowOpensLatestImportOutputSet() throws {
@@ -17532,7 +17522,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:latest-import-session")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: latest-import-session", target: .workSession(WorkSessionID(rawValue: "latest-import-session")))
+            ActiveLibraryFilterRow(title: "Session: latest-import-session", target: LibrarySource.workSession(WorkSessionID(rawValue: "latest-import-session"), titled: "latest-import-session"))
         ])
         XCTAssertEqual(model.assets.map(\.id), [first.id, second.id])
         XCTAssertNil(model.minimumRatingFilter)
@@ -17883,7 +17873,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:\(summary.activityID)")
         XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(summary.activityID)", target: .workSession(WorkSessionID(rawValue: summary.activityID)))
+            ActiveLibraryFilterRow(title: "Session: \(summary.activityID)", target: LibrarySource.workSession(WorkSessionID(rawValue: summary.activityID), titled: summary.activityID))
         ])
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedView, .compare)
@@ -18933,7 +18923,7 @@ final class AppModelTests: XCTestCase {
     private func starredWorkCollectionRows(_ model: AppModel) -> [SidebarRow] {
         let starredIDs = Set(model.starredWork.map { WorkSessionID(rawValue: $0.id) })
         return recentWorkCollectionRows(model).filter { row in
-            if case .workSession(let id) = row.target {
+            if case .workSession(let id) = row.target?.kind {
                 return starredIDs.contains(id)
             }
             return false
@@ -19523,7 +19513,7 @@ final class AppModelTests: XCTestCase {
                 EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
             ])
         }
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         return (model, repository, lead.id, alternate.id)
     }
@@ -20039,7 +20029,7 @@ final class AppModelTests: XCTestCase {
         let repository = CatalogRepository(database: database)
         let (model, _) = makeGeocodingModel(directory: directory, repository: repository)
 
-        try model.selectSidebarTarget(.places)
+        model.selectLens(.map)
 
         XCTAssertEqual(model.selectedView, .map)
     }

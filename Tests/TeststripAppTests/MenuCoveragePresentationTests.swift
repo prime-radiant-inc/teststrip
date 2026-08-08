@@ -16,19 +16,22 @@ final class MenuCoveragePresentationTests: XCTestCase {
         XCTAssertEqual(AppMenuCoveragePresentation.cullingShortcutActionIDs, expected)
     }
 
-    func testViewMenuCoversEveryWorkspace() {
-        XCTAssertEqual(AppMenuCoveragePresentation.workspaceActionIDs, Workspace.allCases.map(\.title))
+    func testViewMenuCoversEveryLens() {
+        XCTAssertEqual(AppMenuCoveragePresentation.lensActionIDs, LibraryLens.allCases.map(\.title))
+        XCTAssertEqual(AppMenuCoveragePresentation.lensActionIDs.count, 6)
     }
 
-    func testViewMenuCoversEverySubView() {
-        // People is now a Library sub-view (peer of Grid/Loupe/Timeline/Map),
-        // so every mode has a menu item.
-        let expectedRawValues = Set(LibraryViewMode.allCases.map(\.rawValue))
-        let coveredRawValues = Set(AppMenuCoveragePresentation.subViewMenuModes.map(\.rawValue))
-
-        XCTAssertEqual(coveredRawValues, expectedRawValues)
-        for mode in AppMenuCoveragePresentation.subViewMenuModes {
-            XCTAssertNotNil(mode.subViewMenuTitle, "\(mode) has no sub-view menu title")
+    // Every route must be reachable from a menu item: five of the nine view
+    // modes are a lens's default route, and the four cull sub-modes
+    // (loupe/cull grid/compare/A-B) get their own items below the divider.
+    func testEveryViewModeIsReachableFromAMenuItem() {
+        for mode in LibraryViewMode.allCases {
+            let reachableAsLensDefault = LibraryLens.allCases.contains { $0.defaultViewMode == mode }
+            let reachableAsCullSubMode = AppMenuCoveragePresentation.cullSubModeMenuModes.contains(mode)
+            XCTAssertTrue(reachableAsLensDefault || reachableAsCullSubMode, "\(mode) has no menu item")
+        }
+        for mode in AppMenuCoveragePresentation.cullSubModeMenuModes {
+            XCTAssertNotNil(mode.cullSubModeMenuTitle, "\(mode) has no cull sub-mode menu title")
         }
     }
 

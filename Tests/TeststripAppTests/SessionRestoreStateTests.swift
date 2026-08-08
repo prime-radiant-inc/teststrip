@@ -85,22 +85,6 @@ final class SessionRestoreStateTests: XCTestCase {
         XCTAssertNil(store.load())
     }
 
-    func testLegacySearchRawValueDecodesAsGrid() throws {
-        // Search used to be its own LibraryViewMode case; a session
-        // persisted before Task 9 stored "search" as selectedView. That
-        // migrates to `.grid` (search's permanent home now) instead of
-        // failing SessionRestoreState's whole decode.
-        XCTAssertEqual(try JSONDecoder().decode(LibraryViewMode.self, from: Data("\"search\"".utf8)), .grid)
-    }
-
-    func testLegacyCopilotRawValueDecodesAsGrid() throws {
-        // Copilot/Review used to be its own LibraryViewMode case; a session
-        // persisted before Task 13 (Cull sidebar source picker absorbed the
-        // route) stored "copilot" as selectedView. That migrates to `.grid`
-        // instead of failing SessionRestoreState's whole decode.
-        XCTAssertEqual(try JSONDecoder().decode(LibraryViewMode.self, from: Data("\"copilot\"".utf8)), .grid)
-    }
-
     func testStoreLoadReturnsNilForCorruptData() throws {
         let defaults = try makeIsolatedDefaults()
         let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-corrupt", isDirectory: true)

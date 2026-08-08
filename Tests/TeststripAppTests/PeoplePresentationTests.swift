@@ -38,7 +38,10 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.countText), ["3 photos", "44 photos"])
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertEqual(presentation.reviewCards.map(\.filterKind), [.faceCount, .faceQuality])
-        XCTAssertEqual(presentation.reviewCards.map(\.target), [.smartCollection(.facesFound), .evaluationKind(.faceQuality)])
+        XCTAssertEqual(
+            presentation.reviewCards.map(\.target),
+            [LibrarySource.smartCollection(.facesFound), .evaluationKind(.faceQuality, titled: "Face Quality")]
+        )
         XCTAssertFalse(presentation.reviewCards.contains(where: \.showsUnbuiltFaceActionLock))
         XCTAssertEqual(presentation.namedPeopleTitle, "ALL PEOPLE")
         XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")
@@ -166,7 +169,10 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["5", "5"])
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [.faceQuality, .faceQuality])
         XCTAssertEqual(presentation.signalRows.map(\.isActionEnabled), [true, true])
-        XCTAssertEqual(presentation.reviewCards.map(\.target), [.evaluationKind(.faceQuality), .evaluationKind(.faceQuality)])
+        XCTAssertEqual(
+            presentation.reviewCards.map(\.target),
+            [LibrarySource.evaluationKind(.faceQuality, titled: "Face Quality"), .evaluationKind(.faceQuality, titled: "Face Quality")]
+        )
     }
 
     func testFaceCountRowCountMatchesItsFilterWhenFaceQualityCountIsHigher() {

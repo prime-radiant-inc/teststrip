@@ -63,14 +63,14 @@ final class InspectorTabsPresentationTests: XCTestCase {
 
     // MARK: - ⌘I model behavior
 
-    func testToggleInspectorTogglesInLibrary() {
+    func testToggleInspectorTogglesInGrid() {
         let model = AppModel.demo()
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
         XCTAssertFalse(model.isInspectorVisible)
 
         model.toggleInspector()
         XCTAssertTrue(model.isInspectorVisible)
-        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.selectedLens, .grid)
 
         model.toggleInspector()
         XCTAssertFalse(model.isInspectorVisible)
@@ -83,8 +83,8 @@ final class InspectorTabsPresentationTests: XCTestCase {
 
         model.toggleInspector()
         XCTAssertTrue(model.isInspectorVisible)
-        // People is a Library view now, so it stays in the Library workspace.
-        XCTAssertEqual(model.selectedWorkspace, .library)
+        // People is its own lens, but toggling the inspector never changes it.
+        XCTAssertEqual(model.selectedLens, .people)
         XCTAssertEqual(model.selectedView, .people)
     }
 
@@ -92,46 +92,46 @@ final class InspectorTabsPresentationTests: XCTestCase {
     // so ⌘I toggles it in place instead of redirecting to Library.
     func testToggleInspectorTogglesInCull() {
         let model = AppModel.demo()
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
         XCTAssertFalse(model.isInspectorVisible)
 
         model.toggleInspector()
         XCTAssertTrue(model.isInspectorVisible)
-        XCTAssertEqual(model.selectedWorkspace, .cull)
+        XCTAssertEqual(model.selectedLens, .cull)
 
         model.toggleInspector()
         XCTAssertFalse(model.isInspectorVisible)
     }
 
-    // File ▸ Export…'s sheet is a popover hosted on the Library toolbar's
+    // File ▸ Export…'s sheet is a popover hosted on the Grid toolbar's
     // Export button, so bumping the token alone is a silent no-op while Cull
     // is frontmost (persona-1 Maya: "File > Export does nothing in the Cull
-    // workspace"). requestExport mirrors ⌘I's switch-to-Library pattern.
-    func testRequestExportInCullSwitchesToLibrary() {
+    // workspace"). requestExport mirrors ⌘I's switch-to-Grid pattern.
+    func testRequestExportInCullSwitchesToGrid() {
         let model = AppModel.demo()
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
         let originalToken = model.exportRequestToken
 
         model.requestExport()
 
-        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.selectedLens, .grid)
         XCTAssertEqual(model.exportRequestToken, originalToken + 1)
     }
 
-    func testRequestExportInLibraryStaysInLibrary() {
+    func testRequestExportInGridStaysInGrid() {
         let model = AppModel.demo()
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
         let originalToken = model.exportRequestToken
 
         model.requestExport()
 
-        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.selectedLens, .grid)
         XCTAssertEqual(model.exportRequestToken, originalToken + 1)
     }
 
-    // People is a Library view but suppresses the browse chrome, so the Export
-    // button isn't there to host the sheet — Export must land on the grid, not
-    // just "the Library workspace" (which People already is).
+    // People suppresses the browse chrome, so the Export button isn't there
+    // to host the sheet — Export must land on the grid lens, not just stay
+    // in People (which the export button never shows in).
     func testRequestExportInPeopleSwitchesToGrid() {
         let model = AppModel.demo()
         model.selectedView = .people
@@ -156,7 +156,7 @@ final class InspectorTabsPresentationTests: XCTestCase {
 
     func testRequestFocusSearchInCullSwitchesToGrid() {
         let model = AppModel.demo()
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
         let originalToken = model.focusSearchRequestToken
 
         model.requestFocusSearch()
@@ -167,7 +167,7 @@ final class InspectorTabsPresentationTests: XCTestCase {
 
     func testScrollInspectorSetsTargetAndPresentsWhenEligible() {
         let model = AppModel.demo()
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
         let originalToken = model.inspectorScrollRequestToken
 
         model.scrollInspector(to: .describe)
@@ -181,7 +181,7 @@ final class InspectorTabsPresentationTests: XCTestCase {
     // there presents it, same as Library/People.
     func testScrollInspectorInCullSetsTargetAndPresentsInspector() {
         let model = AppModel.demo()
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
 
         model.scrollInspector(to: .ai)
 
@@ -195,7 +195,7 @@ final class InspectorTabsPresentationTests: XCTestCase {
     // time if the user had since scrolled away manually.
     func testScrollInspectorToSameSectionStillBumpsRequestToken() {
         let model = AppModel.demo()
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
         model.scrollInspector(to: .info)
         let tokenAfterFirstRequest = model.inspectorScrollRequestToken
 

@@ -2,10 +2,9 @@ import XCTest
 @testable import TeststripCore
 @testable import TeststripApp
 
-/// Covers `AppModel.sidebarSections(for:)` - the per-workspace sidebar shape
-/// introduced in Task 7: Library is navigation only (Collections/Saved
-/// Sets/Folders) and is shared by every Library view (People included); Cull
-/// has its own sidebar content (empty here).
+/// Covers `AppModel.sidebarSections()` - one sidebar shared by every lens
+/// (Task 5 deletes the per-workspace split: Library is navigation only —
+/// Collections/Saved Sets/Folders — and no longer varies by lens).
 final class SidebarSectionsTests: XCTestCase {
     func testLibrarySidebarSectionsAreExactlyCollectionsSavedSetsFolders() throws {
         let asset = makeAsset(id: "hero", path: "/Photos/hero.jpg", rating: 5)
@@ -15,13 +14,13 @@ final class SidebarSectionsTests: XCTestCase {
         _ = try model.saveCurrentLibraryQuery(named: "Five Stars", starred: false)
         model.catalogFolders = [CatalogFolder(path: "photos", name: "photos", assetCount: 1)]
 
-        let sections = model.sidebarSections(for: .library)
+        let sections = model.sidebarSections()
 
         XCTAssertEqual(sections.map(\.title), ["Collections", "Saved Sets", "Folders"])
 
         let collections = try XCTUnwrap(sections.first { $0.title == "Collections" })
         XCTAssertEqual(collections.rows.first?.id, "library-all")
-        XCTAssertEqual(collections.rows.first?.target, .allPhotographs)
+        XCTAssertEqual(collections.rows.first?.target, .allPhotos)
 
         let savedSets = try XCTUnwrap(sections.first { $0.title == "Saved Sets" })
         XCTAssertEqual(savedSets.rowTitles, ["Five Stars"])
@@ -30,28 +29,14 @@ final class SidebarSectionsTests: XCTestCase {
         XCTAssertEqual(folders.rowTitles, ["photos"])
     }
 
-    func testCullSidebarSectionsAreEmpty() {
+    func testTheSidebarIsTheSameInEveryLens() {
         let model = AppModel.demo()
+        let expected = model.sidebarSections.map(\.title)
 
-        XCTAssertEqual(model.sidebarSections(for: .cull), [])
-    }
-
-    func testSidebarSectionsTrackTheCurrentWorkspaceAsSelectedViewChanges() {
-        let model = AppModel.demo()
-        XCTAssertEqual(model.selectedWorkspace, .library)
-        XCTAssertEqual(model.sidebarSections.map(\.title), ["Collections"])
-
-        model.selectWorkspace(.cull)
-        XCTAssertEqual(model.sidebarSections, [])
-
-        // People is a Library view, so switching to it keeps the Library
-        // navigation sidebar rather than blanking it.
-        model.selectedView = .people
-        XCTAssertEqual(model.selectedWorkspace, .library)
-        XCTAssertEqual(model.sidebarSections.map(\.title), ["Collections"])
-
-        model.selectWorkspace(.library)
-        XCTAssertEqual(model.sidebarSections.map(\.title), ["Collections"])
+        for lens in LibraryLens.allCases {
+            model.selectLens(lens)
+            XCTAssertEqual(model.sidebarSections.map(\.title), expected, "\(lens)")
+        }
     }
 
     func testSavedSetContextMenuActionsStillResolveUnderTheNewSidebarShape() throws {
@@ -61,8 +46,8 @@ final class SidebarSectionsTests: XCTestCase {
         try model.applyLibraryFilters()
         let savedSet = try model.saveCurrentLibraryQuery(named: "Five Stars", starred: true)
 
-        let collections = try XCTUnwrap(model.sidebarSections(for: .library).first { $0.title == "Collections" })
-        let starredRow = try XCTUnwrap(collections.rows.first { $0.target == .assetSet(savedSet.id) })
+        let collections = try XCTUnwrap(model.sidebarSections().first { $0.title == "Collections" })
+        let starredRow = try XCTUnwrap(collections.rows.first { $0.target == .assetSet(savedSet.id, titled: savedSet.name) })
         let actions = model.sidebarContextActions(for: starredRow)
 
         XCTAssertTrue(actions.contains { $0.kind == .renameAssetSet(savedSet.id) })

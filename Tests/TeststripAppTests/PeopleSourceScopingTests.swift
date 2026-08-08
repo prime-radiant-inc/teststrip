@@ -23,7 +23,7 @@ final class PeopleSourceScopingTests: XCTestCase {
             assets: [inside, outside]
         )
 
-        try model.selectSidebarTarget(.folder("/Photos/Inside"))
+        try model.selectSource(.folder("/Photos/Inside"))
 
         XCTAssertEqual(try model.peopleScopeAssetIDs(), [inside.id])
     }
@@ -41,7 +41,7 @@ final class PeopleSourceScopingTests: XCTestCase {
             try repository.assignAssets([outside.id], toPersonID: "person-outside")
         }
 
-        try model.selectSidebarTarget(.folder("/Photos/Inside"))
+        try model.selectSource(.folder("/Photos/Inside"))
         model.refreshPeopleFaceSuggestions()
 
         XCTAssertEqual(model.peopleInCurrentSource.map(\.name), ["Ada"])
@@ -62,9 +62,9 @@ final class PeopleSourceScopingTests: XCTestCase {
             try repository.assignAssets([outside.id], toPersonID: "person-outside")
         }
 
-        try model.selectSidebarTarget(.folder("/Photos/Inside"))
+        try model.selectSource(.folder("/Photos/Inside"))
         model.refreshPeopleFaceSuggestions()
-        try model.selectSidebarTarget(.allPhotographs)
+        try model.selectSource(.allPhotos)
         model.refreshPeopleFaceSuggestions()
 
         XCTAssertEqual(Set(model.peopleInCurrentSource.map(\.name)), Set(["Ada", "Grace"]))
