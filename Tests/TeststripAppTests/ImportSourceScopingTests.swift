@@ -53,6 +53,7 @@ final class ImportSourceScopingTests: XCTestCase {
         XCTAssertTrue(summary.title.hasSuffix("Imported from /Cards/CARD-A"), summary.title)
         XCTAssertTrue(summary.title.contains(" · "), summary.title)
         XCTAssertNotEqual(summary.title, "Import photos")
+        XCTAssertEqual(summary.assetCount, 0, "makeImportSession leaves the session's unit counts at their defaults")
     }
 
     // Import-scoped counts are the smart source's own SetQuery ANDed with
@@ -61,18 +62,35 @@ final class ImportSourceScopingTests: XCTestCase {
     func testImportChildCountsAreScopedToTheImport() throws {
         let inside = makeAsset(id: "inside", path: "/Photos/Import/inside.jpg", rating: 0)
         let outside = makeAsset(id: "outside", path: "/Photos/Other/outside.jpg", rating: 0)
+        // Two low-focus assets inside the import and one outside it: the
+        // inside/outside counts (2 vs. 3 catalog-wide) are chosen to differ
+        // from facesFound's inside count (1), so a likelyIssues composition
+        // that drifted onto facesFound's predicates, or dropped the
+        // `.importBatch` scope, would land on the wrong number rather than
+        // coincidentally matching.
+        let insideIssue = makeAsset(id: "inside-issue", path: "/Photos/Import/inside-issue.jpg", rating: 0)
+        let insideIssue2 = makeAsset(id: "inside-issue-2", path: "/Photos/Import/inside-issue-2.jpg", rating: 0)
+        let outsideIssue = makeAsset(id: "outside-issue", path: "/Photos/Other/outside-issue.jpg", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "import-child-counts",
-            assets: [inside, outside]
+            assets: [inside, outside, insideIssue, insideIssue2, outsideIssue]
         )
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        // The focus family is only ever written by LocalImageMetricsEvaluationProvider
+        // (see its `provenance` in Sources/TeststripCore/Evaluation/LocalImageMetricsEvaluationProvider.swift);
+        // apple-vision never produces a `.focus` signal, so a likely-issue
+        // fixture must use this provenance rather than `provenance` above.
+        let focusProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: inside.id, kind: .faceCount, value: .score(2), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: outside.id, kind: .faceCount, value: .score(2), confidence: 0.9, provenance: provenance)
+            EvaluationSignal(assetID: outside.id, kind: .faceCount, value: .score(2), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: insideIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: focusProvenance),
+            EvaluationSignal(assetID: insideIssue2.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: focusProvenance),
+            EvaluationSignal(assetID: outsideIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: focusProvenance)
         ])
         let sessionID = WorkSessionID(rawValue: "import-scoped")
         let outputSetID = AssetSetID(rawValue: "work-output-import-scoped")
-        try repository.upsert(AssetSet.manual(id: outputSetID, name: "Imported", assetIDs: [inside.id]))
+        try repository.upsert(AssetSet.manual(id: outputSetID, name: "Imported", assetIDs: [inside.id, insideIssue.id, insideIssue2.id]))
         try repository.save(WorkSession(
             id: sessionID,
             kind: .ingest,
@@ -92,7 +110,7 @@ final class ImportSourceScopingTests: XCTestCase {
         XCTAssertEqual(counts.facesFound, 1, "the other import's face asset must not count")
         XCTAssertEqual(counts.skippedFiles, 1)
         XCTAssertEqual(counts.previewFailed, 0)
-        XCTAssertEqual(counts.likelyIssues, 0)
+        XCTAssertEqual(counts.likelyIssues, 2, "the outside import's low-focus asset must not count")
         XCTAssertFalse(counts.isEmpty)
     }
 
