@@ -8,10 +8,10 @@ final class AppModelTests: XCTestCase {
     func testAppModelStartsWithStudioLayoutSections() {
         let model = AppModel.demo()
 
-        XCTAssertTrue(model.sidebarSections.map(\.title).contains("Collections"))
+        XCTAssertTrue(model.sidebarSections.map(\.title).contains("Library"))
         XCTAssertFalse(model.sidebarSections.map(\.title).contains("Work"))
-        let collectionsSection = model.sidebarSections.first { $0.title == "Collections" }
-        XCTAssertEqual(collectionsSection?.rows.first { $0.title == "All Photos" }?.countText, "1")
+        let librarySection = model.sidebarSections.first { $0.title == "Library" }
+        XCTAssertEqual(librarySection?.rows.first { $0.title == "All Photos" }?.countText, "1")
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.selectedAsset?.id, model.assets.first?.id)
     }
@@ -328,7 +328,7 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first { $0.title == "Manual Cull" })
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sets" }?.rows.first { $0.title == "Manual Cull" })
 
         try model.selectSidebarRow(row)
 
@@ -7322,12 +7322,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.savedAssetSets.map(\.id), [starred.id, saved.id, manual.id])
         XCTAssertEqual(model.starredAssetSets.map(\.id), [starred.id])
         XCTAssertEqual(starredCollectionRows(model).map(\.title), [starred.name])
-        XCTAssertEqual(sidebarRowCount(starred.name, in: "Collections", of: model), "2")
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name, manual.name])
-        let savedRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows)
-        XCTAssertEqual(savedRows.map(\.detailText), ["Smart collection", "Smart collection", "Manual set"])
-        XCTAssertEqual(savedRows.map(\.countText), ["2", "1", "1"])
-        XCTAssertEqual(savedRows.map(\.tone), [.accent, .accent, .neutral])
+        XCTAssertEqual(sidebarRowCount(starred.name, in: "Smart Collections", of: model), "2")
+        // "Saved Sets" is now split: dynamic sets (starred, saved) join the
+        // built-in queues in Smart Collections, and only static membership
+        // (manual) lands in Sets.
+        let smartCollectionSetRows = assetSetRows(in: "Smart Collections", of: model)
+        XCTAssertEqual(smartCollectionSetRows.map(\.title), [starred.name, saved.name])
+        XCTAssertEqual(smartCollectionSetRows.map(\.detailText), ["Smart collection", "Smart collection"])
+        XCTAssertEqual(smartCollectionSetRows.map(\.countText), ["2", "1"])
+        XCTAssertEqual(smartCollectionSetRows.map(\.tone), [.accent, .accent])
+        let setsRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sets" }?.rows)
+        XCTAssertEqual(setsRows.map(\.title), [manual.name])
+        XCTAssertEqual(setsRows.map(\.detailText), ["Manual set"])
+        XCTAssertEqual(setsRows.map(\.countText), ["1"])
+        XCTAssertEqual(setsRows.map(\.tone), [.neutral])
     }
 
     func testSavedSetCountsRefreshAfterMetadataChanges() throws {
@@ -7353,11 +7361,11 @@ final class AppModelTests: XCTestCase {
             )
         ))
 
-        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Saved Sets", of: model), "0")
+        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Smart Collections", of: model), "0")
 
         try model.setRatingForSelectedAsset(5)
 
-        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Saved Sets", of: model), "1")
+        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Smart Collections", of: model), "1")
     }
 
     func testTogglingSavedAssetSetStarredPersistsAndRefreshesSidebar() throws {
@@ -7382,7 +7390,11 @@ final class AppModelTests: XCTestCase {
                 previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
             )
         ))
-        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first)
+        // A saved dynamic search is a smart collection now, mixed in with the
+        // built-in queues (the rating-5 asset also qualifies for the built-in
+        // "5 Stars" queue), so find the saved set's own row by title rather
+        // than assuming it leads the section.
+        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Smart Collections" }?.rows.first { $0.title == "Five Stars" })
 
         XCTAssertTrue(model.canToggleAssetSetStarred(savedSetRow))
         XCTAssertTrue(starredCollectionRows(model).isEmpty)
@@ -7392,14 +7404,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try repository.assetSet(id: savedSet.id).starred)
         XCTAssertEqual(model.starredAssetSets.map(\.id), [savedSet.id])
         XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Five Stars"])
-        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Collections", of: model), "1")
+        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Smart Collections", of: model), "1")
 
         try model.setAssetSetStarred(id: savedSet.id, starred: false)
 
         XCTAssertFalse(try repository.assetSet(id: savedSet.id).starred)
         XCTAssertEqual(model.starredAssetSets, [])
         XCTAssertTrue(starredCollectionRows(model).isEmpty)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Five Stars"])
+        XCTAssertEqual(assetSetRows(in: "Smart Collections", of: model).map(\.title), ["Five Stars"])
     }
 
     func testRenamingSavedAssetSetPersistsAndRefreshesSidebar() throws {
@@ -7421,7 +7433,10 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(try repository.assetSet(id: savedSet.id).name, "Ceremony Keepers")
         XCTAssertEqual(model.savedAssetSets.first?.name, "Ceremony Keepers")
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Ceremony Keepers"])
+        // Rating-5 asset also qualifies for the built-in "5 Stars" queue, so
+        // filter Smart Collections down to the asset-set rows to isolate the
+        // saved (dynamic) set's own row.
+        XCTAssertEqual(assetSetRows(in: "Smart Collections", of: model).map(\.title), ["Ceremony Keepers"])
         XCTAssertEqual(model.activeLibraryFilterRows.first?.title, "Ceremony Keepers")
         XCTAssertEqual(model.statusMessage, "Renamed Ceremony Keepers")
     }
@@ -7450,8 +7465,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.savedAssetSets.map(\.id), [savedSet.id, snapshot.id])
         XCTAssertEqual(model.selectedAssetSetID, snapshot.id)
         XCTAssertEqual(model.assets.map(\.id), [firstKeeper.id, secondKeeper.id])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Five Stars", "Five Stars Snapshot"])
-        XCTAssertEqual(sidebarRowCount("Five Stars Snapshot", in: "Saved Sets", of: model), "2")
+        // The frozen snapshot is static membership (Sets); the dynamic parent
+        // it was frozen from stays in Smart Collections.
+        XCTAssertTrue(assetSetRows(in: "Smart Collections", of: model).map(\.title).contains("Five Stars"))
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sets" }?.rowTitles, ["Five Stars Snapshot"])
+        XCTAssertEqual(sidebarRowCount("Five Stars Snapshot", in: "Sets", of: model), "2")
         XCTAssertEqual(model.statusMessage, "Saved Five Stars Snapshot")
 
         var changedKeeper = firstKeeper
@@ -7489,8 +7507,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.starredAssetSets.map(\.id), [duplicate.id])
         XCTAssertEqual(model.selectedAssetSetID, duplicate.id)
         XCTAssertEqual(model.assets.map(\.id), [second.id, first.id])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Manual Keepers", "Copy of Keepers"])
-        XCTAssertEqual(sidebarRowCount("Copy of Keepers", in: "Saved Sets", of: model), "2")
+        // Sets sorts starred first, and the duplicate is starred.
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sets" }?.rowTitles, ["Copy of Keepers", "Manual Keepers"])
+        XCTAssertEqual(sidebarRowCount("Copy of Keepers", in: "Sets", of: model), "2")
         XCTAssertEqual(model.statusMessage, "Saved Copy of Keepers")
     }
 
@@ -7534,7 +7553,9 @@ final class AppModelTests: XCTestCase {
         )
         try repository.upsert(savedSet)
         try model.refreshSavedAssetSets()
-        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first)
+        // Rating-5 asset also qualifies for the built-in "5 Stars" queue, so
+        // find the saved set's own row by title rather than assuming first().
+        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Smart Collections" }?.rows.first { $0.title == "Five Stars" })
 
         let actions = model.sidebarContextActions(for: savedSetRow)
 
@@ -7562,7 +7583,7 @@ final class AppModelTests: XCTestCase {
         )
         try repository.upsert(savedSet)
         try model.refreshSavedAssetSets()
-        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first)
+        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sets" }?.rows.first)
 
         let actions = model.sidebarContextActions(for: savedSetRow)
 
@@ -8702,10 +8723,14 @@ final class AppModelTests: XCTestCase {
             updatedAt: Date(timeIntervalSince1970: 0)
         )
         try repository.save(oldStarredCull)
+        // Ingest-kind sessions never populate Recent Work (Imports owns
+        // completed imports under the seven-section shell), so this filler
+        // needs a kind Recent Work actually surfaces to exercise the
+        // recent-window/starred-overflow mechanic this test is really about.
         for index in 1...5 {
             try repository.save(WorkSession(
                 id: WorkSessionID(rawValue: "recent-\(index)"),
-                kind: .ingest,
+                kind: .culling,
                 intent: "Recent \(index)",
                 title: "Recent \(index)",
                 detail: "Recent \(index)",
@@ -9014,12 +9039,15 @@ final class AppModelTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 10),
             updatedAt: Date(timeIntervalSince1970: 20)
         )
+        // Ingest-kind sessions never populate Recent Work (Imports owns
+        // completed imports under the seven-section shell), so the "doesn't
+        // match the search" session needs a kind Recent Work actually shows.
         let unrelated = WorkSession(
-            id: WorkSessionID(rawValue: "portrait-import"),
-            kind: .ingest,
-            intent: "Import portraits",
-            title: "Import Portraits",
-            detail: "Imported portraits",
+            id: WorkSessionID(rawValue: "portrait-export"),
+            kind: .export,
+            intent: "Export portraits",
+            title: "Export Portraits",
+            detail: "Exported portraits",
             status: .completed,
             inputSetIDs: [],
             outputSetIDs: [],
@@ -9052,8 +9080,11 @@ final class AppModelTests: XCTestCase {
         try model.applyLibraryFilters()
 
         let matchedRows = recentWorkCollectionRows(model)
+        // The old work-matched-/work-recent-/work-starred- id split is gone
+        // (single "work-" id for every Recent Work row); the substantive
+        // claim — matched mode shows exactly the matched session, not the
+        // merged recent+starred view — is the equality above.
         XCTAssertEqual(matchedRows.compactMap(workSessionTargetID), [ceremony.id])
-        XCTAssertTrue(matchedRows.allSatisfy { $0.id.hasPrefix("work-matched-") })
 
         model.librarySearchText = ""
         try model.applyLibraryFilters()
@@ -9245,7 +9276,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.colorLabelFilter)
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
         XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Ceremony Picks"])
-        XCTAssertEqual(sidebarRowCount("Ceremony Picks", in: "Collections", of: model), "1")
+        XCTAssertEqual(sidebarRowCount("Ceremony Picks", in: "Smart Collections", of: model), "1")
     }
 
     func testSavingCurrentAssetScopeSnapshotCapturesAllFilteredMatchesBeyondLoadedPage() throws {
@@ -9284,7 +9315,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
         XCTAssertEqual(model.totalAssetCount, 130)
         XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Ceremony Snapshot"])
-        XCTAssertEqual(sidebarRowCount("Ceremony Snapshot", in: "Collections", of: model), "130")
+        XCTAssertEqual(sidebarRowCount("Ceremony Snapshot", in: "Sets", of: model), "130")
 
         var changedKeeper = keepers[0]
         changedKeeper.metadata.rating = 1
@@ -10214,7 +10245,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
         XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Keeper"])
-        XCTAssertEqual(sidebarRowCount("Keeper", in: "Collections", of: model), "1")
+        XCTAssertEqual(sidebarRowCount("Keeper", in: "Sets", of: model), "1")
     }
 
     func testSavingSelectionAsManualSetUsesSelectedBatchInLoadedOrder() throws {
@@ -10235,7 +10266,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
         XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
         XCTAssertEqual(model.assets.map(\.id), [first.id, third.id])
-        XCTAssertEqual(sidebarRowCount("Batch Keepers", in: "Saved Sets", of: model), "2")
+        XCTAssertEqual(sidebarRowCount("Batch Keepers", in: "Sets", of: model), "2")
     }
 
     func testSavingSelectedAssetAsManualSetRequiresSelection() throws {
@@ -17421,8 +17452,12 @@ final class AppModelTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog)
 
         _ = try await model.importFolderInBackground(photoFolder)
+        // The internal work-output-* set backing the import must not leak
+        // into either asset-set section (Smart Collections owns dynamic
+        // sets, Sets owns static ones — this hidden set is neither).
         XCTAssertFalse(model.sidebarSections.contains { section in
-            section.title == "Saved Sets" && section.rowTitles.contains("Imported 1 photo from photos")
+            (section.title == "Smart Collections" || section.title == "Sets")
+                && section.rowTitles.contains("Imported 1 photo from photos")
         })
 
         let reloaded = try AppModel.load(catalog: catalog)
@@ -17435,11 +17470,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.totalUnitCount, 1)
         XCTAssertEqual(activity.failureCount, 0)
         XCTAssertFalse(reloaded.sidebarSections.contains { section in
-            section.title == "Saved Sets" && section.rowTitles.contains("Imported 1 photo from photos")
+            (section.title == "Smart Collections" || section.title == "Sets")
+                && section.rowTitles.contains("Imported 1 photo from photos")
         })
-        let collectionsSection = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Collections" })
-        let recentWorkRow = try XCTUnwrap(collectionsSection.rows.first { $0.id.hasPrefix("work-recent-") })
-        XCTAssertEqual(recentWorkRow.title, "Imported 1 photo from photos")
+        // Ingest-kind activities never populate Recent Work (Imports owns
+        // completed imports under the seven-section shell), so the reloaded
+        // import surfaces there instead, titled with its date plus detail.
+        let importsSection = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first)
+        XCTAssertTrue(importRow.title.hasSuffix("Imported 1 photo from photos"), importRow.title)
         let session = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
         let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
         let outputSet = try catalog.repository.assetSet(id: outputSetID)
@@ -17449,7 +17488,7 @@ final class AppModelTests: XCTestCase {
             XCTFail("import output set should be manual")
         }
 
-        try reloaded.selectSidebarRow(recentWorkRow)
+        try reloaded.selectSidebarRow(importRow)
 
         XCTAssertNil(reloaded.selectedAssetSetID)
         XCTAssertEqual(reloaded.librarySearchText, "session:\(session.id.rawValue)")
@@ -17505,15 +17544,17 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: [first.id, second.id]
         )
 
-        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
-        let recentlyAddedRow = try XCTUnwrap(collectionsSection.rows.first { $0.title == "Recent Import" })
+        // The dedicated "Recent Import" row is deleted by spec (Task 6): the
+        // latest completed import is just the Imports section's first row,
+        // titled with its date plus the original detail text.
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first)
 
-        XCTAssertEqual(collectionsSection.rowTitles.prefix(2), ["All Photos", "Recent Import"])
-        XCTAssertEqual(recentlyAddedRow.detailText, "Imported 2 photos from Import")
-        XCTAssertEqual(recentlyAddedRow.countText, "2")
+        XCTAssertTrue(importRow.title.hasSuffix("Imported 2 photos from Import"), importRow.title)
+        XCTAssertEqual(importRow.countText, "2")
         XCTAssertEqual(
-            recentlyAddedRow.target,
-            .workSession(WorkSessionID(rawValue: "latest-import-session"), titled: "Imported 2 photos from Import")
+            importRow.target,
+            .workSession(WorkSessionID(rawValue: "latest-import-session"), titled: importRow.title)
         )
     }
 
@@ -17528,10 +17569,12 @@ final class AppModelTests: XCTestCase {
         )
         model.minimumRatingFilter = 5
         try model.reload()
-        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
-        let recentlyAddedRow = try XCTUnwrap(collectionsSection.rows.first { $0.title == "Recent Import" })
+        // The dedicated "Recent Import" row is deleted by spec (Task 6): the
+        // latest completed import is just the Imports section's first row.
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first)
 
-        try model.selectSidebarRow(recentlyAddedRow)
+        try model.selectSidebarRow(importRow)
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:latest-import-session")
@@ -18904,34 +18947,48 @@ final class AppModelTests: XCTestCase {
             .countText
     }
 
-    // The old top-level "Starred" section is now the starred-asset-set rows
-    // folded into Collections (Task 7); those rows keep the "asset-set-"
-    // id they share with the Saved Sets section, which is what
-    // distinguishes them from Collections' other rows.
-    private func starredCollectionRows(_ model: AppModel) -> [SidebarRow] {
-        (model.sidebarSections.first { $0.title == "Collections" }?.rows ?? [])
+    // The asset-set- rows within one section (Smart Collections for dynamic
+    // sets, Sets for static ones), filtered away from that section's other
+    // row kinds (built-in queues, AI Suggestions) where those can coexist.
+    private func assetSetRows(in sectionTitle: String, of model: AppModel) -> [SidebarRow] {
+        (model.sidebarSections.first { $0.title == sectionTitle }?.rows ?? [])
             .filter { $0.id.hasPrefix("asset-set-") }
     }
 
-    // The old top-level "Recent Work"/"Starred Work" sections are now one
-    // merged group of rows folded into Collections (Task 7).
-    // `recentWorkCollectionRows` is the merged group; `starredWorkCollectionRows`
-    // is the subset backed by a starred work session, matching the old
-    // "Starred Work" section's contents.
-    private func recentWorkCollectionRows(_ model: AppModel) -> [SidebarRow] {
-        (model.sidebarSections.first { $0.title == "Collections" }?.rows ?? [])
-            .filter {
-                $0.id.hasPrefix("work-recent-") || $0.id.hasPrefix("work-starred-")
-                    || $0.id.hasPrefix("work-matched-")
+    // The old top-level "Starred" section is now just starred-asset-set
+    // rows, spread across Smart Collections (dynamic) and Sets (static)
+    // under the seven-section shell — there is no longer one section that
+    // holds only starred sets, so this cross-references the rendered
+    // asset-set- rows against the model's own starred bookkeeping.
+    private func starredCollectionRows(_ model: AppModel) -> [SidebarRow] {
+        let starredIDs = Set(model.starredAssetSets.map(\.id))
+        return model.sidebarSections
+            .flatMap(\.rows)
+            .filter { row in
+                guard row.id.hasPrefix("asset-set-") else { return false }
+                return starredIDs.contains(AssetSetID(rawValue: String(row.id.dropFirst("asset-set-".count))))
             }
     }
 
+    // The old top-level "Recent Work"/"Starred Work" sections are now the
+    // one "Recent Work" section (seven-section shell); every row there
+    // carries a single "work-" id (the old work-recent-/work-starred-/
+    // work-matched- split is gone), so the section's full row list IS the
+    // merged group.
+    private func recentWorkCollectionRows(_ model: AppModel) -> [SidebarRow] {
+        model.sidebarSections.first { $0.title == "Recent Work" }?.rows ?? []
+    }
+
     // Just the recency-sourced slice (excludes starred sessions old enough
-    // to have fallen out of the recent window and only appear via the
-    // "work-starred-" overflow rows).
+    // to have fallen out of the recent window and only appear via starring).
     private func recentOnlyWorkRows(_ model: AppModel) -> [SidebarRow] {
-        (model.sidebarSections.first { $0.title == "Collections" }?.rows ?? [])
-            .filter { $0.id.hasPrefix("work-recent-") }
+        let recentIDs = Set(model.recentWork.prefix(5).map { WorkSessionID(rawValue: $0.id) })
+        return recentWorkCollectionRows(model).filter { row in
+            if case .workSession(let id) = row.target?.kind {
+                return recentIDs.contains(id)
+            }
+            return false
+        }
     }
 
     private func starredWorkCollectionRows(_ model: AppModel) -> [SidebarRow] {

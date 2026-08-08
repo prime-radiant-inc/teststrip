@@ -280,10 +280,10 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
     func testEmptyFoldersGapStaysInLedgerWithoutRenderingDeadSidebarRow() throws {
         let model = AppModel.demo()
-        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.folders-empty" })
 
-        XCTAssertFalse(collectionsSection.rows.contains { $0.id == "library-folders" })
+        XCTAssertFalse(librarySection.rows.contains { $0.id == "library-folders" })
         XCTAssertNil(model.sidebarSections.first { $0.title == "Folders" })
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("hierarchical tree"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("expand on demand"))
