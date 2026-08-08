@@ -149,19 +149,29 @@ final class ScopedPeopleQueryTests: XCTestCase {
         XCTAssertEqual(try repository.unassignedFaceObservations(provenance: provenance, limit: 100, assetIDs: []), [])
     }
 
+    // Pins distinct `created_at` values (rather than `seedFace`'s wall-clock
+    // stamp) so the returned order actually exercises `created_at DESC` —
+    // otherwise every row would tie and the assertion couldn't distinguish
+    // the real comparator from a reversed one.
     func testScopedUnassignedFaceObservationsStillRespectTheLimit() throws {
-        let repository = try makeRepository(named: "scoped-unassigned-limit")
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "scoped-unassigned-limit")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenanceJSON = String(data: try JSONEncoder().encode(provenance), encoding: .utf8)!
+
         var ids: [AssetID] = []
         for index in 0..<5 {
             let frame = asset(path: "/Photos/Shoot/\(index).jpg")
             try repository.upsert(frame)
-            try seedFace(repository, assetID: frame.id, embedding: [Double(index), 0.2, 0.3])
+            try insertFaceObservation(database, assetID: frame.id, createdAt: "\(1000 + index)", provenanceJSON: provenanceJSON)
             ids.append(frame.id)
         }
 
         let scoped = try repository.unassignedFaceObservations(provenance: provenance, limit: 2, assetIDs: ids)
 
         XCTAssertEqual(scoped.count, 2)
+        XCTAssertEqual(scoped.map(\.assetID), [ids[4], ids[3]])
     }
 
     // Task 3 review: `unassignedFaceObservations` binds the *full* `limit` to

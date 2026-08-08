@@ -75,6 +75,18 @@ final class AssetSetPredicateTests: XCTestCase {
         )
     }
 
+    // Unlike the dynamic-set and unknown-id zero-row paths above, this is a
+    // real manual set at a membership path that exists — just empty — so it
+    // must not fall through to matching everything.
+    func testAManualSetWithNoMembersMatchesNothing() throws {
+        let repository = try makeRepository(named: "asset-set-predicate-empty-manual")
+        try repository.upsert(asset(path: "/Photos/only.jpg"))
+        let setID = AssetSetID(rawValue: "empty")
+        try repository.upsert(AssetSet.manual(id: setID, name: "Empty", assetIDs: []))
+
+        XCTAssertEqual(try repository.assetIDs(matching: SetQuery(predicates: [.assetSet(setID)])), [])
+    }
+
     // Predicates are implicitly AND-ed, so a set scope composes with a filter
     // exactly the way the Map's bounds + query already compose.
     func testThePredicateComposesWithOtherPredicates() throws {
@@ -95,22 +107,36 @@ final class AssetSetPredicateTests: XCTestCase {
     }
 
     // The three map aggregates take the same `matching:` parameter every other
-    // read does, so scoping them needs no new overload.
+    // read does, so scoping them needs no new overload. `topLocations` is the
+    // one the design rationale for a single `.assetSet` predicate (rather than
+    // a chunked `ids:` overload) actually rests on, so it gets the same
+    // in-set/out-of-set assertion as the other two, not just a shared comment.
     func testTheMapAggregatesHonourTheSetPredicate() throws {
         let repository = try makeRepository(named: "asset-set-predicate-map")
         let inSet = geotagged(path: "/Photos/in.jpg", latitude: 10, longitude: 20)
         let outOfSet = geotagged(path: "/Photos/out.jpg", latitude: 40, longitude: 50)
         try repository.upsert([inSet, outOfSet])
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 10, longitude: 20),
+            displayName: "In Place"
+        ))
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 40, longitude: 50),
+            displayName: "Out Place"
+        ))
         let setID = AssetSetID(rawValue: "map-set")
         try repository.upsert(AssetSet.manual(id: setID, name: "Map Set", assetIDs: [inSet.id]))
         let scope = SetQuery(predicates: [.assetSet(setID)])
 
         let coverage = try repository.geotaggedCoverage(matching: scope)
         let clusters = try repository.placeClusters(bounds: nil, cellSize: 10, matching: scope)
+        let topLocations = try repository.topLocations(limit: 10, matching: scope)
 
         XCTAssertEqual(coverage.totalCount, 1)
         XCTAssertEqual(coverage.geotaggedCount, 1)
         XCTAssertEqual(clusters.map(\.assetCount).reduce(0, +), 1)
+        XCTAssertEqual(topLocations.map(\.displayName), ["In Place"])
+        XCTAssertEqual(topLocations.first?.assetCount, 1)
     }
 
     private func geotagged(path: String, latitude: Double, longitude: Double) -> Asset {
