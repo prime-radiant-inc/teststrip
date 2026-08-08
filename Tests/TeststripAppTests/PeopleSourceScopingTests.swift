@@ -31,14 +31,15 @@ final class PeopleSourceScopingTests: XCTestCase {
     func testPeopleInCurrentSourceOnlyListsPeopleInThatSource() throws {
         let inside = makeAsset(id: "people-inside", path: "/Photos/Inside/a.jpg")
         let outside = makeAsset(id: "people-outside", path: "/Photos/Outside/b.jpg")
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, _) = try makeModelWithCatalogAssets(
             named: "people-in-source",
             assets: [inside, outside]
-        )
-        try repository.upsertPerson(id: "person-inside", name: "Ada")
-        try repository.upsertPerson(id: "person-outside", name: "Grace")
-        try repository.assignAssets([inside.id], toPersonID: "person-inside")
-        try repository.assignAssets([outside.id], toPersonID: "person-outside")
+        ) { repository in
+            try repository.upsertPerson(id: "person-inside", name: "Ada")
+            try repository.upsertPerson(id: "person-outside", name: "Grace")
+            try repository.assignAssets([inside.id], toPersonID: "person-inside")
+            try repository.assignAssets([outside.id], toPersonID: "person-outside")
+        }
 
         try model.selectSidebarTarget(.folder("/Photos/Inside"))
         model.refreshPeopleFaceSuggestions()
@@ -51,14 +52,15 @@ final class PeopleSourceScopingTests: XCTestCase {
     func testPeopleOverAllPhotosIsTheGlobalQueue() throws {
         let inside = makeAsset(id: "global-inside", path: "/Photos/Inside/a.jpg")
         let outside = makeAsset(id: "global-outside", path: "/Photos/Outside/b.jpg")
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, _) = try makeModelWithCatalogAssets(
             named: "people-global",
             assets: [inside, outside]
-        )
-        try repository.upsertPerson(id: "person-inside", name: "Ada")
-        try repository.upsertPerson(id: "person-outside", name: "Grace")
-        try repository.assignAssets([inside.id], toPersonID: "person-inside")
-        try repository.assignAssets([outside.id], toPersonID: "person-outside")
+        ) { repository in
+            try repository.upsertPerson(id: "person-inside", name: "Ada")
+            try repository.upsertPerson(id: "person-outside", name: "Grace")
+            try repository.assignAssets([inside.id], toPersonID: "person-inside")
+            try repository.assignAssets([outside.id], toPersonID: "person-outside")
+        }
 
         try model.selectSidebarTarget(.folder("/Photos/Inside"))
         model.refreshPeopleFaceSuggestions()
@@ -83,7 +85,8 @@ final class PeopleSourceScopingTests: XCTestCase {
 
     private func makeModelWithCatalogAssets(
         named name: String,
-        assets: [Asset]
+        assets: [Asset],
+        configureRepository: (CatalogRepository) throws -> Void = { _ in }
     ) throws -> (AppModel, CatalogRepository) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-people-scoping-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -92,6 +95,7 @@ final class PeopleSourceScopingTests: XCTestCase {
         try database.migrate()
         let repository = CatalogRepository(database: database)
         try repository.upsert(assets)
+        try configureRepository(repository)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
