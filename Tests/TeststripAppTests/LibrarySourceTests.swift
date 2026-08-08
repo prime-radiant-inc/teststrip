@@ -160,15 +160,97 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertTrue(model.activeLibraryFilterChips.isEmpty)
     }
 
+    // Reachable entirely within the shipping UI: Activity Center's conflicts
+    // row calls `revealConflicts`, which sets `selectedSource` to the
+    // diagnostic `.metadataSyncConflicts` source directly. Clicking the "XMP
+    // Conflicts" chip's ✕ clears the filter through a completely separate
+    // path (`removeActiveLibraryFilter`) that used to leave `selectedSource`
+    // stuck on the diagnostic value even after the view widened back to the
+    // whole catalog — Cull stayed disabled ("Nothing here is cullable") over
+    // photos that were, in fact, cullable.
+    func testRemovingTheOnlyActiveFilterChipReturnsSelectedSourceToAllPhotosAndReenablesCull() throws {
+        let first = makeAsset(id: "conflict-chip-first", path: "/Photos/first.jpg")
+        let second = makeAsset(id: "conflict-chip-second", path: "/Photos/second.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "source-conflict-chip", assets: [first, second])
+
+        try model.revealConflicts([first.id])
+
+        XCTAssertEqual(model.selectedSource, .metadataSyncConflicts)
+        XCTAssertEqual(model.assets.count, 0, "neither seeded asset has an actual sync conflict recorded")
+        let disabledCull = try XCTUnwrap(model.lensAvailabilities.first { $0.lens == .cull })
+        XCTAssertFalse(disabledCull.isEnabled)
+        XCTAssertEqual(disabledCull.disabledReason, "Nothing here is cullable")
+
+        let row = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "XMP Conflicts" })
+        try model.removeActiveLibraryFilter(row)
+
+        XCTAssertEqual(model.selectedSource, .allPhotos)
+        XCTAssertFalse(model.hasActiveLibraryFilters)
+        // The whole seeded library, not zero — proves this is specifically
+        // the diagnostic-flag staleness fix, not just "an empty source
+        // disables Cull".
+        XCTAssertEqual(model.assets.count, 2)
+        let reenabledCull = try XCTUnwrap(model.lensAvailabilities.first { $0.lens == .cull })
+        XCTAssertTrue(reenabledCull.isEnabled)
+        XCTAssertNil(reenabledCull.disabledReason)
+    }
+
+    // The same staleness, reached via the "Esc, Esc" / "Clear Filters" path
+    // (`clearLibraryFilters`) instead of a single chip's ✕, and across more
+    // than one diagnostic source to prove the reset isn't source-specific.
+    func testClearingLibraryFiltersFromADiagnosticSourceReturnsSelectedSourceToAllPhotos() throws {
+        let missing = makeAsset(id: "clear-filters-missing", path: "/Photos/missing.jpg", availability: .missing)
+        let online = makeAsset(id: "clear-filters-online", path: "/Photos/online.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "source-clear-filters", assets: [missing, online])
+
+        let diagnosticSources: [LibrarySource] = [
+            .sourceAvailability(.missing),
+            .smartCollection(.providerFailures)
+        ]
+
+        for source in diagnosticSources {
+            try model.selectSource(source)
+
+            XCTAssertEqual(model.selectedSource, source)
+            let disabledCull = try XCTUnwrap(model.lensAvailabilities.first { $0.lens == .cull })
+            XCTAssertFalse(disabledCull.isEnabled, "\(source.title) left Cull enabled")
+            XCTAssertEqual(disabledCull.disabledReason, "Nothing here is cullable")
+
+            try model.clearLibraryFilters()
+
+            XCTAssertEqual(model.selectedSource, .allPhotos)
+            // The whole seeded library, not zero — the same
+            // diagnostic-flag-staleness distinction as the chip-removal test.
+            XCTAssertEqual(model.assets.count, 2, "\(source.title) did not widen back to the whole seeded library")
+            let reenabledCull = try XCTUnwrap(model.lensAvailabilities.first { $0.lens == .cull })
+            XCTAssertTrue(reenabledCull.isEnabled, "\(source.title) left Cull disabled after clearing filters")
+            XCTAssertNil(reenabledCull.disabledReason)
+        }
+    }
+
+    // `saveSelectedAssetAsManualSet` (via `saveAndSelect`) bypasses
+    // `applySource` entirely — it already holds the `AssetSet` it just
+    // upserted — so it must own `selectedSource` itself rather than leaving
+    // it whatever it was before the save.
+    func testSavingASelectionAsAManualSetUpdatesSelectedSourceToTheNewSet() throws {
+        let asset = makeAsset(id: "save-selection-source", path: "/Photos/save-selection.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "source-save-selection", assets: [asset])
+        model.selectedAssetID = asset.id
+
+        let saved = try model.saveSelectedAssetAsManualSet(named: "Keepers")
+
+        XCTAssertEqual(model.selectedSource, .assetSet(saved.id, titled: "Keepers"))
+    }
+
     // MARK: - Fixtures
 
-    private func makeAsset(id: String, path: String) -> Asset {
+    private func makeAsset(id: String, path: String, availability: SourceAvailability = .online) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
             originalURL: URL(fileURLWithPath: path),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(id.count + 1), modificationDate: Date(timeIntervalSince1970: 1)),
-            availability: .online,
+            availability: availability,
             metadata: AssetMetadata()
         )
     }
