@@ -5003,12 +5003,13 @@ public final class AppModel {
     /// Deliberately never touches `selectedView` except for the one spec'd
     /// exception: a source the current lens disables on falls back to Grid.
     private func applySource(_ source: LibrarySource) throws {
-        // Catalog-less models (previews, demo fixtures) have no scope to
-        // apply, but the source is still the answer to "what am I looking
-        // at" — the navigation history and the scope line both read it.
+        // A catalog-less model has no scope to apply. Nothing in Sources/
+        // constructs one and then selects a source — this is a genuine
+        // precondition failure, not a state worth special-casing, so it
+        // throws the same way every other catalog-gated applier below does
+        // (e.g. `applyImportChild`).
         guard catalog != nil else {
-            selectedSource = source
-            return
+            throw TeststripError.invalidState("app model has no catalog")
         }
         switch source.kind {
         case .allPhotos:
@@ -5070,6 +5071,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let session = try catalog.repository.session(id: id)
+        let title = session.detail.isEmpty ? session.title : session.detail
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         librarySearchText = Self.librarySearchText(
@@ -5077,7 +5079,12 @@ public final class AppModel {
             predicates: [.workSession(id.rawValue)]
         )
         try reload()
-        statusMessage = session.detail.isEmpty ? session.title : session.detail
+        // `applyWorkSession` is called directly (bypassing `applySource`)
+        // from `openLatestImportCompletion`, so it owns `selectedSource`
+        // itself rather than leaving it to whichever caller remembers to
+        // set it.
+        selectedSource = .workSession(id, titled: title)
+        statusMessage = title
     }
 
     /// An import row's disclosure child. The two diagnostic children have no
@@ -5116,16 +5123,22 @@ public final class AppModel {
     }
 
     /// The transient Selection source: the current batch selection, or the
-    /// single selected frame.
+    /// single selected frame. One deterministic id, not a fresh UUID per
+    /// activation — re-activating overwrites the same catalog row rather
+    /// than accumulating one row per click. `applyAssetSet` checks its
+    /// in-memory cache before the catalog, so the stale cache entry from the
+    /// previous activation is dropped first; otherwise a re-activation with
+    /// a different selection would keep showing the old one.
     private func applySelectionSource() throws {
         let selectionIDs = selectedBatchAssetIDsInCatalogOrder.isEmpty
             ? (selectedAssetID.map { [$0] } ?? [])
             : selectedBatchAssetIDsInCatalogOrder
         guard !selectionIDs.isEmpty, let catalog else { return }
-        let setID = AssetSetID(rawValue: "selection-source-\(UUID().uuidString)")
+        let setID = AssetSetID(rawValue: "selection-source-current")
         try catalog.repository.upsert(
             AssetSet.manual(id: setID, name: "Selection", assetIDs: selectionIDs)
         )
+        savedAssetSets.removeAll { $0.id == setID }
         try applyAssetSet(id: setID)
     }
 
@@ -5514,6 +5527,11 @@ public final class AppModel {
             rebuildSidebarSections()
         }
         selectedAssetSetID = id
+        // `applyAssetSet` is called directly (bypassing `applySource`) from
+        // every culling-session entry point and several deep links, so it
+        // owns `selectedSource` itself rather than leaving it to whichever
+        // caller remembers to set it.
+        selectedSource = .assetSet(id, titled: assetSet.name)
         clearLibraryQueryFilters()
         try reload()
     }
@@ -5732,6 +5750,10 @@ public final class AppModel {
         savedAssetSets = try catalog.repository.assetSets()
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         selectedAssetSetID = assetSet.id
+        // Saving always selects what it just saved, but bypasses
+        // `applyAssetSet` (it already has the `AssetSet` in hand), so it
+        // owns `selectedSource` itself rather than leaving it stale.
+        selectedSource = .assetSet(assetSet.id, titled: assetSet.name)
         clearLibraryQueryFilters()
         rebuildSidebarSections()
         try reload()
@@ -11145,12 +11167,18 @@ public final class AppModel {
         clearLibraryQueryFilters()
         evaluationKindFilter = kind
         try reload()
+        selectedSource = .evaluationKind(kind, titled: kind.filterChipLabel)
     }
 
+    /// Clearing every filter always widens the view back to the whole
+    /// catalog, so `selectedSource` unconditionally becomes `.allPhotos` —
+    /// the one case where the caller's "what am I looking at" answer never
+    /// needs to survive.
     public func clearLibraryFilters() throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         try reload()
+        selectedSource = .allPhotos
     }
 
     public func removeActiveLibraryFilter(_ row: ActiveLibraryFilterRow) throws {
@@ -11168,6 +11196,14 @@ public final class AppModel {
         }
         guard removed else { return }
         try reload()
+        // Removing a chip can widen the view all the way back to the whole
+        // catalog (e.g. the XMP Conflicts chip was the only active filter) —
+        // when it does, `selectedSource` must stop describing a scope that
+        // no longer exists. A chip removal that still leaves other filters
+        // active leaves `selectedSource` alone.
+        if !hasActiveLibraryFilters {
+            selectedSource = .allPhotos
+        }
     }
 
     private func applySmartCollection(_ collection: SmartCollection) throws {
@@ -11179,6 +11215,7 @@ public final class AppModel {
         // list and the sidebar count are two readings of one expression.
         detachedLibraryFilterPredicates = collection.query.predicates
         try reload()
+        selectedSource = .smartCollection(collection)
     }
 
     public func refreshSelectedAssetAvailability() throws {
@@ -14423,6 +14460,8 @@ public final class AppModel {
             !$0.id.rawValue.hasPrefix("work-output-")
                 && !$0.id.rawValue.hasPrefix("work-input-")
                 && !$0.id.rawValue.hasPrefix("work-stack-")
+                && !$0.id.rawValue.hasPrefix("import-preview-failed-")
+                && !$0.id.rawValue.hasPrefix("selection-source-")
         }
     }
 
