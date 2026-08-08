@@ -2,7 +2,7 @@ import XCTest
 @testable import TeststripCore
 @testable import TeststripApp
 
-/// Covers `AppModel.sidebarSections()` - one sidebar shared by every lens
+/// Covers `AppModel.buildSidebarSections()` - one sidebar shared by every lens
 /// (Task 5 deletes the per-workspace split: Library is navigation only —
 /// Collections/Saved Sets/Folders — and no longer varies by lens).
 final class SidebarSectionsTests: XCTestCase {
@@ -14,7 +14,7 @@ final class SidebarSectionsTests: XCTestCase {
         _ = try model.saveCurrentLibraryQuery(named: "Five Stars", starred: false)
         model.catalogFolders = [CatalogFolder(path: "photos", name: "photos", assetCount: 1)]
 
-        let sections = model.sidebarSections()
+        let sections = model.buildSidebarSections()
 
         XCTAssertEqual(sections.map(\.title), ["Collections", "Saved Sets", "Folders"])
 
@@ -46,7 +46,7 @@ final class SidebarSectionsTests: XCTestCase {
         try model.applyLibraryFilters()
         let savedSet = try model.saveCurrentLibraryQuery(named: "Five Stars", starred: true)
 
-        let collections = try XCTUnwrap(model.sidebarSections().first { $0.title == "Collections" })
+        let collections = try XCTUnwrap(model.buildSidebarSections().first { $0.title == "Collections" })
         let starredRow = try XCTUnwrap(collections.rows.first { $0.target == .assetSet(savedSet.id, titled: savedSet.name) })
         let actions = model.sidebarContextActions(for: starredRow)
 

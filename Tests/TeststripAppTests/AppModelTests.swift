@@ -7080,7 +7080,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(smartCollectionCount("Rejects", in: model))
     }
 
-    func testSelectingAllPhotographsSidebarRowReturnsToGridAndClearsFilters() throws {
+    func testSelectingAllPhotographsSidebarRowPreservesTheLensAndClearsFilters() throws {
         let filtered = makeAsset(id: "filtered", path: "/Photos/Job/filtered.jpg", rating: 5, keywords: ["selected"])
         let unfiltered = makeAsset(id: "unfiltered", path: "/Photos/Job/unfiltered.jpg", rating: 2)
         let (model, _) = try makeModelWithCatalogAssets(
@@ -7092,12 +7092,12 @@ final class AppModelTests: XCTestCase {
         try model.applyLibraryFilters()
         XCTAssertEqual(model.assets.map(\.id), [filtered.id])
 
-        // The sidebar is empty while in Cull's sub-views (Task 7); the All
-        // Photographs target still works directly regardless of which
-        // sidebar rows are currently rendered.
+        // Orthogonality: .allPhotos is neither diagnostic nor empty, so no
+        // lens disables on it and selecting it must leave the lens alone —
+        // only the rating filter and search text are expected to clear.
         try model.selectSource(.allPhotos)
 
-        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.selectedView, .timeline)
         XCTAssertEqual(model.librarySearchText, "")
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [filtered.id, unfiltered.id])
@@ -8733,12 +8733,17 @@ final class AppModelTests: XCTestCase {
         ])
         XCTAssertEqual(starredRows.map(\.title), ["Long-running Cull"])
         let starredRow = try XCTUnwrap(starredRows.first { $0.title == "Long-running Cull" })
+        // Behaviour change 10: reopening a culling session from Recent Work
+        // used to force the loupe; orthogonality means selecting a source
+        // never changes the lens, so a deliberately different starting lens
+        // must survive the reopen.
+        model.selectLens(.people)
         try model.selectSidebarRow(starredRow)
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "session:old-starred-cull")
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
-        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(model.selectedView, .people)
     }
 
     func testSettingWorkSessionStarredRefreshesWorkLists() throws {
