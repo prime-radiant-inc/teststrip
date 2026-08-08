@@ -83,6 +83,19 @@ final class LibraryLensTests: XCTestCase {
         }
     }
 
+    // Binding constraint: switching lenses never changes the selected source
+    // *or the selection* — only selectedView (and its sub-mode memory) is
+    // selectLens's business.
+    func testSelectingALensNeverChangesTheSelection() {
+        let model = AppModel.demo()
+        let selectedAssetID = model.selectedAssetID
+
+        for lens in LibraryLens.allCases {
+            model.selectLens(lens)
+            XCTAssertEqual(model.selectedAssetID, selectedAssetID, "\(lens) changed the selection")
+        }
+    }
+
     func testSelectingACullSubModeThenReenteringCullReturnsToIt() {
         let model = AppModel.demo()
         model.selectLens(.cull)
