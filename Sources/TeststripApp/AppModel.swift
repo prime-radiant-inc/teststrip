@@ -2127,9 +2127,13 @@ public final class AppModel {
     /// no output set has no Imports row, so its receipt is its only record
     /// and must not be evicted by later work of other kinds.
     public private(set) var completedImports: [AppWorkActivity] = []
-    /// Which import rows are disclosed. Child counts are queried lazily, only
-    /// for expanded rows, so a catalog with hundreds of imports does not pay
-    /// five queries per row on every sidebar rebuild.
+    /// Which import rows are disclosed. Child counts for the rows the
+    /// Imports section actually shows (the `recentImportRowLimit` most
+    /// recent, plus whichever overflow rows "All imports…" has revealed) are
+    /// primed in `refreshImportSourceSummaries`/`toggleSidebarExpansion` — on
+    /// load, after an import completes, or on that explicit click, never on
+    /// a sidebar rebuild — so a catalog with hundreds of imports does not pay
+    /// five queries per row on every render.
     public private(set) var expandedImportSessionIDs: Set<String> = []
     public private(set) var importChildCountsBySessionID: [String: ImportChildCounts] = [:]
     /// Whether the Imports section is showing every import rather than the
@@ -4737,6 +4741,20 @@ public final class AppModel {
         }
         if row.id == UnifiedSidebarPresentation.allImportsRowID {
             isShowingAllImports.toggle()
+            if isShowingAllImports {
+                // Revealing the overflow rows for the first time hits the
+                // same deadlock the top `recentImportRowLimit` rows had
+                // before `refreshImportSourceSummaries` primed their counts:
+                // an unexpanded row with no counts on file renders `.none`
+                // and its chevron never appears. Priming here is bounded by
+                // however many imports this explicit click just chose to
+                // render, not by the catalog's full import history.
+                for summary in importSourceSummaries where summary.producedOutputSet {
+                    guard importChildCountsBySessionID[summary.sessionID.rawValue] == nil else { continue }
+                    importChildCountsBySessionID[summary.sessionID.rawValue] =
+                        (try? importChildCounts(sessionID: summary.sessionID)) ?? ImportChildCounts()
+                }
+            }
             rebuildSidebarSections()
         }
     }
@@ -5403,6 +5421,15 @@ public final class AppModel {
     /// Rebuilds the Imports section and the bell's receipts from the unbounded
     /// completed-ingest query. `recentWork` is limit-10 across all thirteen
     /// work kinds, so it cannot promise even the three most recent imports.
+    ///
+    /// Also primes `importChildCountsBySessionID` for the rows the section
+    /// actually shows by default (the `recentImportRowLimit` most recent,
+    /// matching `importSectionRows`'s own filter-then-prefix) so their
+    /// disclosure triangle is correct the first time they render, not only
+    /// after the user has already expanded them once. This runs on load and
+    /// after an import completes — never per render — so it costs at most
+    /// `recentImportRowLimit` lots of `importChildCounts` queries, not one
+    /// per import ever taken.
     public func refreshImportSourceSummaries() throws {
         guard let catalog else { return }
         let sessions = try catalog.repository.workSessions(kind: .ingest, statuses: [.completed])
@@ -5416,6 +5443,14 @@ public final class AppModel {
                 issues: session.issues,
                 producedOutputSet: !session.outputSetIDs.isEmpty
             )
+        }
+        let visibleSessionIDs = importSourceSummaries
+            .filter(\.producedOutputSet)
+            .prefix(UnifiedSidebarPresentation.recentImportRowLimit)
+            .map(\.sessionID)
+        for sessionID in visibleSessionIDs {
+            importChildCountsBySessionID[sessionID.rawValue] =
+                (try? importChildCounts(sessionID: sessionID)) ?? ImportChildCounts()
         }
     }
 
