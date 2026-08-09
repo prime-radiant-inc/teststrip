@@ -344,6 +344,31 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.selectedSource, LibrarySource.folder("/Photos"))
     }
 
+    // Behaviour change 8: restore returns source + browse lens, and only
+    // .cull falls back to Grid. Table-driven over every case so a lens added
+    // later can't silently go unchecked the way Cull/Timeline-only coverage
+    // would have.
+    func testEveryLensRestoresItselfExceptCullWhichFallsBackToGrid() throws {
+        for lens in LibraryLens.allCases {
+            let directory = try makeTemporaryDirectory(named: "restore-every-lens-\(lens.rawValue)")
+            let defaults = try makeIsolatedDefaults()
+            let catalogA = try makeCatalog(directory: directory)
+            try seedAssets(count: 3, in: catalogA.repository)
+
+            let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+            try modelA.selectSource(.folder("/Photos"))
+            modelA.selectLens(lens)
+            XCTAssertEqual(modelA.selectedLens, lens, "sanity: selecting \(lens) should select \(lens)")
+
+            let catalogB = try makeCatalog(directory: directory)
+            let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+            let expectedLens: LibraryLens = lens == .cull ? .grid : lens
+            XCTAssertEqual(modelB.selectedLens, expectedLens, "relaunching from \(lens) should restore to \(expectedLens)")
+            XCTAssertEqual(modelB.selectedSource, LibrarySource.folder("/Photos"), "relaunching from \(lens) should keep the source")
+        }
+    }
+
     func testAFreshCatalogColdStartsOnAllPhotosInGrid() throws {
         let directory = try makeTemporaryDirectory(named: "restore-cold-start")
         let defaults = try makeIsolatedDefaults()
