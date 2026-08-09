@@ -3310,6 +3310,24 @@ public final class AppModel {
         catalog != nil && !assets.isEmpty
     }
 
+    /// The Cull lens's "Cull these" is unavailable on diagnostic sources —
+    /// nothing there is cullable — and on an empty scope.
+    public var canCullCurrentResults: Bool {
+        canBeginCullingSession && !selectedSource.isDiagnostic
+    }
+
+    /// The persistent scope line under the toolbar.
+    public var scopeLine: ScopeLinePresentation {
+        ScopeLinePresentation.line(
+            source: selectedSource,
+            lens: selectedLens,
+            resultCount: totalAssetCount,
+            activeFilterChips: activeLibraryFilterChips,
+            cullProgress: activeCullingSessionID == nil ? nil : cullingProgressSummary,
+            stackCount: activeCullingSessionID == nil ? 0 : cullingStackListEntries().count
+        )
+    }
+
     public var latestImportCompletionSummary: ImportCompletionSummary? {
         let core = latestImportCoreRebuildingIfNeeded()
         guard var summary = core.summary else { return nil }
@@ -5934,6 +5952,32 @@ public final class AppModel {
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         try applyAssetSet(id: setID)
         return try beginCullingSession(named: "Cull These")
+    }
+
+    /// "Cull these": hands the current result set to the Cull lens as its
+    /// source. The handoff travels as a `SetQuery`, never through the text
+    /// serializer — `searchTextToken(for:)` returns nil for `.likelyPick`,
+    /// `.likelyIssue`, `.evaluationFailure`, and `.withinGeoBounds`, so a
+    /// text round trip would silently widen the scope.
+    ///
+    /// The scope must be applied and loaded before a run can start
+    /// (`beginCullingSession` guards on `assets.isEmpty` and reads the current
+    /// scope's count), so this is a re-scope followed by a session start, not
+    /// a pure state change.
+    @discardableResult
+    public func cullCurrentResults() throws -> WorkSession {
+        let title = cullTheseSourceTitle()
+        if selectedExplicitAssetIDs == nil, let query = currentLibraryQuery() {
+            try selectSource(.search(query, titled: title))
+        }
+        // An explicit-id scope (a saved set, the selection) already *is* the
+        // source; there is nothing to re-scope.
+        return try beginCullingSession(named: title)
+    }
+
+    private func cullTheseSourceTitle() -> String {
+        let chips = activeLibraryFilterChips
+        return chips.isEmpty ? selectedSource.title : chips.joined(separator: " + ")
     }
 
     public func openAssetInLoupe(_ assetID: AssetID) {

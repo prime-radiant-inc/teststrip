@@ -717,12 +717,35 @@ struct LibraryGridView: View {
         LensChromePolicy.showsImportButton(model.selectedView)
     }
 
+    /// Persistent in every lens: what you are looking at, and lens-appropriate
+    /// status about it.
+    private var scopeLineBar: some View {
+        let presentation = model.scopeLine
+        return HStack(spacing: 8) {
+            Text(presentation.sourceTitle)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+            Text(presentation.statusText)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(.bar)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Scope")
+        .accessibilityValue("\(presentation.sourceTitle), \(presentation.statusText)")
+    }
+
     @ViewBuilder
     private var topInsetContent: some View {
         VStack(spacing: 0) {
             if hasVisibleLibraryTopBarContent {
                 libraryTopBar
             }
+            scopeLineBar
             if LensChromePolicy.showsFilterTokens(model.selectedView) {
                 libraryQueryBar
                 // spec §2b: no empty second row — the header renders only
@@ -850,6 +873,13 @@ struct LibraryGridView: View {
                 }
             }
             Spacer(minLength: 0)
+            Button("Cull these") {
+                cullCurrentResults()
+            }
+            .buttonStyle(.borderless)
+            .disabled(!model.canCullCurrentResults)
+            .help("Cull the photos this search found")
+            .accessibilityLabel("Cull these")
             if !presentation.saveActions.isEmpty {
                 saveMenu(presentation.saveActions)
             }
@@ -905,6 +935,15 @@ struct LibraryGridView: View {
             showSaveSnapshotSetPopover()
         case .manualSet:
             showManualSetPopover()
+        }
+    }
+
+    private func cullCurrentResults() {
+        do {
+            try model.cullCurrentResults()
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
