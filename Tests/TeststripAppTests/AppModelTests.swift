@@ -9224,8 +9224,30 @@ final class AppModelTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 11),
             updatedAt: Date(timeIntervalSince1970: 30)
         )
+        // M26: a completed import that matches the search text too — Imports
+        // owns completed imports, so it must stay absent from Recent Work
+        // even while a search is actively surfacing session matches (the
+        // only guard for this on the search path is `mergedWorkActivities`'s
+        // sibling ingest filter over `matchedWork`, not `mergedWorkActivities`
+        // itself, since the matched branch bypasses that helper entirely).
+        let ceremonyImport = WorkSession(
+            id: WorkSessionID(rawValue: "ceremony-import"),
+            kind: .ingest,
+            intent: "Import ceremony photos",
+            title: "Import Photos",
+            detail: "Imported ceremony photos",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 4,
+            totalUnitCount: 4,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 12),
+            updatedAt: Date(timeIntervalSince1970: 40)
+        )
         try repository.save(ceremony)
         try repository.save(unrelated)
+        try repository.save(ceremonyImport)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
@@ -9246,11 +9268,18 @@ final class AppModelTests: XCTestCase {
         model.librarySearchText = "ceremony"
         try model.applyLibraryFilters()
 
+        // The ingest import must actually match the search (or the
+        // assertion below proves nothing about the ingest guard).
+        XCTAssertTrue(
+            model.workHistorySearchResults.contains { $0.id == ceremonyImport.id.rawValue },
+            "the ceremony import must match the search for this test to prove anything"
+        )
         let matchedRows = recentWorkCollectionRows(model)
         // The old work-matched-/work-recent-/work-starred- id split is gone
         // (single "work-" id for every Recent Work row); the substantive
         // claim — matched mode shows exactly the matched session, not the
-        // merged recent+starred view — is the equality above.
+        // merged recent+starred view, and never the matched ingest import —
+        // is the equality above.
         XCTAssertEqual(matchedRows.compactMap(workSessionTargetID), [ceremony.id])
 
         model.librarySearchText = ""

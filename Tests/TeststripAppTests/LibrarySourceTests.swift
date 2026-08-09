@@ -315,6 +315,97 @@ final class LibrarySourceTests: XCTestCase {
         )
     }
 
+    // MARK: - Cull these
+
+    // The handoff travels as a SetQuery. The text serializer silently drops
+    // .likelyPick, .likelyIssue, .evaluationFailure, and .withinGeoBounds — a
+    // handoff routed through librarySearchText would lose the scope.
+    func testCullTheseHandsTheResultSetToTheCullLensAsASetQuery() throws {
+        let pick = makeAsset(id: "cull-these-pick", path: "/Photos/a.jpg")
+        let plain = makeAsset(id: "cull-these-plain", path: "/Photos/b.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(named: "cull-these-handoff", assets: [pick, plain])
+        try repository.updateMetadata(assetID: pick.id) { metadata in
+            metadata.flag = .pick
+        }
+        try model.selectSource(.smartCollection(.picks))
+        XCTAssertEqual(model.assets.map(\.id), [pick.id])
+
+        _ = try model.cullCurrentResults()
+
+        XCTAssertEqual(model.selectedLens, .cull)
+        XCTAssertEqual(model.assets.map(\.id), [pick.id])
+        guard case .search(let query) = model.selectedSource.kind else {
+            return XCTFail("expected the handed-off search to become the source, got \(model.selectedSource.kind)")
+        }
+        XCTAssertTrue(query.predicates.contains(.flag(.pick)))
+    }
+
+    func testCullTheseSurvivesThePredicatesTheTextSerializerWouldDrop() throws {
+        let asset = makeAsset(id: "cull-these-lossy", path: "/Photos/a.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "cull-these-lossy", assets: [asset])
+        try model.selectSource(.smartCollection(.potentialPicks))
+
+        _ = try? model.cullCurrentResults()
+
+        guard case .search(let query) = model.selectedSource.kind else {
+            return XCTFail("expected a search source")
+        }
+        XCTAssertTrue(
+            query.predicates.contains(.likelyPick),
+            "`.likelyPick` has no text form at all — routing the handoff through text loses it silently"
+        )
+    }
+
+    func testCullTheseIsUnavailableOnADiagnosticSource() throws {
+        let asset = makeAsset(id: "cull-these-diagnostic", path: "/Photos/a.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "cull-these-diagnostic", assets: [asset])
+
+        try model.selectSource(.smartCollection(.providerFailures))
+
+        XCTAssertFalse(model.canCullCurrentResults)
+    }
+
+    func testTheScopeLineNamesTheHandedOffSearch() throws {
+        let pick = makeAsset(id: "scope-line-pick", path: "/Photos/a.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(named: "cull-these-scope-line", assets: [pick])
+        try repository.updateMetadata(assetID: pick.id) { metadata in
+            metadata.flag = .pick
+        }
+        try model.selectSource(.smartCollection(.picks))
+
+        _ = try model.cullCurrentResults()
+
+        XCTAssertEqual(model.scopeLine.sourceTitle, "Pick")
+    }
+
+    // SP-D0: an unconfirmed AI pick is tentative, not a decision — the Picks
+    // source still shows it (unconfirmed labels are visible, just marked),
+    // but "Cull these" must not let it masquerade as an already-reviewed
+    // frame in the handed-off session. `cullCurrentResults()` only re-scopes
+    // (it snapshots asset ids, never touches metadata), so this pins the
+    // read side: the confirmed-only decision count survives the handoff.
+    func testCullCurrentResultsNeverCountsATentativePickAsDecided() throws {
+        let confirmed = makeAsset(id: "cull-these-confirmed-pick", path: "/Photos/a.jpg")
+        let tentative = makeAsset(id: "cull-these-tentative-pick", path: "/Photos/b.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "cull-these-tentative",
+            assets: [confirmed, tentative]
+        )
+        try repository.updateMetadata(assetID: confirmed.id) { metadata in
+            metadata.flag = .pick
+        }
+        try repository.updateMetadata(assetID: tentative.id) { metadata in
+            metadata.flag = .pick
+            metadata.aiUnconfirmedFields = [.flag]
+        }
+        try model.selectSource(.smartCollection(.picks))
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set([confirmed.id, tentative.id]))
+
+        _ = try model.cullCurrentResults()
+
+        XCTAssertEqual(model.cullingProgressSummary.pickCount, 1)
+    }
+
     // MARK: - Fixtures
 
     private func makeAsset(
