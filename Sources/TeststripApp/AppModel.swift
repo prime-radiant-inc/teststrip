@@ -1981,7 +1981,9 @@ public final class AppModel {
     /// What the user is looking at, as opposed to how. Stored rather than
     /// reconstructed from filter state, so the scope line can name it and a
     /// relaunch can restore it.
-    public private(set) var selectedSource: LibrarySource = .allPhotos
+    public private(set) var selectedSource: LibrarySource = .allPhotos {
+        didSet { persistSessionState() }
+    }
 
     /// Which lens `selectedView` currently belongs to.
     public var selectedLens: LibraryLens {
@@ -11864,12 +11866,13 @@ public final class AppModel {
 
     // MARK: - Session restore
     //
-    // Persists the library-browsing surface (route, scope, filters, search text,
+    // Persists the library-browsing surface (lens, source, filters, search text,
     // selection, sort) so relaunching lands back where the user left off, the same
     // way LibraryGridView.thumbnailWidth already persists via app preferences.
     // Mid-culling-session state is out of scope on purpose: culling sessions already
-    // survive as work sessions and are reopened explicitly via Recent Work, so
-    // `.loupe`/`.compare` routes and in-progress work-stack asset sets are never
+    // survive as work sessions and are reopened explicitly via Recent Work, so the
+    // Cull lens — and its `.loupe`/`.compare` sub-modes — falls back to Grid on
+    // restore instead of resuming, and in-progress work-stack asset sets are never
     // written or restored here.
 
     private func persistSessionState() {
