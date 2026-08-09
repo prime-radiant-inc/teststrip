@@ -74,17 +74,14 @@ struct LibraryGridView: View {
         model.isImporting
     }
 
+    // `bodyContent` is its own declaration so the compiler type-checks its
+    // long modifier chain and this `.onChange` as two separate expressions —
+    // chained on in-line, the tenth handler pushed the whole chain over the
+    // type-checker's "reasonable time" limit. It sits outside `bodyContent`'s
+    // lens `Group`, so the sidebar's skipped-files child can open its sheet
+    // from every lens.
     var body: some View {
-        attachingImportIssueReviewRequestHandler(bodyContent)
-    }
-
-    // Split from `body` so the compiler type-checks this long modifier chain
-    // and the one `.onChange` the sidebar's skipped-files child needs as two
-    // separate expressions — chained onto the end in-line, this pushed the
-    // whole chain over the type-checker's "reasonable time" limit.
-    @ViewBuilder
-    private func attachingImportIssueReviewRequestHandler<Content: View>(_ content: Content) -> some View {
-        content.onChange(of: model.importIssueReviewRequestToken) { _, _ in
+        bodyContent.onChange(of: model.importIssueReviewRequestToken) { _, _ in
             presentRequestedImportIssueReview()
         }
     }
@@ -832,13 +829,16 @@ struct LibraryGridView: View {
 
     /// ~10s, then it fades and the bell keeps the receipt. Mirrors the cull
     /// loupe's `showDecisionToastThenFade`, which is the only other
-    /// auto-dismissing surface in the app.
+    /// auto-dismissing surface in the app. Fading counts as a dismissal:
+    /// `.task(id:)` re-runs whenever the view re-enters the hierarchy, so a
+    /// toast that has already had its ten seconds would otherwise come back
+    /// for another ten.
     private func showToastThenFade(_ toast: ImportCompletionToastPresentation) async {
         isToastVisible = true
         try? await Task.sleep(for: .seconds(ImportCompletionToastPresentation.visibleDuration))
         guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.3)) {
-            isToastVisible = false
+            dismissToast(toast)
         }
     }
 

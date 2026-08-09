@@ -48,15 +48,26 @@ public struct ImportCompletionToastPresentation: Equatable, Sendable {
         return ImportCompletionToastPresentation(
             summaryID: summary.id,
             sessionID: WorkSessionID(rawValue: summary.activityID),
-            headline: isExistingOnly
-                ? "No new photos imported — \(summary.existingPhotoCount) already in catalog"
-                : "Imported \(summary.photoCountText)",
+            headline: headline(for: summary, isExistingOnly: isExistingOnly),
             warningText: skippedCount > 0
                 ? "\(skippedCount) \(skippedCount == 1 ? "file" : "files") skipped"
                 : nil,
             showsStartCulling: !isExistingOnly && summary.newPhotoCount > 0,
             cullingSessionName: summary.cullingSessionName
         )
+    }
+
+    /// "Imported 0 photos" is the arithmetic, not the news — the status line
+    /// and the session's own detail text both already say "No photos
+    /// imported", and the toast says the same thing.
+    private static func headline(for summary: ImportCompletionSummary, isExistingOnly: Bool) -> String {
+        if summary.importedPhotoCount == 0 {
+            return "No photos imported"
+        }
+        if isExistingOnly {
+            return "No new photos imported — \(summary.existingPhotoCount) already in catalog"
+        }
+        return "Imported \(summary.photoCountText)"
     }
 }
 
@@ -72,7 +83,6 @@ public struct ImportReceiptRow: Equatable, Identifiable, Sendable {
     public var sessionID: WorkSessionID
     public var title: String
     public var detail: String
-    public var issueCount: Int
     public var canStartCulling: Bool
 
     public init(
@@ -80,14 +90,12 @@ public struct ImportReceiptRow: Equatable, Identifiable, Sendable {
         sessionID: WorkSessionID,
         title: String,
         detail: String,
-        issueCount: Int,
         canStartCulling: Bool
     ) {
         self.id = id
         self.sessionID = sessionID
         self.title = title
         self.detail = detail
-        self.issueCount = issueCount
         self.canStartCulling = canStartCulling
     }
 
@@ -104,7 +112,6 @@ public struct ImportReceiptRow: Equatable, Identifiable, Sendable {
                     detail: skippedCount > 0
                         ? "\(skippedCount) \(skippedCount == 1 ? "file" : "files") skipped"
                         : "",
-                    issueCount: skippedCount,
                     canStartCulling: activity.completedUnitCount > 0
                 )
             }

@@ -240,7 +240,6 @@ final class ActivityCenterPresentationTests: XCTestCase {
                     sessionID: WorkSessionID(rawValue: "import-1"),
                     title: "Imported 6 photos from /Cards/A",
                     detail: "2 files skipped",
-                    issueCount: 2,
                     canStartCulling: true
                 )
             ],
