@@ -23,9 +23,9 @@ key monitors, not one context-sensitive branch**:
   synonyms while in the grid subview**. `c`/`b` in this same branch jump
   straight to `.compare`/`.abCompare` (`:51-52`), skipping the loupe.
 - **Resolution — confirmed by the explicit gate, not just by inference**:
-  `CullingKeyCaptureGate.isActive(workspace:selectedView:)`
-  (`Sources/TeststripApp/CullingKeyCaptureView.swift:11-15`) returns
-  `workspace == .cull && selectedView != .cullGrid`, and
+  `CullingKeyCaptureGate.isActive(lens:selectedView:)`
+  (`Sources/TeststripApp/CullingKeyCaptureView.swift:12-14`) returns
+  `lens == .cull && selectedView != .cullGrid`, and
   `LibraryGridView.swift:180-202` wires exactly one `CullingKeyCaptureView`
   (gated by `isActive`) and one always-installed `GridKeyCaptureView` (whose
   own `.cullSubViewSwitch` branch only matches when `mode == .cullGrid`,
@@ -86,7 +86,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 4. Press `B`. Assert A/B compare is active: `script/ax_drive.sh find
    --contains "A/B"` (the header label at `LibraryGridView.swift:5851`).
 5. From A/B, press `G` again to return to the grid subview. Per
-   `CullingKeyCaptureGate.isActive` (`workspace == .cull && selectedView !=
+   `CullingKeyCaptureGate.isActive` (`lens == .cull && selectedView !=
    .cullGrid`), the culling-shortcut monitor is active for `.abCompare` too
    (it's gated only against `.cullGrid`, not scoped to `.loupe` alone), so
    this should behave the same as step 7 below.
@@ -109,7 +109,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   step 4's A/B header (`"A/B"` label) is present.
 - Step 5: `selectedView` returns to `.cullGrid`. **Fails if** `G` from A/B
   does nothing — that would contradict `CullingKeyCaptureGate.isActive`'s
-  stated scope (`workspace == .cull && selectedView != .cullGrid`, which
+  stated scope (`lens == .cull && selectedView != .cullGrid`, which
   includes `.abCompare`) and is worth flagging as a real bug, not softened.
 - Step 6: the loupe opens on the exact tile that was pressed, not an
   arbitrary/first asset. **Fails if** the wrong asset opens, or if Return
@@ -154,3 +154,18 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 UNRUN — needs human-present execution per test/scenarios/README.md. The
 G-key monitor-overlap question in Sharp edges is an open verification item,
 not resolved by this draft.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum) — no
+preamble text changed. While verifying this, found and fixed a live stale
+symbol citation the preamble check surfaced adjacent text for:
+`CullingKeyCaptureGate.isActive(workspace:selectedView:)` was renamed to
+`isActive(lens:selectedView:)` by this push's Step 1 rewrite of
+`cull-001-workspace-key-gating.md`, and this card's own Source/Step-5/
+Expected sections still cited the old parameter name and predicate
+(`workspace == .cull && ...`) three times — corrected to `lens ==` throughout,
+re-verified directly against `CullingKeyCaptureView.swift:12-14`. Supersedes
+prior status: no prior run evidence exists on this card at all (still
+UNRUN); the fix only affects what a future runner would read as ground
+truth, not any existing verdict.

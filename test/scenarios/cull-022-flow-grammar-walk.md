@@ -36,8 +36,8 @@ so every symbol below was re-grepped fresh, not carried over):
   arrow-key within-stack role). The monitor only fires with no
   command/control/option modifier held
   (`CullingKeyCaptureView.swift:132-133`) and only while
-  `CullingKeyCaptureGate.isActive` — `workspace == .cull && selectedView !=
-  .cullGrid` (`:11-15`) — i.e. the Cull workspace's loupe/compare/A-B views,
+  `CullingKeyCaptureGate.isActive` — `lens == .cull && selectedView !=
+  .cullGrid` (`:12-14`) — i.e. the Cull lens's loupe/compare/A-B views,
   not the grid.
 - **Within-stack step**, `AppModel.selectNextCandidateInStack()` /
   `selectPreviousCandidateInStack()` (`AppModel.swift:7073-7079`) →
@@ -418,3 +418,15 @@ Source checked out within 1-16 lines (not worth touching); every citation
 past `cullAutoAdvanceEnabled` onward needed correcting and now does.
 
 Full run report: `.superpowers/card-runs/cull-022-run.md`.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Steps 1's
+and 7's ⌘1 presses are unchanged in effect. Preamble only — but while
+verifying it, found and fixed a stale symbol citation in the Source section:
+`CullingKeyCaptureGate.isActive`'s predicate was cited with the pre-rename
+parameter name (`workspace == .cull && ...`); corrected to `lens ==` and the
+line range to `:12-14`, re-verified directly against
+`CullingKeyCaptureView.swift`. Supersedes prior status: the 2026-07-28
+PASS-WITH-CARD-FIXES run above is unaffected — it never depended on this
+citation's parameter name — but the citation itself was wrong at the time
+of that run and is fixed now, not retroactively re-verified against that
+run's build.

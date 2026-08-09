@@ -39,7 +39,7 @@ CREATE TABLE evaluation_failures (
 ## Steps
 
 ### Preview retry (Info tab)
-1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 Library; select `$SRC`; ⌘I
+1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Grid lens); select `$SRC`; ⌘I
    to Info tab.
 2. **Quit the app**, then insert a synthetic failure row so it's present on
    next launch (the running instance's in-memory `assets`/queue state
@@ -168,3 +168,14 @@ covered by `CatalogDatabaseTests.testPendingPreviewGenerationItemsDropsRowWithIn
 This card's preview-retry leg still needs a live re-run with the corrected
 `'grid'` fixture to observe the actual retry-surfaces behavior (the crash
 was a fixture-triggered side effect, not what this card set out to test).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+preamble pressed ⌘2 for "Library" — the two-workspace `Workspace` enum's
+⌘2; that enum is gone and ⌘2 now selects the Grid lens
+(`LibraryLens.keyEquivalent`, `LibraryLens.swift:44-51`). Retitled to "Grid
+lens." Preamble only; the retry-wiring assertions (Info-tab preview retry,
+AI-tab provider retry) don't depend on which lens was active before ⌘I
+opens the inspector — the inspector renders over whichever lens is current.
+Supersedes prior status: no prior status note addressed this line; the
+BLOCKED-CONSOLE/2026-07-11 evidence above is unaffected on its own terms
+(it never reached the AX steps) but still needs a fresh VM run.

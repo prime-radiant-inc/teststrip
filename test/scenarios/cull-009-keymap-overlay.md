@@ -183,7 +183,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   show it — prefer that over guessing at mouse-scroll behavior in `ax_drive.sh`,
   which has no scroll-wheel verb.
 - This card only drives from the loupe (`CullingKeyCaptureGate.isActive`
-  requires `workspace == .cull && selectedView != .cullGrid` — see
+  requires `lens == .cull && selectedView != .cullGrid` — see
   `cull-008-subview-keys-gcb.md`); `?` is not wired while `.cullGrid` is
   showing (GridKeyCaptureView has no `?` binding), so don't try to trigger
   this overlay from the grid subview.
@@ -196,3 +196,15 @@ current working tree. The LEDGER's prior "Verified" status for this card
 covers the *old* overlay content (with the now-deleted Option-arrow rows)
 and must not be read as covering this revision; needs a fresh
 human-present/VM execution per `test/scenarios/README.md`.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Steps 1
+and 73/77's ⌘1/⌘2 presses are unchanged in effect (⌘1 selects the Cull lens;
+step 77's "Leave Cull (⌘2)" never named a destination, so no wording change
+was needed there either — ⌘2 now lands on the Grid lens instead of the old
+Library workspace, but the step doesn't care which lens it lands on, only
+that it isn't Cull). Preamble only; the one substantive fix this pass made
+was a stale symbol citation in Sharp edges (`workspace == .cull &&
+selectedView != .cullGrid` → `lens ==`, matching cull-001's rename),
+unrelated to the ⌘ preamble. Supersedes prior status: the 2026-07-13
+reconciliation and its NOT RUN status are otherwise unaffected — no
+assertion changed — but still need a fresh run per that note's own text.

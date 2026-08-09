@@ -163,3 +163,10 @@ actual (now-confirmed) behavior: an undismissed banner reappears inside the
 completion stage, unaffected by SP-D0. Supersedes prior status: the
 2026-07-10 source read predates both the three-action staleness and the
 ghost-derivation model. Needs a fresh VM run.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; no other stale symbol found in this card. Supersedes prior
+status: no substantive change — the 2026-08-06 reconciliation above is
+unaffected, noted for the record per house style.

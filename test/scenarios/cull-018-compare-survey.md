@@ -143,8 +143,8 @@ sqlite3 "$DB" "SELECT id, original_path FROM assets WHERE json_extract(metadata_
    source: `GridKeyCaptureView` commands are SUPPRESSED in `.compare`
    (`GridKeyCommand.isAllowed(in:)`, `GridKeyCaptureView.swift:97-113`,
    `default: false`), but `CullingKeyCaptureView` IS active
-   (`CullingKeyCaptureGate.isActive`, `CullingKeyCaptureView.swift:11-15`:
-   `workspace == .cull && selectedView != .cullGrid`). So `P` fires
+   (`CullingKeyCaptureGate.isActive`, `CullingKeyCaptureView.swift:12-14`:
+   `lens == .cull && selectedView != .cullGrid`). So `P` fires
    grid-cull pick semantics on `selectedAssetID` via
    `applyCullingShortcut(.pick)` → `applyCullingCommandAndAdvance`
    (`AppModel.swift:5414-5458`). Assert the selected asset's flag becomes
@@ -253,3 +253,13 @@ UNRUN — needs human-present execution per test/scenarios/README.md. All
 source claims (line numbers, labels, help strings, gate conditions, both
 key-monitor paths) verified by source read on 2026-07-10; no SQL dry-run or
 live AX run yet.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect. Preamble only — but while verifying it,
+found and fixed a stale symbol citation in Step 8's PROBE:
+`CullingKeyCaptureGate.isActive`'s predicate was cited as `workspace ==
+.cull && ...`, the parameter name before cull-001's rename to `lens:`;
+corrected to `lens ==` and the line range to `:12-14`, re-verified directly
+against `CullingKeyCaptureView.swift`. Supersedes prior status: this card
+has no prior run evidence to invalidate (still UNRUN); the fix only affects
+what a future runner would read as ground truth.

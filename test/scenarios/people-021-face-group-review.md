@@ -32,10 +32,10 @@ before confirming writes **no** person assignment and shrinks the group, and
    sqlite3 "$DB" "SELECT count(*) FROM person_assets;"                     # L0
    sqlite3 "$DB" "SELECT count(*) FROM rejected_face_people;"              # R0
    ```
-2. **Open People from the Library view toggle.** `script/activate_app.sh
-   Teststrip`; People is no longer ⌘3 — AX-press the Library sub-view toggle
-   segment labeled **"People"** (the toggle beside Grid | Loupe | Timeline |
-   Map). `waitFor` a suggestion card or the header `AXStaticText` matching
+2. **Open the People lens.** `script/activate_app.sh
+   Teststrip`; press ⌘6, or AX-press the toolbar lens switcher's segment
+   labeled **"People"** (the switcher's six segments: Cull | Grid | Loupe |
+   Timeline | Map | People). `waitFor` a suggestion card or the header `AXStaticText` matching
    **"N people · M photos with face signals"** (M ≥ 1). Face work is async;
    let the Activity queue drain.
 3. **Open a group for review.** AX-press a suggestion card (its Review link;
@@ -68,10 +68,10 @@ before confirming writes **no** person assignment and shrinks the group, and
    ```
 
 ## Expected
-- Step 2: People opens from the toggle (not a workspace switch); M ≥ 1 and at
-  least one suggestion card. **Fails if** People is still reachable only as a
-  top-level ⌘3 workspace, or the corpus yields no face signals (fixture gap —
-  report the corpus).
+- Step 2: People opens as its own lens (⌘6 or the switcher segment); M ≥ 1 and
+  at least one suggestion card. **Fails if** People is reachable only via ⌘3
+  or a Library sub-view toggle (both stale, pre-unified-shell routes), or the
+  corpus yields no face signals (fixture gap — report the corpus).
 - Step 4: `person_faces(user)` and `rejected_face_people` unchanged — merely
   opening the review writes nothing. **Fails if** either rose; confirm-before-
   write violation.
@@ -107,3 +107,15 @@ NOT-RUN — authored alongside the implementation; VM-bound AX driving not
 executed here. SQL columns match
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift`
 (`person_faces.origin`, `rejected_face_people`, `dismissed_faces`).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: Step 2
+described an intermediate, pre-unified-shell era where People had already
+left the top-level ⌘3 workspace slot but was reached as a Library sub-view
+toggle rather than its own key. Under the unified shell People is one of
+the six top-level `LibraryLens` cases again, reached directly by ⌘6 or the
+toolbar lens switcher's "People" segment — there is no Library sub-view
+toggle any more (`LibraryLens.keyEquivalent`, `LibraryLens.swift:44-51`).
+Rewrote Step 2 and its Expected bullet accordingly. Preamble only; the
+review/prune/confirm assertions don't depend on how People was reached.
+Supersedes prior status: no prior run evidence exists to invalidate (still
+NOT-RUN).

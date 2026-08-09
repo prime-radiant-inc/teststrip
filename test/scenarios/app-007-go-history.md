@@ -3,9 +3,9 @@
 **What this covers**: Jesse jumps between sets/queues and expects
 browser-style back/forward. Inventory items 27-28: the Go menu's Back (⇧⌘[)
 and Forward (⇧⌘]) gated by `canNavigateBack`/`canNavigateForward`
-(`NavigationCommands`, `Sources/TeststripApp/main.swift:285-318`); history is
-a pair of `SidebarRowTarget` stacks (`navigationBackStack`/`forwardStack`,
-`Sources/TeststripApp/AppModel.swift:1814-1817`), and a new navigation clears
+(`NavigationCommands`, `Sources/TeststripApp/main.swift:297-325`); history is
+a pair of `LibrarySource` stacks (`navigationBackStack`/`navigationForwardStack`,
+`Sources/TeststripApp/AppModel.swift:2021-2022`), and a new navigation clears
 the forward stack.
 
 ## Pre-state
@@ -18,9 +18,12 @@ the forward stack.
 2. **Gating at launch.** Open the Go menu via System Events; assert both
    `Back` and `Forward` are present with ⇧⌘[ / ⇧⌘] and both are DISABLED
    (no history yet).
-3. **Build history.** In Library, click three distinct sidebar rows in
-   sequence (e.g. All Photographs → a review queue → Places/another set).
-   Record which chrome identifies each (result-header text or queue title).
+3. **Build history.** In the Grid lens, click three distinct sidebar rows in
+   sequence (e.g. All Photos → a Smart Collection → a saved set). Record
+   which chrome identifies each (result-header text or queue title).
+   (`Places` no longer exists as a sidebar source — it was a lens
+   masquerading as a source, per `LibrarySource.swift`'s own doc comment,
+   and is now the Map lens.)
 4. **Back.** Press ⇧⌘[ twice. After each press assert the rendered scope is
    the previous row's (match the recorded identifying chrome). Go menu:
    `Forward` is now ENABLED.
@@ -51,10 +54,26 @@ the forward stack.
 ## Sharp edges
 - Reading a menu item's enabled state requires the menu to be open;
   script open+read in one AppleScript pass (menus vend only while open).
-- History records `SidebarRowTarget`s — sidebar-row navigations. Sub-view
-  toggles (Grid↔Timeline) may or may not push history; establish which by
-  observation before asserting, and record the answer in the run notes
+- History records `LibrarySource`s — source selections, not lens switches.
+  Lens changes (Grid↔Timeline) may or may not push history; establish which
+  by observation before asserting, and record the answer in the run notes
   rather than guessing.
 - If a Back hop renders the right scope but the sidebar highlight lags,
   trust the header/scope chrome and catalog-backed row counts over the
   highlight.
+
+## Run status
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: this
+card cited `SidebarRowTarget`, which no longer exists anywhere in `Sources/`
+(`grep -rn "SidebarRowTarget" Sources/` → nothing) — the navigation-history
+stacks are now `[LibrarySource]` (`navigationBackStack`/
+`navigationForwardStack`, `AppModel.swift:2021-2022`), and the field name
+itself had drifted (`forwardStack` → `navigationForwardStack`). Also fixed
+Step 3's example row: `Places` no longer exists as a sidebar source (it was
+a lens masquerading as a source, per `LibrarySource.swift`'s own doc
+comment, and is now the Map lens) — substituted a Smart Collection/saved-set
+example. Re-verified `NavigationCommands`'s line range
+(`main.swift:297-325`, drifted from `:285-318`). Supersedes prior status: no
+prior run evidence exists on this card at all — it never had a `## Run
+status` section before this note; the fixes only affect what a future
+runner would read as ground truth.

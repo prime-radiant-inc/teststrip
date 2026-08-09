@@ -503,3 +503,12 @@ Run status for the full per-assertion account, including two tooling bugs
 (one in the shared `vm_scenario_run.sh` harness, one in that card's own
 Step 6 driving technique) found and fixed along the way — neither affects
 this card, which was not re-run.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; no other stale symbol found in this card (its
+`CullingKeyCaptureView`/`AppModel` citations don't touch
+`CullingKeyCaptureGate`). Supersedes prior status: no substantive change —
+the PASS-WITH-CARD-FIXES evidence above is unaffected, noted for the record
+per house style.

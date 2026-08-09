@@ -7,7 +7,7 @@ sources back to back — structured `LibraryQueryToken` chips (from
 `ActiveLibraryFilterRow` chips (from `model.activeLibraryFilterRows`),
 deduplicated against the structured tokens by
 `LibraryQueryToken.legacyRows(_:notCoveredBy:)` (identity = title AND
-`SidebarRowTarget`, per `LibraryQueryTokenField.swift`). One legacy chip kind
+`LibrarySource` target, per `LibraryQueryTokenField.swift:398-409`). One legacy chip kind
 carries a "Not a filter — matching file names and photo text" subtitle
 (`filterChip(isPlainSearchFallback:)`, lines 981-1016): it is set `true`
 exactly once, in `AppModel.swift:2758`, for the row titled
@@ -112,3 +112,14 @@ against a fresh `--smoke` catalog on 2026-07-10 (`TOTAL=24`,
 `RATING3PLUS=12`, `PICKS=6`); the AND-intersection count in step 5 was not
 dry-run this session and should be computed fresh at run time. Schema per
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift`.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: the
+Source section cited chip-identity as "title AND `SidebarRowTarget`" —
+`SidebarRowTarget` no longer exists anywhere in `Sources/` (`grep -rn
+"SidebarRowTarget" Sources/` → nothing). `ActiveLibraryFilterRow.target` is
+`LibrarySource?` (`AppModel.swift:989-1004`), and `legacyRows(_:notCoveredBy:)`
+(`LibraryQueryTokenField.swift:398-409`) dedupes against it directly —
+fixed the citation. No step or assertion in this card depended on the old
+name. Supersedes prior status: no substantive change to any assertion — the
+NOT RUN status and the LEDGER's separately-tracked "Verified" history are
+otherwise unaffected, noted for the record per house style.

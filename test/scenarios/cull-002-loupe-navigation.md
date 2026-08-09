@@ -231,3 +231,10 @@ tree. The LEDGER's prior "Verified" status for this card predates the
 remap and covers the *old* mapping only — treat this revision as needing a
 fresh human-present/VM execution per `test/scenarios/README.md` before it
 can be called Verified again.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; no other stale symbol found in this card. Supersedes prior
+status: no substantive change — the 2026-07-13 remap reconciliation above
+is unaffected, noted for the record per house style.

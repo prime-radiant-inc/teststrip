@@ -132,21 +132,25 @@ are the point; do not weaken them to make a card pass.
 | `export-presets-with-exif.md` | Export presets + optional EXIF/IPTC carry checkbox |
 | `ux-simplification-chrome.md` | Find Best Shots + collapsed toolbar + Copilot→Review chrome |
 
-**Focused workspaces** — the ⌘1/⌘2/⌘3 Cull/Library/People chrome (Task 22/23):
+**Unified shell** — the ⌘1–⌘6 lens switcher over one sidebar (Task 22/23;
+superseded by the unified-shell push, 2026-08-07 — the earlier two-workspace
+Cull/Library shell and its three-key ⌘1/⌘2/⌘3 binding are gone, replaced by
+six lenses — Cull/Grid/Loupe/Timeline/Map/People — over one source, keyed
+⌘1–⌘6; see `app-019-lens-shell.md`):
 
 | Card | Surface under test |
 | --- | --- |
-| `workspace-switching.md` | ⌘1/⌘2/⌘3 and the toolbar switcher agree on the active workspace |
+| `app-019-lens-shell.md` | ⌘1–⌘6 and the toolbar lens switcher agree on the active lens; switching lenses never changes the selected source |
 | `quiet-activity-badge.md` | Activity icon idle→badge→popover→navigate-to-asset |
 | `token-query-filter.md` | Query token field narrows the grid to the matching catalog rows |
 | `cull-pass-scope-and-undo.md` | P/X/S/Return keyboard loop; stack Return is one gesture; ⌘Z reverts the pass |
 | `end-of-set-move-rejects.md` | Completion state on deciding all frames; Move Rejects relocates files on disk |
-| `library-loupe-no-cull-chrome.md` | Library's loupe has no pick/reject pills |
+| `library-loupe-no-cull-chrome.md` | The Loupe lens's loupe (⌘3) has no pick/reject pills |
 | `inspector-describe-suggested-keyword.md` | ⌘I opens the inspector; accepting a suggestion writes catalog + sidecar |
 | `people-confirm-writes-on-return.md` | Arrow-focus then Return confirms; `person_assets` appears only after |
 | `people-naming-sheet-return-routing.md` | Return with the naming sheet open triggers Create, not the queue confirm |
 | `activity-icon-states.md` | Idle/working/problem-badge states of the toolbar Activity icon |
-| `workspace-minimum-width-floors.md` | Library 1000pt / Cull 800pt / People 700pt floors hold chrome without clipping |
+| `app-002-window-floors.md` | One 1000pt floor (`AppWindowLayoutMetrics.minimumWidth`) holds the chrome across every lens |
 
 ## Running scenarios in a Tart VM
 

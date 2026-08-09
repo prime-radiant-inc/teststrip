@@ -114,3 +114,12 @@ multi-face frame, and any single-portrait frame (e.g.
 
 ## Run status
 UNRUN — needs human-present execution per test/scenarios/README.md.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; the assertions were not affected. (The Source/Sharp-edges
+prose still says "People-workspace clustering pipeline" as an informal name
+for the face-clustering feature, not a citation of any `Workspace` symbol —
+left as-is; People is now a lens, but this card never asserts against that
+naming.)

@@ -19,7 +19,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 Keep the app warm during the evaluation wait (re-assert frontmost each poll).
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Library).
+1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Grid lens).
 2. **Read-only baseline.** Snapshot the catalog's user-visible metadata:
    ```bash
    sqlite3 "$DB" ".dump assets" | shasum > /tmp/before.sha
@@ -93,3 +93,14 @@ autopilot mechanism that does not exist in source. Left unchanged; flagging
 for Jesse rather than silently complying with an instruction the source
 doesn't support. Otherwise no `autopilot_proposals` table reference exists
 anywhere in this card. Needs a fresh VM run (unrelated to this review).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+preamble pressed ⌘2 for "Library" — the two-workspace `Workspace` enum's ⌘2;
+that enum is gone and ⌘2 now selects the Grid lens (`LibraryLens.
+keyEquivalent`, `LibraryLens.swift:44-51`). Retitled to "Grid lens." Preamble
+only; the assertions were not affected — `FindBestShotsRouter.plan` and the
+three outcomes it routes to don't care which lens was active before ⇧⌘B was
+pressed. Supersedes prior status: the 2026-08-06 review above covered
+terminology only and is still valid on its own terms, but neither it nor any
+earlier evidence was gathered against a build where ⌘2 meant anything other
+than the deleted Library workspace — needs a fresh VM run.

@@ -26,8 +26,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    sqlite3 "$DB" "SELECT person_id, count(*) FROM person_assets GROUP BY person_id;"
    ```
 2. **Person-card count text.** `script/ax_drive.sh wait-vended Teststrip`;
-   press ⌘2 Library, then AX-press the sub-view toggle segment **"People"**
-   (People is a Library view now, not ⌘3). For each named person card, read its count `AXStaticText`
+   press ⌘6 for the People lens (People is one of the six top-level
+   `LibraryLens` cases, reached via the toolbar lens switcher's "People"
+   segment or ⌘6 — not ⌘3, and not a Library sub-view toggle). For each
+   named person card, read its count `AXStaticText`
    and assert it equals `NamedPersonPresentation.countText`: "1 confirmed
    photo" for a single asset, "N confirmed photos" otherwise
    (`PeopleView.swift:777-779`).
@@ -131,3 +133,15 @@ code reading of `CatalogMigrations.swift:124-131` and
 read of `CatalogRepository.swift:878-902`. Needs a human-present re-run. All
 SQL in this card was run headlessly against a seeded --faces catalog on
 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: Step 2's
+preamble pressed ⌘2 then AX-pressed a "sub-view toggle segment" for People —
+describing an intermediate, pre-unified-shell era where People had already
+left the top-level ⌘3 workspace slot but was reached as a Library sub-view
+toggle rather than its own key. Under the unified shell People is one of
+the six top-level `LibraryLens` cases again, reached directly by ⌘6 or the
+toolbar lens switcher's "People" segment — there is no Library sub-view
+toggle any more (`LibraryLens.keyEquivalent`, `LibraryLens.swift:44-51`).
+Preamble only; the person-card count/merge-gating/navigation assertions
+don't depend on how People was reached. Supersedes prior status: no prior
+run evidence exists to invalidate (still BLOCKED-CONSOLE).

@@ -73,7 +73,9 @@ file extension outside the supported image set and outside
 `FolderScanner.videoExtensions` reports `.unrecognizedFile`
 (`FolderScanner.swift:90-98`), which the importer surfaces as a
 `skippedSourceFile` issue with message "file type not supported"
-(`LibraryImportService.swift:466-473`). Drop two into CARD1 before the first
+(`Sources/TeststripCore/Ingest/LibraryImportService.swift:466-473`
+— not `Sources/TeststripApp/`, per the surrounding citations' path; verified
+against source). Drop two into CARD1 before the first
 import:
 ```bash
 echo "not a photo" > "$CARD1/notes.txt"
@@ -362,3 +364,14 @@ Quit the launched instance.
 UNRUN — authored 2026-08-08 for the unified-shell push (Task 12), source-cited
 against `feat/unified-shell` @ `496abf1e`. Pending a live VM run per
 `script/vm_scenario_run.sh`.
+
+**Reconciled 2026-08-09 (Task 13, citation fix)**: the skipped-file citation
+(`LibraryImportService.swift:466-473`) named no directory, which read as
+`Sources/TeststripApp/` given every neighboring citation in this card uses
+that prefix — the file actually lives at
+`Sources/TeststripCore/Ingest/LibraryImportService.swift` (confirmed via
+`find Sources -iname LibraryImportService.swift`); the line range itself
+(466-473, `skippedSourceFileMessage`) was already correct. Every other
+citation in this card's Source section was spot-checked directly against
+source during this pass and found exact. No step or assertion changed.
+Steps themselves not re-verified live.

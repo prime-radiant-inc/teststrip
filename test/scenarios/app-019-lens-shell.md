@@ -25,7 +25,7 @@ subtitle install `:140`), `Sources/TeststripApp/LibraryLens.swift`
 `peopleInCurrentSource` `:2296,3669`), `Sources/TeststripApp/SidebarView.swift`
 (Stacks gating `:46-55`, `sectionHeader`/`headerWithAddButton`/`addButton`
 `:99-166`), `Sources/TeststripApp/main.swift` (`LensCommands` ⌘1-⌘6
-`:164-184`, `InspectorCommands` ⌥⌘1-3 `:586-607`),
+`:168-174`, `InspectorCommands` ⌥⌘1-3 `:586-607`),
 `Sources/TeststripApp/SessionRestoreState.swift` (`currentVersion = 2`
 `:15`).
 
@@ -88,7 +88,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    script/ax_drive.sh find --role AXRadioButton --label "Workspace"   # expect not-found
    script/ax_drive.sh find --contains "Library View"                 # expect not-found
    ```
-4. Press ⌘1 through ⌘6 in turn (`LensCommands`, `main.swift:164-183`, key
+4. Press ⌘1 through ⌘6 in turn (`LensCommands`, `main.swift:168-174`, key
    equivalents `1`-`6` per `LibraryLens.keyEquivalent`,
    `LibraryLens.swift:46-55`). After each, read `.navigationSubtitle`
    (`LibraryGridChromePolicy.windowSubtitle(for:)`, `LibraryGridView.swift:
@@ -157,7 +157,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    these"`, never `--contains`), and assert the scope line names the search
    (the chip text, since `cullTheseSourceTitle()` prefers
    `activeLibraryFilterChips` over the raw source title,
-   `AppModel.swift:5820-5823`) and the catalog gained a `culling` work
+   `AppModel.swift:5822-5825`) and the catalog gained a `culling` work
    session:
    ```bash
    sqlite3 "$DB" "SELECT kind, title FROM work_sessions WHERE kind='culling' ORDER BY created_at DESC LIMIT 1;"
@@ -291,3 +291,16 @@ Quit the launched instance.
 UNRUN — authored 2026-08-08 for the unified-shell push (Task 12), source-cited
 against `feat/unified-shell` @ `496abf1e`. Pending a live VM run per
 `script/vm_scenario_run.sh`.
+
+**Reconciled 2026-08-09 (Task 13, citation fixes)**: two drifted line
+citations found in review and corrected here, both re-verified directly
+against source: Step 8's `cullTheseSourceTitle()` citation
+(`AppModel.swift:5820-5823` → `:5822-5825`) previously excluded the
+function's own declaration line and its operative return statement (the
+"prefers chips over source title" logic actually sits on the line the old
+range cut off); the Source section's and Step 4's two disagreeing
+`LensCommands` ⌘1-⌘6 citations (`:164-184` and `:164-183`) were both wider
+than the actual keyboardShortcut-binding block and disagreed with each
+other — tightened both to `:168-174`, the `ForEach`/`.keyboardShortcut`
+block itself. No step or assertion changed, only citations. Steps
+themselves not re-verified live.

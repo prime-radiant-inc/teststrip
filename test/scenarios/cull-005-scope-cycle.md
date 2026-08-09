@@ -122,3 +122,9 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
 ## Run status
 UNRUN — SQL not yet dry-run against a live catalog; needs human-present
 execution per test/scenarios/README.md.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; no other stale symbol found in this card. Supersedes prior
+status: no prior run evidence exists to invalidate (still UNRUN).

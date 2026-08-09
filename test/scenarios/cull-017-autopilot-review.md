@@ -88,7 +88,7 @@ duplicate.)
    Also expect the banner: `script/ax_drive.sh wait --role AXStaticText
    --contains "Autopilot"`.
 4. **Assert ghosts exist, each landed as a *tentative, unconfirmed* write,
-   and the grid badges are provisional (items 52-53).** In Library workspace,
+   and the grid badges are provisional (items 52-53).** In the Grid lens,
    for each imported asset carrying a ghost, assert the grid cell shows a
    KEEP or CUT badge matching the ghost's own flag value
    (`ax_drive.sh find --contains "KEEP"` / `"CUT"` scoped near that tile —
@@ -293,3 +293,14 @@ pre-existing gap this reconciliation surfaced rather than closed.
 **Supersedes prior status**: the 2026-07-15 reconciliation above, and any
 run against it, predates the `autopilot_proposals` drop and the sidebar
 Review route — not valid evidence for this revision. Needs a fresh VM run.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Steps 1's
+and 135's ⌘1 presses are unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`). Found and fixed one substantive stale reference beyond the
+mechanical preamble: Step 4 said "In Library workspace" — the two-workspace
+`Workspace` enum's Library case, which no longer exists — corrected to "In
+the Grid lens" (this step doesn't press a key to get there; it just
+describes checking the grid cells, which render in the Grid lens after the
+import lands). Supersedes prior status: the 2026-08-06 ghost-derivation
+reconciliation above is unaffected — it never depended on workspace naming
+— but still needs a fresh VM run per its own text.
