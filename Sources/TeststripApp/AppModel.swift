@@ -2269,7 +2269,6 @@ public final class AppModel {
     /// section, keyed by the row's full folder path. In-memory only; not
     /// persisted across launches.
     public private(set) var expandedFolderPaths: Set<String>
-    public var catalogTimelineDays: [CatalogTimelineDay]
     public private(set) var catalogPlaceClusters: [CatalogPlaceCluster] = []
     public private(set) var catalogTopLocations: [CatalogTopLocation] = []
     public private(set) var geotaggedCoverage = CatalogGeotaggedCoverage(geotaggedCount: 0, totalCount: 0)
@@ -3319,10 +3318,9 @@ public final class AppModel {
     }
 
     /// The Timeline lens over the selected source. Built from the loaded
-    /// source rather than the catalog-wide `catalogTimelineDays` cache, whose
-    /// `timelineDays()` query takes no scope: the year ribbon and scrubber
-    /// used to show catalog-wide numbers over filtered thumbnails, papered
-    /// over by "Showing N loaded of M photos".
+    /// source rather than a catalog-wide query, which takes no scope: the
+    /// year ribbon and scrubber used to show catalog-wide numbers over
+    /// filtered thumbnails, papered over by "Showing N loaded of M photos".
     var timelinePresentation: TimelinePresentation {
         TimelinePresentation(assets: assets, totalAssetCount: totalAssetCount)
     }
@@ -4131,7 +4129,6 @@ public final class AppModel {
         assetSetCounts: [AssetSetID: Int] = [:],
         workSessionScopeCounts: [WorkSessionID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
-        catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceRoots: [CatalogSourceRoot] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
@@ -4203,7 +4200,6 @@ public final class AppModel {
         self.workSessionScopeCounts = workSessionScopeCounts
         self.catalogFolders = catalogFolders
         self.expandedFolderPaths = []
-        self.catalogTimelineDays = catalogTimelineDays
         self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
@@ -4355,7 +4351,6 @@ public final class AppModel {
         let savedAssetSets = try repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: repository)
         let catalogFolders = try repository.folders()
-        let catalogTimelineDays = try repository.timelineDays()
         let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
@@ -4391,7 +4386,6 @@ public final class AppModel {
             assetSetCounts: assetSetCounts,
             workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
-            catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -4419,7 +4413,6 @@ public final class AppModel {
         let savedAssetSets = try catalog.repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         let catalogFolders = try catalog.repository.folders()
-        let catalogTimelineDays = try catalog.repository.timelineDays()
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
@@ -4455,7 +4448,6 @@ public final class AppModel {
             assetSetCounts: assetSetCounts,
             workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
-            catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -13058,7 +13050,6 @@ public final class AppModel {
         guard let catalog else { return }
         do {
             catalogFolders = try catalog.repository.folders()
-            catalogTimelineDays = try catalog.repository.timelineDays()
             sourceRoots = try catalog.repository.sourceRoots()
             rebuildSidebarSections()
         } catch {
