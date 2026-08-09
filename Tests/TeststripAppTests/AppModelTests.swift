@@ -4371,7 +4371,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.firstLead.id)
     }
 
-    // Regression fix: beginStackCullingFromLatestImportCompletion (the
+    // Regression fix: beginStackCulling (the
     // initial landing when a new stack-cull session starts) called
     // recommendedCullingStackAssetID directly instead of routing through the
     // same gated recommendedStackLandingAssetID helper as every other
@@ -4408,7 +4408,7 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: assets.map(\.id)
         )
         try onRepository.recordEvaluationSignals(signals)
-        _ = try onModel.beginStackCullingFromLatestImportCompletion()
+        _ = try beginStackCullingFromLatestImport(in: onModel)
         XCTAssertEqual(onModel.selectedAssetID, stackSecond.id)
 
         // Preference off: the same session start lands on frame 1 (capture
@@ -4420,7 +4420,7 @@ final class AppModelTests: XCTestCase {
         )
         try offRepository.recordEvaluationSignals(signals)
         offModel.toggleCullLandOnRecommendedFrame()
-        _ = try offModel.beginStackCullingFromLatestImportCompletion()
+        _ = try beginStackCullingFromLatestImport(in: offModel)
         XCTAssertEqual(offModel.selectedAssetID, stackFirst.id)
     }
 
@@ -4516,7 +4516,7 @@ final class AppModelTests: XCTestCase {
         )
         try seedLargePreviews(for: assets, in: previewCache)
 
-        let session = try model.beginStackCullingFromLatestImportCompletion()
+        let session = try beginStackCullingFromLatestImport(in: model)
         XCTAssertEqual(session.inputSetIDs.count, 1)
         XCTAssertNil(model.cullingSessionCompletion)
 
@@ -4569,7 +4569,7 @@ final class AppModelTests: XCTestCase {
         )
         try seedLargePreviews(for: assets, in: previewCache)
 
-        _ = try model.beginStackCullingFromLatestImportCompletion()
+        _ = try beginStackCullingFromLatestImport(in: model)
         try model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         let completion = try XCTUnwrap(model.cullingSessionCompletion)
@@ -5014,7 +5014,7 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: stackSecond.id, kind: .focus, value: .score(0.92), confidence: 0.9, provenance: provenance)
         ])
 
-        _ = try model.beginStackCullingFromLatestImportCompletion()
+        _ = try beginStackCullingFromLatestImport(in: model)
 
         XCTAssertEqual(model.selectedAssetID, stackSecond.id)
         XCTAssertEqual(model.selectedView, .loupe)
@@ -12688,170 +12688,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Queued local reads for 40 photos; 2 cached photos remain")
     }
 
-    func testRequestLatestImportAssetEvaluationsDispatchesOnlyCachedImportedAssets() throws {
-        let transport = RecordingWorkerTransport()
-        let supervisor = WorkerSupervisor(
-            queue: BackgroundWorkQueue(maxRunningCount: 4),
-            transport: transport
-        )
-        let importedCached = makeAsset(id: "latest-import-cached", size: 1)
-        let importedUncached = makeAsset(id: "latest-import-uncached", size: 2)
-        let outsideCached = makeAsset(id: "outside-latest-import", size: 3)
-        let (model, _, previewCache) = try makeModelWithCompletedImportSession(
-            named: "latest-import-evaluation",
-            assets: [importedCached, importedUncached, outsideCached],
-            outputAssetIDs: [importedCached.id, importedUncached.id],
-            workerSupervisor: supervisor
-        )
-        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: importedCached.id, level: .grid)))
-        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideCached.id, level: .grid)))
-
-        XCTAssertTrue(model.canRequestLatestImportAssetEvaluations)
-
-        try model.requestLatestImportAssetEvaluations(providers: ["local-image-metrics"])
-
-        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
-            WorkSessionID(rawValue: "evaluation-\(importedCached.id.rawValue)-local-image-metrics")
-        ])
-        XCTAssertEqual(try transport.commands(), [
-            .runEvaluation(assetID: importedCached.id, provider: "local-image-metrics")
-        ])
-    }
-
-    func testCanRequestLatestImportAssetEvaluationsRequiresWorkerAndCachedImportedPreview() throws {
-        let imported = makeAsset(id: "latest-import-gate-imported", size: 1)
-        let outsideCached = makeAsset(id: "latest-import-gate-outside", size: 2)
-        let (noWorkerModel, _, noWorkerPreviewCache) = try makeModelWithCompletedImportSession(
-            named: "latest-import-evaluation-no-worker",
-            assets: [imported],
-            outputAssetIDs: [imported.id]
-        )
-        try writePreviewPlaceholder(to: noWorkerPreviewCache.url(for: PreviewCacheKey(assetID: imported.id, level: .grid)))
-        XCTAssertFalse(noWorkerModel.canRequestLatestImportAssetEvaluations)
-
-        let transport = RecordingWorkerTransport()
-        let supervisor = WorkerSupervisor(
-            queue: BackgroundWorkQueue(maxRunningCount: 4),
-            transport: transport
-        )
-        let (model, _, previewCache) = try makeModelWithCompletedImportSession(
-            named: "latest-import-evaluation-only-outside-preview",
-            assets: [imported, outsideCached],
-            outputAssetIDs: [imported.id],
-            workerSupervisor: supervisor
-        )
-        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideCached.id, level: .grid)))
-
-        XCTAssertFalse(model.canRequestLatestImportAssetEvaluations)
-    }
-
-    func testLatestImportFaceReviewCountIgnoresFacesOutsideLatestImport() throws {
-        let importedFace = makeAsset(id: "latest-import-face", size: 1)
-        let importedNoFace = makeAsset(id: "latest-import-no-face", size: 2)
-        let olderFace = makeAsset(id: "older-face-signal", size: 2)
-        let (model, repository, _) = try makeModelWithCompletedImportSession(
-            named: "latest-import-face-count",
-            assets: [importedFace, importedNoFace, olderFace],
-            outputAssetIDs: [importedFace.id, importedNoFace.id]
-        )
-        try repository.recordEvaluationSignals([
-            EvaluationSignal(
-                assetID: importedFace.id,
-                kind: .faceCount,
-                value: .count(1),
-                confidence: 0.9,
-                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
-            ),
-            EvaluationSignal(
-                assetID: olderFace.id,
-                kind: .faceCount,
-                value: .count(1),
-                confidence: 0.9,
-                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
-            )
-        ])
-
-        XCTAssertEqual(model.latestImportFaceReviewAssetCount, 1)
-    }
-
-    func testLatestImportFlaggedReviewCountIsScopedToImportOutputSet() throws {
-        let importedIssue = makeAsset(id: "latest-import-likely-issue", size: 1)
-        let importedClean = makeAsset(id: "latest-import-clean", size: 2)
-        let outsideIssue = makeAsset(id: "outside-latest-import-issue", size: 3)
-        let (model, repository, _) = try makeModelWithCompletedImportSession(
-            named: "latest-import-flagged-review-count",
-            assets: [importedIssue, importedClean, outsideIssue],
-            outputAssetIDs: [importedIssue.id, importedClean.id]
-        )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
-        try repository.recordEvaluationSignals([
-            EvaluationSignal(assetID: importedIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
-            EvaluationSignal(assetID: outsideIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)
-        ])
-
-        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
-    }
-
-    func testLatestImportFlaggedReviewCountCachesUntilPresentationRefresh() throws {
-        let firstIssue = makeAsset(id: "latest-import-cached-issue", size: 1)
-        let secondIssue = makeAsset(id: "latest-import-second-issue", size: 2)
-        let (model, repository, _) = try makeModelWithCompletedImportSession(
-            named: "latest-import-flagged-count-cache",
-            assets: [firstIssue, secondIssue],
-            outputAssetIDs: [firstIssue.id, secondIssue.id]
-        )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
-        try repository.recordEvaluationSignals([
-            EvaluationSignal(assetID: firstIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
-        ])
-
-        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
-
-        try repository.recordEvaluationSignals([
-            EvaluationSignal(assetID: secondIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)
-        ])
-
-        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
-
-        model.refreshLatestImportPresentation()
-
-        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 2)
-    }
-
-    func testLatestImportPreviewQueueChangeKeepsFlaggedCountCachedWhileUpdatingPreviewStatus() throws {
-        let supervisor = WorkerSupervisor(
-            queue: BackgroundWorkQueue(maxRunningCount: 4),
-            transport: RecordingWorkerTransport()
-        )
-        let firstIssue = makeAsset(id: "latest-import-split-first-issue", size: 1)
-        let secondIssue = makeAsset(id: "latest-import-split-second-issue", size: 2)
-        let (model, repository, _) = try makeModelWithCompletedImportSession(
-            named: "latest-import-preview-status-split",
-            assets: [firstIssue, secondIssue],
-            outputAssetIDs: [firstIssue.id, secondIssue.id],
-            workerSupervisor: supervisor
-        )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
-        try repository.recordEvaluationSignals([
-            EvaluationSignal(assetID: firstIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
-        ])
-
-        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
-        XCTAssertEqual(model.latestImportCompletionSummary?.previewStatusText, "Previews ready")
-
-        try repository.recordEvaluationSignals([
-            EvaluationSignal(assetID: secondIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)
-        ])
-        try model.requestPreview(assetID: secondIssue.id, level: .grid)
-
-        XCTAssertEqual(model.latestImportCompletionSummary?.previewStatusText, "generating previews")
-        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
-
-        model.refreshLatestImportPresentation()
-
-        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 2)
-    }
-
     func testCoalescedBackgroundWorkPublicationDefersQueueUpdatesUntilFlush() throws {
         let scheduler = ManualBackgroundWorkPublicationScheduler()
         let supervisor = WorkerSupervisor(
@@ -13975,9 +13811,6 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.7, provenance: provenance),
             EvaluationSignal(assetID: third.id, kind: .object, value: .label("mountain"), confidence: 0.9, provenance: provenance)
         ])
-
-        XCTAssertEqual(model.latestImportBatchKeywordSuggestions.map(\.keyword), ["mountain"])
-        XCTAssertEqual(model.latestImportBatchKeywordSuggestions.map(\.assetCountText), ["2 photos"])
 
         let appliedCount = try model.acceptLatestImportBatchKeywordSuggestion("mountain")
 
@@ -15828,61 +15661,13 @@ final class AppModelTests: XCTestCase {
         }.sorted())
     }
 
+    // Relocated from `ImportCompletionSummary.previewFailureCount`/`.failureText`/
+    // `.previewStatusText` (deleted with the banner) onto their successor, the
+    // import row's **⚠ Preview failed** child count. Two failed levels on one
+    // frame are one failed photo, and a failure outside the import is not this
+    // import's problem.
     @MainActor
-    func testPreviewCompletionEnablesLatestImportEvaluateActionWhenAutoEvaluationDisabled() async throws {
-        let directory = try makeTemporaryDirectory(named: "latest-import-evaluate-gate-preview-drain")
-        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
-        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
-        let image = photoFolder.appendingPathComponent("one.png")
-        try writeTestPNG(to: image)
-        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
-        let catalog = try AppCatalog.open(paths: paths)
-        let transport = RecordingWorkerTransport()
-        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
-
-        model.beginImportFolder(photoFolder, evaluateAfterImport: false)
-        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
-        let importedAsset = Asset(
-            id: AssetID(rawValue: "evaluate-gate-deferred"),
-            originalURL: image,
-            volumeIdentifier: "Photos",
-            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
-            availability: .online,
-            metadata: AssetMetadata()
-        )
-        try catalog.repository.upsert(importedAsset)
-        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .micro))
-        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
-            itemID: importItem.id,
-            message: "imported 1 photo from photos",
-            importedAssetIDs: [importedAsset.id],
-            newAssetCount: 1,
-            existingAssetCount: 0,
-            skippedSourceFileCount: 0,
-            skippedSourceFiles: []
-        )))
-        try await waitForSelectedAsset(importedAsset.id, in: model)
-        // The worker import deferred preview generation, so the evaluate action
-        // is still gated off. This access caches the presentation core.
-        XCTAssertFalse(model.canRequestLatestImportAssetEvaluations)
-
-        // The only preview finishes: with auto-evaluation off, no recognition
-        // completion will ever refresh the panel, so the preview transition
-        // itself must flip the evaluate gate.
-        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .micro)))
-        let previewItemID = WorkSessionID(rawValue: "preview-\(importedAsset.id.rawValue)-micro")
-        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
-            itemID: previewItemID,
-            message: "generated micro preview"
-        )))
-        try await waitForCompletedBackgroundWorkItem(id: previewItemID, in: model)
-
-        XCTAssertTrue(model.canRequestLatestImportAssetEvaluations)
-    }
-
-    @MainActor
-    func testLatestImportCompletionSummarySurfacesDeferredPreviewFailuresForWorkerImport() async throws {
+    func testTheImportRowsPreviewFailedChildCountsFailedFramesInThatImportOnly() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-preview-failure-summary")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -15931,12 +15716,26 @@ final class AppModelTests: XCTestCase {
             level: .grid,
             errorMessage: "could not render grid preview"
         )
+        let outsideAsset = Asset(
+            id: AssetID(rawValue: "not-in-this-import"),
+            originalURL: directory.appendingPathComponent("elsewhere.png"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(outsideAsset)
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: outsideAsset.id, level: .grid))
+        try catalog.repository.recordPreviewGenerationFailure(
+            assetID: outsideAsset.id,
+            level: .grid,
+            errorMessage: "could not render grid preview"
+        )
 
         let summary = try XCTUnwrap(model.latestImportCompletionSummary)
 
-        XCTAssertEqual(summary.previewFailureCount, 1)
-        XCTAssertEqual(summary.failureText, "1 preview failure")
-        XCTAssertEqual(summary.previewStatusText, "1 preview failure")
+        let counts = try model.importChildCounts(sessionID: WorkSessionID(rawValue: summary.activityID))
+        XCTAssertEqual(counts.previewFailed, 1)
     }
 
     @MainActor
@@ -17498,7 +17297,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.photoCountText, "0 photos")
         XCTAssertEqual(summary.newPhotoCount, 0)
         XCTAssertEqual(summary.existingPhotoCount, 0)
-        XCTAssertEqual(summary.previewStatusText, "No previews needed")
         XCTAssertEqual(summary.issues.map(\.sourceURL), [firstSkipped, secondSkipped])
     }
 
@@ -17688,10 +17486,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.detail, "Imported 1 photo from photos")
         XCTAssertEqual(summary.importedPhotoCount, 1)
         XCTAssertEqual(summary.photoCountText, "1 photo")
-        XCTAssertEqual(summary.previewFailureCount, 0)
-        XCTAssertEqual(summary.previewStatusText, "Previews ready")
         XCTAssertEqual(summary.cullingSessionName, "Imported 1 photo from photos Cull")
-        XCTAssertNil(summary.failureText)
 
         try model.openLatestImportCompletion()
 
@@ -17905,7 +17700,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.photoCountText, "1 photo")
     }
 
-    func testLatestImportCompletionSummaryReportsTimeAdjacentStacks() throws {
+    // Relocated from `ImportCompletionSummary.stackCount`/`.stackedPhotoCount`
+    // (deleted with the banner) onto their successor, the import row's
+    // **Stacks** child count.
+    func testTheImportRowsStacksChildCountsTimeAdjacentStacks() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let first = makeAsset(
             id: "stack-summary-first",
@@ -17933,41 +17731,15 @@ final class AppModelTests: XCTestCase {
 
         let summary = try XCTUnwrap(model.latestImportCompletionSummary)
 
-        XCTAssertEqual(summary.stackCount, 1)
-        XCTAssertEqual(summary.stackedPhotoCount, 2)
+        let counts = try model.importChildCounts(sessionID: WorkSessionID(rawValue: summary.activityID))
+        XCTAssertEqual(counts.stacks, 1)
     }
 
-    func testLatestImportCompletionSummaryIgnoresUnrelatedPreviewWork() throws {
-        let imported = makeAsset(
-            id: "import-summary-ready",
-            path: "/Photos/Import/import-summary-ready.cr2",
-            rating: 0
-        )
-        let unrelated = makeAsset(
-            id: "unrelated-preview-work",
-            path: "/Photos/Other/unrelated-preview-work.cr2",
-            rating: 0
-        )
-        let supervisor = WorkerSupervisor(
-            queue: BackgroundWorkQueue(maxRunningCount: 1),
-            transport: RecordingWorkerTransport()
-        )
-        let (model, _, _) = try makeModelWithCompletedImportSession(
-            named: "import-summary-unrelated-preview-work",
-            assets: [imported, unrelated],
-            outputAssetIDs: [imported.id],
-            workerSupervisor: supervisor
-        )
-
-        try model.requestPreview(assetID: unrelated.id, level: .grid)
-
-        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
-
-        XCTAssertEqual(summary.previewStatusText, "Previews ready")
-    }
-
+    // The single "cull this import" primitive, over a real background import.
+    // Carries forward what the deleted `beginCullingFromLatestImportCompletion()`
+    // wrapper used to hold.
     @MainActor
-    func testBeginningCullingFromLatestImportUsesImportOutputSet() async throws {
+    func testStartCullingTheLatestImportUsesItsOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-cull")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -17982,7 +17754,10 @@ final class AppModelTests: XCTestCase {
         let importSession = try catalog.repository.session(id: WorkSessionID(rawValue: summary.activityID))
         let outputSetID = try XCTUnwrap(importSession.outputSetIDs.first)
 
-        let cullingSession = try model.beginCullingFromLatestImportCompletion()
+        let cullingSession = try model.startCullingImport(
+            sessionID: WorkSessionID(rawValue: summary.activityID),
+            title: summary.cullingSessionName
+        )
 
         XCTAssertEqual(cullingSession.title, summary.cullingSessionName)
         let inputSetID = try XCTUnwrap(cullingSession.inputSetIDs.first)
@@ -18019,7 +17794,7 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: [singleton.id, stackFirst.id, stackSecond.id]
         )
 
-        let session = try model.beginStackCullingFromLatestImportCompletion()
+        let session = try beginStackCullingFromLatestImport(in: model)
 
         let stackSetID = try XCTUnwrap(session.inputSetIDs.first)
         XCTAssertTrue(stackSetID.rawValue.hasPrefix("work-stack-\(session.id.rawValue)-"))
@@ -18067,7 +17842,7 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: different.id, kind: .visualSimilarity, value: .vector([0.8, 0.1, 0.1]), confidence: 0.9, provenance: provenance)
         ])
 
-        let session = try model.beginStackCullingFromLatestImportCompletion()
+        let session = try beginStackCullingFromLatestImport(in: model)
 
         let stackSetID = try XCTUnwrap(session.inputSetIDs.first)
         XCTAssertEqual(assetIDs(in: try repository.assetSet(id: stackSetID)), [first.id, similar.id])
@@ -18118,7 +17893,7 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: assets.map(\.id)
         )
 
-        let session = try model.beginStackCullingFromLatestImportCompletion()
+        let session = try beginStackCullingFromLatestImport(in: model)
 
         XCTAssertEqual(session.inputSetIDs.count, 2)
         XCTAssertTrue(session.inputSetIDs.allSatisfy { $0.rawValue.hasPrefix("work-stack-\(session.id.rawValue)-") })
@@ -18168,16 +17943,22 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: assets.map(\.id)
         )
 
-        XCTAssertEqual(model.latestImportCompletionSummary?.stackCount, 1)
+        let importSessionID = WorkSessionID(rawValue: try XCTUnwrap(model.latestImportCompletionSummary).activityID)
+        XCTAssertEqual(try model.importChildCounts(sessionID: importSessionID).stacks, 1)
 
-        _ = try model.beginStackCullingFromLatestImportCompletion()
+        _ = try beginStackCullingFromLatestImport(in: model)
 
         XCTAssertEqual(model.selectedAssetID, stackFirst.id)
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
+    // The import row's "Manual Compare over the import" verb, over a real
+    // background import. `ImportCompletionSurfaceTests` builds the same verb
+    // through the sidebar's own rows; this one keeps the real-import path and
+    // the filter-chip/search-token assertions the deleted
+    // `reviewLatestImportInCompare()` used to hold.
     @MainActor
-    func testReviewingLatestImportInCompareUsesImportOutputSet() async throws {
+    func testManualCompareOverTheImportUsesItsOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-compare")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -18192,7 +17973,11 @@ final class AppModelTests: XCTestCase {
         let importSession = try catalog.repository.session(id: WorkSessionID(rawValue: summary.activityID))
         let outputSetID = try XCTUnwrap(importSession.outputSetIDs.first)
 
-        try model.reviewLatestImportInCompare()
+        try model.performSidebarContextAction(SidebarRowContextAction(
+            kind: .compareImport(WorkSessionID(rawValue: summary.activityID)),
+            title: "Manual Compare over the import",
+            systemImage: "rectangle.split.2x1"
+        ))
 
         XCTAssertEqual(assetIDs(in: try catalog.repository.assetSet(id: outputSetID)), [try XCTUnwrap(model.assets.first?.id)])
         XCTAssertNil(model.selectedAssetSetID)
@@ -19963,6 +19748,19 @@ final class AppModelTests: XCTestCase {
             backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler
         )
         return (model, repository, previewCache)
+    }
+
+    /// Starts a stack cull over the model's newest completed import, the way
+    /// the toast and the import row's "Cull stacks" verb both do — through the
+    /// `beginStackCulling(importSessionID:title:)` primitive that takes the
+    /// import explicitly.
+    @discardableResult
+    private func beginStackCullingFromLatestImport(in model: AppModel) throws -> WorkSession {
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        return try model.beginStackCulling(
+            importSessionID: WorkSessionID(rawValue: summary.activityID),
+            title: summary.cullingSessionName
+        )
     }
 
     private func assetIDs(in assetSet: AssetSet) -> [AssetID] {

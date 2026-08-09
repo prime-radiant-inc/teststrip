@@ -27,8 +27,6 @@ final class ImportCompletionToastPresentationTests: XCTestCase {
             issues: (0..<issues).map { index in
                 WorkSessionIssue(kind: .skippedSourceFile, sourceURL: nil, message: "skipped \(index)")
             },
-            stackCount: 0,
-            stackedPhotoCount: 0,
             cullingSessionName: "/Cards/A Cull"
         )
     }
