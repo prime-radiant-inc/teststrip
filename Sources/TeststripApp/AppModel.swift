@@ -4985,17 +4985,6 @@ public final class AppModel {
         return try beginCullingSession(named: title)
     }
 
-    @discardableResult
-    public func beginCullingFromLatestImportCompletion() throws -> WorkSession {
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("no completed import")
-        }
-        return try startCullingImport(
-            sessionID: WorkSessionID(rawValue: summary.activityID),
-            title: summary.cullingSessionName
-        )
-    }
-
     /// Culls one import's time-adjacent stacks. Takes the import explicitly so
     /// every import row can start a stack cull, not only the newest one.
     @discardableResult
@@ -12885,13 +12874,11 @@ public final class AppModel {
         return nil
     }
 
-    // Defaults to excluding a bonded shot's hidden JPEG, matching the other
-    // "latest import" display surfaces. A caller that feeds processing rather
-    // than display opts back in — the hidden JPEG must still get evaluated.
+    // Excludes a bonded shot's hidden JPEG, matching the other "latest
+    // import" display surfaces.
     private func latestImportOutputAssetIDs(
         activityID: String,
-        repository: CatalogRepository,
-        includeBondedSecondaries: Bool = false
+        repository: CatalogRepository
     ) throws -> [AssetID] {
         let session = try repository.session(id: WorkSessionID(rawValue: activityID))
         guard let outputSetID = session.outputSetIDs.first else {
@@ -12902,7 +12889,7 @@ public final class AppModel {
         case .manual(let ids), .snapshot(let ids):
             return ids
         case .dynamic(let query):
-            return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
+            return try repository.assetIDs(matching: query)
         }
     }
 
