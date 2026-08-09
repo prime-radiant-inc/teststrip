@@ -153,8 +153,11 @@ final class ImportCompletionSurfaceTests: XCTestCase {
     // Lens/source orthogonality: `startCullingImport` selects the source and
     // delegates the lens to `beginCullingSession`. An import with nothing to
     // cull makes that visible — `beginCullingSession` throws, and because
-    // `startCullingImport` writes no lens of its own, the lens is still Grid
-    // afterwards while the source has moved to the import.
+    // `startCullingImport` writes no lens of its own, the lens is unchanged
+    // afterwards while the source has moved to the import. Starts from
+    // `.timeline`, not Grid — Grid is also the zero-asset fallback
+    // `LensRules.resolvedLens` lands on, so starting there couldn't tell
+    // "wrote nothing" from "wrote Grid".
     func testStartCullingImportSelectsTheSourceWithoutWritingALensOfItsOwn() throws {
         let directory = try makeTemporaryDirectory(named: "start-culling-import-empty")
         let (catalog, repository) = try makeCatalog(in: directory)
@@ -166,12 +169,13 @@ final class ImportCompletionSurfaceTests: XCTestCase {
             in: repository
         )
         let model = try AppModel.load(catalog: catalog)
-        XCTAssertEqual(model.selectedLens, .grid, "fixture check")
+        model.selectLens(.timeline)
+        XCTAssertEqual(model.selectedLens, .timeline, "fixture check")
 
         XCTAssertThrowsError(try model.startCullingImport(sessionID: sessionID, title: "Card B Cull"))
 
         XCTAssertEqual(model.selectedSource, LibrarySource.workSession(sessionID, titled: "Card B Cull"))
-        XCTAssertEqual(model.selectedLens, .grid, "startCullingImport must not write the lens itself")
+        XCTAssertEqual(model.selectedLens, .timeline, "startCullingImport must not write the lens itself")
     }
 
     // MARK: - beginStackCulling for a past import
