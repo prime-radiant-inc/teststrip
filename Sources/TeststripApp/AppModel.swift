@@ -13495,7 +13495,13 @@ public final class AppModel {
     }
 
     private static func importCompletionStatus(result: LibraryImportResult) -> String {
-        guard !result.importedAssets.isEmpty else {
+        // `importedAssets` alone undercounts: `.skipCatalogedContent` (the
+        // default for every real import entry point) `continue`s past
+        // already-cataloged source files before ever building an `Asset` for
+        // them, so a folder that's entirely already in the catalog leaves
+        // `importedAssets` empty even though supported photos were found.
+        // `existingAssetCount` is what actually saw them.
+        guard !result.importedAssets.isEmpty || result.existingAssetCount > 0 else {
             if result.skippedSourceFileCount > 0 {
                 return "No photos imported"
             }
@@ -13596,7 +13602,7 @@ public final class AppModel {
                 sourceDescription: importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot)
             ),
             completedUnitCount: result.newAssetCount,
-            totalUnitCount: result.importedAssets.count,
+            totalUnitCount: result.newAssetCount + result.existingAssetCount,
             failureCount: result.previewFailures.count,
             issues: Self.workSessionIssues(for: result)
         )
@@ -13659,7 +13665,9 @@ public final class AppModel {
 
     private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {
         let warningSuffix = importCompletionWarningText(result: result).map { " (\($0))" } ?? ""
-        if result.importedAssets.isEmpty {
+        // See `importCompletionStatus` — `existingAssetCount` catches the
+        // already-cataloged files `importedAssets` never saw.
+        if result.importedAssets.isEmpty && result.existingAssetCount == 0 {
             if result.skippedSourceFileCount == 0 {
                 return "No supported photos found in \(sourceDescription)"
             }
