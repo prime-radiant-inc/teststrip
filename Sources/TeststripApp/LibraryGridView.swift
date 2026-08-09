@@ -7749,11 +7749,7 @@ private struct TimelineWorkspaceView: View {
     var selectAsset: (AssetID) -> Void
 
     private var presentation: TimelinePresentation {
-        TimelinePresentation(
-            timelineDays: model.catalogTimelineDays,
-            loadedAssets: model.assets,
-            totalAssetCount: model.totalAssetCount
-        )
+        model.timelinePresentation
     }
 
     var body: some View {

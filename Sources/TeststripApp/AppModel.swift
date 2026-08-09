@@ -3318,6 +3318,15 @@ public final class AppModel {
         )
     }
 
+    /// The Timeline lens over the selected source. Built from the loaded
+    /// source rather than the catalog-wide `catalogTimelineDays` cache, whose
+    /// `timelineDays()` query takes no scope: the year ribbon and scrubber
+    /// used to show catalog-wide numbers over filtered thumbnails, papered
+    /// over by "Showing N loaded of M photos".
+    var timelinePresentation: TimelinePresentation {
+        TimelinePresentation(assets: assets, totalAssetCount: totalAssetCount)
+    }
+
     public var latestImportCompletionSummary: ImportCompletionSummary? {
         latestImportCoreRebuildingIfNeeded().summary
     }
