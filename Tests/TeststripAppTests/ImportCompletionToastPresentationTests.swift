@@ -21,9 +21,6 @@ final class ImportCompletionToastPresentationTests: XCTestCase {
             photoCountText: "\(imported) \(imported == 1 ? "photo" : "photos")",
             newPhotoCount: new,
             existingPhotoCount: existing,
-            previewFailureCount: 0,
-            failureText: nil,
-            previewStatusText: "Previews ready",
             issues: (0..<issues).map { index in
                 WorkSessionIssue(kind: .skippedSourceFile, sourceURL: nil, message: "skipped \(index)")
             },
