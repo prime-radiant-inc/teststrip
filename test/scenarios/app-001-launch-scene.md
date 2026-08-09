@@ -3,7 +3,9 @@
 **What this covers**: Jesse double-clicks the app and gets a working window
 every time. Inventory items 1-6: the single `WindowGroup` scene with
 `NavigationSplitView` + inspector + Settings (`Sources/TeststripApp/main.swift:23-88`);
-the sidebar swaps `CullSidebarView`/`SidebarView` by workspace; forced dark
+a single sidebar (`SidebarView`) whose "Stacks · Auto-Grouped" section
+renders only while the Cull lens is selected
+(`model.selectedLens == .cull`, `SidebarView.swift:46-53`); forced dark
 mode (`.preferredColorScheme(.dark)`); `fatalError` on catalog open failure +
 eager `Updater.shared` start; the catalog path and its
 `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` override
@@ -109,6 +111,25 @@ isolated dir.
   probe — overwriting the SQLite file header with random bytes — still
   fails to open and still fatals as expected; that invariant (don't
   silently open/recreate a genuinely corrupt catalog) is unchanged.
+
+## Run status
+**Reconciled 2026-08-09 (Task 13 review follow-up, unified-shell push)**: the
+intro's "the sidebar swaps `CullSidebarView`/`SidebarView` by workspace"
+claim was stale — `CullSidebarView` was deleted in this push (a Task-13
+review caught it as an orphan the sweep's grep pattern couldn't match on).
+Corrected to the real structure: there is now one sidebar (`SidebarView`),
+and its "Stacks · Auto-Grouped" section — the successor to what
+`CullSidebarView` used to show — renders only while the Cull lens is
+selected (`model.selectedLens == .cull`, `SidebarView.swift:46-53`), gated
+inline in `SidebarView`'s own `body` rather than by swapping in a second
+view. No step in this card drove the deleted claim live, so Steps 1-7 and
+their Expected bullets are otherwise unaffected — this is a citation fix,
+not a behavior rewrite.
+**Supersedes prior status**: the "Verified" status above predates this
+push's sidebar consolidation and describes the `CullSidebarView`/
+`SidebarView` swap it deleted — not valid evidence for the current
+structure, even though the steps it verified (window title, ⌘N, corrupt
+catalog) are otherwise unaffected. Needs a fresh VM run.
 
 ## Fix notes (persona-fixes-5, 2026-07-11)
 PENDING-VM: window title audit — the only `navigationTitle` in the app is

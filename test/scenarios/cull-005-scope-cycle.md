@@ -123,6 +123,20 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
 UNRUN — SQL not yet dry-run against a live catalog; needs human-present
 execution per test/scenarios/README.md.
 
+**Found but NOT fixed (2026-08-09, Task 13 review follow-up)**: Step 4's
+`CullFilmstripPresentation.positionText` citation (line 59) is dead —
+`CullFilmstripPresentation` (`Sources/TeststripApp/CullFilmstripPresentation.swift:6-78`)
+has no `positionText` property; a separate, larger "run strip" redesign
+(predating unified-shell — see `cull-013-filmstrip.md`'s own 2026-08-09 note
+for the same finding) replaced it with a single `tripleCounterText`
+property in a different format ("N of T · stack S of Σ · frame F of M",
+not "frame X / N"). Not fixed here because verifying what the correct
+current assertion should be requires the same dedicated run-strip-vs-old-
+filmstrip audit `cull-013` needs, not a citation-only patch — this card's
+own fallback ("or by counting visible tiles") is unaffected and still
+sound. Needs a fresh VM run after that audit, using the fallback method in
+the meantime.
+
 **Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
 ⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
 `LibraryLens`, same as it selected Cull under the old `Workspace` enum).

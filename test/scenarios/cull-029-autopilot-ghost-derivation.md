@@ -21,27 +21,36 @@ Every surface this card drives reads that one field, never a status row:
   (`json_extract(metadata_json,'$.flag') IS NOT NULL AND EXISTS (... WHERE
   json_each.value = 'flag')`), used for the review queue and sidebar count
   so neither silently shrinks to whatever the grid happens to have loaded.
-- `AppModel.beginAutopilotReview()` (`Sources/TeststripApp/AppModel.swift:9830`,
-  verified 2026-08-06) narrows the grid to exactly
-  `autopilotGhostAssetIDs` (declared `:2256`, refreshed from
+- `AppModel.beginAutopilotReview()` (`Sources/TeststripApp/AppModel.swift:9718`,
+  reconciled 2026-08-09) narrows the grid to exactly
+  `autopilotGhostAssetIDs` (declared `:2154`, refreshed from
   `assetIDsWithAutopilotGhost()` by `refreshAutopilotGhostAssetIDs()`
-  at `:13221`, itself called from `refreshCatalogSidebarCounts()` and — for
+  at `:13100`, itself called from `refreshCatalogSidebarCounts()` and — for
   the relaunch leg below — unconditionally from `AppModel.load(catalog:)`
-  at `:4718`). `cullSourcePresentation` (`:5871`, verified 2026-08-06)
-  appends the "Autopilot Proposals" `CullSource` to the Cull sidebar's "Cull
-  From" list only `if !autopilotGhostAssetIDs.isEmpty` (`:5885`), with
-  `count: autopilotGhostAssetIDs.count` (`:5891`) — so the row itself
+  at `:4476`). `buildSidebarSections()` (`:1984-2005`, reconciled 2026-08-09)
+  passes `autopilotGhostCount: autopilotGhostAssetIDs.count` (`:1993`) into
+  `UnifiedSidebarPresentation.sections(...)`, which appends the sidebar's
+  "AI Suggestions" row only `if autopilotGhostCount > 0`
+  (`UnifiedSidebarPresentation.swift:179-187`), with
+  `countText: countText(autopilotGhostCount)` (`:183`) — so the row itself
   disappears the instant no ghost remains, rather than sitting there at 0.
+  (The one sidebar has no "Cull From" list to append to any more — that
+  concept, and the `CullSource`/`cullSourcePresentation` types that built
+  it, were deleted by the unified-shell push; the row now lives in the
+  Smart Collections section of `SidebarView`'s single sidebar, present in
+  every lens.)
 - `AutopilotBadgePresentation.badge(for:)`
-  (`Sources/TeststripApp/LibraryGridView.swift:3608`, verified 2026-08-06)
-  maps a ghost's own flag value straight to the grid tile's badge — `.pick`
-  → `("KEEP", isKeep: true)`, `.reject` → `("CUT", isKeep: false)`, `nil` →
-  no badge — called at three grid-cell call sites with
-  `autopilotDecision: AutopilotGhost.kind(in: asset.metadata)`
-  (`:2370`, `:7663`, `:8120`). The grid cell collapses to one AX element, so
-  the badge shows up in the cell's accessibility **value**, not a separate
-  label: `AssetGridCellAccessibilityValue.value(...)` appends
-  `"Autopilot proposes \(isKeep ? "keep" : "cut")"` (`:8318-8319`) whenever
+  (`Sources/TeststripApp/LibraryGridView.swift:3518-3530`, reconciled
+  2026-08-09) maps a ghost's own flag value straight to the grid tile's
+  badge — `.pick` → `("KEEP", isKeep: true)`, `.reject` → `("CUT", isKeep:
+  false)`, `nil` → no badge — wired via `autopilotDecision:
+  AutopilotGhost.kind(in: asset.metadata)` on `AssetGridCell` at two
+  grid-cell call sites (`:2346`, `:8029`) and in
+  `AssetGridCellAccessibilityValue.value(...)` at `:7576`. The grid cell
+  collapses to one AX element, so the badge shows up in the cell's
+  accessibility **value**, not a separate label:
+  `AssetGridCellAccessibilityValue.value(...)` appends
+  `"Autopilot proposes \(isKeep ? "keep" : "cut")"` (`:8228`) whenever
   `AutopilotBadgePresentation.badge(for:)` returns non-nil — this is what
   `ax find --contains "Autopilot proposes keep"` / `"...cut"` matches below.
 - `CullCompletionPresentation.summary(assets:viewedAssetIDs:skippedAssetIDs:)`
@@ -103,7 +112,7 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
 ```
 
 ## Steps
-1. **Evaluate the visible scope.** ⌘2 for Library
+1. **Evaluate the visible scope.** ⌘2 for the Grid lens
    (`script/vm_scenario_run.sh key 'keystroke "2" using {command down}'`),
    then ⇧⌘E:
    ```bash
@@ -150,15 +159,15 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
    ```bash
    script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedKeywords'));"   # keyword ghosts landed (nonzero) even though GHOSTN (flag ghosts) stayed at GHOST0
    ```
-   With keyword ghosts present and flag ghosts absent, confirm the Cull
-   sidebar's "Autopilot Proposals" source is still absent — it is gated on
-   the flag-ghost set alone, never on keyword ghosts (`cullSourcePresentation`,
+   With keyword ghosts present and flag ghosts absent, confirm the sidebar's
+   "AI Suggestions" row is still absent — it is gated on the flag-ghost set
+   alone, never on keyword ghosts (`autopilotGhostCount > 0`,
    Source above):
    ```bash
    script/vm_scenario_run.sh key 'keystroke "1" using {command down}'   # ⌘1 for Cull
-   script/vm_scenario_run.sh ax find --contains "Autopilot Proposals"   # expect NOT-FOUND
+   script/vm_scenario_run.sh ax find --contains "AI Suggestions"   # expect NOT-FOUND
    ```
-3. **Ghost badges render.** In Library, scroll `$G1`'s tile into view by
+3. **Ghost badges render.** In the Grid lens, scroll `$G1`'s tile into view by
    filename (`ax_drive.sh find --contains "$G1.jpg"` — the grid is lazily
    virtualized, README) and read its accessibility value:
    ```bash
@@ -170,15 +179,14 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
    render path (Source above).
 4. **Sidebar source and count.** ⌘1 for Cull
    (`script/vm_scenario_run.sh key 'keystroke "1" using {command down}'`).
-   Assert the row exists, with its live AX text — title and count
-   concatenated into one element, no separate value (confirmed live
-   2026-08-06; see Sharp edges):
-   ```bash
-   script/vm_scenario_run.sh ax find --contains "Autopilot Proposals, $GHOSTN"
-   ```
+   Assert the row exists — `ax_drive.sh find --contains "AI Suggestions"` —
+   and separately assert its count, which now renders as its own
+   `.accessibilityValue`, not concatenated into the label (see Sharp
+   edges): `ax_drive.sh find --contains "$GHOSTN"` scoped near the row, or
+   read the row's AXValue directly if the driver supports it.
    Cross-check the count against the same catalog-wide predicate
    `beginAutopilotReview()` uses (ground truth, not the render — keep this
-   half authoritative even though the AX string above is now pinned):
+   half authoritative even though the AX checks above are now pinned):
    ```bash
    script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # must equal GHOSTN
    ```
@@ -275,14 +283,14 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
   edges) — mark the card NOT-RUN for Steps 3-6, not a pass and not a
   failure.**
 - Step 2 (bonus, fixture-gap branch): once ambient keyword ghosts exist and
-  flag ghosts do not, the "Autopilot Proposals" sidebar source must still be
-  absent. **Fails if** the source appears while flag `GHOSTN == GHOST0`,
-  even with keyword ghosts present — the source is specced to derive from
+  flag ghosts do not, the sidebar's "AI Suggestions" row must still be
+  absent. **Fails if** the row appears while flag `GHOSTN == GHOST0`,
+  even with keyword ghosts present — the row is specced to derive from
   the flag-ghost set alone, never from keyword ghosts.
 - Step 3: every ghost id's tile shows the badge matching its own
   `metadata_json.flag`. **Fails if** a badge is missing, wrong, or present
   on an asset with no ghost.
-- Step 4: the "Autopilot Proposals" row is present with count == `GHOSTN`.
+- Step 4: the "AI Suggestions" row is present with count == `GHOSTN`.
   **Fails if** the row is absent while `GHOSTN > 0`, present while
   `GHOSTN == 0`, or its count disagrees with the SQL cross-check.
 - Step 5: **Fails if** `$G1`'s tile loses its badge across relaunch (ghosts
@@ -394,16 +402,25 @@ runs `sync smoke`/`launch smoke` again.
   secondary (non-suppressing) leg and the P0 assertions would legitimately
   fail for reasons that have nothing to do with a resurrection bug — do not
   reorder these two legs.
-- **The sidebar row's live AX text, confirmed 2026-08-06.**
-  `CullSidebarView.sourceRow` (`Sources/TeststripApp/CullSidebarView.swift:
-  53-66`) builds the row from a plain `Button { HStack { Label(...); Text(
-  String(source.count)) } }` with no explicit `.accessibilityLabel`/
-  `.accessibilityValue` override; the live value is `"Autopilot Proposals,
-  N"` — title and count concatenated into one AX element, no separate
-  value (e.g. `"Autopilot Proposals, 2"`, later `"Autopilot Proposals,
-  1"` after Step 6 dropped the count). Step 4 now asserts this string
-  directly, keeping the SQL cross-check against
-  `assetIDsWithAutopilotGhost()`'s predicate as the authoritative half.
+- **The sidebar row's live AX text, reconciled 2026-08-09 — this note used
+  to cite `CullSidebarView.sourceRow`, a type this push deleted, and
+  described a stale AX shape.** `CullSidebarView` no longer exists; the row
+  is now rendered by `SidebarRowView`
+  (`Sources/TeststripApp/SidebarView.swift:520-583`), which sets an
+  *explicit* `.accessibilityLabel(row.title)` ("AI Suggestions", no count)
+  and a *separate* `.accessibilityValue(accessibilityValue)` where
+  `accessibilityValue` joins `[detailText, countText]`'s non-empty values
+  with `", "` (`:576-582`) — for this row `detailText` is nil, so the value
+  is just the formatted count (e.g. `"2"`), not a single concatenated
+  `"AI Suggestions, 2"` string the way the deleted view's plain
+  `Button`/`Text` composition used to produce. `ax_drive.sh find --contains`
+  matches title+description+value+placeholder joined by a single space
+  (`script/ax_drive.sh`'s `matches()`), so `--contains "AI Suggestions"`
+  matches the label alone; asserting the count from the same call requires
+  matching it separately rather than assuming a comma-joined label+value
+  string. Step 4 above was rewritten to match. Step 4 keeps the SQL
+  cross-check against `assetIDsWithAutopilotGhost()`'s predicate as the
+  authoritative half regardless.
 - **Batch-flag does not reach the whole selection.** `⌘A` then `p` did
   **not** flag every selected asset in Step 7's completion sweep — only the
   currently focused frame took the pick. Completion was reached instead by
@@ -491,3 +508,45 @@ specified, for the structural reason cited above — that outcome is a
 fixture gap to document, not a defect to chase, and the card should be
 marked NOT-RUN (not Tested-Fail) if it lands there. **This prediction held
 exactly** — see the live run above.
+
+**Reconciled 2026-08-09 (Task 13 review follow-up, unified-shell push)**:
+this card had a `CullSidebarView` orphan citation (a task review caught it,
+alongside the same-shaped bug in `cull-017`) — a Sharp-edges note dated
+"confirmed 2026-08-06" cited `CullSidebarView.sourceRow` at specific line
+numbers in a file this push deleted, presenting a stale AX-shape claim as
+recently-verified fact. Also found and fixed: the intro's `cullSourcePresentation`/
+`CullSource` citations (the deleted "Cull From" list concept — replaced
+with the real `buildSidebarSections()` → `UnifiedSidebarPresentation.sections(...)`
+chain and its `autopilotGhostCount > 0` gate), the dead AX label "Autopilot
+Proposals" everywhere it appeared live (Step 2's bonus assertion, Step 4,
+both Expected bullets) replaced with the real "AI Suggestions" label, and
+Step 4's structural claim — the deleted view's plain `Button`/`Text`
+composition produced one concatenated `"<title>, <count>"` AX string; the
+current `SidebarRowView` sets an explicit, separate accessibilityLabel/
+accessibilityValue instead, so Step 4 was rewritten to assert them
+separately rather than as one joined string. Also fixed "⌘2 for Library"
+(Step 1) and "In Library" (Step 3) — leftover two-workspace naming for
+what ⌘2 actually selects now (the Grid lens) — and several drifted line
+citations in the intro (`beginAutopilotReview()`, `autopilotGhostAssetIDs`,
+`refreshAutopilotGhostAssetIDs()`, `AppModel.load(catalog:)`,
+`AutopilotBadgePresentation.badge(for:)`, the `AssetGridCell`/
+`AssetGridCellAccessibilityValue` wiring sites, and the "Autopilot proposes
+keep/cut" string's line) found while rewriting the same paragraphs.
+**Not fixed, flagged instead**: this card's intro and Sharp edges carry many
+more specific `AppModel.swift`/`LibraryGridView.swift`/test-file line
+citations (`setFlagForSelectedAsset`, `removeAIField`,
+`applyTentativeAutopilotProposals`, `cullCompletionStage`/
+`cullCompletionRunDetailText`, the two `AppModelTests.swift` line ranges,
+etc.) dated "verified 2026-08-06" that were not re-verified here — given the
+87-120 line drift found in every citation actually checked in this pass,
+some are likely stale too. That full audit is the dedicated citation sweep
+this task's brief names as separate future work, not this fix.
+**Supersedes prior status**: the 2026-08-06 LIVE RUN above is still good
+evidence for the ghost-derivation mechanics it actually exercised (badges,
+relaunch survival, removal/no-resurrection, completion-ceremony absence) —
+none of those assertions depended on the sidebar row's exact AX shape or
+the dead `CullSource` concept — but its Step 4 evidence
+(`"Autopilot Proposals, 2"` matching "the live AX text") describes a string
+format the current sidebar row does not produce; that specific claim is
+void. Needs a fresh VM run to reconfirm Step 4 under the corrected
+assertion.
