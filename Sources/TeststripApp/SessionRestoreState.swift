@@ -1,15 +1,20 @@
 import Foundation
 import TeststripCore
 
-// Library-browsing UI state persisted across relaunches: route, saved-set scope,
-// active search/filters, selection, and sort order. Deliberately excludes anything
-// culling-related (in-progress culling sessions already survive as work sessions
-// and are reopened explicitly via Recent Work, not auto-restored).
+// UI state persisted across relaunches: the selected source, the lens it was
+// seen through, the saved-set scope, active search/filters, selection, and sort
+// order. A mid-cull quit relaunches on the same source in Grid — actual run
+// resume is the SP-D lifecycle spec's job, and in-progress culling sessions
+// already survive as work sessions.
 struct SessionRestoreState: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    // No back-compat: v1 persisted a `selectedView` route and no source at
+    // all. `load()` discards a mismatched version, so a v1 blob simply
+    // cold-starts the app.
+    static let currentVersion = 2
 
     var version: Int = SessionRestoreState.currentVersion
-    var selectedView: LibraryViewMode
+    var lens: LibraryLens
+    var source: LibrarySource
     var selectedAssetSetID: AssetSetID?
     var selectedAssetID: AssetID?
     var sortOption: LibrarySortOption

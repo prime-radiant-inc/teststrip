@@ -7,7 +7,7 @@ import TeststripCore
 ///
 /// Compare, A/B Compare, and the cull grid are deliberately NOT lenses — they
 /// stay transient sub-modes inside the Cull lens, reached by g/c/b.
-public enum LibraryLens: String, CaseIterable, Sendable {
+public enum LibraryLens: String, CaseIterable, Codable, Sendable {
     case cull
     case grid
     case loupe

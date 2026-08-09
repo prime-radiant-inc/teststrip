@@ -11880,7 +11880,8 @@ public final class AppModel {
 
     private func currentSessionRestoreState() -> SessionRestoreState {
         SessionRestoreState(
-            selectedView: selectedView,
+            lens: selectedLens,
+            source: selectedSource,
             selectedAssetSetID: selectedAssetSetID,
             selectedAssetID: selectedAssetID,
             sortOption: librarySortOption,
@@ -11949,7 +11950,8 @@ public final class AppModel {
             selectedAssetSetID = assetSetID
         }
 
-        selectedView = Self.isRestorableSessionRoute(state.selectedView) ? state.selectedView : .grid
+        selectedSource = state.source
+        selectLens(Self.isRestorableLens(state.lens) ? state.lens : .grid)
         selectedAssetID = state.selectedAssetID
 
         try refreshWorkHistorySearchResults(repository: catalog.repository)
@@ -11970,14 +11972,10 @@ public final class AppModel {
         try refreshProposedAssets()
     }
 
-    // Routes that only ever exist mid-culling-session; never auto-restored.
-    private static func isRestorableSessionRoute(_ view: LibraryViewMode) -> Bool {
-        switch view {
-        case .grid, .timeline, .people, .map:
-            return true
-        case .loupe, .libraryLoupe, .compare, .abCompare, .cullGrid:
-            return false
-        }
+    /// Every lens survives a relaunch except Cull: a mid-cull quit relaunches
+    /// on the same source in Grid, because the run itself is not resumed here.
+    private static func isRestorableLens(_ lens: LibraryLens) -> Bool {
+        lens != .cull
     }
 
     private static func librarySearchText(residualText: String?, predicates: [SetQuery.Predicate]) -> String {
