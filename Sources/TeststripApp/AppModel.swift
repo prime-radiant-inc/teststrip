@@ -3316,15 +3316,23 @@ public final class AppModel {
         canBeginCullingSession && !selectedSource.isDiagnostic
     }
 
-    /// The persistent scope line under the toolbar.
+    /// The persistent scope line under the toolbar. `cullProgress` and
+    /// `stackCount` are gated on the Cull lens being selected, not merely on
+    /// a session being active — `ScopeLinePresentation.line` ignores both
+    /// outside its `.cull` branch, and `cullingProgressSummary` and
+    /// `cullingStackListEntries()` each query the catalog, so evaluating them
+    /// only to discard the result would put catalog reads on every browse
+    /// lens's body evaluation (the same hazard `SidebarView`'s stack-rows
+    /// gate guards against).
     public var scopeLine: ScopeLinePresentation {
-        ScopeLinePresentation.line(
+        let isCullSessionActive = selectedLens == .cull && activeCullingSessionID != nil
+        return ScopeLinePresentation.line(
             source: selectedSource,
             lens: selectedLens,
             resultCount: totalAssetCount,
             activeFilterChips: activeLibraryFilterChips,
-            cullProgress: activeCullingSessionID == nil ? nil : cullingProgressSummary,
-            stackCount: activeCullingSessionID == nil ? 0 : cullingStackListEntries().count
+            cullProgress: isCullSessionActive ? cullingProgressSummary : nil,
+            stackCount: isCullSessionActive ? cullingStackListEntries().count : 0
         )
     }
 
@@ -5963,7 +5971,11 @@ public final class AppModel {
     /// The scope must be applied and loaded before a run can start
     /// (`beginCullingSession` guards on `assets.isEmpty` and reads the current
     /// scope's count), so this is a re-scope followed by a session start, not
-    /// a pure state change.
+    /// a pure state change. Inverting the order is worse than a guard
+    /// failure: `applySource`'s `.search` arm calls `clearLibraryQueryFilters()`,
+    /// which sets `activeCullingSessionID = nil` — so the just-started session
+    /// would be immediately forgotten, the scope line would show no progress,
+    /// and `activeCullingSession(repository:)`'s fallback would go dark.
     @discardableResult
     public func cullCurrentResults() throws -> WorkSession {
         let title = cullTheseSourceTitle()
