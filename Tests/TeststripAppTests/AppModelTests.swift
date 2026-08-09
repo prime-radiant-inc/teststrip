@@ -17820,6 +17820,70 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(importsSection.rows.contains { $0.id == "import-with-output-session" })
     }
 
+    // Task 9 deleted the post-import banner, which was the only door to the
+    // skipped-files list; nothing caught it, because no test covered the
+    // path. Skipped files are never catalogued (see `ImportChildKind.isDiagnostic`'s
+    // doc), so unlike every other import child this one must not select a
+    // Grid scope — a Grid scope over uncatalogued files would silently show
+    // an empty grid rather than the issue-review sheet.
+    func testSelectingTheSkippedFilesChildRequestsTheIssueReviewSheetInsteadOfAGridScope() throws {
+        let imported = makeAsset(id: "skipped-files-child-imported", path: "/Volumes/Archive/Import/imported.jpg", rating: 0)
+        let sessionID = WorkSessionID(rawValue: "skipped-files-child-session")
+        let skippedFileURL = URL(fileURLWithPath: "/Volumes/Archive/Import/bad.raf")
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-skipped-files-child",
+            assets: [imported],
+            configureRepository: { repository in
+                let outputSet = AssetSet.manual(
+                    id: AssetSetID(rawValue: "skipped-files-child-output"),
+                    name: "Imported photos",
+                    assetIDs: [imported.id]
+                )
+                try repository.upsert(outputSet)
+                try repository.save(WorkSession(
+                    id: sessionID,
+                    kind: .ingest,
+                    intent: "Import photos",
+                    title: "Import photos",
+                    detail: "Imported 1 photo from Import",
+                    status: .completed,
+                    inputSetIDs: [],
+                    outputSetIDs: [outputSet.id],
+                    completedUnitCount: 1,
+                    totalUnitCount: 1,
+                    failureCount: 0,
+                    issues: [WorkSessionIssue(kind: .skippedSourceFile, sourceURL: skippedFileURL, message: "unsupported file type")],
+                    createdAt: Date(timeIntervalSince1970: 10),
+                    updatedAt: Date(timeIntervalSince1970: 20)
+                ))
+            }
+        )
+
+        // Build the child row the way the sidebar actually would: find the
+        // import row, expand it, then find the child row it discloses.
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first { $0.id == "import-\(sessionID.rawValue)" })
+        model.toggleSidebarExpansion(importRow)
+        let expandedImportsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let skippedFilesRow = try XCTUnwrap(expandedImportsSection.rows.first { $0.id == "import-\(sessionID.rawValue)-skippedFiles" })
+        let sourceBeforeSelection = model.selectedSource
+
+        try model.selectSidebarRow(skippedFilesRow)
+
+        XCTAssertEqual(model.importIssueReviewSessionID, sessionID)
+        XCTAssertEqual(model.importIssueReviewRequestToken, 1)
+        // The negative half: skipped files are not in the catalog, so this
+        // click must leave the Grid scope alone rather than selecting into
+        // an empty grid.
+        XCTAssertEqual(model.selectedSource, sourceBeforeSelection, "the Grid scope must not change")
+        XCTAssertNotEqual(model.selectedSource.kind, .importChild(session: sessionID, child: .skippedFiles))
+
+        let issues = try model.importIssues(sessionID: sessionID)
+        XCTAssertEqual(issues.count, 1)
+        XCTAssertEqual(issues.first?.kind, .skippedSourceFile)
+        XCTAssertEqual(issues.first?.sourceURL, skippedFileURL)
+    }
+
     func testLatestImportCompletionSummarySeparatesExistingReimportedPhotos() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-reimport")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

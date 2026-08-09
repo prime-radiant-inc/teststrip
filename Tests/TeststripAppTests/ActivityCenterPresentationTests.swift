@@ -185,6 +185,48 @@ final class ActivityCenterPresentationTests: XCTestCase {
         XCTAssertEqual(ImportReceiptRow.rows(from: activities, limit: 5).count, 5)
     }
 
+    // n=12 alone proves gross over-capping is caught, but not the boundary:
+    // with exactly 5 receipts, a `prefix(limit - 1)`-style off-by-one would
+    // drop one that should show.
+    func testReceiptsAtExactlyTheRetentionLimitShowAllOfThem() {
+        let activities = (0..<5).map { index in
+            AppWorkActivity(
+                id: "import-\(index)",
+                kind: .ingest,
+                status: .completed,
+                title: "Import photos",
+                detail: "Imported 1 photo from /Cards/\(index)",
+                completedUnitCount: 1,
+                totalUnitCount: 1,
+                failureCount: 0
+            )
+        }
+
+        let receipts = ImportReceiptRow.rows(from: activities, limit: ImportReceiptRow.retentionLimit)
+
+        XCTAssertEqual(receipts.count, 5, "exactly at the cap, every receipt must still show")
+    }
+
+    // With 6, a `prefix(limit + 1)`-style off-by-one would show one too many.
+    func testReceiptsOneOverTheRetentionLimitDropTheOldest() {
+        let activities = (0..<6).map { index in
+            AppWorkActivity(
+                id: "import-\(index)",
+                kind: .ingest,
+                status: .completed,
+                title: "Import photos",
+                detail: "Imported 1 photo from /Cards/\(index)",
+                completedUnitCount: 1,
+                totalUnitCount: 1,
+                failureCount: 0
+            )
+        }
+
+        let receipts = ImportReceiptRow.rows(from: activities, limit: ImportReceiptRow.retentionLimit)
+
+        XCTAssertEqual(receipts.count, 5, "one over the cap must still truncate to 5")
+    }
+
     func testAReceiptCarriesItsIssueCountButNeverBadges() {
         let presentation = ActivityCenterPresentation(
             kindRows: [],
