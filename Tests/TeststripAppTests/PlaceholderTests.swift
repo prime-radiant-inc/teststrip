@@ -95,15 +95,29 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("static placeholder copy"))
     }
 
-    func testImportCompleteLedgerTracksLiveActionsAndFaceReviewHandoff() throws {
+    func testImportCompleteLedgerTracksTheToastAndTheBellReceipt() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "import.complete-summary" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "4b" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("culling, stack-cull, compare, keyword, and face-review actions live"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("automatic identity naming remains disabled"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("culling, stack-cull, compare, and keyword actions"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("faces found review handoff"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("automatic naming remains disabled"))
+        for text in [placeholder.currentFallback, surface.currentImplementation] {
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("toast"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Start culling"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Activity Center bell"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Imports section"))
+        }
+        XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("Expanded post-import panel"))
+        XCTAssertFalse(surface.currentImplementation.localizedCaseInsensitiveContains("Expanded import-complete panel"))
+    }
+
+    // The ledger must not describe a shell that no longer exists.
+    func testNoLedgerEntryDescribesTheDeletedWorkspaceShell() {
+        let texts = LiveMockupPlaceholders.all.map(\.currentFallback)
+            + LiveMockupDesignSurfaces.all.map(\.currentImplementation)
+
+        for text in texts {
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("workspace (⌘"), text)
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("⌘1/⌘2/⌘3"), text)
+        }
     }
 
     func testCompareLedgerTracksStackCullActionsAndRemainingSimilarityGap() throws {
@@ -169,8 +183,8 @@ final class LiveMockupPlaceholderTests: XCTestCase {
     }
 
     // The People sidebar row is gone (Task 7 - Library is Collections/Saved
-    // Sets/Folders only); People is reachable via the workspace switcher
-    // (⌘3) instead. The `.peopleSidebar` mockup ledger entry it used to
+    // Sets/Folders only); People is reachable via the People lens (⌘6)
+    // instead. The `.peopleSidebar` mockup ledger entry it used to
     // carry is still tracked below.
 
     func testPeopleLedgerTracksUnnamedFaceReviewAndPersistedNamedRows() throws {
@@ -214,12 +228,12 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1b" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("absorbed"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Cull sidebar's source picker"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Smart Collections section"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Inspector's AI tab"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("scope save/freeze actions"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("autonomous"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("absorbed"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Cull sidebar's source picker"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Smart Collections section"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scope save/freeze actions"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("autonomous"))
     }
@@ -294,10 +308,10 @@ final class LiveMockupPlaceholderTests: XCTestCase {
     // Library is Collections/Saved Sets/Folders only). Search's permanent
     // home is now the Library grid itself (Task 9 - token field + result
     // header, no dedicated route to preserve a query across). Review's
-    // permanent home is the Cull sidebar's source picker (Task 13 -
-    // CullSidebarView); People via the workspace switcher. Their
-    // `.agenticSearch`/`.copilotLibrary` mockup ledger entries are still
-    // tracked in the copilot/search-focused tests above.
+    // permanent home is the sidebar's Smart Collections section; People via
+    // the People lens (⌘6). Their `.agenticSearch`/`.copilotLibrary` mockup
+    // ledger entries are still tracked in the copilot/search-focused tests
+    // above.
 
     func testWorkHistoryLedgerTracksRecentAndStarredWorkWithoutEmptyRows() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "work.history" })

@@ -808,6 +808,7 @@ struct LibraryGridView: View {
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
         .padding(.top, 10)
         .padding(.trailing, 14)
+        .liveMockupPlaceholder(.importCompleteSummary)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Import complete")
     }

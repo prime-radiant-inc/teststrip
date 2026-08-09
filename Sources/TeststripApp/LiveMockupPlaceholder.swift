@@ -47,7 +47,7 @@ public enum LiveMockupPlaceholders {
         id: "library.copilot",
         title: "Copilot library direction",
         intendedBehavior: "Put plain-language search, agentic culling, and background catalog work at the center of the library experience.",
-        currentFallback: "The dedicated Copilot route is absorbed (Task 13): review queues moved to the Cull sidebar's source picker, needs-eyes reasons and diagnostics to the Inspector's AI tab, and scope save/freeze actions stay in the Library toolbar; autonomous planning and actions are not built."
+        currentFallback: "The dedicated Copilot route is absorbed (Task 13): review queues moved to the sidebar's Smart Collections section, needs-eyes reasons and diagnostics to the Inspector's AI tab, and scope save/freeze actions stay in the Library toolbar; autonomous planning and actions are not built."
     )
 
     public static let timelineLibrary = LiveMockupPlaceholder(
@@ -136,9 +136,9 @@ public enum LiveMockupPlaceholders {
 
     public static let importCompleteSummary = LiveMockupPlaceholder(
         id: "import.complete-summary",
-        title: "Import complete summary",
-        intendedBehavior: "Show the import-complete payoff surface with imported-set actions, preview status, culling entrypoints, and follow-up workflow suggestions.",
-        currentFallback: "Expanded post-import panel backed by the completed import work session and output set, with culling, stack-cull, compare, keyword, and face-review actions live when signals exist; automatic identity naming remains disabled and annotated."
+        title: "Import complete moment",
+        intendedBehavior: "Announce a finished import without stealing the canvas, and keep the receipt somewhere durable.",
+        currentFallback: "Thin top-right toast carrying the imported count, a skipped-file warning when the import had issues, and a Start culling button; it fades after about ten seconds and docks into the Activity Center bell, which keeps the receipt with the same counts, issue text, and Start culling. Existing-only imports get the same capsule with 'No new photos imported' copy and no Start culling. The follow-up work the old panel listed lives in the sidebar's Imports section — stacks, skipped files, preview failures, likely issues, faces found — and in the import row's context menu; automatic identity naming remains disabled and annotated."
     )
 
     public static let cullingAssistVerdict = LiveMockupPlaceholder(
@@ -234,28 +234,28 @@ public enum LiveMockupDesignSurfaces {
             title: "Studio",
             status: .partial,
             placeholder: .studioLibrary,
-            currentImplementation: "Library workspace (⌘2) has real catalog navigation, selectable Recently Added import output, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
+            currentImplementation: "The Grid lens (⌘2) has real catalog navigation, selectable Recently Added import output, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
         ),
         LiveMockupDesignSurface(
             designID: "1b",
             title: "Copilot",
             status: .partial,
             placeholder: .copilotLibrary,
-            currentImplementation: "Copilot route absorbed (Task 13) and further folded into the focused-workspaces chrome (Task 22, ⌘1/⌘2/⌘3): review queues live in the Cull sidebar's source picker, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions in the Library toolbar, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
+            currentImplementation: "Copilot route absorbed (Task 13) and further folded into the unified sources × lenses shell (⌘1–⌘6): review queues live in the sidebar's Smart Collections section, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions in the Library toolbar, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "1c",
             title: "Timeline",
             status: .partial,
             placeholder: .timelineLibrary,
-            currentImplementation: "Timeline sub-view (Library workspace, ⌘2) uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, month/year drill-down into existing date predicates, and scroll-position syncing centers focused chips and sections."
+            currentImplementation: "The Timeline lens (⌘4) uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, month/year drill-down into existing date predicates, and scroll-position syncing centers focused chips and sections."
         ),
         LiveMockupDesignSurface(
             designID: "2a",
             title: "Rapid cull",
             status: .partial,
             placeholder: .cullingAssistVerdict,
-            currentImplementation: "Cull workspace (⌘1), loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, selected-frame signal verdicts with compact supporting quality rationale, and stack-level keep recommendations when persisted quality signals rank the active stack."
+            currentImplementation: "The Cull lens (⌘1), loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, selected-frame signal verdicts with compact supporting quality rationale, and stack-level keep recommendations when persisted quality signals rank the active stack."
         ),
         LiveMockupDesignSurface(
             designID: "2b",
@@ -290,14 +290,14 @@ public enum LiveMockupDesignSurfaces {
             title: "Import complete",
             status: .partial,
             placeholder: .importCompleteSummary,
-            currentImplementation: "Expanded import-complete panel exposes imported count, preview status, Open, culling, stack-cull, compare, and keyword actions plus a Faces Found review handoff when face signals exist; automatic naming remains disabled."
+            currentImplementation: "Import completion is a thin top-right toast (imported count, skipped-file warning, Start culling) that fades after about ten seconds and docks into the Activity Center bell as a durable receipt; the expanded nine-action panel is deleted. Follow-up work lives in the sidebar's Imports section (stacks, skipped files, preview failures, likely issues, faces found) and the import row's context menu (Cull stacks, Evaluate import, Manual Compare over the import); automatic naming remains disabled."
         ),
         LiveMockupDesignSurface(
             designID: "5a",
             title: "People",
             status: .partial,
             placeholder: .peopleSidebar,
-            currentImplementation: "People workspace (⌘3) shows automatic grouping suggestions with one-tap confirm and dismiss backed by persisted per-face embeddings, plus the manual review strip, scan action, Name selection, face-review dismissal, persisted named people rows, and merge; suggestions are provisional until confirmed, and split and face-box-level naming remain disabled. Arrow keys move focus through the confirm queue and Return confirms/names the focused card (routed to the naming sheet's default action when it's open)."
+            currentImplementation: "The People lens (⌘6) shows automatic grouping suggestions with one-tap confirm and dismiss backed by persisted per-face embeddings, plus the manual review strip, scan action, Name selection, face-review dismissal, persisted named people rows, and merge; suggestions are provisional until confirmed, and split and face-box-level naming remain disabled. Arrow keys move focus through the confirm queue and Return confirms/names the focused card (routed to the naming sheet's default action when it's open)."
         ),
         LiveMockupDesignSurface(
             designID: "5b",
