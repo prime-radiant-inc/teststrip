@@ -168,9 +168,12 @@ final class AppModelSessionRestoreTests: XCTestCase {
     // `didSet`, which fires last on those paths. Editing the filter set
     // *within* a scope has no such backstop: removing one chip of a
     // multi-predicate search leaves other filters active, so
-    // `removeActiveLibraryFilter` never rewrites `selectedSource` and the only
-    // thing that saves the narrowed predicate list is
-    // `detachedLibraryFilterPredicates`' own `didSet`.
+    // `removeActiveLibraryFilter` never rewrites `selectedSource`. Persisting
+    // the narrowed predicate list is doubly covered instead:
+    // `detachedLibraryFilterPredicates`'s own `didSet`, and `reload()` ->
+    // `replaceAssets` assigning `selectedAssetID` unconditionally, which
+    // fires *its* `didSet`. This test only goes red when both writers are
+    // removed.
     func testRestoresTheNarrowedPredicateListAfterRemovingOneChipOfSeveral() throws {
         let directory = try makeTemporaryDirectory(named: "restore-detached-predicates")
         let defaults = try makeIsolatedDefaults()

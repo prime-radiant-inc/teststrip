@@ -219,11 +219,10 @@ final class ImportCompletionSurfaceTests: XCTestCase {
 
     // MARK: - The import row's three context verbs
 
-    // The `.workSession` context-action arm changed shape: a work session
-    // outside `persistedWorkActivityIDs` (the limit-10 recent/starred window
-    // the Star verb is gated on) used to return no actions at all. Older
-    // imports are exactly the rows the Imports section exists to serve, so
-    // they must still offer their three verbs.
+    // A work session outside `persistedWorkActivityIDs` (the limit-10
+    // recent/starred window the Star verb is gated on) must still offer its
+    // three context verbs: older imports are exactly the rows the Imports
+    // section exists to serve.
     func testAnImportOutsideTheRecentWorkWindowStillOffersItsThreeVerbs() throws {
         let directory = try makeTemporaryDirectory(named: "import-verbs-outside-recent-work")
         let frame = makeAsset(id: "old-import-frame")
@@ -320,12 +319,10 @@ final class ImportCompletionSurfaceTests: XCTestCase {
         }
     }
 
-    // Carries forward the scoping guarantee the deleted
-    // `requestLatestImportAssetEvaluations()` used to hold: only the import's
-    // own assets are dispatched, and only the ones with a cached preview. The
-    // `.evaluateImport` context action now gets there by scoping the source
-    // (`selectSource(.workSession(sessionID:))`) before calling the
-    // generalized `requestCurrentScopeAssetEvaluations()`.
+    // Only the import's own assets are dispatched, and only the ones with a
+    // cached preview. The `.evaluateImport` context action gets there by
+    // scoping the source (`selectSource(.workSession(sessionID:))`) before
+    // calling the generalized `requestCurrentScopeAssetEvaluations()`.
     func testTheEvaluateImportVerbQueuesEvaluationsForThatImportsCachedAssetsOnly() throws {
         let directory = try makeTemporaryDirectory(named: "import-verb-evaluate")
         let inside = makeAsset(id: "evaluate-verb-cached")

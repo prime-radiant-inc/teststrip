@@ -15567,11 +15567,9 @@ final class AppModelTests: XCTestCase {
         }.sorted())
     }
 
-    // Relocated from `ImportCompletionSummary.previewFailureCount`/`.failureText`/
-    // `.previewStatusText` (deleted with the banner) onto their successor, the
-    // import row's **⚠ Preview failed** child count. Two failed levels on one
-    // frame are one failed photo, and a failure outside the import is not this
-    // import's problem.
+    // Covers the import row's **⚠ Preview failed** child count. Two failed
+    // levels on one frame are one failed photo, and a failure outside the
+    // import is not this import's problem.
     @MainActor
     func testTheImportRowsPreviewFailedChildCountsFailedFramesInThatImportOnly() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-preview-failure-summary")
@@ -17376,9 +17374,8 @@ final class AppModelTests: XCTestCase {
 
     // Covers `latestImportCompletionSummary`'s fields for the plain
     // single-photo-imported happy path — the zero-imported and
-    // duplicate-import variants are covered separately, and the "open the
-    // summary's output set" half this test used to check (via the deleted
-    // `openLatestImportCompletion()`) is covered by
+    // duplicate-import variants are covered separately. Opening the
+    // summary's output set is covered by
     // `testSelectingRecentlyAddedLibraryRowOpensLatestImportOutputSet`, which
     // drives the same outcome through the real sidebar-row successor.
     @MainActor
@@ -17515,9 +17512,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(importsSection.rows.contains { $0.id == "import-with-output-session" })
     }
 
-    // Task 9 deleted the post-import banner, which was the only door to the
-    // skipped-files list; nothing caught it, because no test covered the
-    // path. Skipped files are never catalogued (see `ImportChildKind.isDiagnostic`'s
+    // Skipped files are never catalogued (see `ImportChildKind.isDiagnostic`'s
     // doc), so unlike every other import child this one must not select a
     // Grid scope — a Grid scope over uncatalogued files would silently show
     // an empty grid rather than the issue-review sheet.
@@ -17600,9 +17595,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.photoCountText, "1 photo")
     }
 
-    // Relocated from `ImportCompletionSummary.stackCount`/`.stackedPhotoCount`
-    // (deleted with the banner) onto their successor, the import row's
-    // **Stacks** child count.
+    // Covers the import row's **Stacks** child count.
     func testTheImportRowsStacksChildCountsTimeAdjacentStacks() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let first = makeAsset(
@@ -17636,8 +17629,9 @@ final class AppModelTests: XCTestCase {
     }
 
     // The single "cull this import" primitive, over a real background import.
-    // Carries forward what the deleted `beginCullingFromLatestImportCompletion()`
-    // wrapper used to hold.
+    // Exercises `startCullingImport(sessionID:title:)` directly, the way the
+    // toast's Start Culling button, the bell receipt, and the sidebar's
+    // import rows all do.
     @MainActor
     func testStartCullingTheLatestImportUsesItsOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-cull")
@@ -17855,8 +17849,7 @@ final class AppModelTests: XCTestCase {
     // The import row's "Manual Compare over the import" verb, over a real
     // background import. `ImportCompletionSurfaceTests` builds the same verb
     // through the sidebar's own rows; this one keeps the real-import path and
-    // the filter-chip/search-token assertions the deleted
-    // `reviewLatestImportInCompare()` used to hold.
+    // the filter-chip/search-token assertions.
     @MainActor
     func testManualCompareOverTheImportUsesItsOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-compare")
