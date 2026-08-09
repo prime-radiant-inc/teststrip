@@ -164,6 +164,44 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.selectedSource, LibrarySource.allPhotos)
     }
 
+    // Narrowing and widening both persist through `selectedSource`'s own
+    // `didSet`, which fires last on those paths. Editing the filter set
+    // *within* a scope has no such backstop: removing one chip of a
+    // multi-predicate search leaves other filters active, so
+    // `removeActiveLibraryFilter` never rewrites `selectedSource` and the only
+    // thing that saves the narrowed predicate list is
+    // `detachedLibraryFilterPredicates`' own `didSet`.
+    func testRestoresTheNarrowedPredicateListAfterRemovingOneChipOfSeveral() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-detached-predicates")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let pickedAndRated = makeAsset(id: "picked-and-rated", filename: "both.dng", rating: 5, flag: .pick)
+        let ratedOnly = makeAsset(id: "rated-only", filename: "rated.dng", rating: 5)
+        let plain = makeAsset(id: "plain", filename: "plain.dng")
+        try catalogA.repository.upsert([pickedAndRated, ratedOnly, plain])
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.search(
+            SetQuery(predicates: [.flag(.pick), .ratingAtLeast(5)]),
+            titled: "Picked 5 stars"
+        ))
+        XCTAssertEqual(modelA.assets.map(\.id), [pickedAndRated.id], "fixture check: both predicates are active")
+        let pickRow = try XCTUnwrap(modelA.activeLibraryFilterRows.first { $0.title == "Pick" })
+        try modelA.removeActiveLibraryFilter(pickRow)
+        XCTAssertEqual(Set(modelA.assets.map(\.id)), Set([pickedAndRated.id, ratedOnly.id]))
+        XCTAssertNotEqual(modelA.selectedSource, .allPhotos, "fixture check: a filter is still active, so selectedSource never rewrites")
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(
+            Set(modelB.assets.map(\.id)),
+            Set([pickedAndRated.id, ratedOnly.id]),
+            "the relaunch must show the widened result, not the two-predicate scope the user backed out of"
+        )
+        XCTAssertFalse(modelB.activeLibraryFilterChips.contains("Pick"))
+    }
+
     func testRestoresSortOptionAndAppliesItToLoadedAssets() throws {
         let directory = try makeTemporaryDirectory(named: "restore-sort")
         let defaults = try makeIsolatedDefaults()
