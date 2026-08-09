@@ -17574,6 +17574,78 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(issues.first?.sourceURL, skippedFileURL)
     }
 
+    // Pins a real deadlock: `importChildCountsBySessionID` is only ever
+    // populated by `toggleSidebarExpansion`'s insert branch, which is only
+    // reachable from the disclosure chevron — and `UnifiedSidebarPresentation`
+    // renders that chevron only when `importChildCounts[sessionID]` is
+    // already non-empty (`counts.isEmpty ? .none : ...`). A freshly built
+    // sidebar row for a completed import has never been expanded, so its
+    // cached counts are always empty on first render, `disclosure` is
+    // always `.none`, `SidebarView.disclosureControl` renders no button at
+    // all for `.none` (see `SidebarView.swift`), and the children — two
+    // skipped files here — are permanently unreachable. This session
+    // genuinely has children, so the row must offer a disclosure affordance
+    // before anything is ever expanded.
+    func testImportRowWithChildrenOffersDisclosureBeforeFirstExpansion() throws {
+        let imported = makeAsset(id: "import-disclosure-child-imported", path: "/Volumes/Archive/Import/imported.jpg", rating: 0)
+        let sessionID = WorkSessionID(rawValue: "import-disclosure-child-session")
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-import-disclosure-deadlock",
+            assets: [imported],
+            configureRepository: { repository in
+                let outputSet = AssetSet.manual(
+                    id: AssetSetID(rawValue: "import-disclosure-child-output"),
+                    name: "Imported photos",
+                    assetIDs: [imported.id]
+                )
+                try repository.upsert(outputSet)
+                try repository.save(WorkSession(
+                    id: sessionID,
+                    kind: .ingest,
+                    intent: "Import photos",
+                    title: "Import photos",
+                    detail: "Imported 1 photo from Import",
+                    status: .completed,
+                    inputSetIDs: [],
+                    outputSetIDs: [outputSet.id],
+                    completedUnitCount: 1,
+                    totalUnitCount: 1,
+                    failureCount: 0,
+                    issues: [
+                        WorkSessionIssue(
+                            kind: .skippedSourceFile,
+                            sourceURL: URL(fileURLWithPath: "/Volumes/Archive/Import/bad1.raf"),
+                            message: "unsupported file type"
+                        ),
+                        WorkSessionIssue(
+                            kind: .skippedSourceFile,
+                            sourceURL: URL(fileURLWithPath: "/Volumes/Archive/Import/bad2.raf"),
+                            message: "unsupported file type"
+                        )
+                    ],
+                    createdAt: Date(timeIntervalSince1970: 10),
+                    updatedAt: Date(timeIntervalSince1970: 20)
+                ))
+            }
+        )
+
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first { $0.id == "import-\(sessionID.rawValue)" })
+
+        // The row has two skipped-file children, so it must not be a
+        // childless leaf: `.none` means `SidebarView` renders no chevron and
+        // no "Expand …" AX element, so the children can never be reached.
+        XCTAssertEqual(importRow.disclosure, .collapsed)
+
+        // The regression guard: once the affordance exists, the ordinary
+        // toggle path must actually surface the children.
+        model.toggleSidebarExpansion(importRow)
+        let expandedImportsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let expandedImportRow = try XCTUnwrap(expandedImportsSection.rows.first { $0.id == "import-\(sessionID.rawValue)" })
+        XCTAssertEqual(expandedImportRow.disclosure, .expanded)
+        XCTAssertTrue(expandedImportsSection.rows.contains { $0.id == "import-\(sessionID.rawValue)-skippedFiles" })
+    }
+
     func testLatestImportCompletionSummarySeparatesExistingReimportedPhotos() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-reimport")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -17593,6 +17665,62 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.newPhotoCount, 0)
         XCTAssertEqual(summary.existingPhotoCount, 1)
         XCTAssertEqual(summary.photoCountText, "1 photo")
+    }
+
+    // Pins a real defect distinct from the reimport test above. That test
+    // drives the *local*, synchronous `importFolder(_:)`, which calls
+    // `addFolderInPlace` with no `duplicateHandling` argument and so
+    // defaults to `.importAll` — the re-cataloged file goes through the
+    // ordinary per-path dedup branch and lands back in
+    // `LibraryImportResult.importedAssets`, so `importedAssets.count`
+    // happens to still equal the true total.
+    //
+    // The app's real entry points (`beginImportFolder`,
+    // `importFolderInBackground`, `importCardInBackground`) all default
+    // `importNewOnly: true`, i.e. `duplicateHandling: .skipCatalogedContent`.
+    // On that path, `IngestService.ingest` detects the already-cataloged
+    // content *before* building an `Asset` for it and `continue`s
+    // (`IngestService.swift`, the `alreadyInCatalog` branch) — the file
+    // never enters `importedAssets` at all. `LibraryImportResult` itself
+    // still reports it correctly via `existingAssetCount`, but
+    // `AppModel.recordCompletedImportActivity` builds the completed
+    // `AppWorkActivity` as `totalUnitCount: result.importedAssets.count`
+    // (AppModel.swift ~13564), which excludes that file — so a re-import
+    // that finds nothing new but one file already in the catalog persists
+    // as `totalUnitCount == completedUnitCount == 0` instead of `1 / 0`.
+    // `latestImportCompletionSummary` then computes
+    // `existingPhotoCount = importedPhotoCount - newPhotoCount == 0`, and
+    // the toast falls into the `importedPhotoCount == 0` branch and reads
+    // "No photos imported" instead of the existing-only headline.
+    @MainActor
+    func testLatestImportCompletionSummaryReportsExistingPhotosWhenBackgroundReimportSkipsCatalogedContent() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-summary-background-reimport")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        _ = try await model.importFolderInBackground(photoFolder)
+        let secondResult = try await model.importFolderInBackground(photoFolder)
+
+        // The dedup arithmetic itself is fine at the `LibraryImportResult`
+        // layer — the defect is entirely in what AppModel does with it next.
+        XCTAssertEqual(secondResult.newAssetCount, 0)
+        XCTAssertEqual(secondResult.existingAssetCount, 1)
+
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        XCTAssertEqual(summary.newPhotoCount, 0)
+        XCTAssertEqual(
+            summary.existingPhotoCount,
+            1,
+            "existingAssetCount is dropped once totalUnitCount stops tracking it through importedAssets.count"
+        )
+
+        let toast = try XCTUnwrap(model.importCompletionToast)
+        XCTAssertEqual(toast.headline, "No new photos imported — 1 already in catalog")
     }
 
     // Covers the import row's **Stacks** child count.
