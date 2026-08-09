@@ -5,7 +5,8 @@ import TeststripCore
 final class SessionRestoreStateTests: XCTestCase {
     func testRoundTripPreservesAllFields() throws {
         let state = SessionRestoreState(
-            selectedView: .grid,
+            lens: .timeline,
+            source: .smartCollection(.likelyIssues),
             selectedAssetSetID: AssetSetID(rawValue: "set-1"),
             selectedAssetID: AssetID(rawValue: "asset-1"),
             sortOption: .captureTimeNewestFirst,
@@ -43,7 +44,7 @@ final class SessionRestoreStateTests: XCTestCase {
         let defaults = try makeIsolatedDefaults()
         let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-a", isDirectory: true)
         let store = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot)
-        let state = Self.minimalState(selectedView: .timeline, searchText: "roll 12")
+        let state = Self.minimalState(lens: .timeline, searchText: "roll 12")
 
         store.save(state)
 
@@ -63,8 +64,8 @@ final class SessionRestoreStateTests: XCTestCase {
         let catalogRootB = URL(fileURLWithPath: "/tmp/catalog-b", isDirectory: true)
         let storeA = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRootA)
         let storeB = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRootB)
-        let stateA = Self.minimalState(selectedView: .grid, searchText: "from A")
-        let stateB = Self.minimalState(selectedView: .people, searchText: "from B")
+        let stateA = Self.minimalState(lens: .grid, searchText: "from A")
+        let stateB = Self.minimalState(lens: .people, searchText: "from B")
 
         storeA.save(stateA)
         storeB.save(stateB)
@@ -77,7 +78,7 @@ final class SessionRestoreStateTests: XCTestCase {
         let defaults = try makeIsolatedDefaults()
         let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-version", isDirectory: true)
         let store = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot)
-        var futureState = Self.minimalState(selectedView: .grid, searchText: "")
+        var futureState = Self.minimalState(lens: .grid, searchText: "")
         futureState.version = SessionRestoreState.currentVersion + 1
         let data = try JSONEncoder().encode(futureState)
         defaults.set(data, forKey: SessionRestoreStore.key(forCatalogRoot: catalogRoot))
@@ -103,7 +104,7 @@ final class SessionRestoreStateTests: XCTestCase {
             defaults: defaults,
             catalogRoot: URL(fileURLWithPath: "/tmp/catalog-detached", isDirectory: true)
         )
-        var state = Self.minimalState(selectedView: .grid, searchText: "")
+        var state = Self.minimalState(lens: .grid, searchText: "")
         state.detachedFilterPredicates = [.evaluationFailure]
 
         store.save(state)
@@ -111,9 +112,27 @@ final class SessionRestoreStateTests: XCTestCase {
         XCTAssertEqual(store.load()?.detachedFilterPredicates, [.evaluationFailure])
     }
 
-    private static func minimalState(selectedView: LibraryViewMode, searchText: String) -> SessionRestoreState {
+    func testTheStoredVersionIsTwo() {
+        XCTAssertEqual(SessionRestoreState.currentVersion, 2)
+    }
+
+    // No back-compat: a v1 blob is discarded rather than migrated, so the
+    // app cold-starts on All Photos in Grid instead of restoring a shape that
+    // no longer exists.
+    func testAVersionOneBlobIsDiscarded() throws {
+        let defaults = try makeIsolatedDefaults()
+        let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-v1", isDirectory: true)
+        let key = SessionRestoreStore.key(forCatalogRoot: catalogRoot)
+        let legacy = #"{"version":1,"selectedView":"grid","sortOption":"importOrder","librarySearchText":""}"#
+        defaults.set(Data(legacy.utf8), forKey: key)
+
+        XCTAssertNil(SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot).load())
+    }
+
+    private static func minimalState(lens: LibraryLens, source: LibrarySource = .allPhotos, searchText: String) -> SessionRestoreState {
         SessionRestoreState(
-            selectedView: selectedView,
+            lens: lens,
+            source: source,
             selectedAssetSetID: nil,
             selectedAssetID: nil,
             sortOption: .importOrder,

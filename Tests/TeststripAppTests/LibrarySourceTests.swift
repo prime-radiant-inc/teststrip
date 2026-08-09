@@ -414,11 +414,9 @@ final class LibrarySourceTests: XCTestCase {
         // The scope line is what the user actually sees under the toolbar —
         // pinning only `cullingProgressSummary` leaves `scopeLine` free to
         // build its own progress from raw asset flags without any test
-        // noticing.
-        XCTAssertTrue(
-            model.scopeLine.statusText.contains("✓ 1"),
-            "scope line status text was \"\(model.scopeLine.statusText)\", expected the confirmed-only pick count"
-        )
+        // noticing. Full-string equality rather than `contains("✓ 1")`,
+        // which would also match "✓ 10".
+        XCTAssertEqual(model.scopeLine.statusText, "2 photos · ✓ 1 · ✕ 0 · 1 left")
     }
 
     // SP: Task 7's fix gates `scopeLine`'s two cull-only catalog reads
@@ -431,7 +429,11 @@ final class LibrarySourceTests: XCTestCase {
     // renders identically to never evaluating them — a `statusText` assertion
     // would prove the value is unused, not that the query never ran. Only a
     // query-count assertion, via the real (non-mock) `CatalogDatabase.rowQueryObserver`
-    // seam, proves the catalog was never touched.
+    // seam, proves the catalog was never touched. In this fixture
+    // `cullingStackListEntries()` itself contributes no queries — it
+    // guard-returns on `selectedAssetSetID == nil`, since a filter-scoped
+    // cull session never calls `applyAssetSet` — so the positive contrast
+    // below rests entirely on `cullingProgressSummary`'s two `COUNT`s.
     func testScopeLineDoesNotQueryTheCatalogOutsideTheCullLens() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-library-source-scope-line-gate-\(UUID().uuidString)", isDirectory: true)

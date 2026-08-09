@@ -209,7 +209,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
         try seedAssets(count: 3, in: catalogA.repository)
         let catalogRoot = try makePaths(directory: directory).root
         SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot).save(
-            Self.stateReferencing(selectedView: .loupe)
+            Self.stateReferencing(lens: .cull)
         )
 
         let modelB = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
@@ -304,15 +304,69 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.librarySearchText, "")
     }
 
+    // Relaunch restores the selected source and the browse lens it was seen
+    // through.
+    func testRestoresTheSourceAndTheBrowseLens() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-source-lens")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        try seedAssets(count: 4, in: catalogA.repository, ratingForIndex: { $0 < 2 ? 5 : 1 })
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.smartCollection(.fiveStars))
+        modelA.selectLens(.timeline)
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.selectedLens, .timeline)
+        XCTAssertEqual(modelB.selectedSource, LibrarySource.smartCollection(.fiveStars))
+        XCTAssertEqual(modelB.assets.count, 2)
+    }
+
+    // Quitting mid-cull relaunches on the same source in Grid — actual run
+    // resume is the SP-D lifecycle spec's job.
+    func testAMidCullQuitRelaunchesOnTheSameSourceInGrid() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-mid-cull")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        try seedAssets(count: 3, in: catalogA.repository)
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.folder("/Photos"))
+        modelA.selectLens(.cull)
+        XCTAssertEqual(modelA.selectedLens, .cull)
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.selectedLens, .grid)
+        XCTAssertEqual(modelB.selectedSource, LibrarySource.folder("/Photos"))
+    }
+
+    func testAFreshCatalogColdStartsOnAllPhotosInGrid() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-cold-start")
+        let defaults = try makeIsolatedDefaults()
+        let catalog = try makeCatalog(directory: directory)
+        try seedAssets(count: 2, in: catalog.repository)
+
+        let model = try AppModel.load(catalog: catalog, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(model.selectedLens, .grid)
+        XCTAssertEqual(model.selectedSource, LibrarySource.allPhotos)
+    }
+
     // MARK: - Helpers
 
     private static func stateReferencing(
-        selectedView: LibraryViewMode = .grid,
+        lens: LibraryLens = .grid,
+        source: LibrarySource = .allPhotos,
         selectedAssetSetID: AssetSetID? = nil,
         assetID: AssetID? = nil
     ) -> SessionRestoreState {
         SessionRestoreState(
-            selectedView: selectedView,
+            lens: lens,
+            source: source,
             selectedAssetSetID: selectedAssetSetID,
             selectedAssetID: assetID,
             sortOption: .importOrder,
