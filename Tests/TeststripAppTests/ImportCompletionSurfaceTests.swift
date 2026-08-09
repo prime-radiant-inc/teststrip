@@ -322,7 +322,10 @@ final class ImportCompletionSurfaceTests: XCTestCase {
 
     // Carries forward the scoping guarantee the deleted
     // `requestLatestImportAssetEvaluations()` used to hold: only the import's
-    // own assets are dispatched, and only the ones with a cached preview.
+    // own assets are dispatched, and only the ones with a cached preview. The
+    // `.evaluateImport` context action now gets there by scoping the source
+    // (`selectSource(.workSession(sessionID:))`) before calling the
+    // generalized `requestCurrentScopeAssetEvaluations()`.
     func testTheEvaluateImportVerbQueuesEvaluationsForThatImportsCachedAssetsOnly() throws {
         let directory = try makeTemporaryDirectory(named: "import-verb-evaluate")
         let inside = makeAsset(id: "evaluate-verb-cached")

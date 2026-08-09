@@ -13735,100 +13735,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: thirdURL.appendingPathExtension("xmp").path))
     }
 
-    func testAcceptLatestImportBatchKeywordSuggestionUsesImportOutputSet() throws {
-        let directory = try makeTemporaryDirectory(named: "latest-import-batch-keyword-apply")
-        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
-        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
-        let firstURL = photosDirectory.appendingPathComponent("first.cr2")
-        let secondURL = photosDirectory.appendingPathComponent("second.cr2")
-        let thirdURL = photosDirectory.appendingPathComponent("third.cr2")
-        try Data("first raw bytes".utf8).write(to: firstURL)
-        try Data("second raw bytes".utf8).write(to: secondURL)
-        try Data("third raw bytes".utf8).write(to: thirdURL)
-        let first = Asset(
-            id: AssetID(rawValue: "latest-import-first"),
-            originalURL: firstURL,
-            volumeIdentifier: "Photos",
-            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
-            availability: .online,
-            metadata: AssetMetadata()
-        )
-        let second = Asset(
-            id: AssetID(rawValue: "latest-import-second"),
-            originalURL: secondURL,
-            volumeIdentifier: "Photos",
-            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
-            availability: .online,
-            metadata: AssetMetadata()
-        )
-        let third = Asset(
-            id: AssetID(rawValue: "latest-import-third"),
-            originalURL: thirdURL,
-            volumeIdentifier: "Photos",
-            fingerprint: FileFingerprint(size: 12, modificationDate: Date(timeIntervalSince1970: 12)),
-            availability: .online,
-            metadata: AssetMetadata()
-        )
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert([first, second, third])
-        let outputSet = AssetSet.manual(
-            id: AssetSetID(rawValue: "latest-import-output"),
-            name: "Imported 2 photos from Card A",
-            assetIDs: [first.id, second.id]
-        )
-        try repository.upsert(outputSet)
-        let session = WorkSession(
-            id: WorkSessionID(rawValue: "latest-import-session"),
-            kind: .ingest,
-            intent: "Import photos",
-            title: "Import photos",
-            detail: "Imported 2 photos from Card A",
-            status: .completed,
-            inputSetIDs: [],
-            outputSetIDs: [outputSet.id],
-            completedUnitCount: 2,
-            totalUnitCount: 2,
-            failureCount: 0,
-            createdAt: Date(timeIntervalSince1970: 10),
-            updatedAt: Date(timeIntervalSince1970: 20)
-        )
-        try repository.save(session)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let model = try AppModel.load(catalog: AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        ))
-        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
-        try repository.recordEvaluationSignals([
-            EvaluationSignal(assetID: first.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance),
-            EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.7, provenance: provenance),
-            EvaluationSignal(assetID: third.id, kind: .object, value: .label("mountain"), confidence: 0.9, provenance: provenance)
-        ])
-
-        let appliedCount = try model.acceptLatestImportBatchKeywordSuggestion("mountain")
-
-        XCTAssertEqual(appliedCount, 2)
-        XCTAssertNil(model.selectedAssetSetID)
-        XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
-        XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: LibrarySource.workSession(session.id, titled: session.id.rawValue))
-        ])
-        XCTAssertEqual(model.assets.map(\.id), [first.id, second.id])
-        XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, ["mountain"])
-        XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, ["mountain"])
-        XCTAssertEqual(try repository.asset(id: third.id).metadata.keywords, [])
-        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: firstURL.appendingPathExtension("xmp"))).metadata.keywords, ["mountain"])
-        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: secondURL.appendingPathExtension("xmp"))).metadata.keywords, ["mountain"])
-        XCTAssertFalse(FileManager.default.fileExists(atPath: thirdURL.appendingPathExtension("xmp").path))
-    }
-
     func testAcceptCurrentScopeBatchKeywordSuggestionUsesFullFilteredScope() throws {
         let directory = try makeTemporaryDirectory(named: "current-scope-batch-keyword-apply")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
@@ -17468,8 +17374,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reloaded.assets.map(\.originalURL), [image])
     }
 
+    // Covers `latestImportCompletionSummary`'s fields for the plain
+    // single-photo-imported happy path — the zero-imported and
+    // duplicate-import variants are covered separately, and the "open the
+    // summary's output set" half this test used to check (via the deleted
+    // `openLatestImportCompletion()`) is covered by
+    // `testSelectingRecentlyAddedLibraryRowOpensLatestImportOutputSet`, which
+    // drives the same outcome through the real sidebar-row successor.
     @MainActor
-    func testLatestImportCompletionSummaryOpensImportedOutputSet() async throws {
+    func testLatestImportCompletionSummaryReportsSinglePhotoImportFields() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-open")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -17487,19 +17400,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.importedPhotoCount, 1)
         XCTAssertEqual(summary.photoCountText, "1 photo")
         XCTAssertEqual(summary.cullingSessionName, "Imported 1 photo from photos Cull")
-
-        try model.openLatestImportCompletion()
-
-        let session = try catalog.repository.session(id: WorkSessionID(rawValue: summary.activityID))
-        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
-        XCTAssertEqual(assetIDs(in: try catalog.repository.assetSet(id: outputSetID)), [try XCTUnwrap(model.assets.first?.id)])
-        XCTAssertNil(model.selectedAssetSetID)
-        XCTAssertEqual(model.librarySearchText, "session:\(summary.activityID)")
-        XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(summary.activityID)", target: LibrarySource.workSession(WorkSessionID(rawValue: summary.activityID), titled: summary.activityID))
-        ])
-        XCTAssertEqual(model.assets.map(\.originalURL), [image])
-        XCTAssertEqual(model.selectedView, .grid)
     }
 
     func testLatestCompletedImportAppearsAsRecentlyAddedLibraryRow() throws {

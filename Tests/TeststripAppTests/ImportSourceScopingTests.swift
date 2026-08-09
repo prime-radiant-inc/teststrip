@@ -75,8 +75,9 @@ final class ImportSourceScopingTests: XCTestCase {
     }
 
     // Import-scoped counts are the smart source's own SetQuery ANDed with
-    // `.importBatch(sessionID)` — the shape latestImportFlaggedReviewAssetCount
-    // already uses. Never a third expression of the same predicate.
+    // `.importBatch(sessionID)` — the shape `importChildCounts(sessionID:)`
+    // itself already uses for `likelyIssues`/`facesFound`. Never a third
+    // expression of the same predicate.
     func testImportChildCountsAreScopedToTheImport() throws {
         let inside = makeAsset(id: "inside", path: "/Photos/Import/inside.jpg", rating: 0)
         let outside = makeAsset(id: "outside", path: "/Photos/Other/outside.jpg", rating: 0)

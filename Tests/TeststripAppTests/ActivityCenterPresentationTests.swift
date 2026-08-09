@@ -227,7 +227,7 @@ final class ActivityCenterPresentationTests: XCTestCase {
         XCTAssertEqual(receipts.count, 5, "one over the cap must still truncate to 5")
     }
 
-    func testAReceiptCarriesItsIssueCountButNeverBadges() {
+    func testAReceiptWithSkippedFilesNeverBadges() {
         let presentation = ActivityCenterPresentation(
             kindRows: [],
             importActivity: nil,

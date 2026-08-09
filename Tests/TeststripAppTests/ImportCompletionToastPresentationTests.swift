@@ -84,6 +84,20 @@ final class ImportCompletionToastPresentationTests: XCTestCase {
         XCTAssertFalse(toast.showsStartCulling)
     }
 
+    // The zero-import headline is arithmetic-free news copy, not "Imported 0
+    // photos" — matching the status line and the session's own detail text.
+    func testAZeroPhotoImportGetsTheNoPhotosImportedHeadline() throws {
+        let toast = try XCTUnwrap(
+            ImportCompletionToastPresentation.toast(
+                for: summary(imported: 0, new: 0, existing: 0),
+                isCurrentSessionActivity: true,
+                isImporting: false
+            )
+        )
+
+        XCTAssertEqual(toast.headline, "No photos imported")
+    }
+
     // The persona-7 zombie-panel lesson: a summary restored from persisted
     // work history must never resurrect the toast on relaunch.
     func testARestoredSummaryFromAPreviousSessionProducesNoToast() {
