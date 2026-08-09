@@ -42,7 +42,8 @@ struct LibraryGridView: View {
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
-    @State private var dismissedImportCompletionSummaryID: String?
+    @State private var dismissedToastSummaryID: String?
+    @State private var isToastVisible = false
     @State private var importIssueReview: ImportIssueReview?
     @State private var importPathDraft = ImportFolderPathDraft()
     @State private var importCardPathDraft = ImportCardPathDraft()
@@ -229,6 +230,21 @@ struct LibraryGridView: View {
                 )
                 .onExitCommand { model.isKeyMapOverlayVisible = false }
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            if let toast = model.importCompletionToast,
+               toast.summaryID != dismissedToastSummaryID,
+               isToastVisible {
+                importCompletionToast(toast)
+                    .transition(.opacity)
+            }
+        }
+        .task(id: model.importCompletionToast?.summaryID) {
+            guard let toast = model.importCompletionToast, toast.summaryID != dismissedToastSummaryID else {
+                isToastVisible = false
+                return
+            }
+            await showToastThenFade(toast)
         }
     }
 
@@ -740,6 +756,78 @@ struct LibraryGridView: View {
     }
 
     @ViewBuilder
+    private func importCompletionToast(_ toast: ImportCompletionToastPresentation) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(toast.headline)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                if let warningText = toast.warningText {
+                    Text(warningText)
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                        .lineLimit(1)
+                }
+            }
+            if toast.showsStartCulling {
+                Button("Start culling") {
+                    startCullingFromToast(toast)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.orange)
+                .accessibilityLabel("Start culling")
+            }
+            Button {
+                dismissToast(toast)
+            } label: {
+                Image(systemName: "xmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss import toast")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
+        .padding(.top, 10)
+        .padding(.trailing, 14)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Import complete")
+    }
+
+    private func startCullingFromToast(_ toast: ImportCompletionToastPresentation) {
+        do {
+            try model.startCullingImport(sessionID: toast.sessionID, title: toast.cullingSessionName)
+            dismissToast(toast)
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissToast(_ toast: ImportCompletionToastPresentation) {
+        dismissedToastSummaryID = toast.summaryID
+        isToastVisible = false
+    }
+
+    /// ~10s, then it fades and the bell keeps the receipt. Mirrors the cull
+    /// loupe's `showDecisionToastThenFade`, which is the only other
+    /// auto-dismissing surface in the app.
+    private func showToastThenFade(_ toast: ImportCompletionToastPresentation) async {
+        isToastVisible = true
+        try? await Task.sleep(for: .seconds(ImportCompletionToastPresentation.visibleDuration))
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.3)) {
+            isToastVisible = false
+        }
+    }
+
+    @ViewBuilder
     private var topInsetContent: some View {
         VStack(spacing: 0) {
             if hasVisibleLibraryTopBarContent {
@@ -755,23 +843,7 @@ struct LibraryGridView: View {
                     libraryResultHeader
                 }
             }
-            if let summary = visibleImportCompletionSummary {
-                importCompletionSummary(summary)
-            }
         }
-    }
-
-    private var visibleImportCompletionSummary: ImportCompletionSummary? {
-        guard let summary = model.latestImportCompletionSummary else { return nil }
-        guard LibraryGridChromePolicy.shouldShowImportCompletionSummary(
-            isImporting: isImporting,
-            summaryID: summary.id,
-            dismissedSummaryID: dismissedImportCompletionSummaryID,
-            isFromCurrentSession: model.isCurrentSessionActivity(id: summary.activityID)
-        ) else {
-            return nil
-        }
-        return summary
     }
 
     /// One query surface: a persistent sort picker, the token query field,
@@ -1454,157 +1526,6 @@ struct LibraryGridView: View {
             selectedAssetCount: model.selectedBatchAssetCount,
             totalAssetCount: model.totalAssetCount
         )
-    }
-
-    private func importCompletionSummary(_ summary: ImportCompletionSummary) -> some View {
-        let presentation = ImportCompletionPresentation.presentation(
-            for: summary,
-            batchKeywordSuggestions: model.latestImportBatchKeywordSuggestions,
-            faceReviewAssetCount: model.latestImportFaceReviewAssetCount,
-            flaggedReviewAssetCount: model.latestImportFlaggedReviewAssetCount,
-            canEvaluateImport: model.canRequestLatestImportAssetEvaluations
-        )
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.green)
-                    .frame(width: 28, height: 28)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(presentation.title)
-                        .font(.headline.weight(.semibold))
-                        .lineLimit(1)
-                    Text(presentation.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
-                Button {
-                    dismissedImportCompletionSummaryID = summary.id
-                } label: {
-                    Image(systemName: "xmark.circle")
-                }
-                .buttonStyle(.borderless)
-                .help("Dismiss import summary")
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
-                ForEach(presentation.metricRows) { metric in
-                    importCompletionMetric(metric)
-                }
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 8)], spacing: 8) {
-                ForEach(presentation.actionRows) { action in
-                    importCompletionAction(action)
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(.bar)
-        .liveMockupPlaceholder(.importCompleteSummary)
-    }
-
-    private func importCompletionMetric(_ metric: ImportCompletionMetricRow) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: metric.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(metric.tint)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(metric.value)
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .lineLimit(1)
-                Text(metric.label)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Text(metric.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
-        .padding(9)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(.quaternary)
-        }
-    }
-
-    @ViewBuilder
-    private func importCompletionAction(_ action: ImportCompletionActionPresentation) -> some View {
-        if action.isEnabled {
-            Button {
-                performImportCompletionAction(action.kind)
-            } label: {
-                importCompletionActionLabel(action)
-            }
-            .buttonStyle(.plain)
-            .help(action.detail)
-        } else {
-            Button {} label: {
-                importCompletionActionLabel(action)
-            }
-            .buttonStyle(.plain)
-            .disabled(true)
-            .help(action.detail)
-            .liveMockupPlaceholder(action.placeholder)
-        }
-    }
-
-    private func importCompletionActionLabel(_ action: ImportCompletionActionPresentation) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: action.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(action.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                Text(action.detail)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .foregroundStyle(action.isPrimary ? Color.black.opacity(0.72) : Color.secondary)
-            }
-        }
-        .foregroundStyle(action.isPrimary ? Color.black : Color.primary)
-        .frame(minWidth: 126, maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .padding(.horizontal, 10)
-        .background(action.isPrimary ? Color.orange : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(action.isPrimary ? Color.orange.opacity(0.5) : Color.white.opacity(0.08))
-        }
-        .opacity(action.isEnabled ? 1 : 0.55)
-    }
-
-    private func performImportCompletionAction(_ kind: ImportCompletionActionPresentation.Kind) {
-        switch kind {
-        case .startCulling:
-            beginCullingFromLatestImportCompletion()
-        case .reviewImportedFrames:
-            reviewLatestImportInCompare()
-        case .openInLibrary:
-            openLatestImportCompletion()
-        case .evaluateImport:
-            requestLatestImportEvaluations()
-        case .reviewImportIssues:
-            reviewImportIssuesFromCompletion()
-        case .reviewFlaggedFrames:
-            reviewLatestImportFlagged()
-        case .keywordSuggestions:
-            reviewLatestImportKeywordSuggestions()
-        case .stackGrouping:
-            beginStackCullingFromLatestImportCompletion()
-        case .faceNaming:
-            reviewFaceQueueFromImportCompletion()
-        }
     }
 
     @ViewBuilder
@@ -3174,14 +3095,6 @@ struct LibraryGridView: View {
         isStartingCullingSession = true
     }
 
-    private func openLatestImportCompletion() {
-        do {
-            try model.openLatestImportCompletion()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
     private func beginCullingFromLatestImportCompletion() {
         do {
             try model.beginCullingFromLatestImportCompletion()
@@ -3200,55 +3113,9 @@ struct LibraryGridView: View {
         }
     }
 
-    private func reviewLatestImportInCompare() {
-        do {
-            try model.reviewLatestImportInCompare()
-            focusCullingSurface()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reviewLatestImportFlagged() {
-        do {
-            try model.reviewLatestImportFlagged()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
     private func reviewImportIssuesFromCompletion() {
-        guard let summary = visibleImportCompletionSummary, !summary.issues.isEmpty else { return }
+        guard let summary = model.latestImportCompletionSummary, !summary.issues.isEmpty else { return }
         importIssueReview = ImportIssueReview(summaryID: summary.id, issues: summary.issues)
-    }
-
-    private func reviewLatestImportKeywordSuggestions() {
-        do {
-            try model.openLatestImportCompletion()
-            batchMetadataScope = .visible
-            batchMetadataDraft = BatchMetadataDraft()
-            isAllCatalogBatchMetadataConfirmed = false
-            isReviewingBatchMetadata = true
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func requestLatestImportEvaluations() {
-        do {
-            try model.requestLatestImportAssetEvaluations()
-            model.statusMessage = "Evaluating latest import"
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reviewFaceQueueFromImportCompletion() {
-        do {
-            try model.selectSource(.smartCollection(.facesFound))
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
     }
 
     private func applyBatchMetadataKeywordSuggestion(_ keyword: String) {
@@ -8491,21 +8358,6 @@ enum LibraryGridChromePolicy {
         return URL(fileURLWithPath: expandedPath, isDirectory: true)
     }
 
-    static func shouldShowImportCompletionSummary(
-        isImporting: Bool,
-        summaryID: String?,
-        dismissedSummaryID: String?,
-        isFromCurrentSession: Bool
-    ) -> Bool {
-        // Session-scoped: a summary restored from the persisted work history
-        // (previous app session) never auto-shows again — otherwise a
-        // relaunch resurrects a stale completion panel the user already
-        // moved past (persona-7's zombie panel). The work stays reachable
-        // through Recent Work.
-        guard !isImporting, isFromCurrentSession, let summaryID else { return false }
-        return summaryID != dismissedSummaryID
-    }
-
     static func shouldShowPendingMetadataSyncRetryAction(isPendingFilterActive: Bool) -> Bool {
         isPendingFilterActive
     }
@@ -8941,393 +8793,6 @@ struct SmartCollectionRuleRow: Equatable, Identifiable {
         }
         target = activeFilterRow.target
         title = activeFilterRow.title
-    }
-}
-
-struct ImportCompletionPresentation: Equatable {
-    var title: String
-    var detail: String
-    var metricRows: [ImportCompletionMetricRow]
-    var actionRows: [ImportCompletionActionPresentation]
-
-    var enabledActions: [ImportCompletionActionPresentation] {
-        actionRows.filter(\.isEnabled)
-    }
-
-    var placeholderActions: [ImportCompletionActionPresentation] {
-        actionRows.filter { !$0.isEnabled && $0.placeholder != nil }
-    }
-
-    static func presentation(
-        for summary: ImportCompletionSummary,
-        batchKeywordSuggestions: [BatchKeywordSuggestion] = [],
-        faceReviewAssetCount: Int = 0,
-        flaggedReviewAssetCount: Int = 0,
-        canEvaluateImport: Bool = false
-    ) -> ImportCompletionPresentation {
-        let hasImportedSet = summary.importedPhotoCount > 0
-        let existingOnlyImport = isExistingOnlyImport(summary)
-        var metricRows = [
-            importedSetMetric(for: summary),
-            previewMetric(for: summary),
-            cullScopeMetric(for: summary)
-        ]
-        if let issueMetric = issueMetric(for: summary) {
-            metricRows.append(issueMetric)
-        }
-        var actionRows: [ImportCompletionActionPresentation] = []
-        if hasImportedSet {
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .startCulling,
-                title: "Start culling",
-                detail: existingOnlyImport ? "Use the matched set" : "Use the imported set",
-                systemImage: "checkmark.seal.fill",
-                isEnabled: true,
-                isPrimary: true,
-                placeholder: nil
-            ))
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .reviewImportedFrames,
-                title: existingOnlyImport ? "Review matched frames" : "Review imported frames",
-                detail: existingOnlyImport ? "Manual Compare over already-cataloged photos" : "Manual Compare over this import",
-                systemImage: "rectangle.grid.2x2",
-                isEnabled: true,
-                isPrimary: false,
-                placeholder: nil
-            ))
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .openInLibrary,
-                title: existingOnlyImport ? "Open matched set" : "Open imported set",
-                detail: existingOnlyImport ? "Browse already-cataloged photos" : "Browse this import",
-                systemImage: "rectangle.stack",
-                isEnabled: true,
-                isPrimary: false,
-                placeholder: nil
-            ))
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .evaluateImport,
-                title: "Evaluate import",
-                detail: canEvaluateImport ? "Run local reads on this import" : "Waiting for cached previews",
-                systemImage: "sparkles",
-                isEnabled: canEvaluateImport,
-                isPrimary: false,
-                placeholder: nil
-            ))
-        }
-        if let issueAction = importIssueAction(for: summary) {
-            actionRows.append(issueAction)
-        }
-        if let flaggedAction = flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount) {
-            actionRows.append(flaggedAction)
-        }
-        if hasImportedSet {
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .stackGrouping,
-                title: "Cull stacks",
-                detail: stackCullActionDetail(for: summary),
-                systemImage: "square.stack.3d.up",
-                isEnabled: summary.stackCount > 0,
-                isPrimary: false,
-                placeholder: nil
-            ))
-        }
-        if let faceAction = faceReviewAction(faceReviewAssetCount: faceReviewAssetCount) {
-            actionRows.append(faceAction)
-        }
-        if let keywordAction = keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions) {
-            actionRows.append(keywordAction)
-        }
-        return ImportCompletionPresentation(
-            title: title(for: summary),
-            detail: summary.detail,
-            metricRows: metricRows,
-            actionRows: actionRows
-        )
-    }
-
-    private static func title(for summary: ImportCompletionSummary) -> String {
-        if summary.importedPhotoCount == 0 {
-            return "No photos imported"
-        }
-        if isExistingOnlyImport(summary) {
-            return "No new photos imported"
-        }
-        return "\(photoCountText(summary.newPhotoCount)) imported"
-    }
-
-    private static func isExistingOnlyImport(_ summary: ImportCompletionSummary) -> Bool {
-        summary.newPhotoCount == 0 && summary.existingPhotoCount > 0
-    }
-
-    private static func importedSetMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
-        if summary.importedPhotoCount == 0 {
-            return ImportCompletionMetricRow(
-                id: "imported-set",
-                value: photoCountText(0),
-                label: "Import result",
-                detail: "Nothing was added",
-                systemImage: "exclamationmark.triangle",
-                tone: .yellow
-            )
-        }
-        if summary.newPhotoCount == 0, summary.existingPhotoCount > 0 {
-            return ImportCompletionMetricRow(
-                id: "imported-set",
-                value: "\(photoCountText(summary.existingPhotoCount)) already in catalog",
-                label: "Matched set",
-                detail: "No new files added",
-                systemImage: "rectangle.stack",
-                tone: .yellow
-            )
-        }
-
-        let detail: String
-        if summary.existingPhotoCount > 0 {
-            detail = "\(photoCountText(summary.existingPhotoCount)) already in catalog"
-        } else {
-            detail = "Ready to browse and cull"
-        }
-        return ImportCompletionMetricRow(
-            id: "imported-set",
-            value: photoCountText(summary.newPhotoCount),
-            label: "Imported set",
-            detail: detail,
-            systemImage: "rectangle.stack.fill",
-            tone: .green
-        )
-    }
-
-    private static func photoCountText(_ count: Int) -> String {
-        "\(count) \(count == 1 ? "photo" : "photos")"
-    }
-
-    private static func stackCountText(_ count: Int) -> String {
-        "\(count) \(count == 1 ? "stack" : "stacks")"
-    }
-
-    private static func flaggedReviewAction(flaggedReviewAssetCount: Int) -> ImportCompletionActionPresentation? {
-        guard flaggedReviewAssetCount > 0 else { return nil }
-        return ImportCompletionActionPresentation(
-            kind: .reviewFlaggedFrames,
-            title: "Review \(flaggedReviewAssetCount) flagged",
-            detail: "Review likely issues from this import",
-            systemImage: "exclamationmark.triangle",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func issueMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow? {
-        guard !summary.issues.isEmpty else { return nil }
-        let issueCount = summary.issues.count
-        let skippedCount = summary.issues.filter { $0.kind == .skippedSourceFile }.count
-        let detail = summary.issues.first.map(issueDetail) ?? "\(issueCount) import issues"
-        return ImportCompletionMetricRow(
-            id: "import-issues",
-            value: issueCount == 1 ? "1 issue" : "\(issueCount) issues",
-            label: skippedCount == issueCount ? "Skipped files" : "Import issues",
-            detail: detail,
-            systemImage: "exclamationmark.triangle",
-            tone: .yellow
-        )
-    }
-
-    private static func issueDetail(_ issue: WorkSessionIssue) -> String {
-        let message = issue.message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let sourceURL = issue.sourceURL else { return message }
-        let fileName = sourceURL.lastPathComponent
-        guard !fileName.isEmpty else { return message }
-        guard !message.isEmpty else { return fileName }
-        return "\(fileName): \(message)"
-    }
-
-    private static func importIssueAction(for summary: ImportCompletionSummary) -> ImportCompletionActionPresentation? {
-        guard !summary.issues.isEmpty else { return nil }
-        let skippedCount = summary.issues.filter { $0.kind == .skippedSourceFile }.count
-        let title: String
-        if skippedCount == summary.issues.count {
-            title = skippedCount == 1 ? "Review 1 skipped file" : "Review \(skippedCount) skipped files"
-        } else {
-            title = summary.issues.count == 1 ? "Review 1 import issue" : "Review \(summary.issues.count) import issues"
-        }
-        return ImportCompletionActionPresentation(
-            kind: .reviewImportIssues,
-            title: title,
-            detail: summary.issues.first.map(issueDetail) ?? "Review import issues",
-            systemImage: "exclamationmark.triangle",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func cullScopeMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
-        guard summary.importedPhotoCount > 0 else {
-            return ImportCompletionMetricRow(
-                id: "cull-scope",
-                value: "Unavailable",
-                label: "Cull Set",
-                detail: "No imported set",
-                systemImage: "slash.circle",
-                tone: .yellow
-            )
-        }
-        guard summary.stackCount > 0 else {
-            return ImportCompletionMetricRow(
-                id: "cull-scope",
-                value: "Ready",
-                label: "Cull Set",
-                detail: isExistingOnlyImport(summary) ? "Uses the matched set" : "Uses the imported set",
-                systemImage: "checkmark.seal.fill",
-                tone: .orange
-            )
-        }
-        return ImportCompletionMetricRow(
-            id: "cull-scope",
-            value: stackCountText(summary.stackCount),
-            label: "Cull Set",
-            detail: "\(photoCountText(summary.stackedPhotoCount)) in time-adjacent stacks",
-            systemImage: "square.stack.3d.up.fill",
-            tone: .orange
-        )
-    }
-
-    private static func stackCullActionDetail(for summary: ImportCompletionSummary) -> String {
-        guard summary.stackCount > 0 else {
-            return "No time-adjacent stacks"
-        }
-        return "\(stackCountText(summary.stackCount)) · \(photoCountText(summary.stackedPhotoCount))"
-    }
-
-    private static func keywordSuggestionAction(
-        batchKeywordSuggestions: [BatchKeywordSuggestion]
-    ) -> ImportCompletionActionPresentation? {
-        guard let suggestion = batchKeywordSuggestions.first else { return nil }
-
-        let suggestionCount = batchKeywordSuggestions.count
-        return ImportCompletionActionPresentation(
-            kind: .keywordSuggestions,
-            title: suggestionCount == 1
-                ? "Review 1 keyword suggestion"
-                : "Review \(suggestionCount) keyword suggestions",
-            detail: "Top: \(suggestion.keyword) - \(suggestion.assetCountText) at \(suggestion.confidenceText)",
-            systemImage: "tag.fill",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func faceReviewAction(faceReviewAssetCount: Int) -> ImportCompletionActionPresentation? {
-        guard faceReviewAssetCount > 0 else { return nil }
-        return ImportCompletionActionPresentation(
-            kind: .faceNaming,
-            title: faceReviewAssetCount == 1 ? "Review 1 face photo" : "Review \(faceReviewAssetCount) face photos",
-            detail: "Open Faces Found review",
-            systemImage: "person.2.fill",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func previewMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
-        guard summary.importedPhotoCount > 0 else {
-            return ImportCompletionMetricRow(
-                id: "previews",
-                value: "Not needed",
-                label: "Previews",
-                detail: summary.previewStatusText,
-                systemImage: "photo.stack",
-                tone: .blue
-            )
-        }
-        if summary.previewFailureCount > 0 {
-            return ImportCompletionMetricRow(
-                id: "previews",
-                value: "\(summary.previewFailureCount) \(summary.previewFailureCount == 1 ? "issue" : "issues")",
-                label: "Previews",
-                detail: summary.failureText ?? summary.previewStatusText,
-                systemImage: "exclamationmark.triangle.fill",
-                tone: .yellow
-            )
-        }
-
-        let status = summary.previewStatusText.lowercased()
-        let value: String
-        if status.contains("queued") {
-            value = "Queued"
-        } else if status.contains("generating") || status.contains("building") {
-            value = "Building"
-        } else if status.contains("paused") {
-            value = "Paused"
-        } else {
-            value = "Ready"
-        }
-        return ImportCompletionMetricRow(
-            id: "previews",
-            value: value,
-            label: "Previews",
-            detail: summary.previewStatusText,
-            systemImage: "photo.stack",
-            tone: value == "Ready" ? .blue : .yellow
-        )
-    }
-}
-
-struct ImportCompletionMetricRow: Equatable, Identifiable {
-    enum Tone: Equatable {
-        case green
-        case blue
-        case yellow
-        case orange
-    }
-
-    var id: String
-    var value: String
-    var label: String
-    var detail: String
-    var systemImage: String
-    var tone: Tone
-
-    var tint: Color {
-        switch tone {
-        case .green:
-            return .green
-        case .blue:
-            return .blue
-        case .yellow:
-            return .yellow
-        case .orange:
-            return .orange
-        }
-    }
-}
-
-struct ImportCompletionActionPresentation: Equatable, Identifiable {
-    enum Kind: String, Equatable {
-        case startCulling
-        case reviewImportedFrames
-        case openInLibrary
-        case evaluateImport
-        case reviewImportIssues
-        case reviewFlaggedFrames
-        case stackGrouping
-        case faceNaming
-        case keywordSuggestions
-    }
-
-    var kind: Kind
-    var title: String
-    var detail: String
-    var systemImage: String
-    var isEnabled: Bool
-    var isPrimary: Bool
-    var placeholder: LiveMockupPlaceholder?
-
-    var id: String {
-        kind.rawValue
     }
 }
 

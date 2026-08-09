@@ -898,6 +898,9 @@ public enum SidebarRowContextActionKind: Equatable, Sendable {
     case toggleAssetSetStarred(AssetSetID)
     case deleteAssetSet(AssetSetID)
     case toggleWorkSessionStarred(WorkSessionID)
+    case cullImportStacks(WorkSessionID)
+    case evaluateImport(WorkSessionID)
+    case compareImport(WorkSessionID)
 }
 
 public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
@@ -919,6 +922,12 @@ public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
             return "delete-asset-set-\(id.rawValue)"
         case .toggleWorkSessionStarred(let id):
             return "toggle-work-session-starred-\(id.rawValue)"
+        case .cullImportStacks(let id):
+            return "cull-import-stacks-\(id.rawValue)"
+        case .evaluateImport(let id):
+            return "evaluate-import-\(id.rawValue)"
+        case .compareImport(let id):
+            return "compare-import-\(id.rawValue)"
         }
     }
 
@@ -2274,7 +2283,9 @@ public final class AppModel {
     /// and cleared by `clearLibraryQueryFilters`. In-memory only — not part of
     /// session restore.
     public var geoBoundsFilter: GeoBounds?
-    private var detachedLibraryFilterPredicates: [SetQuery.Predicate]
+    private var detachedLibraryFilterPredicates: [SetQuery.Predicate] {
+        didSet { persistSessionState() }
+    }
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
     public var workSessionScopeCounts: [WorkSessionID: Int]
@@ -2956,6 +2967,7 @@ public final class AppModel {
             importError: importError,
             sources: sources,
             xmpConflicts: xmpConflicts,
+            receipts: ImportReceiptRow.rows(from: recentWork, limit: ImportReceiptRow.retentionLimit),
             providerFailureCount: smartCollectionCounts[.providerFailures] ?? 0
         )
     }
@@ -3346,6 +3358,16 @@ public final class AppModel {
         summary.failureText = previewStatus.failureText
         summary.previewStatusText = previewStatus.previewStatusText
         return summary
+    }
+
+    /// The completion toast, or nil when there is nothing to announce.
+    public var importCompletionToast: ImportCompletionToastPresentation? {
+        guard let summary = latestImportCompletionSummary else { return nil }
+        return ImportCompletionToastPresentation.toast(
+            for: summary,
+            isCurrentSessionActivity: isCurrentSessionActivity(id: summary.activityID),
+            isImporting: isImporting
+        )
     }
 
     /// Marks the cached latest-import panel state stale so the next getter access
@@ -5158,28 +5180,41 @@ public final class AppModel {
         return summary
     }
 
+    /// The single "cull this import" primitive, shared by the toast's Start
+    /// culling button, the bell receipt, and the sidebar's import rows.
     @discardableResult
-    public func beginCullingFromLatestImportCompletion() throws -> WorkSession {
-        let summary = try openLatestImportCompletion()
-        return try beginCullingSession(named: summary.cullingSessionName)
+    public func startCullingImport(sessionID: WorkSessionID, title: String) throws -> WorkSession {
+        try selectSource(.workSession(sessionID, titled: title))
+        return try beginCullingSession(named: title)
     }
 
     @discardableResult
-    public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
+    public func beginCullingFromLatestImportCompletion() throws -> WorkSession {
+        guard let summary = latestImportCompletionSummary else {
+            throw TeststripError.invalidState("no completed import")
+        }
+        return try startCullingImport(
+            sessionID: WorkSessionID(rawValue: summary.activityID),
+            title: summary.cullingSessionName
+        )
+    }
+
+    /// Culls one import's time-adjacent stacks. Takes the import explicitly so
+    /// every import row can start a stack cull, not only the newest one.
+    @discardableResult
+    public func beginStackCulling(importSessionID: WorkSessionID, title: String) throws -> WorkSession {
         cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("no completed import")
-        }
-        let stackIntent = summary.stackCount > 0
-            ? "Cull \(Self.stackCountDescription(summary.stackCount)) from latest import"
+        let activityID = importSessionID.rawValue
+        let stacks = try latestImportStacks(activityID: activityID, repository: catalog.repository)
+        let stackIntent = !stacks.isEmpty
+            ? "Cull \(Self.stackCountDescription(stacks.count)) from latest import"
             : ""
-        let stacks = try latestImportStacks(activityID: summary.activityID, repository: catalog.repository)
         guard !stacks.isEmpty else {
-            _ = try openLatestImportCompletion()
-            let session = try beginCullingSession(named: summary.cullingSessionName, intent: stackIntent)
+            try selectSource(.workSession(importSessionID, titled: title))
+            let session = try beginCullingSession(named: title, intent: stackIntent)
             statusMessage = "Started \(session.title); no time-adjacent stacks found"
             return session
         }
@@ -5187,13 +5222,13 @@ public final class AppModel {
         let sessionID = WorkSessionID.new()
         let inputSetIDs = try saveCullingStackInputSets(
             sessionID: sessionID,
-            title: summary.cullingSessionName,
+            title: title,
             stacks: stacks
         )
         guard let firstStackSetID = inputSetIDs.first else {
             throw TeststripError.invalidState("no stack sets were created")
         }
-        stackCullingImportActivityIDBySessionID[sessionID] = summary.activityID
+        stackCullingImportActivityIDBySessionID[sessionID] = activityID
         try applyAssetSet(id: firstStackSetID)
         if let firstStack = stacks.first {
             selectAssetID(recommendedStackLandingAssetID(for: firstStack) ?? firstStack.assetIDs.first)
@@ -5206,7 +5241,7 @@ public final class AppModel {
             id: sessionID.rawValue,
             kind: .culling,
             status: .running,
-            title: summary.cullingSessionName,
+            title: title,
             detail: stackIntent,
             completedUnitCount: 0,
             totalUnitCount: totalUnitCount,
@@ -5221,21 +5256,20 @@ public final class AppModel {
         return try catalog.repository.session(id: sessionID)
     }
 
+    @discardableResult
+    public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
+        guard let summary = latestImportCompletionSummary else {
+            throw TeststripError.invalidState("no completed import")
+        }
+        return try beginStackCulling(
+            importSessionID: WorkSessionID(rawValue: summary.activityID),
+            title: summary.cullingSessionName
+        )
+    }
+
     public func reviewLatestImportInCompare() throws {
         _ = try openLatestImportCompletion()
         selectedView = .compare
-    }
-
-    public func reviewLatestImportFlagged() throws {
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("there is no completed import to review")
-        }
-        selectedAssetSetID = nil
-        clearLibraryQueryFilters()
-        librarySearchText = "import:\(summary.activityID)"
-        likelyIssuesFilter = true
-        selectedView = .grid
-        try reload()
     }
 
     @discardableResult
@@ -5368,17 +5402,35 @@ public final class AppModel {
             ))
             return actions
         case .workSession(let id):
-            guard canToggleWorkSessionStarred(row),
-                  let activity = workActivity(id: id) else {
-                return []
-            }
-            return [
-                SidebarRowContextAction(
+            var actions: [SidebarRowContextAction] = []
+            if canToggleWorkSessionStarred(row), let activity = workActivity(id: id) {
+                actions.append(SidebarRowContextAction(
                     kind: .toggleWorkSessionStarred(id),
                     title: activity.starred ? "Remove Star" : "Star Work",
                     systemImage: activity.starred ? "star.slash" : "star"
-                )
-            ]
+                ))
+            }
+            // An import row's verbs. `importSourceSummaries` is the unbounded
+            // completed-ingest list, so every import keeps them — not just the
+            // ten most recent work sessions the star action is limited to.
+            if importSourceSummaries.contains(where: { $0.sessionID == id }) {
+                actions.append(SidebarRowContextAction(
+                    kind: .cullImportStacks(id),
+                    title: "Cull stacks",
+                    systemImage: "square.stack"
+                ))
+                actions.append(SidebarRowContextAction(
+                    kind: .evaluateImport(id),
+                    title: "Evaluate import",
+                    systemImage: "sparkles"
+                ))
+                actions.append(SidebarRowContextAction(
+                    kind: .compareImport(id),
+                    title: "Manual Compare over the import",
+                    systemImage: "rectangle.split.2x1"
+                ))
+            }
+            return actions
         default:
             return []
         }
@@ -5398,6 +5450,17 @@ public final class AppModel {
             try deleteAssetSet(id: id)
         case .toggleWorkSessionStarred(let id):
             try toggleWorkSessionStarred(id: id)
+        case .cullImportStacks(let sessionID):
+            let title = importSourceSummaries.first { $0.sessionID == sessionID }?.title ?? "Stack cull"
+            _ = try beginStackCulling(importSessionID: sessionID, title: title)
+        case .evaluateImport(let sessionID):
+            let title = importSourceSummaries.first { $0.sessionID == sessionID }?.title ?? "Import"
+            try selectSource(.workSession(sessionID, titled: title))
+            try requestCurrentScopeAssetEvaluations()
+        case .compareImport(let sessionID):
+            let title = importSourceSummaries.first { $0.sessionID == sessionID }?.title ?? "Import"
+            try selectSource(.workSession(sessionID, titled: title))
+            selectedView = .compare
         }
     }
 
@@ -11872,8 +11935,9 @@ public final class AppModel {
     // Mid-culling-session state is out of scope on purpose: culling sessions already
     // survive as work sessions and are reopened explicitly via Recent Work, so the
     // Cull lens — and its `.loupe`/`.compare` sub-modes — falls back to Grid on
-    // restore instead of resuming, and in-progress work-stack asset sets are never
-    // written or restored here.
+    // restore instead of resuming. A work-stack asset set is written like any
+    // other selected set; `isWorkStackSetID` drops it on the restore side, so a
+    // mid-cull quit cannot land back inside a run's stack.
 
     private func persistSessionState() {
         guard let sessionRestoreDefaults, let catalog else { return }
