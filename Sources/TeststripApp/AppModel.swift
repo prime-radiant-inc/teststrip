@@ -4985,15 +4985,6 @@ public final class AppModel {
         selectedSource = .selection
     }
 
-    @discardableResult
-    public func openLatestImportCompletion() throws -> ImportCompletionSummary {
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("no completed import")
-        }
-        try applyWorkSession(id: WorkSessionID(rawValue: summary.activityID))
-        return summary
-    }
-
     /// The single "cull this import" primitive, shared by the toast's Start
     /// culling button, the bell receipt, and the sidebar's import rows.
     @discardableResult
@@ -5076,22 +5067,6 @@ public final class AppModel {
     }
 
     @discardableResult
-    public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("no completed import")
-        }
-        return try beginStackCulling(
-            importSessionID: WorkSessionID(rawValue: summary.activityID),
-            title: summary.cullingSessionName
-        )
-    }
-
-    public func reviewLatestImportInCompare() throws {
-        _ = try openLatestImportCompletion()
-        selectedView = .compare
-    }
-
-    @discardableResult
     public func beginManualCullingFromCompareSet() throws -> WorkSession {
         cullingSessionCompletion = nil
         guard let catalog else {
@@ -5150,16 +5125,6 @@ public final class AppModel {
         )
         statusMessage = "Started manual cull for \(Self.photoCountDescription(compareGroup.count))"
         return try catalog.repository.session(id: sessionID)
-    }
-
-    @discardableResult
-    public func acceptLatestImportBatchKeywordSuggestion(_ keyword: String) throws -> Int {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
-        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository)
-        _ = try openLatestImportCompletion()
-        return try acceptBatchKeywordSuggestion(keyword, assetIDs: assetIDs)
     }
 
     @discardableResult
@@ -12931,20 +12896,6 @@ public final class AppModel {
     // Defaults to excluding a bonded shot's hidden JPEG, matching the other
     // "latest import" display surfaces. A caller that feeds processing rather
     // than display opts back in — the hidden JPEG must still get evaluated.
-    private func latestImportOutputAssetIDs(
-        repository: CatalogRepository,
-        includeBondedSecondaries: Bool = false
-    ) throws -> [AssetID] {
-        guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
-            throw TeststripError.invalidState("no completed import")
-        }
-        return try latestImportOutputAssetIDs(
-            activityID: activity.id,
-            repository: repository,
-            includeBondedSecondaries: includeBondedSecondaries
-        )
-    }
-
     private func latestImportOutputAssetIDs(
         activityID: String,
         repository: CatalogRepository,
