@@ -356,11 +356,18 @@ final class LibrarySourceTests: XCTestCase {
         )
     }
 
+    // The scope must be non-empty going in, or `canCullCurrentResults` is
+    // already `false` from `canBeginCullingSession`'s own `!assets.isEmpty`
+    // guard, and the diagnostic check below it never gets exercised. Recording
+    // a real failure row (rather than trusting an empty smart collection) is
+    // what makes `!selectedSource.isDiagnostic` the sole reason this is false.
     func testCullTheseIsUnavailableOnADiagnosticSource() throws {
         let asset = makeAsset(id: "cull-these-diagnostic", path: "/Photos/a.jpg")
-        let (model, _) = try makeModelWithCatalogAssets(named: "cull-these-diagnostic", assets: [asset])
+        let (model, repository) = try makeModelWithCatalogAssets(named: "cull-these-diagnostic", assets: [asset])
+        try repository.recordEvaluationFailure(assetID: asset.id, provider: "local-http-model", message: "model timed out")
 
         try model.selectSource(.smartCollection(.providerFailures))
+        XCTAssertEqual(model.assets.map(\.id), [asset.id], "scope must be non-empty for the diagnostic check below to be the deciding factor")
 
         XCTAssertFalse(model.canCullCurrentResults)
     }
@@ -404,6 +411,76 @@ final class LibrarySourceTests: XCTestCase {
         _ = try model.cullCurrentResults()
 
         XCTAssertEqual(model.cullingProgressSummary.pickCount, 1)
+        // The scope line is what the user actually sees under the toolbar —
+        // pinning only `cullingProgressSummary` leaves `scopeLine` free to
+        // build its own progress from raw asset flags without any test
+        // noticing.
+        XCTAssertTrue(
+            model.scopeLine.statusText.contains("✓ 1"),
+            "scope line status text was \"\(model.scopeLine.statusText)\", expected the confirmed-only pick count"
+        )
+    }
+
+    // SP: Task 7's fix gates `scopeLine`'s two cull-only catalog reads
+    // (`cullingProgressSummary`'s confirmed pick/reject `COUNT`s and
+    // `cullingStackListEntries()`'s per-stack/per-asset reads) behind
+    // `selectedLens == .cull`, mirroring the gate `SidebarView` already puts
+    // on its stack rows. This cannot be pinned by an output assertion:
+    // `browseStatusText` (every non-Cull lens) never reads `cullProgress` or
+    // `stackCount` at all, so evaluating them and discarding the result
+    // renders identically to never evaluating them — a `statusText` assertion
+    // would prove the value is unused, not that the query never ran. Only a
+    // query-count assertion, via the real (non-mock) `CatalogDatabase.rowQueryObserver`
+    // seam, proves the catalog was never touched.
+    func testScopeLineDoesNotQueryTheCatalogOutsideTheCullLens() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-library-source-scope-line-gate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(id: "scope-line-gate", path: "/Photos/a.jpg")
+        try repository.upsert([asset])
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        _ = try model.beginCullingSession(named: "Scope Line Gate")
+        XCTAssertEqual(model.selectedLens, .cull)
+        XCTAssertTrue(
+            model.scopeLine.statusText.contains("✓"),
+            "expected a live run right after starting the session, got \"\(model.scopeLine.statusText)\""
+        )
+
+        model.selectedView = .grid
+        XCTAssertEqual(model.selectedLens, .grid)
+
+        var rowQueries: [String] = []
+        database.rowQueryObserver = { sql in rowQueries.append(sql) }
+        _ = model.scopeLine
+        XCTAssertTrue(rowQueries.isEmpty, "browse lens scopeLine queried the catalog: \(rowQueries)")
+
+        model.selectedView = .loupe
+        XCTAssertEqual(model.selectedLens, .cull)
+        XCTAssertTrue(
+            model.scopeLine.statusText.contains("✓"),
+            "visiting the browse lens must not have lost the session, got \"\(model.scopeLine.statusText)\""
+        )
+
+        // Positive contrast: without this, a miswired observer that never
+        // fires would make the negative assertion above pass trivially even
+        // if the gate were deleted entirely.
+        rowQueries = []
+        _ = model.scopeLine
+        XCTAssertFalse(rowQueries.isEmpty, "Cull lens scopeLine should query the catalog for its progress counts")
     }
 
     // MARK: - Fixtures
