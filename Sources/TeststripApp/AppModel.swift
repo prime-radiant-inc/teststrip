@@ -2767,16 +2767,8 @@ public final class AppModel {
     }
 
     private var activePreviewGenerationStatusText: String? {
-        activePreviewGenerationStatusText(assetIDs: nil)
-    }
-
-    private func activePreviewGenerationStatusText(assetIDs: Set<AssetID>?) -> String? {
         let previewItems = backgroundWorkQueue.items.filter { item in
-            guard item.kind == .previewGeneration,
-                  [.queued, .running, .paused].contains(item.status) else { return false }
-            guard let assetIDs else { return true }
-            guard let previewAssetID = Self.previewAssetID(from: item.id) else { return false }
-            return assetIDs.contains(previewAssetID)
+            item.kind == .previewGeneration && [.queued, .running, .paused].contains(item.status)
         }
         guard !previewItems.isEmpty else { return nil }
         if backgroundWorkQueue.isPaused || previewItems.contains(where: { $0.status == .paused }) {
