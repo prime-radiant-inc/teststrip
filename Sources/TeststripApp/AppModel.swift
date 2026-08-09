@@ -2152,6 +2152,13 @@ public final class AppModel {
     /// Every completed import, newest first — the Imports sidebar section's
     /// source of truth. Refreshed alongside `recentWork`.
     public private(set) var importSourceSummaries: [ImportSidebarSummary] = []
+    /// The same completed imports as work activities — the Activity Center
+    /// bell's receipt source. Reading the unbounded, kind-scoped query rather
+    /// than the mixed-kind `recentWork` cache is what makes the receipts'
+    /// display cap the only thing that limits them: an import that produced
+    /// no output set has no Imports row, so its receipt is its only record
+    /// and must not be evicted by later work of other kinds.
+    public private(set) var completedImports: [AppWorkActivity] = []
     /// Which import rows are disclosed. Child counts are queried lazily, only
     /// for expanded rows, so a catalog with hundreds of imports does not pay
     /// five queries per row on every sidebar rebuild.
@@ -2990,7 +2997,7 @@ public final class AppModel {
             importError: importError,
             sources: sources,
             xmpConflicts: xmpConflicts,
-            receipts: ImportReceiptRow.rows(from: recentWork, limit: ImportReceiptRow.retentionLimit),
+            receipts: ImportReceiptRow.rows(from: completedImports, limit: ImportReceiptRow.retentionLimit),
             providerFailureCount: smartCollectionCounts[.providerFailures] ?? 0
         )
     }
@@ -5669,12 +5676,13 @@ public final class AppModel {
         rebuildSidebarSections()
     }
 
-    /// Rebuilds the Imports section from the unbounded completed-ingest query.
-    /// `recentWork` is limit-10 across all thirteen work kinds, so it cannot
-    /// promise even the three most recent imports.
+    /// Rebuilds the Imports section and the bell's receipts from the unbounded
+    /// completed-ingest query. `recentWork` is limit-10 across all thirteen
+    /// work kinds, so it cannot promise even the three most recent imports.
     public func refreshImportSourceSummaries() throws {
         guard let catalog else { return }
         let sessions = try catalog.repository.workSessions(kind: .ingest, statuses: [.completed])
+        completedImports = sessions.map(AppWorkActivity.init)
         importSourceSummaries = sessions.map { session in
             ImportSidebarSummary(
                 sessionID: session.id,
