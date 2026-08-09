@@ -75,6 +75,21 @@ struct LibraryGridView: View {
     }
 
     var body: some View {
+        attachingImportIssueReviewRequestHandler(bodyContent)
+    }
+
+    // Split from `body` so the compiler type-checks this long modifier chain
+    // and the one `.onChange` the sidebar's skipped-files child needs as two
+    // separate expressions — chained onto the end in-line, this pushed the
+    // whole chain over the type-checker's "reasonable time" limit.
+    @ViewBuilder
+    private func attachingImportIssueReviewRequestHandler<Content: View>(_ content: Content) -> some View {
+        content.onChange(of: model.importIssueReviewRequestToken) { _, _ in
+            presentRequestedImportIssueReview()
+        }
+    }
+
+    private var bodyContent: some View {
         Group {
             if model.selectedView == .people {
                 PeopleView(model: model)
@@ -3095,27 +3110,18 @@ struct LibraryGridView: View {
         isStartingCullingSession = true
     }
 
-    private func beginCullingFromLatestImportCompletion() {
+    // The sidebar's "⚠ Skipped files" import child (AppModel.selectSidebarRow)
+    // bumps importIssueReviewRequestToken instead of selecting a source —
+    // skipped files aren't catalogued, so there is no Grid scope to land on.
+    private func presentRequestedImportIssueReview() {
+        guard let sessionID = model.importIssueReviewSessionID else { return }
         do {
-            try model.beginCullingFromLatestImportCompletion()
-            focusCullingSurface()
+            let issues = try model.importIssues(sessionID: sessionID)
+            guard !issues.isEmpty else { return }
+            importIssueReview = ImportIssueReview(summaryID: sessionID.rawValue, issues: issues)
         } catch {
             model.errorMessage = error.localizedDescription
         }
-    }
-
-    private func beginStackCullingFromLatestImportCompletion() {
-        do {
-            try model.beginStackCullingFromLatestImportCompletion()
-            focusCullingSurface()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reviewImportIssuesFromCompletion() {
-        guard let summary = model.latestImportCompletionSummary, !summary.issues.isEmpty else { return }
-        importIssueReview = ImportIssueReview(summaryID: summary.id, issues: summary.issues)
     }
 
     private func applyBatchMetadataKeywordSuggestion(_ keyword: String) {

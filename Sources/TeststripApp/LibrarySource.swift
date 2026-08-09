@@ -29,9 +29,10 @@ public enum ImportChildKind: String, Codable, Equatable, Sendable {
         }
     }
 
-    /// Skipped files are not in the catalog at all and a failed preview has no
-    /// frame to look at, so these two open in Grid for inspection and the Cull
-    /// lens disables on them.
+    /// Skipped files are not in the catalog at all, so that child opens the
+    /// issue-review sheet (`AppModel.requestImportIssueReview`) rather than a
+    /// Grid scope; a failed preview's asset is catalogued and opens in Grid
+    /// for inspection. The Cull lens disables on both.
     public var isDiagnostic: Bool {
         self == .skippedFiles || self == .previewFailed
     }

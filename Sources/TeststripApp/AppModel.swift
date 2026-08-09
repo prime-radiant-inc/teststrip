@@ -2564,6 +2564,29 @@ public final class AppModel {
         moveRejectsToTrashRequestToken += 1
     }
 
+    /// Bumped by the sidebar's "⚠ Skipped files" import child, via
+    /// `selectSidebarRow`. Skipped files are never catalogued (see
+    /// `ImportChildKind.isDiagnostic`'s doc), so unlike every other import
+    /// child there is no Grid scope to select into — the row instead opens
+    /// `LibraryGridView`'s `ImportIssueReview` sheet, which only the view's
+    /// own @State can present.
+    public private(set) var importIssueReviewSessionID: WorkSessionID?
+    public private(set) var importIssueReviewRequestToken = 0
+    public func requestImportIssueReview(sessionID: WorkSessionID) {
+        importIssueReviewSessionID = sessionID
+        importIssueReviewRequestToken += 1
+    }
+
+    /// The requested import's skipped-files issues, read straight off its
+    /// `WorkSession` rather than `latestImportCompletionSummary` — this child
+    /// is reachable for any past import in the sidebar, not only the newest.
+    public func importIssues(sessionID: WorkSessionID) throws -> [WorkSessionIssue] {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        return try catalog.repository.session(id: sessionID).issues
+    }
+
     // Set at import start from the import's autopilotAfterImport decision; the
     // imported asset IDs land in armedAutopilotImportAssetIDs once the import
     // completes, and autopilot runs once their evaluations all resolve.
@@ -4894,6 +4917,13 @@ public final class AppModel {
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
         guard let source = row.target else { return }
+        // Skipped files are not in the catalog at all, so this one child
+        // does not select into a Grid scope like every other row — it opens
+        // the issue-review sheet instead (see `importIssueReviewRequestToken`).
+        if case .importChild(let sessionID, .skippedFiles) = source.kind {
+            requestImportIssueReview(sessionID: sessionID)
+            return
+        }
         try selectSource(source)
     }
 
@@ -5209,8 +5239,13 @@ public final class AppModel {
         }
         let activityID = importSessionID.rawValue
         let stacks = try latestImportStacks(activityID: activityID, repository: catalog.repository)
+        // "latest import" only when it actually is — a sidebar "Cull stacks"
+        // context action reaches this for any past import (see the doc
+        // comment above), and the recorded intent must not claim currency
+        // it doesn't have.
+        let isLatestImport = activityID == latestImportCompletionSummary?.activityID
         let stackIntent = !stacks.isEmpty
-            ? "Cull \(Self.stackCountDescription(stacks.count)) from latest import"
+            ? "Cull \(Self.stackCountDescription(stacks.count)) from \(isLatestImport ? "latest" : "this") import"
             : ""
         guard !stacks.isEmpty else {
             try selectSource(.workSession(importSessionID, titled: title))
