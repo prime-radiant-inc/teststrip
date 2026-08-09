@@ -53,17 +53,26 @@ is prefixed `work-stack-` and for every caller of `AssetStackBuilder`:
   10636`), which upserts `AssetSet.manual(id: "work-stack-<session>-<n>",
   ...)` for every **multi-frame** stack (`assetIDs.count > 1`) the builder
   finds over a specific import's output assets.
-- `saveCullingStackInputSets` is called from exactly two places, both inside
-  `beginCullingFromLatestImportCompletion()`/`beginStackCullingFromLatestImportCompletion()`
-  (`AppModel.swift:4166-4273`) — i.e. only right after an import completes,
-  never on-demand against an already-imported/static catalog.
-- `beginStackCullingFromLatestImportCompletion()` is wired to exactly one UI
-  affordance: the **"Cull stacks"** button in the post-import completion
-  banner (`kind: .stackGrouping`, title `"Cull stacks"`, enabled only when
-  `summary.stackCount > 0` — `LibraryGridView.swift:8011-8021`, dispatched at
-  `:1510-1511`). This *is* a reachable UI gesture — import something, then
-  click "Cull stacks" — but it only produces `work-stack-` sets when the
-  import's own frames actually group into a multi-frame `AssetStack`.
+- `saveCullingStackInputSets` is called from inside `beginStackCulling
+  (importSessionID:title:)` (`AppModel.swift:4992-5022`) — the post-import
+  completion banner this investigation originally cited
+  (`beginCullingFromLatestImportCompletion()`/
+  `beginStackCullingFromLatestImportCompletion()`) was deleted by the
+  unified-shell push along with the banner itself. `beginStackCulling` is
+  reachable for **any** past import, not just the latest — it takes an
+  explicit `importSessionID` and only degrades its status message
+  ("...; no time-adjacent stacks found", `:5007-5011`) to a plain culling
+  session when `latestImportStacks` finds nothing to group
+  (`AssetStackBuilder`'s adjacency rule, unchanged from before this push).
+- `beginStackCulling(importSessionID:title:)` is wired to exactly one UI
+  affordance today: the sidebar's per-import row context menu, whose
+  **"Cull stacks"** action (`AppModel.swift:5184-5187`) calls it with that
+  row's own session id. This *is* a reachable UI gesture — import something,
+  right-click its sidebar row, click "Cull stacks" — but it only produces
+  `work-stack-` sets when the import's own frames actually group into a
+  multi-frame `AssetStack`. See `import-011-completion-toast-and-import-
+  rows.md` Step 10 for the live drive of this exact action, including its
+  fallback-path handling.
 - `AssetStackBuilder.stacks(from:)` (`Sources/TeststripCore/Search/
   AssetStackBuilder.swift:28-99`) groups two adjacent-in-catalog-order assets
   into the same stack only if `isCaptureTimeNeighbor` (same folder **and**
@@ -177,5 +186,23 @@ its 900s spacing never stacks.)
   `--real-corpus`. Neither exists today; this is the concrete gap to raise.
 
 ## Run status
-UNRUN — SQL not yet dry-run against a live catalog; needs human-present
-execution per test/scenarios/README.md.
+**Reconciled 2026-08-09 (Task 13, unified-shell scenario-card sweep)**:
+rewrote the "Investigating whether `--smoke` can produce a persisted stack"
+section's premise about how a persisted `work-stack-` set gets created. The
+prior premise — `beginStackCullingFromLatestImportCompletion()` wired to a
+"Cull stacks" button on the post-import completion banner — describes
+functions and a banner this push deleted (`grep -n
+"beginStackCullingFromLatestImportCompletion\|beginCullingFromLatestImportCompletion"
+Sources/` finds nothing). The successor,
+`beginStackCulling(importSessionID:title:)` (`AppModel.swift:4992-5022`), is
+reachable only from the sidebar import row's context menu now, and — unlike
+the old "latest import only" framing — takes an explicit session id, so it
+can cull stacks from *any* past import, not just the most recent one.
+`AssetStackBuilder`'s own adjacency rule (2s capture-time gap or
+visual-similarity threshold) is unaffected by this push and the rest of the
+investigation's conclusions about `--smoke`/`--isolated`/the `burst` variant
+stand unchanged. Supersedes prior status: card was already UNRUN, so there
+is no prior PASS to invalidate — this note exists for the record per house
+style, and because the reachability path it documents changed even though
+the card never ran against it. Needs a fresh VM run against the `burst`
+variant per the Pre-state.

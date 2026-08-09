@@ -2,23 +2,31 @@
 
 **What this covers**: Jesse lives in this chrome every session; the
 simplification sweep must hold in the assembled window, not just in unit
-tests. Inventory items 16-17: `WorkspaceChromePolicy` — the ten chrome
-booleans are Library-only, and `showsInspector` is true for every workspace
-except Cull (`WorkspaceChromePolicy`,
-`Sources/TeststripApp/LibraryGridView.swift:8357-8415`; inspector gating in
-`Sources/TeststripApp/main.swift:49-54`). Also the UX-simplification sweep (spec
-`docs/superpowers/specs/2026-07-08-teststrip-ux-simplification-proposal.md`) is
-a legibility pass over working machinery — most of it only exists in the
-assembled AppKit chrome, where unit tests and the headless gate can't see it.
-This card drives the live window and asserts the new chrome is present and the
-old jargon is gone: the marquee **Find Best Shots** action, the collapsed
-**Import ▾** / **⋯ More** toolbar, the removal of the **Copilot** label, and
-the absence of the three-Imports tangle. (There is no static "Review" sidebar
-row — the sidebar's review-queue rows are named Picks/Likely Issues/etc. and
-only render once their counts are non-zero; the sole surviving "Review"
-control is the autopilot banner button, which appears only while ghosts
-exist.) It also exercises the core promise that Find Best Shots never
-dead-ends the user on a bare "0 keepers".
+tests. `LensChromePolicy` (`Sources/TeststripApp/LibraryGridView.swift:8260-
+8316`) — the successor to `WorkspaceChromePolicy` after the workspace shell
+was deleted — exposes ten chrome booleans (`showsBrowseChrome` plus nine
+delegates: `showsSearchField`, `showsFilterTokens`, `showsImportButton`,
+`showsFooter`, `showsInspector`, `showsImportMenu`, `showsCullButton`,
+`showsExportButton`, `showsMoreMenu`), all gated on `view.lens`, not on a
+`Workspace` case (`Workspace` no longer exists). Every delegate except
+`showsInspector` is a bare call to `showsBrowseChrome`, which is `true` for
+the four browse lenses (Grid/Loupe/Timeline/Map) and `false` for **both**
+Cull and People — the "two focused lenses carry none of it" the enum's own
+doc comment states. `showsInspector` is unconditionally `true` for every
+lens, wired at `Sources/TeststripApp/main.swift:39-40`. Also the
+UX-simplification sweep (spec `docs/superpowers/specs/2026-07-08-
+teststrip-ux-simplification-proposal.md`) is a legibility pass over working
+machinery — most of it only exists in the assembled AppKit chrome, where
+unit tests and the headless gate can't see it. This card drives the live
+window and asserts the new chrome is present and the old jargon is gone: the
+marquee **Find Best Shots** action, the collapsed **Import ▾** / **⋯ More**
+toolbar, the removal of the **Copilot** label, and the absence of the
+three-Imports tangle. (There is no static "Review" sidebar row — the
+sidebar's review-queue rows are named Picks/Likely Issues/etc. and only
+render once their counts are non-zero; the sole surviving "Review" control
+is the autopilot banner button, which appears only while ghosts exist.) It
+also exercises the core promise that Find Best Shots never dead-ends the
+user on a bare "0 keepers".
 
 ## Pre-state
 - Fresh build, seeded isolated catalog so the grid and sidebar render real rows:
@@ -50,17 +58,26 @@ dead-ends the user on a bare "0 keepers".
    unrankable seed) the plain-language status
    `These look too distinct to auto-rank — rate a few to rank`. A bare
    `0 keepers` / `0 · 0` result is a **failure**.
-4. **Cross-check the switcher de-dup.** The Library sub-view switcher exposes
-   `Grid`, `Loupe`, `Timeline`, `Map` — assert `Search`, `Review`, `People`,
-   `Places` are **not** switcher buttons (they live in the sidebar).
-5. **Chrome policy per workspace (items 16-17).** Press ⌘2 (Library): assert
+4. **Cross-check the lens switcher, not a sub-view switcher.** The toolbar's
+   `lensSwitcher` exposes all **six** lenses — `Cull`, `Grid`, `Loupe`,
+   `Timeline`, `Map`, `People` — not a 4-way Library-only sub-view toggle;
+   People is one of its six buttons now, not excluded from it. Assert
+   `Search`, `Review`, `Places` are **not** switcher buttons (they live in
+   the sidebar/toolbar elsewhere) — do **not** also assert People's absence
+   here, since People is a legitimate lens button (the prior revision of
+   this card asserted People's absence from the switcher, which was true
+   under the old Library-sub-view-toggle design and is false now).
+5. **Chrome policy per lens (`LensChromePolicy`).** Press ⌘2 (Grid): assert
    the search token field, Import ▾, Find Best Shots, Export, and the footer
-   are present. Press ⌘1 (Cull): assert *all* of those are absent, and that
-   ⌘I does not open an inspector column inside Cull (per
-   `AppModel.toggleInspector` it switches to Library first — after ⌘I the
-   Library chrome should be what renders). Press ⌘3 (People): assert the
-   browse chrome (search field, Import ▾, Export, footer) is absent but ⌘I
-   can open the inspector (showsInspector is true for People).
+   are present (`showsBrowseChrome(.grid) == true`). Press ⌘1 (Cull): assert
+   *all* of those are absent (`showsBrowseChrome(.cull) == false`), and that
+   ⌘I **does** open the inspector in place, without leaving Cull —
+   `showsInspector` is unconditionally `true` and `AppModel.toggleInspector()`
+   is a bare `isInspectorVisible.toggle()` with no lens-switching side
+   effect (`AppModel.swift:4766-4768`). Press ⌘6 (People): assert the browse
+   chrome (search field, Import ▾, Export, footer) is absent
+   (`showsBrowseChrome(.people) == false`) and ⌘I opens the inspector here
+   too.
 
 ## Expected
 - Step 2: `verify_ux_simplification_chrome.sh` prints `PASS: …` and exits 0.
@@ -71,12 +88,16 @@ dead-ends the user on a bare "0 keepers".
   sqlite3 "$DB" "SELECT count(*) FROM assets;"   # scope is non-empty; the
                                                  # route landed on real rows
   ```
-- Step 4: exactly three switcher buttons; the five set-routes are absent from
-  the switcher (present in the sidebar instead).
-- Step 5: every Library-only control disappears in Cull and People, and the
-  inspector rule holds (never in Cull; available in Library and People).
-  **Fails if** any browse control leaks into Cull/People, or ⌘I opens an
-  inspector while Cull is active.
+- Step 4: exactly six lens buttons; `Search`/`Review`/`Places` are absent
+  from the switcher (present elsewhere instead). **Fails if** People is
+  reported absent from the switcher (that is the correct, current
+  behaviour, not a bug) or if any of the three named controls IS found on
+  the switcher.
+- Step 5: browse chrome disappears in both Cull and People, never in Grid;
+  ⌘I opens the inspector in place in every lens, including Cull. **Fails
+  if** any browse control leaks into Cull/People, if browse chrome is
+  missing in Grid, or if ⌘I fails to open the inspector, or changes the
+  active lens, in any of the three lenses tried.
 
 ## Fixture status
 Runnable with the standard `--smoke` seed (24 synthetic photos) — no special
@@ -91,24 +112,44 @@ outcome passes as long as the result is legible and never a bare zero.
 Quit the launched instance.
 
 ## Sharp edges
-- Views branch on `WorkspaceChromePolicy`, never on raw `Workspace` cases —
-  if a step-5 assertion fails, cite which policy boolean disagrees with the
-  rendered chrome (that is the regression, not the card).
+- Views branch on `LensChromePolicy`, never on a raw lens/workspace case
+  directly in the view body — if a step-5 assertion fails, cite which
+  policy boolean disagrees with the rendered chrome (that is the
+  regression, not the card).
 - Step 3's full routing matrix (evaluate-then-route vs. picks vs.
   nothing-ranked) is app-011's job; here it is only a smoke check that the
   button never dead-ends.
 - Activity (⇧⌘0 toolbar item) is global chrome and intentionally NOT gated by
   the policy — do not count its presence in Cull/People as a leak.
+- `showsInspector`'s doc comment ("unified onto the Cull loupe in Task 5")
+  and `toggleInspector`'s doc comment both explicitly disclaim any
+  lens-switching side effect — if a live run ever sees ⌘I move the app out
+  of Cull, that contradicts two independent doc comments and current source
+  and is worth flagging loudly, not quietly working around.
 
 ## Run status
-**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the intro's
-"the autopilot-proposals banner button ... appears only when a proposal
-batch is pending" became "the autopilot banner button ... appears only
-while ghosts exist" — the banner itself (`model.autopilotRunSummary`) was
-never table-backed, but the old phrasing described the same underlying
-concept (a pending proposal batch) that `autopilot_proposals` used to name;
-SP-D0 dropped that table forward-only, and the concept is now the ghost.
-Supersedes prior status: LEDGER records this card `Tested-Fail`
-(script/card drift on a different surface, unrelated to autopilot) — that
-result is untouched by this wording fix. Needs a fresh VM run regardless,
-per the existing script drift.
+**Reconciled 2026-08-09 (Task 13, unified-shell scenario-card sweep)**:
+rewritten for the lens shell. `WorkspaceChromePolicy` → `LensChromePolicy`
+(same ten booleans, gated by `view.lens` — verified unchanged in count and
+behavior, only the gating source and the enclosing type name changed).
+Deleted the false `:59-60` claim that "⌘I does not open an inspector column
+inside Cull — it switches to Library first": read directly,
+`LensChromePolicy.showsInspector` (`LibraryGridView.swift:8289-8293`)
+returns `true` unconditionally for every `LibraryViewMode`, and
+`AppModel.toggleInspector()` (`AppModel.swift:4766-4768`) is
+`isInspectorVisible.toggle()` with no branch on lens at all — there is no
+code path left (if there ever was one on this branch) that redirects to
+Library on ⌘I. Replaced it with the true contract: ⌘I toggles the inspector
+in place, in every lens including Cull. Also corrected Step 4: the prior
+revision asserted People's absence from the switcher, which is now false —
+People is one of the switcher's six lens buttons; only `Search`/`Review`/
+`Places` remain correctly excluded. Retitled ⌘2/⌘1/⌘3 to their lens meanings
+(Grid/Cull/People is now ⌘6, not ⌘3 — ⌘3 is the Loupe lens) throughout Step
+5. Supersedes prior status: this card is TWO stale claims deep independent
+of the unified-shell push — the `:59-60` inspector claim was already false
+before this push (per the task-13 brief's own flag, verified above against
+source rather than taken on faith), and the People-excluded-from-switcher
+claim became false only once this push made People a lens. Any prior
+LEDGER `Tested-Fail` result for this card is unrelated to both of these
+(a script/card drift on a different surface per the note it carried) and
+remains uninformative either way. Needs a fresh VM run.

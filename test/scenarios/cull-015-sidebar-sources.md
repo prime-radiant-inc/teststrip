@@ -1,69 +1,64 @@
-# cull-015-sidebar-sources: Cull sidebar's "Cull From" source groups (zero-count omission, "Nothing to cull" empty state)
+# cull-015-sidebar-sources: the sidebar's Smart Collections section (zero-count omission, AI Suggestions, saved dynamic sets)
 
-**What this covers**: As a photographer culling a shoot I want to jump
-straight into a specific working set — recent import, autopilot ghosts
-pending review, the review queues, or my current Library selection — from
-the Cull sidebar without manually rebuilding a filter each time, and I want
-zero-count groups to simply not appear (not render disabled) so the sidebar
-never shows a dead-end row; when every source is empty I want an honest
-"Nothing to cull" message instead of a blank list. Covered inventory items
-41-45 (group presence-by-count, activation semantics, proposals-row
-conditional visibility, diagnostics rows folded into the main list, stack
-list decided-checkmarks). Source: `CullSidebarView` at
-`Sources/TeststripApp/CullSidebarView.swift` (source groups `:45-47`, row
-rendering `:53-66`, empty-state text `:16-19`, stack list `:28-35,76-124`),
-`activateCullSource`/`cullSourcePresentation`/`CullSourcePresentation.
-visibleSources`/`.isEmpty` at `Sources/TeststripApp/AppModel.swift`.
+**What this covers**: As a photographer I want to jump straight into a
+review queue — Picks, Rejects, Needs Keywords, autopilot ghosts pending
+review, or a saved search — from the sidebar without manually rebuilding a
+filter each time, and I want zero-count rows to simply not appear (not
+render disabled) so the sidebar never shows a dead-end row.
 
-**Task 7 revision (2026-07-11)**: the former separate `DisclosureGroup(
-"Diagnostics", ...)` is gone. Its six rows now render as an ordinary group
-(`.diagnostics`) inside the same `"Cull From"` section as every other
-group, filtered by the same zero-count-omission rule — because they are
-click-to-cull review queues (Rejects/Five Stars/Needs Keywords/Faces
-Found/OCR Found/Analysis Failures), not background-job status, they were
-**not** moved into the Activity popover (see `activity-003` for why: the
-popover's jobs/sources/conflicts sections have no equivalent for
-catalog-content review queues — moving them there would have silently
-dropped their click-to-cull navigation). Also: rows are **omitted** at
-count 0 rather than rendered `disabled` — the previous `.disabled(source
-.count == 0)` behavior is gone; `CullSourcePresentation.visibleSources`
-filters `count > 0` and the section shows literal text "Nothing to cull"
-when `.isEmpty` is true across every group.
+**The "Cull From" sidebar and `CullSidebarView` are gone.** This push
+deleted the Cull-lens-only sidebar entirely — `find . -iname
+"CullSidebarView.swift"` finds nothing, and there is no `activateCullSource`/
+`cullSourcePresentation`/`CullSourcePresentation` in current source either.
+There is now **one sidebar, every lens**, built by `UnifiedSidebarPresentation
+.sections(...)` (`Sources/TeststripApp/UnifiedSidebarPresentation.swift:
+122-243`) and rendered by `SidebarView`. This card is rewritten to the
+**Smart Collections** section, its direct successor for click-to-cull review
+queues.
 
-**Exact group set and predicates** (read from source, corrects any guessed
-predicates): six groups rendered in this fixed order —
-`.recentImport`, `.autopilotProposals`, `.topPicks`, `.needsEyes`,
-`.diagnostics`, `.selection` (`CullSidebarView.swift:45-47`) — each filtered
-through `presentation.visibleSources` (count > 0 only). `cullSourcePresentation`
-(`AppModel.swift`) builds:
-- `.recentImport`: present only if `latestImportCompletionSummary != nil`
-  (title/count from that summary) — **absent entirely** on a bare `--smoke`
-  launch with no in-session import, not just disabled.
-- `.autopilotProposals`: present only if `!autopilotGhostAssetIDs.isEmpty`
-  (the ghost-carrying asset count — `autopilotGhostAssetIDs` replaced
-  `pendingAutopilotProposals` when SP-D0 dropped the `autopilot_proposals`
-  table) — same "absent, not disabled" pattern; title always "Autopilot
-  Proposals".
-- `.topPicks`: always two rows, `ReviewQueue.picks` and `.potentialPicks`,
-  count from `reviewQueueCounts[queue]`.
-- `.needsEyes`: always two rows, `.likelyIssues` and `.needsEvaluation`.
-- `.diagnostics`: six rows — `.rejects`, `.fiveStars`, `.needsKeywords`,
-  `.facesFound`, `.ocrFound`, `.providerFailures` — now rendered inline, not
-  behind a disclosure triangle.
-- `.selection`: always one row, count = `selectedBatchAssetIDs.count` if
-  non-empty else `1` if a single asset is selected else `0`.
-- **Activation** (`activateCullSource`): `.recentImport` →
-  `beginCullingFromLatestImportCompletion()`; `.autopilotProposals` →
-  `beginAutopilotReview()` (routes into the confirm-before-write review
-  flow, **not** a culling session — nothing is written by clicking it);
-  `.reviewQueue(queue)` (topPicks/needsEyes/diagnostics rows) →
-  `applyReviewQueue(queue)` then `beginCullingSession(named:)`;
-  `.selection` → `cullCurrentSelection()`.
-- Stack list: rendered only `if !stackEntries.isEmpty` from
-  `model.cullingStackListEntries()` — **`--smoke` has no persisted stacks**
-  per `test/scenarios/README.md`, so this section is expected absent on
-  `--smoke`; this card notes that as untestable-without-fixture rather than
-  asserting it.
+**Exact row set and predicates** (read from source, not guessed):
+`UnifiedSidebarPresentation.smartCollectionOrder` (`:104-107`) is a **fixed
+10-item order** — `.picks`, `.potentialPicks`, `.likelyIssues`,
+`.needsEvaluation`, `.rejects`, `.fiveStars`, `.needsKeywords`,
+`.facesFound`, `.ocrFound`, `.providerFailures` — each mapped through
+`SmartCollection.presentation.title` (`AppModel.swift:620-644`): "Picks",
+"Potential Picks", "Likely Issues", **"Not analyzed yet"** (note: the title
+string differs from the enum case name `needsEvaluation` — use the real
+string), "Rejects", "5 Stars", "Needs Keywords", "Faces Found", "OCR Found",
+"Analysis Failures" (the tenth and last of this fixed order). Building the
+section (`sections(...)`, `:178-194`):
+- Each of the 10 is filtered by `smartCollectionCounts[collection] > 0`
+  (`:180`) — a `compactMap` returning `nil` for a zero/missing count, so a
+  zero-count row is **omitted entirely**, never rendered `disabled`.
+- `AI Suggestions` (`LibrarySource.autopilotSuggestions`, title fixed at
+  `"AI Suggestions"`, `LibrarySource.swift:89`) is appended **after** the 10,
+  present only while `autopilotGhostCount > 0` (`:189-196` — the parameter is
+  `autopilotGhostAssetIDs.count`, passed in from `AppModel.swift:1993`).
+  There is no zero-count disabled state for this row either.
+- Every **saved dynamic set** (`AssetSet.isDynamic`, i.e. a saved search)
+  joins the section last, one row per set (`:198-200` — "a saved dynamic
+  search IS a smart collection — that is exactly what the section header's
+  '+ New from search…' produces").
+- The whole section (`UnifiedSidebarPresentation.smartCollectionsSectionTitle
+  == "Smart Collections"`) is appended to the sidebar **only if** the
+  combined row list is non-empty (`:193-194`) — there is no "Nothing to
+  cull"/all-empty message any more (`grep -rn "Nothing to cull" Sources/`
+  finds zero hits); the section simply does not render.
+
+**Activation.** Clicking a row calls `AppModel.selectSidebarRow(_:)`
+(`AppModel.swift:4695`) → `selectSource(_:)`/`applySource(_:)`
+(`:4744`,`:4824`), which switches on `LibrarySource.kind`:
+`.smartCollection(let collection)` → `applySmartCollection(collection)`
+(`:10961-10971` — installs the collection's `query.predicates` as detached
+filters and reloads); `.autopilotSuggestions` → `applyAutopilotSuggestionsScope()`
+(`:9727-...` — loads `assetIDsWithAutopilotGhost()` directly rather than via
+a `SetQuery`). `applySource` then re-resolves the active lens
+(`LensRules.resolvedLens`, `LibraryLens.swift:137-144`): selecting
+`Analysis Failures` while in the Cull lens forces a fallback to Grid, since
+`LibrarySource.isDiagnostic` is true only for `.smartCollection
+(.providerFailures)` (`LibrarySource.swift:78-79`) — the same behavior
+`app-019-lens-shell.md` Step 7 already drives; this card asserts it again
+from the sidebar-contract side rather than duplicating that card's setup.
 
 ## Pre-state
 ```bash
@@ -71,137 +66,142 @@ through `presentation.visibleSources` (count > 0 only). `cullSourcePresentation`
 ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 script/ax_drive.sh wait-vended Teststrip
-script/ax_drive.sh press --role AXButton --help "Cull" # ⌘1
 ```
 
 ## Steps
-1. Confirm `.recentImport` and `.autopilotProposals` rows are **absent**
-   (not merely disabled) on a bare `--smoke` launch with no in-session
-   import or autopilot run:
+1. Confirm `AI Suggestions` is **absent** (not merely disabled) on a bare
+   `--smoke` launch with no autopilot run yet:
    ```bash
-   script/ax_drive.sh find --contains "Autopilot Proposals"   # expect not-found
+   script/ax_drive.sh find --contains "AI Suggestions"   # expect not-found
    ```
-   This is the negative-assertion pattern the assignment calls out — a
+   This is the negative-assertion pattern the invariant calls out — a
    `find` that must fail is the point, don't soften it into "don't check".
-2. For each row expected present (`Top Picks`, `Potential Picks`, `Likely
-   Issues`, `Needs Evaluation`, any of the six Diagnostics rows with a
-   nonzero count, `Selection`), compute ground truth via the review-queue's
-   real predicate. Read `ReviewQueue`'s predicate definitions (`grep -n
-   "case .picks\|case .potentialPicks\|case .likelyIssues\|case
-   .needsEvaluation\|case .rejects\|case .fiveStars\|case .needsKeywords\|
-   case .facesFound\|case .ocrFound\|case .providerFailures"
-   Sources/TeststripApp/AppModel.swift` or wherever `ReviewQueue` lives)
-   before writing the SQL — do not guess a predicate. For each row, assert
-   the rendered count text matches the query result, and separately assert
+2. For each of the 10 fixed-order rows, compute ground truth via
+   `SmartCollection.query`'s real predicates (`AppModel.swift:645-...` —
+   read the actual `SetQuery` for each case before writing SQL; do not
+   guess). For each row, assert the rendered count text matches the query
+   result, titled per `.presentation.title` (not the enum case name —
+   `needsEvaluation` renders as "Not analyzed yet"), and separately assert
    that any row whose query result is 0 does **not** render at all (find
    returns not-found, not a disabled button — the sidebar omits, never
    disables):
    ```bash
-   script/ax_drive.sh find --role AXButton --contains "Top Picks"
+   script/ax_drive.sh find --role AXButton --contains "Picks"
    ```
-3. Click a non-zero-count `.topPicks` or `.needsEyes` row (`Selection` is
-   simplest — select 1-2 assets in the grid first so its count is nonzero):
+3. Click a non-zero-count row (`Rejects` is simplest on `--smoke`, which
+   pre-flags some assets):
    ```bash
-   script/ax_drive.sh press --contains "Selection"
+   script/ax_drive.sh press --contains "Rejects"
    ```
-   Assert the grid/loupe scope narrows to exactly that source's asset set —
-   cross-check the visible/scoped asset ids against the same predicate used
-   for the count in step 2 (for `.selection`, the ids you selected).
-4. Confirm the (former) Diagnostics rows now render inline in the same
-   `"Cull From"` section, with no disclosure triangle to expand:
+   Assert the grid/loupe scope narrows to exactly that collection's asset
+   set — cross-check the visible/scoped asset ids against
+   `SmartCollection.rejects.query`'s predicate run directly against the DB.
+4. Force `Analysis Failures` into existence (`--smoke` seeds no provider
+   failures) and confirm it renders as the **tenth** row, after all other
+   nonzero rows and before `AI Suggestions`/any saved dynamic set:
    ```bash
-   script/ax_drive.sh find --role AXDisclosureTriangle --contains "Diagnostics"  # expect not-found
+   ASSET_ID=$(sqlite3 "$DB" "SELECT id FROM assets LIMIT 1;")
+   sqlite3 "$DB" "INSERT INTO evaluation_failures (asset_id, provider, message, failed_at, updated_at) VALUES ('$ASSET_ID', 'test-provider', 'synthetic failure', strftime('%s','now'), strftime('%s','now'));"
    ```
-   For whichever of the six rows has a nonzero count on this fixture, assert
-   it renders directly in the list (`Rejects`, `Five Stars` or whatever
-   `.fiveStars.presentation.title` actually renders as — read
-   `ReviewQueue.presentation` before asserting literal titles, `Needs
-   Keywords`, `Faces Found`, `OCR Found`, `Analysis Failures` — use the real
-   `.presentation.title` strings from source, not these English glosses).
-   If every diagnostics predicate is 0 on this fixture, assert none of the
-   six appear and note that as the honest untestable-without-fixture outcome
-   for the "row renders with a nonzero count" half of this assertion.
-5. Assert the stack list section (`"Stacks · Auto-Grouped"`) is **absent**
-   on `--smoke`, consistent with the no-persisted-stacks fact:
+   Relaunch or trigger a sidebar refresh, then select `Analysis Failures`
+   while in the Cull lens. Assert the app falls back to Grid and the Cull
+   lens switcher segment renders `.disabled` with AXHelp `"Nothing here is
+   cullable"`:
    ```bash
-   script/ax_drive.sh find --contains "Auto-Grouped"   # expect not-found
+   script/ax_drive.sh find --role AXButton --label "Cull" --help "Nothing here is cullable"
    ```
-   Note this as the honest "untestable on this fixture" outcome for the
-   decided-checkmark sub-assertion, rather than skipping the row silently.
-6. Force an all-empty state (e.g. a bare `--smoke` launch before any
-   evaluation/import work has populated any queue, if such a window exists,
-   or a scoped catalog with zero assets) and assert the section shows the
-   literal text `"Nothing to cull"` in place of any rows:
+5. **AI Suggestions ordering and presence.** With provider failures seeded
+   from step 4 (`AI Suggestions` still absent, no autopilot run yet),
+   confirm `Analysis Failures` renders but `AI Suggestions` does not. Then
+   run autopilot (or otherwise populate `autopilotGhostAssetIDs`) and assert
+   `AI Suggestions` now appears, positioned after `Analysis Failures` and
+   before any saved dynamic set:
    ```bash
-   script/ax_drive.sh find --contains "Nothing to cull"
+   script/ax_drive.sh find --contains "AI Suggestions"
    ```
-   If no reachable state makes every source simultaneously empty on this
-   fixture, note that as untestable-without-fixture rather than fabricating
-   one — the model-level unit tests (`testIsEmptyIsTrueOnlyWhenAllSources
-   AreZeroCount`, `CullSourcePresentationTests.swift`) already cover the
-   presentation-layer logic directly.
+6. **Saved dynamic sets join the section.** Save the current search as a
+   set via the section header's "+ New from search…" (creates an
+   `AssetSet` with `isDynamic == true`). Assert a new row for it appears in
+   the Smart Collections section (not the Sets section, which is
+   static-membership only), after the fixed 10 and `AI Suggestions`.
+7. **All-empty means the section is absent, not a message.** Note: on
+   `--smoke` this is expected untestable without a scoped/empty catalog, since
+   `--smoke` seeds enough flags/ratings that some of the 10 rows are always
+   nonzero. If a reachable state makes every source simultaneously
+   zero-count, confirm the whole `"Smart Collections"` header disappears
+   from the sidebar rather than rendering with an empty-state message —
+   the model-level unit tests already cover
+   `sections(...)`'s `if !smartRows.isEmpty` gate directly; document this
+   step's outcome (tested or untestable-on-this-fixture) rather than
+   fabricating a scoped catalog.
 
 ## Expected
-- Step 1: both rows absent. **Fails if** either renders with count 0 instead
-  of not rendering at all — that would contradict the "present only if
-  non-empty" reading of `cullSourcePresentation`.
-- Step 2: every present row's count matches its `ReviewQueue` predicate's
-  sqlite count, and any zero-count row is absent entirely (not disabled).
-  **Fails if** any row's count is off by even one, a nonzero row is missing,
-  or a zero-count row still renders (disabled or not).
-- Step 3: clicking narrows scope to exactly the source's set — same asset
-  ids, no more, no fewer. **Fails if** the click no-ops, or narrows to the
-  wrong set.
-- Step 4: no disclosure triangle exists; whichever Diagnostics rows have a
-  nonzero count render inline in `"Cull From"`, titled per the real
-  `ReviewQueue.presentation.title` strings. **Fails if** a disclosure
-  triangle still exists, a nonzero row is missing/extra, or titled something
-  not read from source.
-- Step 5: stack section absent on `--smoke`. Documented as
-  untestable-without-fixture for the decided-checkmark rendering itself —
-  **not** a pass/fail assertion pending a stack-bearing fixture (see
-  `cull-013-filmstrip.md`/`cull-014-stack-rail.md` for the shared gap).
-- Step 6: `"Nothing to cull"` renders iff every source is zero-count.
-  **Fails if** the text renders while any source has a nonzero count, or
-  fails to render when every source is confirmed zero-count.
+- Step 1: `AI Suggestions` absent. **Fails if** it renders with count 0
+  instead of not rendering at all.
+- Step 2: every present row's count matches its `SmartCollection.query`'s
+  sqlite count, titled per `.presentation.title` exactly (not the enum case
+  name), and any zero-count row is absent entirely. **Fails if** any row's
+  count is off by even one, a nonzero row is missing, mistitled, or a
+  zero-count row still renders (disabled or not).
+- Step 3: clicking narrows scope to exactly the collection's query result —
+  same asset ids, no more, no fewer. **Fails if** the click no-ops, or
+  narrows to the wrong set.
+- Step 4: `Analysis Failures` is the tenth row (last of the fixed order,
+  before `AI Suggestions`/sets); selecting it while in Cull falls back to
+  Grid with the documented AXHelp. **Fails if** the row appears out of
+  order, the fallback doesn't fire, or the AXHelp text is wrong.
+- Step 5: `AI Suggestions` presence tracks `autopilotGhostAssetIDs`
+  non-emptiness exactly, and it always renders after the fixed 10. **Fails
+  if** it appears with zero ghosts, or renders out of position.
+- Step 6: a saved dynamic set appears in Smart Collections, not Sets.
+  **Fails if** it's missing, duplicated, or lands in the wrong section.
 
 ## Cleanup
 ```bash
+sqlite3 "$DB" "DELETE FROM evaluation_failures WHERE provider = 'test-provider';"
 ./script/reset_isolated_test_data.sh --delete
 ```
 
 ## Sharp edges
-- **`ReviewQueue`'s exact predicates and `.presentation.title`/`.systemImage`
-  strings were not read in this pass** — `ReviewQueue` wasn't opened;
-  `grep -rn "enum ReviewQueue"` before writing the final SQL/AX-match
-  strings for steps 2 and 4. Do not invent title strings.
-- Step 3's "grid/loupe scope narrows" assertion depends on exactly what
-  `beginCullingSession(named:)`/`cullCurrentSelection()` actually change in
-  `model` (scope vs. an explicit asset-id filter vs. a query) — not
-  independently traced in this pass; read those functions before writing
-  the final ground-truth query, since "scope" here may not map cleanly onto
-  `CullScope`.
-- This card assumes `latestImportCompletionSummary` stays nil across a bare
-  `--smoke` launch (no import happened in-session) — if `--smoke`'s seeder
-  itself sets that summary as a side effect (not verified), step 1 would
-  need revision; the seeder writes directly to the catalog rather than
-  going through the app's import path, so this is believed safe but wasn't
-  independently traced through `AppModel`.
-- The stack-fixture gap (step 5) is identical to the one flagged in
-  `cull-013-filmstrip.md` and `cull-014-stack-rail.md` — all three cards
-  need the same real fix (a seed variant that produces either a
-  persisted `work-stack-` set or a tight-enough-in-time burst to
-  auto-group) before their stack-specific assertions can actually run.
+- `SmartCollection.query`'s exact predicates were read from source for this
+  revision (`AppModel.swift`, the `query` computed property immediately
+  below `presentation`) but the SQL translations for steps 2-3 should still
+  be dry-run against a scratch/seeded catalog before trusting a literal
+  count, per this task's own verification bar.
+- Step 4/5's stack-fixture-style gap does not apply here — `Analysis
+  Failures` and `AI Suggestions` are both directly seedable/forceable
+  without a stack fixture, unlike the old card's stack-list section (which
+  this rewrite drops entirely, since Stacks is not part of Smart
+  Collections — it is its own, Cull-only sidebar section; see
+  `app-019-lens-shell.md` Step 6 for that contract instead).
+- This card intentionally does not re-test the diagnostic-lens-fallback
+  mechanism in depth (AXHelp text, `LensRules.resolvedLens`'s general
+  shape) — `app-019-lens-shell.md` Step 7 already owns that; this card's
+  Step 4 only confirms it fires from a Smart Collections row specifically.
 
 ## Run status
-UNRUN — needs human-present execution per test/scenarios/README.md
-
-**Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: the
-`.autopilotProposals` group's presence predicate changed from
-`!pendingAutopilotProposals.isEmpty` to `!autopilotGhostAssetIDs.isEmpty` —
-`pendingAutopilotProposals` was deleted along with the `autopilot_proposals`
-table it queried. No step or Expected bullet needed a query rewrite (this
-card only ever asserts against the rendered AX text, never SQL, for this
-group). Supersedes prior status: card was already UNRUN, so there is no
-prior PASS to invalidate — this note exists for the record per the task's
-house style. Needs a fresh VM run.
+**Reconciled 2026-08-09 (Task 13, unified-shell scenario-card sweep)**:
+rewritten wholesale. `CullSidebarView`, `activateCullSource`,
+`cullSourcePresentation`, and `CullSourcePresentation` — everything this
+card previously cited — were deleted along with the Cull-lens-only sidebar;
+`grep -rn "CullSidebarView\|CullSourcePresentation" Sources/` finds nothing.
+The successor is `UnifiedSidebarPresentation`'s Smart Collections section,
+which this revision verified line-by-line against current source: the fixed
+10-item `smartCollectionOrder`, each title from `SmartCollection
+.presentation.title` (catching the `needsEvaluation` → "Not analyzed yet"
+title mismatch the old card's English glosses would have missed),
+`AI Suggestions`'s append-after-the-10 position and its
+`autopilotGhostCount > 0` gate, saved dynamic sets joining last, and the
+absence of any "Nothing to cull" string anywhere in `Sources/`. Dropped the
+former Diagnostics-disclosure-group content (already folded into the flat
+list in a prior task, now further folded into Smart Collections rather than
+a separate `.diagnostics` group) and the Stack-list section (moved to
+`app-019-lens-shell.md`'s scope, since Stacks is Cull-lens-only sidebar
+chrome, not a Smart Collection). Supersedes prior status: the entire prior
+revision describes a sidebar (`CullSidebarView`, Cull-lens-only, six source
+groups including `.recentImport`/`.selection`) that this push deleted along
+with the two-workspace shell — none of its predicates, row titles, or
+group structure describe current code. The 2026-08-06 SP-D0 note above (on
+`autopilotGhostAssetIDs` replacing `pendingAutopilotProposals`) remains
+historically accurate but describes a predicate on a type that no longer
+exists either. Needs a fresh VM run.

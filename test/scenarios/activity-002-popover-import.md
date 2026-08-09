@@ -55,6 +55,37 @@ skips silently) is not yet proven producible headlessly; document what's
 actually achievable during the live run rather than forcing a fixture that
 doesn't reflect a real failure mode.
 
+**The unified-shell push added a durable receipt this card must also cover.**
+With the post-import completion banner deleted, the Activity popover's
+`receiptsSection` (`Sources/TeststripApp/ActivityCenterView.swift:270-296`) —
+rendering `ActivityCenterPresentation.receipts: [ImportReceiptRow]`
+(`ActivityCenterPresentation.swift:162`) under the header **"Recent Imports"**
+— is now the sole durable, always-reachable record of a completed import
+inside the Activity popover (the toast that briefly shows on completion
+fades after ~10s and never resurrects on relaunch; see
+`import-011-completion-toast-and-import-rows.md`). `ImportReceiptRow.rows
+(from:limit:)` (`ImportCompletionToastPresentation.swift:99-113`) keeps at
+most `ImportReceiptRow.retentionLimit == 5` receipts (`:79`) — older imports
+stay reachable through the sidebar's Imports section instead, which is
+unbounded. Each receipt row shows its title (the import's own detail text,
+or "Import complete" if that's empty), a skipped-file-count caption when
+nonzero, and — only when `canStartCulling` (`activity.completedUnitCount >
+0`) — a **"Start culling"** link button
+(`ActivityCenterView.swift:287-292`) that calls `model.startCullingImport
+(sessionID:title:)`.
+
+**Invariant: receipts never change the badge.** The Activity icon's badge
+(`ActivityCenterPresentation.badge`) counts problems only — a receipt,
+however many files it skipped, never contributes to it. This is a spec
+invariant with a dedicated unit test,
+`ActivityCenterPresentationTests.testAReceiptWithSkippedFilesNeverBadges`
+(`Tests/TeststripAppTests/ActivityCenterPresentationTests.swift:230-251`,
+literally asserting `presentation.badge == .none, "receipts never badge —
+the badge counts problems only"` even when a receipt's `detail` reads "2
+files skipped"). This card's Part C below drives that invariant live,
+matching what the unit test already guarantees at the presentation-object
+level.
+
 ## Steps
 
 ### Part A — live progress + status + cancel, as the .ingest kind row
@@ -136,6 +167,50 @@ doesn't reflect a real failure mode.
    this card was written to catch, and per source reading it appears to be
    the actual current behavior (see Sharp edges).
 
+### Part C — the "Recent Imports" receipt (the sole durable record)
+9. With the same completed-with-skips import from Part B still the most
+   recent, open the Activity popover and assert the receipt renders under
+   the header **"Recent Imports"**:
+   ```bash
+   script/ax_drive.sh press --role AXButton --help "Activity"
+   script/ax_drive.sh find --contains "Recent Imports"
+   ```
+   Assert its caption reads the skipped-file count text
+   (`"N files skipped"`/`"1 file skipped"`, singular/plural per
+   `ImportReceiptRow.rows(from:limit:)`) and it carries a **"Start culling"**
+   link button (`canStartCulling` is true whenever the import actually
+   catalogued something):
+   ```bash
+   script/ax_drive.sh find --role AXButton --label "Start culling"
+   ```
+10. **Retention limit of 5.** Run five more completed imports (any tiny
+    fixture; six total including Part B's). Reopen the popover and count the
+    receipt rows: assert exactly 5 render, the oldest of the six dropped
+    (`ImportReceiptRow.retentionLimit == 5`,
+    `ImportCompletionToastPresentation.swift:79`). Cross-check the dropped
+    import is still reachable via the sidebar's Imports section (unbounded),
+    just not in this popover.
+11. **Receipts never badge.** With the skipped-files receipt from step 9
+    still present (and no unrelated problem sources active), assert the
+    Activity toolbar button's AXHelp reads exactly **"Activity"**, not
+    **"Activity - 1 problem"**/**"Activity - N problems"**
+    (`activityToolbarHelp`, `LibraryGridView.swift:485-489`, whose count
+    comes only from `presentation.badge`'s `.problems(count)` case —
+    `ActivityCenterPresentation.badge` is built from `sources`/
+    `xmpConflicts`, never from `receipts`):
+    ```bash
+    script/ax_drive.sh find --role AXButton --help "Activity"
+    script/ax_drive.sh find --role AXButton --help "Activity - 1 problem"   # expect not-found
+    ```
+    A receipt with skipped files must never flip the AXHelp into the
+    problem-count phrasing — that would mean the badge is (wrongly) counting
+    receipts. This is the live counterpart of
+    `testAReceiptWithSkippedFilesNeverBadges`
+    (`Tests/TeststripAppTests/ActivityCenterPresentationTests.swift:230-251`);
+    if this step disagrees with that unit test's guarantee, that is a
+    wiring bug between `AppModel` and `ActivityCenterPresentation`, not a
+    card error — flag it loudly rather than adjusting the assertion to fit.
+
 ## Expected
 - Step 3: **fails if** the status label doesn't read exactly `"Running"`
   while running, or more than one row renders for a single in-flight import.
@@ -149,6 +224,16 @@ doesn't reflect a real failure mode.
   surface this reading missed renders it), record that and correct this
   card's Sharp edges rather than treating the mismatch as a pass/fail
   ambiguity.
+- Step 9: **fails if** "Recent Imports" is missing, its skipped-count
+  caption is wrong, or "Start culling" is absent despite the import having
+  catalogued something.
+- Step 10: **fails if** more or fewer than 5 receipts render after 6
+  completed imports, or if the dropped import is no longer reachable via
+  the sidebar's Imports section.
+- Step 11: **fails if** the Activity button's AXHelp ever reads a problem
+  count while only a receipt (no real problem source) is present — that
+  would mean `ActivityCenterPresentation.badge` started counting receipts,
+  contradicting `testAReceiptWithSkippedFilesNeverBadges`.
 
 ## Cleanup
 ```bash
@@ -217,3 +302,29 @@ isolated-console re-run; not run live this session (markdown-only
 reconciliation pass, no VM available). Schema per
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift` (`version = 19`,
 re-verified unchanged on this branch on 2026-07-13).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell scenario-card sweep)**:
+strengthened per the task brief — with the post-import completion banner
+deleted by this push, this card's `receiptsSection`/"Recent Imports" content
+(new Part C, steps 9-11) is now the **only** scenario-card coverage of a
+completed import's durable record inside the Activity popover. Added: the
+"Recent Imports" header and its per-receipt "Start culling" action
+(`ActivityCenterView.swift:270-296`, `ImportReceiptRow`,
+`ImportCompletionToastPresentation.swift:77-113`), the 5-receipt retention
+limit (`ImportReceiptRow.retentionLimit`, `:79`) and its oldest-drops-first
+behavior, and the receipts-never-badge invariant — verified against
+`ActivityCenterPresentation.init`'s actual badge computation
+(`ActivityCenterPresentation.swift:180-181`: `problemCount = xmpConflicts
+.count + unavailableSourceCount + providerFailureCount`, `receipts` plays no
+role at all) and its dedicated unit test,
+`testAReceiptWithSkippedFilesNeverBadges`
+(`Tests/TeststripAppTests/ActivityCenterPresentationTests.swift:230-251`).
+Nothing in Parts A/B needed a substantive rewrite: the per-kind-lanes
+rendering, `CullingKeyCaptureGate`-unrelated cancel/status mechanics, and
+the completed-with-errors surfacing gap this card already flagged are all
+untouched by the unified-shell push. Supersedes prior status: the
+2026-07-13 reconciliation above never claimed to cover a durable-receipt
+surface, because the toast/receipt split didn't exist yet at that revision
+— it is not wrong, just incomplete for what this card now needs to gate.
+Needs a fresh VM/human-present run for both the pre-existing Part A/B legs
+and the new Part C steps.

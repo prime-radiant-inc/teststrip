@@ -15,11 +15,11 @@ depends on scroll position for AX presence). ⌥⌘1-3
 **scroll** the `ScrollViewReader` to a section's anchor
 (`InspectorView.swift:586-590`) rather than switching a picker-bound
 selection; there is no more "selected tab" state to query. And
-`WorkspaceChromePolicy.showsInspector` is unconditionally `true`
-(`LibraryGridView.swift:7830-7834`) — Cull now shows the inspector directly,
-so `toggleInspector()` (`AppModel.swift:4447-4451`) is a bare
-`isInspectorVisible.toggle()` with no workspace-switching side effect at
-all. This revision rewrites the tab-switching steps into section-scroll
+`LensChromePolicy.showsInspector` (renamed from `WorkspaceChromePolicy` by
+the later unified-shell push; same unconditional `true`,
+`LibraryGridView.swift:8291-8293`) — Cull now shows the inspector directly,
+so `toggleInspector()` (`AppModel.swift:4766-4768`) is a bare
+`isInspectorVisible.toggle()` with no lens-switching side effect at all. This revision rewrites the tab-switching steps into section-scroll
 steps, drops the segmented-Picker- and Cull-tab-select-without-visibility-
 specific assertions (items 7-9 and 12 of the prior draft), and keeps the
 still-valid legs: ⌘I open/close, the no-selection empty state, and the
@@ -29,7 +29,7 @@ removing, box overlay) is **not** duplicated here — that's
 inspector's own entry/exit chrome and section-scroll mechanism.
 
 **What this covers**: the inspector's entry/exit chrome — ⌘I toggling the
-panel in every workspace including Cull (no more auto-switch-to-Library),
+panel in every lens including Cull (no more auto-switch-to-Library),
 ⌥⌘1-3 scrolling to the Info/Describe/AI sections (`InspectorTab.keyEquivalent`,
 `InspectorView.swift:470-476`: "1"/"2"/"3"), the
 `InspectorTabPresentation.elementsByTab` mapping still correctly assigning
@@ -47,14 +47,20 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
 ```
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘1 (Cull) if not
-   already there (Cull is the default workspace on a fresh launch;
-   `Workspace.keyEquivalent` — `AppModel.swift:73-78` — is ⌘1 Cull/⌘2
-   Library/⌘3 People; the prior draft of this card had this backwards).
+1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘1 to select the Cull
+   lens (`LibraryLens.keyEquivalent`, `Sources/TeststripApp/LibraryLens.swift:
+   46-55` — ⌘1 Cull/⌘2 Grid/⌘3 Loupe/⌘4 Timeline/⌘5 Map/⌘6 People). **Do not
+   assume Cull is already active on a fresh launch**: `AppModel.load(catalog:...)`
+   constructs the model with `selectedView: .grid` unconditionally
+   (`AppModel.swift:4431`), and `restoreSessionStateIfAvailable()` only
+   changes that if a prior session's `SessionRestoreState` exists — on a
+   genuinely fresh `--smoke`/`--isolated` launch (no saved state), the
+   lens actually active at first paint is **Grid**, not Cull. Press ⌘1
+   explicitly rather than trusting the launch default either way.
 2. Press ⌘I. Assert the inspector panel becomes visible **while staying in
    Cull** — assert a Cull-only control (e.g. the stack rail) is still
    present alongside the now-visible inspector column. **Fails if** the
-   workspace changes at all; the old Library-switch special case must not
+   lens changes at all; the old Library-switch special case must not
    resurface.
 3. Press ⌘I again. Assert the inspector panel closes (still in Cull).
 4. Press ⌘I a third time. Assert it opens again, still in Cull.
@@ -88,13 +94,13 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
    ⌥⌘1 (scroll to Info); capture again and confirm Info's content is back
    near the top. Press ⌥⌘2 (Describe); confirm Describe's keyword field is
    now near the top.
-9. **⌥⌘1-3 opens the inspector if it's currently closed, in every
-   workspace including Cull.** Press ⌘I to close the inspector, then ⌘1 to
+9. **⌥⌘1-3 opens the inspector if it's currently closed, in every lens
+   including Cull.** Press ⌘I to close the inspector, then ⌘1 to
    return to Cull. With the inspector hidden and in Cull, press ⌥⌘2.
    Assert the inspector becomes visible (still in Cull) and scrolled to
-   Describe — `scrollInspector(to:)` (`AppModel.swift:4456-4462`) sets
-   `isInspectorVisible = true` whenever `WorkspaceChromePolicy.showsInspector`
-   allows it, which is now every workspace. This is the direct replacement
+   Describe — `scrollInspector(to:)` (`AppModel.swift:4773-4779`) sets
+   `isInspectorVisible = true` whenever `LensChromePolicy.showsInspector`
+   allows it, which is now every lens. This is the direct replacement
    for the prior draft's item 12 ("tab-select-without-visibility in Cull"),
    which no longer applies now that Cull always shows the inspector.
 10. **Fixed width.** Capture the inspector panel's frame
@@ -106,11 +112,11 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
     unaffected by the tabs-to-stack change.
 
 ## Expected
-- Step 2: inspector becomes visible, workspace stays Cull. **Fails if** any
-  workspace switch happens (would mean the removed special case came back)
+- Step 2: inspector becomes visible, lens stays Cull. **Fails if** any
+  lens switch happens (would mean the removed special case came back)
   or the panel stays hidden.
 - Step 3-4: toggling is a pure show/hide. **Fails if** repeated ⌘I mutates
-  the workspace or scroll position.
+  the lens or scroll position.
 - Step 5: "No selection" text visible with no asset selected. **Fails if**
   stale content from a prior selection lingers.
 - Step 6: all four headers present without scrolling. **Fails if** any is
@@ -161,3 +167,31 @@ The LEDGER's prior "Tested-Pass" status for this card ("PASS; width/no-
 selection legs unmeasurable in VM") covers the *old* tabbed-Picker UX only
 and must not be read as covering this revision; needs a fresh
 human-present/VM execution per `test/scenarios/README.md`.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell scenario-card sweep)**:
+⌥⌘1/⌥⌘2/⌥⌘3 themselves are unchanged by the unified-shell push —
+`InspectorCommands`/`InspectorTab.keyEquivalent` (`main.swift:586-607`,
+`InspectorView.swift:470-476`) still bind them to the Info/Describe/AI
+scroll-to-section actions this card's 2026-07-13 revision already
+documents. What changed is what now sits directly *above* them: ⌘1-⌘3 were
+the deleted `Workspace` shortcuts (Cull/Library/People) and are now three of
+the six `LibraryLens` shortcuts (Cull/Grid/Loupe) — the modifier is the only
+thing keeping the two sets from colliding, unchanged in kind from before
+this push, just a different enum underneath ⌘1-⌘3. This card's own
+2026-07-13 preamble (documenting the tabs-to-stack rewrite) is the
+precedent this note follows: state what changed, state what didn't, and
+don't re-litigate the parts that still hold. Also corrected Step 1, which
+cited the deleted `Workspace.keyEquivalent` and wrongly asserted Cull is
+the default lens on a fresh launch — `AppModel.load(catalog:...)`
+constructs with `selectedView: .grid` unconditionally
+(`AppModel.swift:4431`); Grid, not Cull, is what a truly fresh
+`--smoke`/`--isolated` launch shows before this card's Step 1 explicitly
+presses ⌘1. Supersedes prior status: the 2026-07-13 revision's Step 1 asserted Cull as
+the launch default without citing `AppModel.load`'s actual constructor call
+— reading it now (this pass, on this branch) shows `selectedView: .grid`
+unconditionally; whether that was already true in 2026-07-13's tree wasn't
+re-derived here, only that the claim doesn't hold today, which is enough to
+correct it. Everything else in the 2026-07-13 reconciliation (the stacked-sections
+inspector, ⌥⌘1-3 as scroll-not-select, the Cull-shows-inspector-directly
+fix) is unaffected by this push and remains valid evidence pending a fresh
+run. Needs a fresh VM run.
