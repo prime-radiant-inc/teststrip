@@ -304,3 +304,109 @@ than the actual keyboardShortcut-binding block and disagreed with each
 other — tightened both to `:168-174`, the `ForEach`/`.keyboardShortcut`
 block itself. No step or assertion changed, only citations. Steps
 themselves not re-verified live.
+
+**PASS (11 of 12 steps) — live VM run 2026-08-09**, `feat/unified-shell` @
+`8f598239`, `script/vm_scenario_run.sh launch smoke` in the `teststrip-e2e`
+Tart VM. Steps 1-5 and 7-12 run and passed; Step 6 ran in part (see below);
+Step 13 is a documentation note, not an assertion, and was not driven beyond
+confirming the View menu carries all six lens items.
+
+What passed, with the evidence:
+- **Step 2** — the toolbar's principal slot holds `AXGroup desc="Lens"` with
+  exactly six `AXButton`s in order `Cull, Grid, Loupe, Timeline, Map, People`,
+  each carrying `value="Selected"/"Not selected"`.
+- **Step 3** — neither deleted control is reachable: `--role AXRadioButton
+  --label Workspace` and `--contains "Library View"` both not-found.
+- **Step 4** — ⌘1→`Teststrip – Loupe` (the documented Cull-default-sub-mode
+  collision), ⌘2→`Grid`, ⌘3→`Loupe`, ⌘4→`Timeline`, ⌘5→`Map`, ⌘6→`People`.
+  The scope line held `"All Photos, 24 photos"` across all six, and the
+  switcher's `value="Selected"` tracked the pressed lens every time.
+- **Step 5** — with `5 Stars` selected, the scope line's source title stayed
+  `5 Stars, 4 photos` across all six presses. (Detail-only note, not a
+  failure: the Cull lens renders the scope line without the `· Rating >= 5`
+  filter-chip suffix the other five show. The *source title* — what this step
+  asserts — is unchanged.)
+- **Step 7** — hand-seeded `evaluation_failures` row surfaced an `Analysis
+  Failures` sidebar row; selecting it from the Cull lens fell back to Grid
+  (`AXWindow title="Teststrip – Grid"`, `Grid value="Selected"`) and the Cull
+  segment rendered `AXButton desc="Cull" value="Not selected" help="Nothing
+  here is cullable" enabled=false` — exact-match on the specified help text.
+- **Step 8** — `find --label "Cull these"` matched; `find --label "Cull These"`
+  (capital T) did **not** match anywhere on the canvas, so the driver's
+  matching is genuinely case-sensitive. Pressing it entered the Cull lens with
+  scope `Rating >= 5, 4 photos · ✓ 0 · ✕ 1 · 3 left` (the chip text, per
+  `cullTheseSourceTitle()`), and the catalog gained
+  `culling|Rating >= 5|running`.
+- **Step 9** — both directions. Quit from Timeline → relaunch restored
+  `Teststrip – Timeline` on the same source. Quit from Cull → relaunch came
+  back on `Teststrip – Grid`, same source, per `isRestorableLens`.
+- **Step 10** — with a hand-made 2-photo static set `ScopeProbeSet` selected
+  (catalog total 24): Map read `"2 photos" / "0 locations · 0 geotagged"`,
+  Timeline read `"2 photos across 1 day"` and `"2 photos - 1 year"`, People
+  read `"0 people · 2 photos"`. All three count the set, not the catalog.
+- **Step 11** — reopening the culling session from Recent Work while in Grid
+  left the lens on Grid (`Grid value="Selected"`), scope
+  `Rating >= 5, 4 photos · Session: 1E5E…`. The old force-the-loupe behaviour
+  is gone.
+- **Step 12** — behaviour correct in both directions: the Smart Collections
+  "+" opens the `New Smart Collection` popover and does **not** show the
+  `"Select photos, then save them as a set"` hint; the Sets "+" **does** show
+  it. Verified twice, including with both headers exercised in the same
+  no-selection state.
+
+Two corrections the live run found in this card's own driving instructions
+(the app is right; the assertions were stale):
+- **Step 12's matchers are wrong.** The add buttons are *not* reachable as
+  `--role AXButton --label "New from search"` / `"New Set from Selection"` —
+  both come back not-found. SwiftUI folds each section header's
+  `HStack { Text; Button }` into one combined element, so what the tree
+  actually vends is `AXHeading desc="Smart Collections" help="New from
+  search…"` and `AXHeading desc="Sets" help="New Set from Selection…"`; the
+  button's `accessibilityLabel` is discarded and its `.help` lands on the
+  heading. Drive them with `press --help "New from search…"` /
+  `press --help "New Set from Selection…"` (note the U+2026 ellipsis, which
+  the `.help(…)` strings carry but the accessibility labels do not).
+- **Step 12's "with no selection" precondition needs manufacturing on
+  `--smoke`.** `canSaveSelectedAssetAsManualSet` falls back to
+  `selectedAssetID` (`AppModel.swift:4669-4675`), which is non-nil on any
+  non-empty source, so the Sets "+" opens `Save Selection` rather than the
+  hint. Reaching the hint branch needs a zero-result scope; this run used the
+  search `zzzznotfound` on top of `5 Stars`.
+
+Not verified, and why:
+- **Step 6's Stacks positive half — NOT RUN, no fixture.** The negative half
+  passed (`Auto-Grouped` absent in all six lenses) and the non-Stacks sections
+  were byte-identical across all six (`Library`, `Smart Collections`, `Sets`,
+  `Folders`, `Selection`, plus `Imports`/`Recent Work` when populated) — but
+  with `--smoke` carrying no stacks, "absent outside Cull" is trivially true
+  and proves little. The positive half is **not reachable by hand-seeding**:
+  `cullingStackListEntries()` needs `selectedAssetSetID` to sit inside an
+  active culling session whose `inputSetIDs` carry the `work-stack-` prefix
+  (`AppModel.swift:6960-6983`, `:12535-12558`), and
+  `visibleSavedAssetSets` explicitly filters `work-stack-` sets out of the
+  Sets section (`UnifiedSidebarPresentation.swift:116`), so no UI gesture can
+  select one. The right fixture is the **`burst` seed variant** (four
+  auto-groupable stacks); it was not synced to this VM and syncing it needs a
+  host build, which this run was scoped out of. This half stays open.
+- **Whether `.help` renders a *visible tooltip* on a `.disabled()` plain-style
+  Button — NOT VERIFIED, method could not discriminate.** The disabled state
+  itself is proven (`enabled=false` + exact `AXHelp`, Step 7 above, and again
+  as `help="No photos to cull"` on an empty result set). For the rendered
+  tooltip, the cursor was warped onto the control with mouse-moved events and
+  held still for 4-8s, then the screen captured: no tooltip. But the **control
+  experiment failed too** — an *enabled* lens button (`Timeline`, same `.help`
+  mechanism) hovered the same way for 6s with the cursor verifiably on it
+  (`NSEvent.mouseLocation` (602.5, 711) on a 1024x768 screen; cursor visible
+  over "Timeline" in a `screencapture -C`) also produced no tooltip and no
+  hover highlight. Synthetic hover does not drive AppKit's tooltip timer in
+  this headless VM session, so the absent tooltip on the disabled button is
+  not attributable to its being disabled. Needs a human-eye check or a
+  different mechanism.
+
+Environment notes: the **Sparkle updater modal fired on the first launch**
+(kata #20) with `Install Update` / `Remind Me Later` / `Skip This Version`
+buttons in the tree. It did **not** wedge the AX tree — the window subtree
+stayed fully drivable — and was dismissed with `press --role AXButton --label
+"Remind Me Later"`. Subsequent launches were suppressed for the rest of the
+session with `defaults write com.teststrip.app SUEnableAutomaticChecks -bool
+NO` in the VM; no further modal appeared. No idle-wedge occurred.

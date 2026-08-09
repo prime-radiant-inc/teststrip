@@ -375,3 +375,169 @@ that prefix — the file actually lives at
 citation in this card's Source section was spot-checked directly against
 source during this pass and found exact. No step or assertion changed.
 Steps themselves not re-verified live.
+
+**FAIL — two product defects; live VM run 2026-08-09**, `feat/unified-shell`
+@ `8f598239`, `script/vm_scenario_run.sh launch empty` in the `teststrip-e2e`
+Tart VM. **8 of 12 steps run**: Steps 1-6 and 10-12 run; **Steps 7, 8 and 9
+NOT RUN — blocked by defect 1 below**, which makes the import row's children
+unreachable through the UI at all.
+
+Fixture substitution (recorded because it changes the numbers, not the
+semantics): `swift run TeststripBench seed-dup-fixtures` needs a host build,
+which this run was scoped out of, so CARD1/CARD2 were built on the VM from the
+already-synced `sample-data/photos/faces` JPEGs with plain `cp` — CARD1 = 4
+distinct JPEGs + `notes.txt` + `readme.md`, CARD2 = the same 4 byte-identical
++ 2 brand-new. That is exactly the card's N=4 / M=2 shape.
+
+### Defect 1 (product) — the import row can never be expanded; its children are dead UI
+
+The disclosure chevron never renders, so `Stacks / ⚠ Skipped files / ⚠ Preview
+failed / ⚠ Likely issues / Faces found` are unreachable. It is a
+chicken-and-egg deadlock in the model, not a rendering glitch:
+
+- `importSectionRows` sets `disclosure: counts.isEmpty ? .none : …`
+  (`UnifiedSidebarPresentation.swift:271`).
+- `counts` comes from `importChildCountsBySessionID`, which is only ever
+  written for session IDs already present in `expandedImportSessionIDs` —
+  inside `toggleSidebarExpansion`'s expand branch (`AppModel.swift:4731-4733`)
+  and in `refreshCatalogSidebarCounts`'s `for sessionID in
+  expandedImportSessionIDs` loop (`:13093-13095`). Those are the only two
+  writers (`grep expandedImportSessionIDs Sources/TeststripApp/*.swift`).
+- `expandedImportSessionIDs` starts empty and is only ever inserted into by
+  `toggleSidebarExpansion`, which is reachable **only** from
+  `disclosureControl`'s Button — which is not rendered, because `disclosure`
+  is `.none`, because the counts were never computed.
+
+So a never-expanded import row always reports all-zero counts, always gets
+`.none`, and can never be expanded.
+
+Live evidence, CARD1's import (4 photos, 2 skipped, faces detected):
+```
+# catalog says the children should be non-empty
+sqlite> SELECT issues_json FROM work_sessions WHERE kind='ingest';
+[{"kind":"skippedSourceFile","message":"file type not supported","sourceURL":"file:///Users/admin/import011-fixtures/card1/notes.txt"},
+ {"kind":"skippedSourceFile","message":"file type not supported","sourceURL":"file:///Users/admin/import011-fixtures/card1/readme.md"}]
+sqlite> SELECT COUNT(*) FROM work_sessions, json_each(work_sessions.issues_json)
+        WHERE kind='ingest' AND json_extract(value,'$.kind')='skippedSourceFile';
+2
+sqlite> SELECT COUNT(DISTINCT asset_id) FROM face_observations;
+4                      -- and the sidebar's own "Faces Found" row reads 4
+```
+so `importChildCounts` would return `skippedFiles: 2, facesFound: 4` — clearly
+non-empty. What the tree actually vends is a leaf:
+```
+AXRow
+  AXCell enabled=true
+    AXButton desc="Aug 9 · Imported 4 photos from card1 (2 files skipped)" value="4" enabled=true
+```
+No `Expand …` / `Collapse …` element, no child rows. A `screencapture` of the
+sidebar confirms it visually: the import row has an icon, title and count
+badge, and no disclosure triangle — its leading edge aligns exactly with
+`All Photos`, which has no disclosure either. Coordinate clicks at four
+offsets across the row's leading gutter (dx −6/−10/−16/−20 from the row
+button's frame origin) changed nothing, as expected: there is no control
+there to hit.
+
+Consequence for this card: **Step 7 (children and their counts), Step 8
+(zero-count child absent) and Step 9 (skipped-files child opens the
+issue-review sheet; Cull disabled for that diagnostic source) could not be
+run at all.** They are blocked, not passed and not failed.
+
+### Defect 2 (product) — the existing-only toast headline is unreachable
+
+Step 11's asserted string `"No new photos imported — N already in catalog"`
+never renders. The second, genuinely-identical CARD2 import produced:
+```
+AXGroup AXDescription="Import complete" enabled=true
+  AXImage AXDescription="Selected" enabled=true
+  AXStaticText AXValue="No photos imported" enabled=true
+  AXButton AXDescription="Dismiss import toast" AXHelp="Dismiss" enabled=true
+```
+i.e. the zero-photo string (`ImportCompletionToastPresentation.swift:65`),
+which this card explicitly warns must not be conflated with the existing-only
+string at `:67-68`.
+
+Root cause: `isExistingOnly` is `newPhotoCount == 0 && existingPhotoCount > 0`
+(`:47`), and `existingPhotoCount` is derived as
+`max(importedPhotoCount - newPhotoCount, 0)` where
+`importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount`
+and `newPhotoCount = activity.completedUnitCount`
+(`AppModel.swift:3367-3376`). On every ingest session the catalog writes
+`total_unit_count == completed_unit_count`, so `existingPhotoCount` is
+**always 0** and `isExistingOnly` is **always false** — the branch is dead:
+```
+sqlite> SELECT detail, completed_unit_count, total_unit_count
+        FROM work_sessions WHERE kind='ingest' ORDER BY created_at;
+Imported 4 photos from card1 (2 files skipped)|4|4
+Imported 2 photos (4 photos already in catalog) from card2|2|2
+No supported photos found in card2|0|0
+```
+Note the third row: the session's own `detail` for the all-duplicate re-import
+reads `"No supported photos found in card2"`, which is also wrong — six
+supported photos were found, all already catalogued. The dedup count that the
+second row *does* carry correctly ("4 photos already in catalog") comes from
+the detail string, not from `existingPhotoCount`, which is 0 there too.
+
+The other half of Step 11 **passed**: the existing-only toast carried **no**
+`Start culling` button, correct for `showsStartCulling = !isExistingOnly &&
+summary.newPhotoCount > 0` with `newPhotoCount == 0`.
+
+### What passed
+
+- **Step 1-2** — CARD1 imported through the typed-path sheet; the toast
+  appeared as `AXGroup AXDescription="Import complete"` containing
+  `AXStaticText AXValue="Imported 4 photos"`, `AXStaticText AXValue="2 files
+  skipped"` (exact), `AXButton AXDescription="Start culling"`, and a
+  `Dismiss import toast` button.
+- **Step 3** — no banner chrome. A full-canvas snapshot taken while the toast
+  was up contains zero occurrences of `Review imported frames` and zero of
+  `Cull stacks`.
+- **Step 4** — the toast auto-faded after **10.2s** (watcher timestamps
+  `APPEAR t=27.6s` → `GONE t=37.9s`), matching `visibleDuration = 10`. The
+  bell then held `Recent Imports` / `Imported 4 photos from card1 (2 files
+  skipped)` / `2 files skipped` / `Start culling`.
+- **Step 5** — same-session non-resurrection holds. Under a continuous
+  watcher: lens switch (⌘4 then ⌘2), source switch (import row → All Photos),
+  and minimize/restore. Result `NEVER-APPEARED within 75.0s`.
+- **Step 6** — relaunch non-resurrection holds. After ⌘Q and a relaunch
+  against the same isolated dir, a 45s watch returned `NEVER-APPEARED`, while
+  the Imports row (`Aug 9 · Imported 4 photos from card1 (2 files skipped)`)
+  and the bell receipt (`Recent Imports`, `2 files skipped`, `Start culling`)
+  both survived.
+- **Step 10** — the context menu opened via `press --contains … --button
+  right` and the `Cull stacks` fallback fired as the card allows: zero
+  `work-stack-%` sets, and instead a plain culling session over the import
+  (`culling|Aug 9 · Imported 4 photos from card1 (2 files skipped)|running`
+  with a single `work-input-…` set of 4 photos, Cull lens in loupe reading
+  `✓ 0 · ✕ 0 · 4 left`). Correct per `beginStackCulling`'s no-stacks guard
+  (`AppModel.swift:5007-5011`) for a fixture with no time-adjacent frames.
+- **Step 12** — culling the **older** import scoped correctly. CARD1's row
+  selected as source, `Cull these` pressed; the run's `work-input-…` set holds
+  exactly CARD1's 4 originals and **0** CARD2-only frames.
+
+### Corrections this run found in the card (app is right, assertions stale)
+
+- **Step 4's bell assertion has the wrong role.** The receipt's
+  `Start culling` vends as `AXLink`, not `AXButton`:
+  `find --role AXButton --label "Start culling"` → not-found;
+  `find --role AXLink --label "Start culling"` → found. (The toast's own
+  `Start culling` *is* an `AXButton` — only the bell receipt's differs.)
+- **Step 10's "exactly three items" is wrong.** The menu vends four:
+  `Star Work`, `Cull stacks`, `Evaluate import`, `Manual Compare over the
+  import`. `Star Work` is deliberate — `sidebarContextMenu`'s
+  `canToggleWorkSessionStarred` branch sits at `AppModel.swift:5171-5178`,
+  immediately above the import verbs; the card's cited range (`:5184-5199`)
+  simply started below it. The correct assertion is "a star toggle
+  (`Star Work`/`Remove Star`) plus the three import verbs, and nothing else".
+- **Step 12's discriminator SQL is malformed.** `json_each` over
+  `.snapshot._0` yields JSON *objects* (`{"rawValue":"…"}`), so `a.id =
+  m.value` never joins and the query returns 0 for the wrong reason. The
+  working form, used for the result above, is
+  `a.id = json_extract(m.value,'$.rawValue')`. Worth fixing before the
+  count-must-be-0 assertion is trusted, since the broken form passes
+  vacuously.
+
+Environment: no Sparkle modal on this card's launches (suppressed in the VM
+via `defaults write com.teststrip.app SUEnableAutomaticChecks -bool NO` after
+it fired once during `app-019`), and no idle-wedge. Nothing here is
+environment-blocked.
