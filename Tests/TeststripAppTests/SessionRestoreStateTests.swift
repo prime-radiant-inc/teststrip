@@ -118,15 +118,20 @@ final class SessionRestoreStateTests: XCTestCase {
 
     // No back-compat: a v1 blob is discarded rather than migrated, so the
     // app cold-starts on All Photos in Grid instead of restoring a shape that
-    // no longer exists.
+    // no longer exists. The blob is otherwise fully v2-shaped (every v2 key
+    // present and decodable) so it is the version guard alone, not a missing
+    // `lens`/`source` key, that rejects it — see testStoreLoadReturnsNilForVersionMismatch,
+    // which pairs with this one to cover both edges of the guard.
     func testAVersionOneBlobIsDiscarded() throws {
         let defaults = try makeIsolatedDefaults()
         let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-v1", isDirectory: true)
-        let key = SessionRestoreStore.key(forCatalogRoot: catalogRoot)
-        let legacy = #"{"version":1,"selectedView":"grid","sortOption":"importOrder","librarySearchText":""}"#
-        defaults.set(Data(legacy.utf8), forKey: key)
+        let store = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot)
+        var legacyVersionedState = Self.minimalState(lens: .grid, searchText: "")
+        legacyVersionedState.version = 1
+        let data = try JSONEncoder().encode(legacyVersionedState)
+        defaults.set(data, forKey: SessionRestoreStore.key(forCatalogRoot: catalogRoot))
 
-        XCTAssertNil(SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot).load())
+        XCTAssertNil(store.load())
     }
 
     private static func minimalState(lens: LibraryLens, source: LibrarySource = .allPhotos, searchText: String) -> SessionRestoreState {

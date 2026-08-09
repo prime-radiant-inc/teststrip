@@ -123,6 +123,45 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.activeLibraryFilterChips, ["Pick"])
         XCTAssertEqual(modelB.assets.map(\.id), [pick.id])
         XCTAssertEqual(modelB.totalAssetCount, 1)
+        // The persisted source has to name the scope the chips/assets above
+        // actually belong to — otherwise the scope line would say "All
+        // Photos" while the grid shows the Picks smart collection.
+        XCTAssertEqual(modelB.selectedSource, LibrarySource.smartCollection(.picks))
+    }
+
+    // The inverse of testRestoresSmartCollectionScope: widening back out of a
+    // scope (removing its only filter chip) has to persist just as faithfully
+    // as narrowing into one. `applySource`/`applySmartCollection` write the
+    // filter properties first and `selectedSource` last with no save after
+    // it; `removeActiveLibraryFilter` resets `selectedSource` to `.allPhotos`
+    // only after `reload()` has already saved the cleared filters under the
+    // stale scope. A relaunch must show all photos under the "All Photos"
+    // name, not all photos mislabeled "Picks".
+    func testRestoresAllPhotosAfterRemovingTheLastFilterChip() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-remove-last-chip")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let pick = makeAsset(id: "asset-pick", filename: "pick.dng", flag: .pick)
+        let plain = makeAsset(id: "asset-plain", filename: "plain.dng")
+        try catalogA.repository.upsert([pick, plain])
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.smartCollection(.picks))
+        let pickRow = try XCTUnwrap(modelA.activeLibraryFilterRows.first { $0.title == "Pick" })
+        try modelA.removeActiveLibraryFilter(pickRow)
+        XCTAssertEqual(modelA.selectedSource, .allPhotos)
+        XCTAssertTrue(modelA.activeLibraryFilterChips.isEmpty)
+        XCTAssertEqual(Set(modelA.assets.map(\.id)), Set([pick.id, plain.id]))
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertTrue(modelB.activeLibraryFilterChips.isEmpty)
+        XCTAssertEqual(Set(modelB.assets.map(\.id)), Set([pick.id, plain.id]))
+        // The persisted source has to match what's actually shown above (all
+        // photos, unfiltered) — not the smart collection the user backed out
+        // of.
+        XCTAssertEqual(modelB.selectedSource, LibrarySource.allPhotos)
     }
 
     func testRestoresSortOptionAndAppliesItToLoadedAssets() throws {
