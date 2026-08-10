@@ -335,6 +335,46 @@ final class PeopleSourceScopingTests: XCTestCase {
         )
     }
 
+    func testShowingPersonPhotosPreservesPlainTextSourceScopeWithoutReinterpretingIt() throws {
+        let inside = makeAsset(id: "people-person-text-inside", path: "/Photos/Inside/ada.jpg")
+        var outside = makeAsset(id: "people-person-text-outside", path: "/Photos/Outside/ada.jpg")
+        outside.metadata.flag = .pick
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "people-person-text",
+            assets: [inside, outside]
+        ) { repository in
+            try repository.upsertPerson(id: "person-ada", name: "Ada")
+            try repository.assignAssets([inside.id, outside.id], toPersonID: "person-ada")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(
+                    assetID: inside.id,
+                    kind: .ocrText,
+                    value: .text("pick"),
+                    confidence: 0.9,
+                    provenance: faceProvenance
+                )
+            ])
+        }
+        let textSource = LibrarySource.search(
+            SetQuery(predicates: [.text("pick")]),
+            titled: "Pick text"
+        )
+        try model.selectSource(textSource)
+        XCTAssertEqual(model.assets.map(\.id), [inside.id])
+        model.selectLens(.people)
+
+        try model.showPersonPhotos(named: "Ada")
+
+        XCTAssertEqual(model.selectedLens, .grid)
+        XCTAssertEqual(
+            model.selectedSource,
+            .search(SetQuery(predicates: [.text("pick"), .person("Ada")]), titled: "Ada")
+        )
+        XCTAssertEqual(model.assets.map(\.id), [inside.id])
+        XCTAssertEqual(model.librarySearchText, "person:Ada")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: pick", "Person: Ada"])
+    }
+
     func testShowingPersonPhotosIntersectsPopulatedAndEmptyStaticSets() throws {
         let fixture = try makePersonDrillFixture(named: "people-person-static-sets")
         let populated = AssetSet.manual(
@@ -630,6 +670,55 @@ final class PeopleSourceScopingTests: XCTestCase {
         try model.selectSource(.assetSet(empty.id, titled: empty.name))
 
         XCTAssertEqual(try model.peopleScopeAssetIDs(), [])
+        XCTAssertFalse(model.peopleHasUnavailableSources)
+        XCTAssertEqual(peoplePresentation(model).reviewStripStatusText, "0 queues")
+    }
+
+    func testReconnectSourceRootRefreshesScopedPeopleOfflineStatusImmediately() throws {
+        let rootContainer = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-people-source-reconnect-\(UUID().uuidString)", isDirectory: true)
+        let oldRoot = rootContainer.appendingPathComponent("Unavailable", isDirectory: true)
+        let newRoot = rootContainer.appendingPathComponent("Reconnected", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("Job/ada.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same original bytes".utf8).write(to: newOriginalURL)
+        let attributes = try FileManager.default.attributesOfItem(atPath: newOriginalURL.path)
+        let asset = Asset(
+            id: AssetID(rawValue: "people-source-reconnect"),
+            originalURL: oldRoot.appendingPathComponent("Job/ada.jpg"),
+            volumeIdentifier: "Unavailable",
+            fingerprint: FileFingerprint(
+                size: (attributes[.size] as? NSNumber)?.int64Value ?? 0,
+                modificationDate: attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+            ),
+            availability: .missing,
+            metadata: AssetMetadata()
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "people-source-reconnect",
+            assets: [asset]
+        ) { repository in
+            try repository.recordSourceRoot(oldRoot)
+        }
+        let scopedSource = LibrarySource.search(
+            SetQuery(predicates: [.assetIDs([asset.id])]),
+            titled: "Unavailable source"
+        )
+        model.selectLens(.people)
+        try model.selectSource(scopedSource)
+        XCTAssertTrue(model.peopleHasUnavailableSources)
+        XCTAssertEqual(peoplePresentation(model).reviewStripStatusText, "Photo sources offline — reconnect to scan")
+
+        let result = try model.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        XCTAssertEqual(result.reconnectedAssetCount, 1)
+        XCTAssertEqual(model.selectedLens, .people)
+        XCTAssertEqual(model.selectedSource, scopedSource)
+        XCTAssertEqual(model.assets.map(\.id), [asset.id])
+        XCTAssertEqual(model.assets.map(\.originalURL), [newOriginalURL])
         XCTAssertFalse(model.peopleHasUnavailableSources)
         XCTAssertEqual(peoplePresentation(model).reviewStripStatusText, "0 queues")
     }
