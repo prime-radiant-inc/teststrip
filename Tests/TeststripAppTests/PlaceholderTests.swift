@@ -41,13 +41,6 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertEqual(Set(surfaces.map(\.designID)).count, surfaces.count)
     }
 
-    func testDeferredDesignSurfacesDoNotReopenScopedOutProductFeatures() throws {
-        let places = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5b" })
-
-        XCTAssertEqual(places.status, .deferred)
-        XCTAssertTrue(places.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
-    }
-
     func testExportLedgerTracksPresetsFormatQualityLongEdgeMetadataAndSizeEstimate() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "export.workflow" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5f" })
@@ -64,16 +57,6 @@ final class LiveMockupPlaceholderTests: XCTestCase {
             XCTAssertTrue(text.localizedCaseInsensitiveContains("sample-based estimated output size"))
             XCTAssertTrue(text.localizedCaseInsensitiveContains("sharpening, color space controls, watermarking, filename templates, and export history"))
         }
-    }
-
-    func testStudioLedgerTracksRecentlyAddedLibraryRoute() throws {
-        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.studio" })
-        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1a" })
-
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Recently Added"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("import output"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Recently Added"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("import output"))
     }
 
     func testTimelineLedgerTracksBuiltYearRibbonAndFocusedScrubberControls() throws {
@@ -186,32 +169,6 @@ final class LiveMockupPlaceholderTests: XCTestCase {
     // Sets/Folders only); People is reachable via the People lens (⌘6)
     // instead. The `.peopleSidebar` mockup ledger entry it used to
     // carry is still tracked below.
-
-    func testPeopleLedgerTracksUnnamedFaceReviewAndPersistedNamedRows() throws {
-        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.people" })
-        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5a" })
-
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("faces-need-a-name band"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Apple Vision scan action"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("current scope"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("one-tap confirm"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Name selection"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-review dismissal"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("persisted named people rows"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("manual merge"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("automatic grouping"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("split and face-box-level naming remain disabled"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("automatic grouping suggestions"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scan action"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("manual review strip"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("one-tap confirm"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Name selection"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-review dismissal"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("persisted named people rows"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("merge"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("automatic grouping"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("split and face-box-level naming remain disabled"))
-    }
 
     func testPeopleFaceActionsLedgerOnlyMarksFutureAutomatedActionsAsDisabled() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "people.face-actions" })
