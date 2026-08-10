@@ -4947,7 +4947,14 @@ public final class AppModel {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         switch child {
-        case .stacks, .skippedFiles:
+        case .stacks:
+            let stackAssetIDs = try latestImportStacks(
+                activityID: sessionID.rawValue,
+                repository: catalog.repository
+            ).flatMap(\.assetIDs)
+            detachedLibraryFilterPredicates = [.assetIDs(stackAssetIDs)]
+            try reload()
+        case .skippedFiles:
             detachedLibraryFilterPredicates = [.importBatch(sessionID.rawValue)]
             try reload()
         case .likelyIssues:
