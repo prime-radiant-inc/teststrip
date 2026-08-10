@@ -33,7 +33,7 @@ JPEG rides along silently.
   `allAssets`/`assetIDs`/`assetCount` `:330-412, 608-611`), so a bonded JPEG never
   appears as its own row anywhere the grid reads from —
   `AppModel`'s `catalogContents(repository:query:sort:)`
-  (`Sources/TeststripApp/AppModel.swift:14005-14018`), which calls
+  (`Sources/TeststripApp/AppModel.swift:14035-14048`), which calls
   `repository.allAssets(sort:)`, feeds `model.assets` (the Library grid's
   data source) with this same default.
 - **The badge**: `RawBadgeLabel.text(isRaw:hasBondedStill:)`
@@ -45,7 +45,7 @@ JPEG rides along silently.
   not on `AssetGridCell` itself — the `rawBadgeCaption(for:)` view at
   `LibraryGridView.swift:2966-2975`, driven by
   `model.assetIDsWithBondedSecondaries` (published at `AppModel.swift:2018`,
-  refreshed at `:13197-13203`) and wired as a sibling of `AssetGridCell` at the
+  refreshed at `:13227-13233`) and wired as a sibling of `AssetGridCell` at the
   grid's `ForEach` call site (`LibraryGridView.swift:2338-2408`).
 - **Rate/reject stay RAW-scoped structurally, not incidentally**: the grid
   only ever selects/batch-selects ids present in `model.assets`, which never
@@ -58,15 +58,15 @@ JPEG rides along silently.
   Inspector's rating stars (`Sources/TeststripApp/InspectorView.swift:953-978`,
   each helped `"Rate N"`) and flag buttons (`:980-999`, `"Pick"`/`"Reject"`).
 - **Reject relocation carries the bonded secondary**: `rejectRelocationScope`
-  (`AppModel.swift:12048-12091`) selects `rejectIDs` via
+  (`AppModel.swift:12078-12121`) selects `rejectIDs` via
   `assetIDs(ids:matching:)`'s default `includeBondedSecondaries: false`, so
   only the RAW (if flagged reject) is ever counted in `moveCount`
   (`:1444`) or shown in the confirm sheet's title (`confirmationText`,
   `:1448-1450` — "Move 1 reject photo to \<folder\>", never "Move 2", even
   though two files move). `AppModel.moveRejectsToFolder`
-  (`:12214-12310`) moves the primary, then fans out to
-  `relocateBondedSecondaries` (`:12115-12158`, itself calling
-  `bondedSecondaryAssets` `:12104-12105`), which relocates each bonded
+  (`:12244-12340`) moves the primary, then fans out to
+  `relocateBondedSecondaries` (`:12145-12188`, itself calling
+  `bondedSecondaryAssets` `:12134-12135`), which relocates each bonded
   secondary via the same `CatalogRepository.relocateOriginal`
   (`Sources/TeststripCore/Catalog/CatalogRepository.swift:2493-2510`, rewrites
   `original_path`) and records its own

@@ -154,7 +154,7 @@ card):
   `.snapshot([AssetID])` encodes at JSON path `$.snapshot._0`, each element
   `{"rawValue": "<id>"}` (`CatalogRepository
   .workSessionAssetMembershipSelector`, `Sources/TeststripCore/Catalog/
-  CatalogRepository.swift:3453-3462`, the same path shape `cull-021`
+  CatalogRepository.swift:3462-3471`, the same path shape `cull-021`
   documents for `work-stack-` sets, applied here to a plain saved set).
 - **Fixture and seeding gap**: no seed command produces a tentative-AI flag
   (`cull-026`'s established finding). `autopilot_proposals` no longer

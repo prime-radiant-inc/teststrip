@@ -8,7 +8,7 @@ Start culling actions.
 
 Source: `Sources/TeststripApp/AppModel.swift` (`activeWorkKindRows`
 `:2898-2905`, `cancelImportWork()` `:9010-9027`, cancellation persistence
-`:13808-13823`, completed-import projection `:5444-5473`),
+`:13838-13853`, completed-import projection `:5444-5473`),
 `Sources/TeststripApp/ActivityCenterPresentation.swift` (`ActivityKindRow`
 `:70-138`, `ActivityCenterPresentation` `:142-190`),
 `Sources/TeststripApp/ActivityCenterView.swift` (active rows and cancel

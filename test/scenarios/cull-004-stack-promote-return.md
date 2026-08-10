@@ -49,8 +49,8 @@ Covers:
 Grepped the app source for every write site of an `asset_sets` row whose id
 is prefixed `work-stack-` and for every caller of `AssetStackBuilder`:
 
-- The only writer is `saveCullingStackInputSets` (`AppModel.swift:13111-
-  13133`), which upserts `AssetSet.manual(id: "work-stack-<session>-<n>",
+- The only writer is `saveCullingStackInputSets` (`AppModel.swift:13141-
+  13163`), which upserts `AssetSet.manual(id: "work-stack-<session>-<n>",
   ...)` for every **multi-frame** stack (`assetIDs.count > 1`) the builder
   finds over a specific import's output assets.
 - `saveCullingStackInputSets` is called from inside `beginStackCulling

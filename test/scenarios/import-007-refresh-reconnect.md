@@ -26,7 +26,7 @@ exists at seed time — this card must first arm one, see Step 1).
 ### Part A — refresh is a worker batch job, triggered from two places
 1. `script/ax_drive.sh wait-vended Teststrip`. Both refresh entry points call
    the same `AppModel.refreshVisibleAssetAvailability()`
-   (`Sources/TeststripApp/AppModel.swift:11101-11114`):
+   (`Sources/TeststripApp/AppModel.swift:11126-11139`):
    - the grid toolbar's `arrow.clockwise` button, AXHelp `"Refresh source
      status"` (`Sources/TeststripApp/LibraryGridView.swift:892-899`);
    - the Activity popover's per-source-row `arrow.clockwise` button, AXHelp
@@ -38,9 +38,9 @@ exists at seed time — this card must first arm one, see Step 1).
    to confirm presence.
 2. With a `workerSupervisor` configured (always true for a normally launched
    app), the refresh path batches by `volumeIdentifier`
-   (`sourceAvailabilityRefreshBatches`, `Sources/TeststripApp/AppModel.swift:11226-11247`)
+   (`sourceAvailabilityRefreshBatches`, `Sources/TeststripApp/AppModel.swift:11251-11272`)
    and enqueues `.sourceScan` work items running `.refreshAvailabilityBatch`
-   (`Sources/TeststripApp/AppModel.swift:11197-11224`) — confirmed as a genuine
+   (`Sources/TeststripApp/AppModel.swift:11222-11249`) — confirmed as a genuine
    out-of-process worker job, not an inline synchronous probe: the executor
    lives in `Sources/TeststripCore/Worker/WorkerCommandExecutor.swift:307-323`
    and runs under the worker process. Assert a `sourceScan` row appears:
@@ -83,11 +83,11 @@ exists at seed time — this card must first arm one, see Step 1).
    `scannedAssetCount == 0` branch OR (since assets *do* exist under the old
    root) the `missingFileCount == scannedAssetCount` branch of
    `sourceReconnectFailureMessage`
-   (`Sources/TeststripApp/AppModel.swift:11142-11162`):
+   (`Sources/TeststripApp/AppModel.swift:11167-11187`):
    > "No files were reconnected from EmptyDecoy. 24 catalog photos were found
    > under SmokeOriginals, but the matching files were missing under the new
    > root."
-   (names are `url.lastPathComponent`, `Sources/TeststripApp/AppModel.swift:11165-11168`;
+   (names are `url.lastPathComponent`, `Sources/TeststripApp/AppModel.swift:11190-11193`;
    singular/plural branches exist for 1-asset catalogs — this card's 24-asset
    smoke seed exercises the plural wording).
 7. **Success case**: change `New mounted root path` to `$NEWROOT` (the real
@@ -96,7 +96,7 @@ exists at seed time — this card must first arm one, see Step 1).
    and bookmark all rewritten together
    (`CatalogRepository.reconnectSourceRoot`, `Sources/TeststripCore/Catalog/CatalogRepository.swift:2435-2486`,
    plus `persistSecurityScopedBookmarkForSourceRoot` at
-   `Sources/TeststripApp/AppModel.swift:11130,13747-13755`):
+   `Sources/TeststripApp/AppModel.swift:11155,13777-13785`):
    ```bash
    sqlite3 "$DB" "SELECT original_path, availability FROM assets WHERE id='smoke-0';"
    sqlite3 "$DB" "SELECT path, security_scoped_bookmark_base64 IS NOT NULL FROM source_roots WHERE path LIKE '%SmokeOriginalsRelocated%';"
@@ -105,7 +105,7 @@ exists at seed time — this card must first arm one, see Step 1).
    `availability='online'`, and a non-null bookmark row for the new root.
 9. Assert preview generation was re-enqueued for the reconnected assets —
    `reconnectSourceRoot` calls `enqueuePendingPreviewGeneration()`
-   (`Sources/TeststripApp/AppModel.swift:11136`):
+   (`Sources/TeststripApp/AppModel.swift:11161`):
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM preview_generation_queue;"
    ```
@@ -147,7 +147,7 @@ Quit the launched instance.
   mid-session) is the only way to arm it. If the fixture doesn't arm a repair
   row, this is a real fixture gap to report, not a card to quietly rewrite.
 - The reconnect failure-message branches
-  (`Sources/TeststripApp/AppModel.swift:11149-11162`) have three distinct
+  (`Sources/TeststripApp/AppModel.swift:11174-11187`) have three distinct
   wordings depending on `scannedAssetCount`/`missingFileCount`/`fingerprintMismatchCount`
   — don't assume Step 6's exact branch without checking which one the live
   smoke fixture actually hits (24 assets under the old root, so

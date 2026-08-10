@@ -54,7 +54,7 @@ over from any older card):
 - **The render gate now arms instead of just complaining**,
   `promoteCurrentFrameAndRejectSiblings` (`AppModel.swift:6370-6426`): the
   guard at `:6393` (`previewURL(for: context.selectedAssetID, levels:
-  [.large]) != nil`, `previewURL(for:levels:)` at `:14118-14127` — a live
+  [.large]) != nil`, `previewURL(for:levels:)` at `:14148-14157` — a live
   `FileManager.fileExists` check against the preview-cache file for that
   exact level, no fallback to a smaller cached level) is unchanged, but the
   closed-gate branch now calls `armStackCommit(stagedAssetID:asset:)`
@@ -73,7 +73,7 @@ over from any older card):
   (`armedCommitFeedback`, `:6486-6494`, `isInformational: true` — no
   metadata write yet).
 - **The fire hook**, inside the worker-completion handler
-  (`AppModel.swift:10327-10332`): every completed preview render calls
+  (`AppModel.swift:10334-10339`): every completed preview render calls
   `fireArmedStackCommitIfReady(previewAssetID:)` (`:6455-6474`), a no-op
   unless the completed asset *is* the armed one (`:6456`). If it is, it
   re-checks that the selection hasn't moved, that a Return-capturing cull
@@ -184,9 +184,9 @@ This card never patches the shared `burst` seed template (unlike
 afterward. The app is still on its default Library grid at this point:
 `AppModel.load(catalog:...)` (the factory the real app launch uses)
 initializes `selectedView: .grid` (`AppModel.swift:4433-4436`), and
-`restoreSessionStateIfAvailable()` (`:4478`, function at `:11821-11827`) — called right after —
+`restoreSessionStateIfAvailable()` (`:4478`, function at `:11849-11855`) — called right after —
 keys its lookup by `catalog.paths.root` (`SessionRestoreStore(...).load()`,
-`:11823`), which is this launch's unique `$RUN_DIR`-rooted path and so can
+`:11851`), which is this launch's unique `$RUN_DIR`-rooted path and so can
 never match a persisted entry from any earlier launch; there is nothing to
 restore, and `.grid` stands. Do **not** press ⌘1 yet; the deletions in
 Step 2 must land before the cull loupe ever mounts and fires its first

@@ -25,9 +25,9 @@ badges from `AutopilotBadgePresentation.badge(for:)` (item 53 —
 `AssetGridCellAccessibilityValue.value(...)` at `:7576`) → the review
 toolbar's Commit selected / Commit all / Dismiss selected controls,
 `commitAutopilotProposals(assetIDs:)`
-(`AppModel.swift:9858-9889`) being the gesture that *confirms* the ghost (clears
+(`AppModel.swift:9865-9897`) being the gesture that *confirms* the ghost (clears
 `aiUnconfirmedFields`, writes the sidecar) rather than first-writing
-anything, and `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9904-9922`)
+anything, and `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9911-9930`)
 being the gesture that *removes* it (records `removed_ai_labels`, the same
 recorded-removal mechanism a direct `U` uses). The load-bearing assertion is
 the **auto-apply-with-provenance** invariant: a run's keep/cut proposals
@@ -132,7 +132,7 @@ duplicate.)
    present and clickable — pressing it drives `selectSidebarRow(_:)`
    (`AppModel.swift:4698-4708`) → `selectSource(_:)` (`AppModel.swift:4761-4764`) →
    `applySource`'s `.autopilotSuggestions` case →
-   `applyAutopilotSuggestionsScope()` (`AppModel.swift:9826-9844`), which sets
+   `applyAutopilotSuggestionsScope()` (`AppModel.swift:9826-9851`), which sets
    `isAutopilotReviewActive = true` and narrows the grid to the ghost-
    carrying assets without touching the lens — a banner Dismiss is **not**
    a one-way door to Review; it is simply one of three independent entry
@@ -206,7 +206,7 @@ duplicate.)
   the run's tentative writes and any confirmed commits). Quote `GEN0`, the
   post-step-8 sum, `GEN1`, and the final sum side by side.
 - **Dismiss (review toolbar), documented but not driven live by this card**:
-  `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9904-9922`) records
+  `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9911-9930`) records
   `removed_ai_labels` for each dismissed ghost's flag value and writes no
   sidecar — the same recorded-removal mechanism a direct `U` on a tentative
   flag uses (source-verified; this card never presses "Dismiss selected"
@@ -249,7 +249,7 @@ Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
   (`LibrarySource.autopilotSuggestions`, `LibrarySource.swift:48,89`) is
   the third, reaching the same review state via `selectSidebarRow(_:)` →
   `selectSource(_:)` → `applyAutopilotSuggestionsScope()`
-  (`AppModel.swift:4698-4708,4761-4764,9826-9844`) without touching the lens. Dismissing
+  (`AppModel.swift:4698-4708,4761-4764,9826-9851`) without touching the lens. Dismissing
   the banner only clears `model.autopilotRunSummary`
   (`dismissAutopilotRunSummary`) — it never touches `autopilotGhostAssetIDs`
   or any ghost, so the sidebar row (present whenever `autopilotGhostCount >

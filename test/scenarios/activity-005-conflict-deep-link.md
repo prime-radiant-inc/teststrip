@@ -35,7 +35,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
      Grid "regardless of the current lens.")
    - `selectedAssetID == $SRC`'s asset id.
    - Any active Library query/filter text field is empty
-     (`clearLibraryQueryFilters()`, `AppModel.swift:11747-11770`, zeroes
+     (`clearLibraryQueryFilters()`, `AppModel.swift:11775-11798`, zeroes
      every filter: search text, keyword/folder/camera/lens text, rating,
      flag, color label, ISO, date range, geo bounds, availability, saved
      evaluation-kind filters, and `metadataSyncConflictFilter` itself before

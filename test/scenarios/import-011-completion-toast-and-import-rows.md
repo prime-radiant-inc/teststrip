@@ -27,12 +27,12 @@ view `:771-824`, `dismissToast`/`showToastThenFade` `:826-844`),
 `:14-51`, `ImportChildCounts` `:61-87`, `importSectionRows`/`runningImportRow`/
 `childRows` `:248-323`), `Sources/TeststripApp/LibrarySource.swift`
 (`ImportChildKind` `:5-39`), `Sources/TeststripApp/AppModel.swift`
-(`isCurrentSessionActivity` `:13888-13894`, `applyImportChild` `:4939-4983`,
+(`isCurrentSessionActivity` `:13918-13924`, `applyImportChild` `:4939-4983`,
 `requestImportIssueReview` `:2543-2546`, `sidebarContextActions(for:)`
 `:5161-5233`, with the work-session star toggle
 at `:5202-5207` and import verbs at `:5212-5227`, `beginStackCulling`
 `:5019-5041`, `startCullingImport` `:5011-5017`, `cullingInputSetID`
-`:13135-13159`), `Sources/TeststripApp/LibraryGridView.swift`
+`:13165-13189`), `Sources/TeststripApp/LibraryGridView.swift`
 (`ImportIssueReview` `:8801-8810`, `importIssueReviewSheet` `:1904-1955`,
 `importIssueTitle` `:1957-1962`, `presentRequestedImportIssueReview`
 `:3117-3126`),
@@ -173,7 +173,7 @@ reproducible).
    browse-only search field), and give that exact run all four CARD1 assets
    and nothing else (`startCullingImport`,
    `AppModel.swift:5011-5017`; `beginCullingSession`, `:5806-5859`;
-   `cullingInputSetID`, `:13135-13159`; `applyAssetSet`, `:5389-5410`;
+   `cullingInputSetID`, `:13165-13189`; `applyAssetSet`, `:5389-5410`;
    `scopeLineBar`, `LibraryGridView.swift:748-768`). Return to Grid afterward
    so the same-session and relaunch probes can continue:
    ```bash
@@ -234,7 +234,7 @@ reproducible).
    unit layer can pin either, so this card is the only gate for both.
 6. Quit and relaunch the **same VM catalog** (do not call `launch` again; that
    would create a new run directory). Assert the toast does **not** reappear
-   (the `isCurrentSessionActivity` guard, `AppModel.swift:13888-13894` —
+   (the `isCurrentSessionActivity` guard, `AppModel.swift:13918-13924` —
    persona-7's zombie panel, which `app-006-session-restore.md` also tests
    for a different surface) while the receipt and the sidebar's Imports row
    survive:
@@ -523,9 +523,9 @@ script/vm_scenario_run.sh shell 'rm -rf /Users/admin/teststrip-vm/fixtures/impor
 - Step 12's discriminator query reads the `.snapshot` JSON path, not
   `.manual`. Traced directly: scoping to CARD1 via its `.workSession` source
   sets `selectedAssetSetID = nil` (`applyWorkSession`, `AppModel.swift:4919-4936`),
-  so `cullingInputSetID` (`:13135-13159`) takes its `else` branch and writes
+  so `cullingInputSetID` (`:13165-13189`) takes its `else` branch and writes
   a **fresh `work-input-<sessionID>` set with `.snapshot(inputAssetIDs)`
-  membership** (`:13148-13154`), not `.manual`. The `.manual._0`/`.snapshot
+  membership** (`:13178-13184`), not `.manual`. The `.manual._0`/`.snapshot
   ._0` JSON-path pattern itself is the same synthesized-Codable shape
   already verified live in `cull-020-pass-scope-and-undo.md:58`
   (`.manual._0`, for a stack-rail set) and `cull-025-run-strip-completion.md:

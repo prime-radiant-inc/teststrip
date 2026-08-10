@@ -30,7 +30,7 @@ behavior live):
   `937db96b`/`11cdf360`; re-verified at `:6386-6395`): before computing
   which siblings get protected, guards `previewURL(for:
   context.selectedAssetID, levels: [.large]) != nil`
-  (`previewURL(for:levels:)`, now `:14118-14127` — checks the on-disk
+  (`previewURL(for:levels:)`, now `:14148-14157` — checks the on-disk
   preview-cache file for that exact level, no fallback to a smaller cached
   level; logic unchanged, just moved). If the `.large` preview file doesn't
   exist yet, it no longer just complains and drops the gesture — it calls
@@ -39,7 +39,7 @@ behavior live):
   `:2149`) and fires it automatically — no second Return needed — the
   instant the staged frame's `.large` preview lands
   (`fireArmedStackCommitIfReady`, `:6455-6474`, wired into the worker-
-  completion handler at `:10327-10332`). A repeat Return before then is
+  completion handler at `:10334-10339`). A repeat Return before then is
   still a harmless no-op re-arm of the same asset
   (`applyCullingShortcut`'s disarm guard, `:6622-6628`, only disarms for a
   *different* shortcut). The toast while armed reads exactly `"Rendering

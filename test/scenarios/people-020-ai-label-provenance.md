@@ -23,7 +23,7 @@ Source (current working tree, `feat/unified-shell`):
   matches unassigned faces against **confirmed-only** (`origin='user'`)
   person centroids and inserts a face-level `origin='ai'` `person_faces` row,
   **never** a `person_assets` row). Both are wired into the post-evaluation
-  path by `promoteEvaluationResults(for:)` (`:10492-10502`), called once per
+  path by `promoteEvaluationResults(for:)` (`:10499-10509`), called once per
   `(asset, provider)` evaluation completion — **not** by any UI
   navigation/refresh gesture (see Sharp edges).
 - **Confirm/remove**: `confirmAIKeyword`/`removeAIKeyword` (`:8328`/`:8343`),
@@ -53,8 +53,8 @@ Source (current working tree, `feat/unified-shell`):
   the ghost sitting in the asset's own metadata is the whole record, and the
   catalog write never waited for a Commit in the first place.
 - **Tentative-flag exclusion (safety-critical)**: `rejectRelocationScope`
-  (`AppModel.swift:12048-12091`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
-  (`AppModel.swift:12070-12072`) before it can ever reach a `RejectRelocationPlan` — a tentative
+  (`AppModel.swift:12078-12121`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
+  (`AppModel.swift:12100-12102`) before it can ever reach a `RejectRelocationPlan` — a tentative
   AI reject can never be included in Move Rejects (folder) or Move Rejects to
   Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`
   (`Sources/TeststripApp/AppModel.swift:1444`) and `confirmationText`

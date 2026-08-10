@@ -62,18 +62,25 @@ a human place name, cross-checked against the `place_cache` table.
 6. **Assert the map is query-scoped, not whole-catalog** (per commit
    `62e0a31`, "fix: scope Library Map geo queries to the current filtered
    result set" — `AppModel.refreshPlaceData`
-   (`AppModel.swift:11009-11017`) now obtains `currentMapQuery()`
-   (`AppModel.swift:11020-11031`) and passes that query through to
+   (`AppModel.swift:11023-11039`) now obtains `currentMapQuery()`
+   (`AppModel.swift:11041-11057`) and passes that query through to
    `CatalogRepository.placeClusters(bounds:cellSize:matching:)`,
    `.topLocations(limit:matching:)`, and `.geotaggedCoverage(matching:)`,
    which push the shared `SetQuery` WHERE-building into the geo SQL
    (`CatalogRepository.swift:680-704, 739-758, 944-954`) instead of
-   materializing filtered asset IDs). `currentMapQuery()` preserves the
-   library predicates assembled by `currentLibraryQuery()` and adds an
-   `.assetSet` predicate when a static saved set or the Selection's synthetic
-   set supplies the explicit scope. This card does not claim coverage for a
-   derived explicit-ID source with no backing asset set. With Places/Map open
-   and clusters showing the full `GEO` count, type a query token in the Library
+   materializing filtered asset IDs). For ordinary sources,
+   `currentMapQuery()` preserves the library predicates assembled by
+   `currentLibraryQuery()` (`AppModel.swift:11696-11773`). An explicit scope
+   backed by a saved set adds `.assetSet`; a non-set derived scope such as AI
+   Suggestions adds its exact IDs through `.assetIDs` instead (the explicit
+   source split is `AppModel.swift:12638-12649`). Those predicates
+   are defined at `SetQuery.swift:17-49` (the two membership cases at `:43-48`)
+   and compiled by `CatalogRepository.compileClauses`
+   (`CatalogRepository.swift:3082-3396`, membership arms `:3380-3391`). An
+   empty explicit-ID scope still carries `.assetIDs([])`, whose compiler arm
+   emits `0 = 1` (`:3383-3386`), so it cannot silently broaden to an unscoped
+   map. With Places/Map open and clusters showing the full `GEO` count, type a
+   query token in the Library
    search field that excludes some of the GPS-tagged fixtures (e.g. a
    `keyword:`/filename-scoped token matching only a subset — pick one from the
    imported fixture set), submit it, and:
@@ -119,11 +126,14 @@ Quit the launched instance.
 - Step 6 (query-scoping) is new as of commit `62e0a31`; the current scoping
   code path is `AppModel.refreshPlaceData` → `currentMapQuery` →
   `CatalogRepository.placeClusters/topLocations/geotaggedCoverage(matching:)`.
-  It was confirmed by reading source, not by a live drive; this card's claim
-  covers library-query predicates plus static saved-set/Selection membership,
-  not every possible derived explicit-ID source. No live GUI drive has been
-  performed for this addition. Needs a human-present or VM run before this
-  step can be marked passing.
+  It was confirmed by reading source, not by a live drive. The normal path
+  preserves `currentLibraryQuery`; set-backed explicit sources append
+  `.assetSet`, while AI Suggestions starts from a clean predicate list and
+  appends the exact derived inventory through `.assetIDs`. An empty derived
+  inventory therefore compiles false rather than becoming an unscoped map.
+  The executable narrowing leg above covers a library query and a static saved
+  set; no live AI-Suggestions-on-Map drive has been performed. Needs a
+  human-present or VM run before this step can be marked passing.
 
 ## Run status
 NOT YET RUN — this card (renamed from `places-map-and-geocode.md`) has no

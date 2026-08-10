@@ -94,7 +94,7 @@ Confirmed against a seeded `--smoke` catalog 2026-07-10: `TOTAL=24`,
 (`minimumRatingFilter`, `flagFilter`, etc.) or `librarySearchText`. Whether
 "Clear filters" appears is therefore contingent on `currentLibraryQuery()`
 returning non-nil whenever any structured filter or search text is set — a
-separate function (`AppModel.swift:11668-11745`) not read in full for this card.
+separate function (`AppModel.swift:11696-11773`) not read in full for this card.
 If that function's notion of "active" ever drifts from what
 `activeFilterChips` actually renders (e.g. a filter chip shows but
 `currentLibraryQuery()` returns nil for it), the Clear button could

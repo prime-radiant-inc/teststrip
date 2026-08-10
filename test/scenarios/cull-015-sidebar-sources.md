@@ -53,10 +53,14 @@ section (`sections(...)`, `UnifiedSidebarPresentation.swift:168-194`):
 (`AppModel.swift:4698-4708`) → `selectSource(_:)`/`applySource(_:)`
 (`:4761-4764`,`:4855`), which switches on `LibrarySource.kind`:
 `.smartCollection(let collection)` → `applySmartCollection(collection)`
-(`:10961-10971` — installs the collection's `query.predicates` as detached
+(`AppModel.swift:11106-11116` — installs the collection's `query.predicates` as detached
 filters and reloads); `.autopilotSuggestions` → `applyAutopilotSuggestionsScope()`
-(`:9826-9844` — loads `assetIDsWithAutopilotGhost()` directly rather than via
-a `SetQuery`). `applySource` then re-resolves the active lens
+(`AppModel.swift:9826-9851`). The grid loads `assetIDsWithAutopilotGhost()`
+directly in `loadAutopilotSuggestionsScope` (`AppModel.swift:9839-9851`),
+while the Map lens reuses that exact derived inventory through
+`SetQuery.assetIDs` (`AppModel.swift:9828-9833`; `SetQuery.swift:47-48`,
+compiled by `CatalogRepository.swift:3383-3391`); neither path materializes a
+saved `AssetSet`. `applySource` then re-resolves the active lens
 (`LensRules.resolvedLens`, `LibraryLens.swift:137-144`): selecting
 `Analysis Failures` while in the Cull lens forces a fallback to Grid, since
 `LibrarySource.isDiagnostic` is true only for `.smartCollection

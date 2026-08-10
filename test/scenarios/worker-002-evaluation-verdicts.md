@@ -39,7 +39,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    folder (as in `worker-001-preview-lifecycle.md`) to get an unevaluated one.
 3. **Trigger evaluation and watch dedup.** Import auto-triggers evaluation
    once the preview is cached (`scheduleImportAutoEvaluationIfEnabled`,
-   `Sources/TeststripApp/AppModel.swift:10092-10106`); for an asset already in
+   `Sources/TeststripApp/AppModel.swift:10099-10113`); for an asset already in
    the grid, force it via the Evaluate action (`ax_drive.sh press --role
    AXButton --help "Evaluate"` on the loupe/inspector, or the equivalent grid
    command) — confirm the actual control's AXHelp against the running UI

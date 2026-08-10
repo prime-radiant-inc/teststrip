@@ -20,8 +20,8 @@ subtitle install `:140`), `Sources/TeststripApp/LibraryLens.swift`
 `:106-145`), `Sources/TeststripApp/AppModel.swift` (`selectLens` `:4769-4772`,
 `lensAvailabilities` `:4784-4786`, `applySource`'s resolved-lens fallback
 `:4852-4917`, `cullCurrentResults`/`cullTheseSourceTitle` `:5901-5914`,
-`SessionRestoreState` restore `:11821-11895` — `isRestorableLens` `:11897-
-11901`, `currentMapQuery` `:11026-11032`, `timelinePresentation` `:3324-3325`,
+`SessionRestoreState` restore `:11849-11923` — `isRestorableLens` `:11925-
+11929`, `currentMapQuery` `:11041-11057`, `timelinePresentation` `:3324-3325`,
 `peopleInCurrentSource` `:2296,3669`), `Sources/TeststripApp/SidebarView.swift`
 (Stacks gating `:46-55`, `sectionHeader`/`headerWithAddButton`/`addButton`
 `:99-169`), `Sources/TeststripApp/main.swift` (`LensCommands` `:164-196`,
@@ -59,7 +59,7 @@ task-12 report for the grep evidence):
   subtitle alone cannot disambiguate Cull-lens-in-loupe from Loupe-lens; Step
   4 below accounts for it.
 - Session restore does not special-case "mid-cull" — reading
-  `isRestorableLens` (`AppModel.swift:11897-11901`) directly, **every** quit
+  `isRestorableLens` (`AppModel.swift:11925-11929`) directly, **every** quit
   while the Cull lens is selected relaunches on Grid, whether or not a
   culling run was active; the other five lenses always restore as-is. Step 9
   below asserts the actual (simpler, unconditional) rule rather than the
@@ -212,7 +212,7 @@ different catalog and invalidate restore assertions.
    (`SessionRestoreState` v2, `SessionRestoreState.swift:15`) **for every
    lens except Cull**; and that quitting while the Cull lens was selected —
    regardless of whether a culling run was active — relaunches on the same
-   source in **Grid**, per `isRestorableLens` (`AppModel.swift:11897-11901`,
+   source in **Grid**, per `isRestorableLens` (`AppModel.swift:11925-11929`,
    `lens != .cull`, unconditional). The reusable matrix is:
    ```bash
    SOURCE_TITLE="Rating >= 5" # the source established in Step 8
@@ -248,7 +248,7 @@ different catalog and invalidate restore assertions.
     multi-asset selection first if none exists), press ⌘5 (Map) and assert
     the coverage badge (`model.geotaggedCoverage`, `LibraryGridView.swift:
     7591-7596,7665-7674`) counts the **set**, not the catalog (behaviour change 11,
-    `currentMapQuery()`, `AppModel.swift:11026-11032`, which ANDs in
+    `currentMapQuery()`, `AppModel.swift:11041-11057`, which ANDs in
     `.assetSet(selectedAssetSetID)` for explicit-ID sources):
     ```bash
     script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.manual._0') FROM asset_sets WHERE name='<set name>'));"

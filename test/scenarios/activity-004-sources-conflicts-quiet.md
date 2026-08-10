@@ -10,8 +10,8 @@ quiet predicate `:14-63`, Sources and Refresh `:173-220`, conflicts
 `:241-268`), `Sources/TeststripApp/ActivityCenterPresentation.swift`
 (problems-only badge `:142-190`), `Sources/TeststripApp/AppModel.swift`
 (`activityCenterPresentation` `:2907-2955`,
-`refreshVisibleAssetAvailability()` `:11101-11114`, availability labels
-`:14179-14192`), and `Sources/TeststripApp/LibraryGridView.swift`
+`refreshVisibleAssetAvailability()` `:11126-11139`, availability labels
+`:14209-14222`), and `Sources/TeststripApp/LibraryGridView.swift`
 (`activityToolbarHelp` `:445-492`). The catalog constraints are
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift:12-39`: every
 `original_path` is unique and `metadata_sync_state.status='conflict'` feeds

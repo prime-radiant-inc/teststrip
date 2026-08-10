@@ -25,7 +25,7 @@ Every surface this card drives reads that one field, never a status row:
   reconciled 2026-08-09) narrows the grid to exactly
   `autopilotGhostAssetIDs` (declared `:2159`, refreshed from
   `assetIDsWithAutopilotGhost()` by `refreshAutopilotGhostAssetIDs()`
-  at `:13234-13236`, itself called from `refreshCatalogSidebarCounts()` and — for
+  at `:13264-13266`, itself called from `refreshCatalogSidebarCounts()` and — for
   the relaunch leg below — unconditionally from `AppModel.load(catalog:)`
   at `:4477`). `buildSidebarSections()` (`:1984-2005`, reconciled 2026-08-09)
   passes `autopilotGhostCount: autopilotGhostAssetIDs.count` (`:1993`) into

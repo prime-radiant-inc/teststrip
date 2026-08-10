@@ -83,7 +83,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   changes). **Fails if** nothing observably happens.
 - Step 8: `E1 > E0` and/or `F1 > F0` (per-provider — confirm the `provider`
   column includes `apple-vision`, matching `requestPeopleFaceScan`'s
-  hardcoded `providers: ["apple-vision"]`, `AppModel.swift:10085-10087`), and
+  hardcoded `providers: ["apple-vision"]`, `AppModel.swift:10092-10094`), and
   the provider breakdown shows only `apple-vision` grew from this action
   (other providers' evaluation counts unchanged since step 4, since the scan
   intentionally scopes to that one provider). **Fails if** counts don't grow,

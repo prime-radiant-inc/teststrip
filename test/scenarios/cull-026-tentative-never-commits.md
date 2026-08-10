@@ -44,11 +44,11 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   progress bar, only `undecidedCount` (`= totalCount - pickCount -
   rejectCount`, `CullHUDPresentation.swift:34`) absorbs it.
 - **Move-rejects exclusion**: `rejectRelocationScope(destinationFolder:)`
-  (`AppModel.swift:12048-12092`) first queries raw `flag(.reject)` matches
-  (`:12052-12056`, which **does** include tentative rejects — the raw SQL
+  (`AppModel.swift:12078-12122`) first queries raw `flag(.reject)` matches
+  (`:12082-12086`, which **does** include tentative rejects — the raw SQL
   predicate doesn't know about provenance), then explicitly skips any match
   whose `aiUnconfirmedFields.contains(.flag)` inside the per-asset loop
-  (`:12064-12072`: "A tentative AI reject ... is excluded outright — it
+  (`:12094-12102`: "A tentative AI reject ... is excluded outright — it
   must never be moved or trashed. This is the safety-critical guard.").
   Critically, this skip is **silent** — it increments none of
   `unavailableCount`/`alreadyInDestinationCount`/`outsideScopeCount`, so the
@@ -68,8 +68,8 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   .confirmationText`, `AppModel.swift:1448-1450`, using `trashDisplayFolder`'s
   last path component "Trash") even in trash mode — it does **not** say
   "Move N to Trash" the way the primary button does. `moveRejectsToTrash(_:)`
-  (`AppModel.swift:12321-12354`) iterates **only** `zip(preflight.assetIDs,
-  preflight.plans)` at `:12354` (mirrors the folder-mode loop at `:12245`) — it never
+  (`AppModel.swift:12351-12384`) iterates **only** `zip(preflight.assetIDs,
+  preflight.plans)` at `:12384` (mirrors the folder-mode loop at `:12275`) — it never
   re-queries the catalog, so an asset that never made it into the preflight
   structurally cannot be moved by this call, independent of catalog state
   at call time. Trash mode `deleteAsset`s the catalog row for whatever it

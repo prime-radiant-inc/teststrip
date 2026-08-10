@@ -119,7 +119,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - **Items 49-51 (folded autopilot/session banners, "View Picks", "Cull
   Remaining Singles") are NOT exercised by this card.** They render only when
   `model.cullingSessionCompletion` (a `CullingSessionCompletionSummary`) is
-  non-nil, which is set at `AppModel.swift:12829-12836` — that path is reached from
+  non-nil, which is set at `AppModel.swift:12859-12866` — that path is reached from
   a stack-cull work-session flow, not from plain bulk-deciding singles via
   P/X in a fresh `--smoke` launch (confirmed by reading the surrounding code:
   it's set when a *work session* of kind stack-cull completes, not on the
