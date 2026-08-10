@@ -191,17 +191,13 @@ public enum UnifiedSidebarPresentation {
         smartRows.append(contentsOf: visibleSets.filter(\.isDynamic).map { assetSet in
             row(for: assetSet, count: assetSetCounts[assetSet.id])
         })
-        if !smartRows.isEmpty {
-            sections.append(SidebarSection(title: smartCollectionsSectionTitle, rows: smartRows))
-        }
+        sections.append(SidebarSection(title: smartCollectionsSectionTitle, rows: smartRows))
 
         // Sets are static membership only, starred first.
         let staticSets = visibleSets.filter { !$0.isDynamic }
         let setRows = (staticSets.filter(\.starred) + staticSets.filter { !$0.starred })
             .map { row(for: $0, count: assetSetCounts[$0.id]) }
-        if !setRows.isEmpty {
-            sections.append(SidebarSection(title: setsSectionTitle, rows: setRows))
-        }
+        sections.append(SidebarSection(title: setsSectionTitle, rows: setRows))
 
         if !catalogFolders.isEmpty {
             sections.append(SidebarSection(
