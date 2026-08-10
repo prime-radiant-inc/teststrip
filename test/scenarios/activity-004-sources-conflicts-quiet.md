@@ -58,15 +58,22 @@ CONFLICT_PATH=/Users/admin/teststrip-vm/fixtures/activity-004/activity-004-smoke
 
    ```bash
    attempt=0
+   QUIET_SAMPLES=0
    while [ "$attempt" -lt 180 ]; do
        ACTIVE_NON_CULL=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM work_sessions WHERE kind!='culling' AND status IN ('queued','running','paused');")
        UNAVAILABLE=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM assets WHERE availability!='online';")
        CONFLICTS=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE status='conflict';")
        PROVIDER_FAILURES=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(DISTINCT asset_id) FROM evaluation_failures;")
-       test "$ACTIVE_NON_CULL" -eq 0 && test "$UNAVAILABLE" -eq 0 && test "$CONFLICTS" -eq 0 && test "$PROVIDER_FAILURES" -eq 0 && break
+       if test "$ACTIVE_NON_CULL" -eq 0 && test "$UNAVAILABLE" -eq 0 && test "$CONFLICTS" -eq 0 && test "$PROVIDER_FAILURES" -eq 0; then
+           QUIET_SAMPLES=$((QUIET_SAMPLES + 1))
+           test "$QUIET_SAMPLES" -ge 2 && break
+       else
+           QUIET_SAMPLES=0
+       fi
        attempt=$((attempt + 1))
        sleep 1
    done
+   test "$QUIET_SAMPLES" -ge 2
    test "$ACTIVE_NON_CULL" -eq 0
    test "$UNAVAILABLE" -eq 0
    test "$CONFLICTS" -eq 0
@@ -172,6 +179,7 @@ CONFLICT_PATH=/Users/admin/teststrip-vm/fixtures/activity-004/activity-004-smoke
    ```bash
    ORIGINAL_PATH_SQL=$(script/vm_scenario_run.sh shell 'cat "$HOME/teststrip-vm/fixtures/activity-004/original-path.sql"')
    script/vm_scenario_run.sh sql smoke "UPDATE assets SET original_path=$ORIGINAL_PATH_SQL WHERE id='smoke-0';"
+   test "$(script/vm_scenario_run.sh sql smoke "SELECT quote(original_path) FROM assets WHERE id='smoke-0';")" = "$ORIGINAL_PATH_SQL"
    test "$(script/vm_scenario_run.sh sql smoke "SELECT availability FROM assets WHERE id='smoke-0';")" = missing
    script/vm_scenario_run.sh ax press --role AXButton --help "Activity - 2 problems"
    script/vm_scenario_run.sh ax press --role AXButton --help "Refresh source availability"
@@ -192,10 +200,10 @@ CONFLICT_PATH=/Users/admin/teststrip-vm/fixtures/activity-004/activity-004-smoke
    done
    test "$AVAILABILITY" = online
    test "$ACTIVE_NON_CULL" -eq 0
+   script/vm_scenario_run.sh ax find --role AXButton --help "Activity - 1 problem"
    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Sources"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
    script/vm_scenario_run.sh ax find --role AXButton --label "activity-004-smoke-1.jpg"
-   script/vm_scenario_run.sh ax find --role AXButton --help "Activity - 1 problem"
    script/vm_scenario_run.sh key 'key code 53'
    ```
 
@@ -212,10 +220,23 @@ CONFLICT_PATH=/Users/admin/teststrip-vm/fixtures/activity-004/activity-004-smoke
     open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$run"
     '
     script/vm_scenario_run.sh ax wait-vended Teststrip
-    test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM assets WHERE availability!='online';")" -eq 0
-    test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM work_sessions WHERE kind!='culling' AND status IN ('queued','running','paused');")" -eq 0
-    test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE status='conflict';")" -eq 0
-    test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(DISTINCT asset_id) FROM evaluation_failures;")" -eq 0
+    attempt=0
+    QUIET_SAMPLES=0
+    while [ "$attempt" -lt 180 ]; do
+        ACTIVE_NON_CULL=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM work_sessions WHERE kind!='culling' AND status IN ('queued','running','paused');")
+        UNAVAILABLE=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM assets WHERE availability!='online';")
+        CONFLICTS=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE status='conflict';")
+        PROVIDER_FAILURES=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(DISTINCT asset_id) FROM evaluation_failures;")
+        if test "$ACTIVE_NON_CULL" -eq 0 && test "$UNAVAILABLE" -eq 0 && test "$CONFLICTS" -eq 0 && test "$PROVIDER_FAILURES" -eq 0; then
+            QUIET_SAMPLES=$((QUIET_SAMPLES + 1))
+            test "$QUIET_SAMPLES" -ge 2 && break
+        else
+            QUIET_SAMPLES=0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    test "$QUIET_SAMPLES" -ge 2
     script/vm_scenario_run.sh ax find --role AXButton --help "Activity"
     script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
     script/vm_scenario_run.sh ax find --role AXStaticText --label "No active work"
@@ -271,6 +292,10 @@ script/vm_scenario_run.sh shell 'rm -rf "$HOME/teststrip-vm/fixtures/activity-00
 - Restoring `original_path` from another asset violates the unique index.
   Updating `availability='online'` in SQL would bypass the Refresh action.
   This card does neither.
+- Active Activity rows and persisted in-flight progress publish together on a
+  0.25-second cadence. Quiet must remain true across a full publication
+  interval before negative AX assertions; source and conflict model state is
+  otherwise immediate.
 
 ## Run status
 

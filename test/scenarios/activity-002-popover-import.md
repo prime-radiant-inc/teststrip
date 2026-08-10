@@ -1,8 +1,8 @@
-# activity-002-popover-import: Activity shows cancellable ingest work and durable import receipts
+# activity-002-popover-import: Activity exposes an ingest Cancel request and durable import receipts
 
 **What this covers**: the Activity Center's two import lifecycles. While an
-ingest is active, it appears as one cancellable `ActivityKindRow`. Once that
-session reaches a terminal state, it leaves the active-work section. A
+ingest is active, it appears as one `ActivityKindRow` with a Cancel request.
+Once that session reaches a terminal state, it leaves the active-work section. A
 completed import instead survives as a retained receipt with issue review and
 Start culling actions.
 
@@ -68,7 +68,7 @@ The empty catalog makes every receipt count attributable to this card. The
 
 ## Steps
 
-### Part A: bind, inspect, and cancel one live ingest
+### Part A: bind, inspect, and request cancellation for one live ingest
 
 1. Record the ingest high-water mark, submit the large folder, and bind this
    action to the one new persisted session by `rowid`:
@@ -103,7 +103,11 @@ The empty catalog makes every receipt count attributable to this card. The
    script/vm_scenario_run.sh ax find --role AXButton --help "Cancel import"
    ```
 
-3. Press Cancel and poll the exact session to its persisted terminal state:
+3. Press Cancel and poll the exact session to its persisted terminal state.
+   A dispatched import remains in flight until its natural worker terminal; the
+   supervisor then finalizes it as `cancelled`. After SQL observes that terminal,
+   wait through the coupled Activity/progress publication cadence and re-query
+   before asserting that the active row retired:
 
    ```bash
    script/vm_scenario_run.sh ax press --role AXButton --help "Cancel import"
@@ -116,14 +120,18 @@ The empty catalog makes every receipt count attributable to this card. The
        sleep 1
    done
    test "$INGEST_STATUS" = cancelled
+   sleep 1
+   test "$(script/vm_scenario_run.sh sql empty "SELECT status FROM work_sessions WHERE id='$INGEST_SESSION_ID';")" = cancelled
    ! script/vm_scenario_run.sh ax find --role AXButton --help "Cancel import"
    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Import photos"
    ```
 
-   The terminal row is deliberately absent. `cancelImportActivity` persists
-   `cancelled`, clears `activeWork`, and `activeWorkKindRows` therefore retires
-   the row and its action. A visible `Cancelled` row is not part of this
-   contract.
+   The terminal row is deliberately absent. Worker-backed Cancel is a request
+   plus terminal relabel, not prompt interruption: an in-flight command may keep
+   its lane occupied until its natural terminal. Terminal persistence is
+   authoritative; the next coalesced publication retires the row and must not
+   replay prior running progress over `cancelled`. A visible `Cancelled` row is
+   not part of this contract.
 
 4. Close the popover before starting another import:
 
@@ -159,11 +167,8 @@ The empty catalog makes every receipt count attributable to this card. The
    its receipt must expose all current actions:
 
    ```bash
-   if script/vm_scenario_run.sh ax find --role AXButton --help "Activity - working" >/dev/null; then
-       script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
-   else
-       script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
-   fi
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working" \
+     || script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Import photos"
    ! script/vm_scenario_run.sh ax find --role AXButton --help "Cancel import"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
@@ -198,8 +203,8 @@ The empty catalog makes every receipt count attributable to this card. The
    ```
 
 8. Before starting any culling session, wait conditionally for active work to
-   drain and establish a no-problem catalog. Then prove the problems-only
-   toolbar help and the five-newest receipt cap:
+   drain and establish a no-problem catalog. Then prove the receipt-only,
+   no-problem toolbar help and the five-newest receipt cap:
 
    ```bash
    attempt=0
@@ -270,8 +275,9 @@ The empty catalog makes every receipt count attributable to this card. The
 ## Expected
 
 - Part A fails if the bound session cannot be observed in `running`, the
-  shared import row lacks Cancel, the exact session does not persist as
-  `cancelled`, or its active row/action remains afterward.
+  shared import row lacks a Cancel request, the exact session does not persist
+  as `cancelled`, a later progress publication revives it, or its active
+  row/action remains after the next publication.
 - Part B fails if any receipt session does not persist `1:1` counts and one
   `skippedSourceFile`, if a terminal `Import photos` active row remains, or if
   the receipt lacks Recent Imports, `1 file skipped`, Review issues, or Start
@@ -304,7 +310,8 @@ fixture this card owns.
   bound session reaches terminal first. That is a fixture adjustment, not
   evidence of a paused or cancellable row.
 - A cancelled session is persisted history but is not a completed-import
-  receipt. The active row disappears after cancellation by design.
+  receipt. For dispatched work, the request waits for the worker's natural
+  terminal; the active row disappears on the following coalesced publication.
 - The `.txt` file is a supported scanner test fixture for the
   `skippedSourceFile` path. Preview or backup failures are outside this card.
 - `Start culling` was live-proven as `AXLink` by `import-011`. `Review issues`
@@ -314,12 +321,13 @@ fixture this card owns.
 
 ## Run status
 
-**Reconciled — NOT re-run (2026-08-10; pre-verification).** This repair
+**Spec'd — NOT RUN (2026-08-10).** This repair
 replaces two non-executable premises: a completed or cancelled ingest is not
 an active kind row, and unsupported `.txt` files are a proven import issue
 fixture. The procedure now binds every action to a new persisted row and
 separates cancellation, receipt retention, issue review, badge, and culling
-proofs. No VM leg was driven during this docs repair.
+proofs. No Activity UI leg has ever been driven; no VM leg was driven during
+this docs repair.
 
 Historical evidence is preserved:
 
