@@ -7435,6 +7435,8 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(try repository.assetSet(id: savedSet.id).name, "Ceremony Keepers")
         XCTAssertEqual(model.savedAssetSets.first?.name, "Ceremony Keepers")
+        XCTAssertEqual(model.selectedSource, .assetSet(savedSet.id, titled: "Ceremony Keepers"))
+        XCTAssertEqual(model.scopeLine.sourceTitle, "Ceremony Keepers")
         // Rating-5 asset also qualifies for the built-in "5 Stars" queue, so
         // filter Smart Collections down to the asset-set rows to isolate the
         // saved (dynamic) set's own row.
@@ -7538,6 +7540,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.starredAssetSets, [])
         XCTAssertNil(model.sidebarSections.first { $0.title == "Saved Sets" })
         XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.selectedSource, .allPhotos)
+        XCTAssertEqual(model.scopeLine.sourceTitle, "All Photos")
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
         XCTAssertEqual(model.statusMessage, "Deleted Five Stars")
     }
@@ -9666,6 +9670,7 @@ final class AppModelTests: XCTestCase {
                 try repository.assignAssets([annaRated.id, annaUnrated.id], toPersonID: "person-anna")
             }
         )
+        try model.selectSource(.folder("/Photos/Wedding"))
         model.selectedView = .people
         model.minimumRatingFilter = 3
         try model.applyLibraryFilters()
@@ -9674,6 +9679,11 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.librarySearchText, "person:\"Anna Lee\"")
+        XCTAssertEqual(
+            model.selectedSource,
+            .search(SetQuery(predicates: [.person("Anna Lee")]), titled: "Anna Lee")
+        )
+        XCTAssertEqual(model.scopeLine.sourceTitle, "Anna Lee")
         XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee"])
         XCTAssertEqual(model.assets.map(\.id), [annaRated.id, annaUnrated.id])
         XCTAssertEqual(model.totalAssetCount, 2)
