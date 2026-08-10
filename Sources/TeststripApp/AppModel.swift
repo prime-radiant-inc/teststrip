@@ -4002,11 +4002,13 @@ public final class AppModel {
     }
 
     public func showPersonPhotos(named name: String) throws {
+        let query = SetQuery(predicates: [.person(name)])
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
-        librarySearchText = Self.librarySearchText(residualText: nil, predicates: [.person(name)])
-        selectedView = .grid
+        librarySearchText = Self.librarySearchText(residualText: nil, predicates: query.predicates)
         try reload()
+        selectedSource = .search(query, titled: name)
+        selectedView = .grid
     }
 
     /// Builds the review-first surface behind a face-group suggestion: resolves
@@ -5314,6 +5316,9 @@ public final class AppModel {
         assetSet.name = trimmedName
         try catalog.repository.upsert(assetSet)
         try refreshSavedAssetSets()
+        if case .assetSet(let selectedID) = selectedSource.kind, selectedID == id {
+            selectedSource = .assetSet(id, titled: trimmedName)
+        }
         statusMessage = "Renamed \(trimmedName)"
     }
 
@@ -5326,6 +5331,7 @@ public final class AppModel {
         if selectedAssetSetID == id {
             selectedAssetSetID = nil
             try reload()
+            selectedSource = .allPhotos
         }
         try refreshSavedAssetSets()
         statusMessage = "Deleted \(assetSet.name)"
