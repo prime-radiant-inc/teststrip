@@ -62,14 +62,14 @@ Every surface this card drives reads that one field, never a status row:
   renders — a scope still carrying a ghost never reaches the completion
   stage. Unlike the pre-SP-D0 build this branch replaces,
   `cullCompletionStage`/`cullCompletionRunDetailText`
-  (`Sources/TeststripApp/LibraryGridView.swift:3871-3944`, verified
+  (`Sources/TeststripApp/LibraryGridView.swift:3871-3917`, verified
   2026-08-06) carry **no `sparkleAwaiting` field, no "awaiting review" text,
   and no `.reviewAISuggestions` action at all** — the whole ceremony
   `cull-025-run-strip-completion.md` documented is gone from the source, not
   merely gated to zero (confirmed by grep: zero hits for
   `reviewAISuggestions`/`sparkleAwaiting`/"awaiting review" anywhere under
-  `Sources/TeststripApp/`, 2026-08-06). The detail line is exactly
-  `"\(skipped) skipped · \(neverViewed) never viewed"` (`:4030`).
+  `Sources/TeststripApp/`, 2026-08-06). The detail helper is exactly
+  `"\(skipped) skipped · \(neverViewed) never viewed"` (`:3942-3944`).
 - **Gone is gone, precisely**: `AppModel.setFlagForSelectedAsset(_:)`
   (`AppModel.swift:7352-7380`) routes a `U` (`.clearFlag`, key mapped
   `AppModel.swift:296`) two different ways depending on whether the flag is

@@ -4,11 +4,11 @@
 "Autopilot cull after reading" toggle. When armed, once the read (evaluation)
 pass finishes for the freshly imported asset IDs, Autopilot proposes
 keeps/rejects automatically — scoped to exactly those IDs, not the whole
-catalog. The proposals auto-apply to `assets.metadata_json.flag` as
-AI-unconfirmed ghosts: they are provisional and catalog-only until an
-explicit commit confirms them and writes the sidecar. This card's
-load-bearing negative assertion is that no proposal becomes confirmed or
-portable before that gesture.
+catalog. Per this project's confirm-before-write invariant
+(`CLAUDE.md`), the proposals are provisional: nothing lands in
+`assets.metadata_json`'s `flag`/`rating` fields until an explicit commit
+gesture. This card's negative assertion — nothing written pre-confirm — is
+the load-bearing check; do not weaken it.
 
 ## Pre-state
 ```bash
@@ -72,20 +72,18 @@ fixture needed.)
    ```bash
    sqlite3 "$DB" "SELECT id FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
    ```
-7. **Provisional-write assertion** (the load-bearing check): before any
-   confirming click, each ghost-carrying imported asset already has its
-   proposed `flag` in `metadata_json`, while Autopilot has not changed its
-   rating or written an `.xmp` sidecar:
+7. **Provisional-write negative assertion** (the load-bearing check): before
+   any confirming click, none of the imported assets' `metadata_json` has a
+   `flag` or non-zero `rating` written by autopilot:
    ```bash
    sqlite3 "$DB" "SELECT id, metadata_json FROM assets WHERE original_path LIKE '%/card2/%';"
    ```
-   For each row returned by Step 6's ghost query, assert the proposed `flag`
-   is present and `rating` is unchanged from its pre-run value. The run-time
-   write happens in `applyTentativeAutopilotProposals`
-   (`Sources/TeststripApp/AppModel.swift:9643-9700`), which inserts `.flag`
-   into `aiUnconfirmedFields` and uses the catalog-only `updateMetadata`
-   path. The later commit gesture confirms that existing value; it is not the
-   first write.
+   Assert every row's `metadata_json` still reads `"flag":null` (or absent)
+   and `"rating":0` — `commitAutopilotProposals` is the only place that
+   writes `updatedMetadata.flag`
+   (`Sources/TeststripApp/AppModel.swift:7784-7838`, write at :7809-7812), and
+   it only runs from an explicit commit gesture (Autopilot Review → Commit),
+   never automatically post-import.
 8. Assert every ghost from this run is still unconfirmed
    (`aiUnconfirmedFields` still contains `flag` — there is no separate
    `status` column any more; the ghost's mere presence in `metadata_json`
@@ -108,9 +106,9 @@ fixture needed.)
 - Step 6: **fails if** any ghost-carrying asset is one of the 24 pre-seeded
   smoke assets — proves the scope leaked beyond `armedAutopilotImportAssetIDs`
   to the whole visible catalog.
-- Step 7 (pre-commit): **fails if** a ghost lacks its tentative `flag`, if
-  that flag is already confirmed, if Autopilot changed a rating, or if an
-  `.xmp` sidecar reflects the tentative flag before the explicit commit.
+- Step 7 (pre-commit): **fails if** any imported asset's `flag`/`rating`
+  changed before the explicit commit — this is the confirm-before-write
+  invariant; a failure here is a P0, not a nitpick.
 - Step 9 (post-commit): **fails if** committing does NOT write the flags —
   proves the commit gesture itself is wired, so Step 7's negative isn't
   vacuously true because commit is broken.
@@ -145,17 +143,37 @@ Quit the launched instance.
   see `testAutopilotArmedImportRunsEvenWhenGlobalAutopilotIsDisabled` and
   `testUnarmedImportDoesNotRunAutopilotEvenWhenGlobalAutopilotIsEnabled` in
   `AppModelTests.swift`.)
-- **Resolved during the unified-shell citation sweep:** the former Step 7
-  incorrectly treated auto-apply as confirmation and demanded
-  `"flag":null`, contradicting this card's own ghost checks. The current
-  assertion follows the source: `runArmedImportAutopilot`
-  (`AppModel.swift:10070-10081`) calls `runAutopilot`,
-  whose `applyTentativeAutopilotProposals`
-  (`Sources/TeststripApp/AppModel.swift:9643-9700`) writes the tentative flag
-  and marks `.flag` AI-unconfirmed immediately. Commit only clears that
-  marker through the sidecar-syncing path. The scenario actions are
-  unchanged; only the expected interpretation of their existing queries was
-  corrected.
+- **Step 7's pre-commit "still reads `\"flag\":null`" expectation appears to
+  contradict this card's own Steps 6/8/9 and the project's auto-apply-with-
+  provenance invariant — flagged, not fixed.** Step 7 asserts that before
+  any confirming click, none of the imported assets' `metadata_json` has a
+  `flag` written, and calls a failure there a P0. But Steps 6, 8, and 9 all
+  assume the opposite: that a ghost (a tentative, AI-unconfirmed `flag`
+  value already sitting in `metadata_json`) exists on the imported assets
+  *before* the commit gesture — Step 6 queries for ghost-carrying assets,
+  Step 8 asserts those ghosts' `aiUnconfirmedFields` still contains `flag`,
+  and Step 9 commits "the ghosts for the imported set". Reading the source
+  directly confirms the ghost side: `runArmedImportAutopilot`
+  (`Sources/TeststripApp/AppModel.swift:10070-10081`) calls `runAutopilot`
+  (`:9593-9641`), which calls `applyTentativeAutopilotProposals`
+  (`:9643-9701`) — that function writes `updatedMetadata.flag` and inserts
+  `.flag` into `aiUnconfirmedFields` (`:9675-9677`) via
+  `catalog.repository.updateMetadata` (`:9690`) **immediately**, for any
+  qualifying proposal, matching `CLAUDE.md`'s auto-apply-with-provenance
+  invariant (machine labels land at once, tagged `origin`/unconfirmed, and
+  only an explicit gesture confirms them — auto-apply is not the same as
+  "unwritten until confirmed"). This is a **pre-existing** issue — it
+  predates SP-D0 and is not something this branch introduced or should
+  guess-fix. What's established: the source read above says a ghost's
+  `flag` is written to `metadata_json` pre-commit. What's NOT established:
+  whether that's what a live run actually shows for *this exact* armed-
+  import path (Step 7 has never been driven live — see Run status), or
+  whether Step 7's author had something else in mind (e.g. a `rating` field,
+  or a build predating this write path) that a live run would clarify.
+  **The next live run of this card must resolve this empirically before
+  trusting either Step 7 or Steps 6/8/9 at face value** — do not report a
+  Step 7 `"flag":null` failure as a P0 without first checking whether it's
+  actually this contradiction surfacing.
 
 ## Run status
 SQL-GROUNDED, AX-UNRUN. Toggle label, default state, disabled-gating, the

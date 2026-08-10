@@ -17,7 +17,7 @@ over from any older card):
   `Sources/TeststripApp/LibraryGridView.swift:3786-3789`
   (`cullingStackRail(presentation: stackPresentation)`).
 - **Rail view**: `cullingStackRail(presentation:)`,
-  `LibraryGridView.swift:4399-4471` — title (`Label` + `rectangle.stack`
+  `LibraryGridView.swift:4697-4796` — title (`Label` + `rectangle.stack`
   glyph, orange), `positionText` ("Frame X of Y"), optional
   `rationaleText`, a `LazyVStack` of cells in a `ScrollView`, then a footer
   `HStack` with the primary "Keep" button and (if any secondary actions

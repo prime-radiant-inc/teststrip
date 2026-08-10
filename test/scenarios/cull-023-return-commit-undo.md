@@ -18,11 +18,11 @@ render-gate no-op with an armed, auto-firing commit and shifted most of
 `cull-027-blaze-through-prefetch.md` for the card that exercises the new
 behavior live):
 - **The gesture**: `AppModel.promoteCurrentFrameAndRejectSiblings()`
-  (`Sources/TeststripApp/AppModel.swift:6332-6388`). Membership guard
-  (`:6389-6390`): `selectedWorkStackAssetIDs` (a persisted stack) or
+  (`Sources/TeststripApp/AppModel.swift:6331-6387`). Membership guard
+  (`:6332-6334`): `selectedWorkStackAssetIDs` (a persisted stack) or
   `cullingStacks()` (the in-memory auto-grouped, multi-frame-only partition)
   must contain the selection, else it's the standalone no-op branch
-  (`:6395-6400`): sets `lastCullingMetadataDecision` to
+  (`:6339-6344`): sets `lastCullingMetadataDecision` to
   `singleFrameStackFeedback(asset:)` (`:6493-6501`) — decisionText exactly
   `"No stack to promote — P picks this frame"`, `isInformational: true` — and
   returns with **no metadata write** at all.

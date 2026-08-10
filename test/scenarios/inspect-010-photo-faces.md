@@ -52,7 +52,7 @@ Source:
   every one calls `refreshPeopleFaceSuggestions()` inline, so the People
   rows and the suggestion pipeline agree immediately with no separate
   "re-scan" gesture needed for the reject leg below.
-- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1853-1985`
+- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1185-1219`
   (`assignFaces` — writes `person_faces` **and** a `person_assets` row for
   the whole asset, `:1208-1217`), `:1238-1254`
   (`recordRejectedFacePerson`/`clearRejectedFacePerson`), `:1269-1279`
@@ -74,9 +74,9 @@ Source:
 - `Sources/TeststripApp/LoupeZoomView.swift:271-282` — `faceBoxOverlay` is
   drawn only `if LensChromePolicy.showsInspector(model.selectedView), model.isInspectorVisible`,
   and only over `fittedImage` (`:249-264`), never the 1:1-zoomed view.
-- `Sources/TeststripApp/main.swift:5-13` — `AppWindowLayoutMetrics`; the
-  unified shell has one 1000pt minimum width for every lens, which is what
-  step 25 below checks with Cull and the inspector visible together.
+- `Sources/TeststripApp/main.swift:4-23` — `AppWindowLayoutMetrics`;
+  `.cull`'s 800pt floor (`:15`) predates the inspector becoming reachable
+  from Cull at all (Task 5), which is exactly what step 25 below checks.
 
 ## Pre-state
 ```bash
@@ -237,18 +237,19 @@ for the plain add-a-name leg.
     naming is catalog-only; it must never create or touch a sidecar or the
     original.
 
-### 7. The unified 1000pt floor holds with Cull and the inspector open
+### 7. 800pt Cull width holds with the inspector open
 25. With the inspector open (from step 2) and a photo selected, resize the
-    window to exactly 1000pt wide
-    (`script/vm_scenario_run.sh key 'set size of window 1 of process "Teststrip" to {1000, 820}'`
+    window to exactly 800pt wide
+    (`script/vm_scenario_run.sh key 'set size of window 1 of process "Teststrip" to {800, 820}'`
     — same technique as `app-002-window-floors.md`). Assert: the stack
     rail, the loupe image, the Close-Ups panel (if visible), and the
     inspector column are all simultaneously present in the AX tree, with
     no element's frame extending past the window's right edge and no two
     elements' frames overlapping. **Fails if** anything is clipped or
-    overlapped — `AppWindowLayoutMetrics.minimumWidth` (1000pt,
-    `main.swift:9`) is the unified floor and must fit all four panes —
-    [stack rail | loupe | close-ups | inspector] — at once.
+    overlapped — `AppWindowLayoutMetrics.minimumWidth(.cull)` (800pt,
+    `main.swift:15`) was set before the inspector became reachable from
+    Cull (Task 5), so this floor has never actually had to fit all four
+    panes — [stack rail | loupe | close-ups | inspector] — at once.
 
 ### 8. Box placement on a letterboxed non-square photo, and after resize
 26. Pick a photo whose pixel aspect ratio clearly differs from the loupe
@@ -300,8 +301,9 @@ for the plain add-a-name leg.
   product question for Jesse).
 - Step 24: byte-identical originals, no new/changed `.xmp`. **Fails if**
   either changes — naming a face is catalog-only.
-- Step 25: no clipping/overlap of the four panes at 1000pt. **Fails if**
-  any element is cut off or overlapping at the unified window floor.
+- Step 25: no clipping/overlap of the four panes at 800pt. **Fails if**
+  any element is cut off or overlapping — this is the first time this
+  floor has had to hold the inspector too.
 - Steps 26-27: box tracks the actual face in the letterboxed image, both
   at rest and after a resize. **Fails if** a box sits in the letterbox
   bars, is vertically flipped, or doesn't move when the window is resized.
@@ -325,6 +327,18 @@ for the plain add-a-name leg.
   comment in the file — confirm the download actually succeeds before
   trusting a "no faces detected" result as a product finding rather than a
   fixture gap.
+- **Excluded unified-shell journey follow-ups:** Step 25 intentionally retains
+  its pre-Task-14 800pt action and pass/fail contract. The current unified
+  `AppWindowLayoutMetrics.minimumWidth` is 1000pt for every lens
+  (`Sources/TeststripApp/main.swift:5-13`), so no current symbol supports the
+  card's old 800pt rationale. Rewriting that journey to the 1000pt floor and
+  driving it live is separate scenario debt. The pre-Task-14 face-removal
+  assertion and its source anchors are also retained rather than freshened
+  misleadingly: current `unassignFaces` conditionally removes the
+  `person_assets` row after the last face is removed
+  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:1963-2000`), so
+  Step 22 and the old `:1269-1279`/`:1136-1139` rationale need a separately
+  scoped rewrite and live run too.
 - **Do not test confirmed + suggested on the same photo.** Confirming any
   face on a photo (`nameFace` → `assignFaces`) inserts a `person_assets`
   row for the **whole asset** (`CatalogRepository.swift:1208-1217`), and
@@ -353,7 +367,7 @@ for the plain add-a-name leg.
   detector** (`CoreImageFaceExpressionAnalyzer`, see
   `cull-006-zoom-and-face-zoom.md`'s Sharp edges) — the two never write to
   or read from the same store; don't cross-check counts between them.
-- The 1000pt-floor and letterbox/resize legs are visual/geometric and
+- The 800pt-floor and letterbox/resize legs are visual/geometric and
   mostly fall back to screenshot inspection (`capture_app_window.sh`)
   rather than a clean AX text assertion — the same limitation
   `cull-006-zoom-and-face-zoom.md` documents for the loupe's zoom state.

@@ -36,7 +36,7 @@ row present; see `InspectorMetadataSyncStatus.init`,
 
 ## Part A — priority ordering (non-destructive, single pass)
 ### Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 Library; select `$SRC`.
+1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 Grid; select `$SRC`.
 2. Before any rating: assert **no** sync status line renders in Info (no
    sidecar written yet, `InspectorMetadataSyncStatus.init` returns nil).
 3. Rate `$SRC` 4 stars (`ax_drive.sh press --role AXButton --help "Rate 4"`,

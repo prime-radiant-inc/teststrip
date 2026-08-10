@@ -287,7 +287,7 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
 ### 4. A real (confirmed) reject as the control, before autopilot runs
 12. Pick a control asset not otherwise touched above — `commons-armstrong-eva-training.jpg`
     (if this happens to be the asset promoted a keyword in step 3, substitute
-    `commons-ride-sts7.jpg`). Select it (⌘2 Library, click its thumbnail),
+    `commons-ride-sts7.jpg`). Select it (⌘2 Grid, click its thumbnail),
     ⌘I, then `ax press --role AXButton --label "Reject"`
     (`InspectorView.swift:992`, `model.setFlagForSelectedAssets(.reject)`
     — a direct user gesture, `origin` is never `ai` for this path). Assert:

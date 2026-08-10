@@ -64,7 +64,7 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
    resurface.
 3. Press ⌘I again. Assert the inspector panel closes (still in Cull).
 4. Press ⌘I a third time. Assert it opens again, still in Cull.
-5. **No-selection empty state**: press ⌘2 (Library) with nothing selected;
+5. **No-selection empty state**: press ⌘2 (Grid lens) with nothing selected;
    assert the inspector body reads "No selection" (`ax_drive.sh find
    --role AXStaticText --contains "No selection"`).
 6. Select `$SRC`'s grid cell. Assert "No selection" is gone and all four

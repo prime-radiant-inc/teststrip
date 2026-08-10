@@ -18,15 +18,15 @@ Source:
   focus (or center); a repeated press while still face-zoomed cycles to the
   next face, wrapping (`LoupeFaceZoomTargeting.wrappedIndex`, `:419-422`);
   falls back to a plain centered 1:1 zoom if no faces were detected (`:6834-6838`).
-- `Sources/TeststripApp/LibraryGridView.swift:4200-4245` (`refreshCloseUps`) —
+- `Sources/TeststripApp/LibraryGridView.swift:4200-4252` (`refreshCloseUps`) —
   **verified same-detections claim**: this is the single call site that both
   populates the Close-Ups panel crops (`closeUpCrops`) and calls
   `model.setLoupeFaceFocuses(result.faceFocuses)` (the Z-cycle targets). Both
   come from one `CoreImageFaceExpressionAnalyzer().detectFaces(...)` call per
   selection change — there is no second, independent face-detection path for
-  the loupe. Comment at `:3736-3740` states this explicitly. Detection here
+  the loupe. Comment at `:4200-4206` states this explicitly. Detection here
   is **display-only and in-memory** (nothing persisted to `face_observations`
-  — that table backs the separate People-workspace clustering pipeline, not
+  — that table backs the separate People lens clustering pipeline, not
   this loupe feature).
 
 ## Pre-state
