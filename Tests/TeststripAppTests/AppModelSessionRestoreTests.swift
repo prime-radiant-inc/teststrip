@@ -480,7 +480,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
             latitude: 53.25,
             longitude: 63.25
         )
-        confirmed.metadata.flag = .reject
+        confirmed.metadata.flag = .pick
         try catalogA.repository.upsert([ghost, ordinary, confirmed])
         try catalogA.repository.recordPlaceName(CatalogPlaceName(
             coordinateKey: GeocodeCoordinateKey.key(latitude: 13.25, longitude: 23.25),

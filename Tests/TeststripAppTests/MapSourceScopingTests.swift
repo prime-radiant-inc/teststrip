@@ -85,7 +85,7 @@ final class MapSourceScopingTests: XCTestCase {
             path: "/Photos/middle-confirmed.dng",
             latitude: 52.25,
             longitude: 62.25,
-            flag: .reject
+            flag: .pick
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "map-ai-sort-membership",
@@ -207,7 +207,7 @@ final class MapSourceScopingTests: XCTestCase {
             path: "/Photos/confirmed.dng",
             latitude: 51.25,
             longitude: 61.25,
-            flag: .reject
+            flag: .pick
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: name,
