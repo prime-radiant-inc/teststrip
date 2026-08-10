@@ -9227,6 +9227,10 @@ final class AppModelTests: XCTestCase {
         try model.applyLibraryFilters()
 
         XCTAssertEqual(model.workHistorySearchResults.map(\.id), [searchOnlySession.id.rawValue])
+        XCTAssertEqual(
+            recentWorkCollectionRows(model).compactMap(workSessionTargetID),
+            [searchOnlySession.id]
+        )
         let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
         XCTAssertEqual(row.countText, "2")
         XCTAssertEqual(model.sidebarContextActions(for: row), [
