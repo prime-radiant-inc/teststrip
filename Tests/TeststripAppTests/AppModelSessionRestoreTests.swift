@@ -99,6 +99,82 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertTrue(modelB.assets.allSatisfy { $0.metadata.rating == 5 })
     }
 
+    func testFallsBackToAllPhotosWhenRestoredAssetSetSourceAndSelectedIDDisagree() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-mismatched-set-identities")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        try seedAssets(count: 4, in: catalogA.repository)
+        let sourceSetID = AssetSetID(rawValue: "persisted-source-set")
+        let selectedSetID = AssetSetID(rawValue: "persisted-selected-set")
+        try catalogA.repository.upsert(AssetSet.manual(
+            id: sourceSetID,
+            name: "Source Set",
+            assetIDs: [AssetID(rawValue: "asset-0")]
+        ))
+        try catalogA.repository.upsert(AssetSet.manual(
+            id: selectedSetID,
+            name: "Selected Set",
+            assetIDs: [AssetID(rawValue: "asset-2")]
+        ))
+        let catalogRoot = try makePaths(directory: directory).root
+        SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot).save(
+            Self.stateReferencing(
+                source: .assetSet(sourceSetID, titled: "Source Set"),
+                selectedAssetSetID: selectedSetID
+            )
+        )
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertNil(modelB.selectedAssetSetID)
+        XCTAssertEqual(modelB.selectedSource, .allPhotos)
+        XCTAssertEqual(modelB.scopeLine.sourceTitle, "All Photos")
+        XCTAssertEqual(
+            Set(modelB.assets.map(\.id)),
+            Set([
+                AssetID(rawValue: "asset-0"),
+                AssetID(rawValue: "asset-1"),
+                AssetID(rawValue: "asset-2"),
+                AssetID(rawValue: "asset-3")
+            ])
+        )
+    }
+
+    func testRestoresCurrentAssetSetTitleWhenPersistedTitleIsStale() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-current-set-title")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        try seedAssets(count: 4, in: catalogA.repository)
+        let assetSetID = AssetSetID(rawValue: "renamed-before-relaunch")
+        var assetSet = AssetSet.manual(
+            id: assetSetID,
+            name: "Before Rename",
+            assetIDs: [AssetID(rawValue: "asset-1"), AssetID(rawValue: "asset-3")]
+        )
+        try catalogA.repository.upsert(assetSet)
+        let catalogRoot = try makePaths(directory: directory).root
+        SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot).save(
+            Self.stateReferencing(
+                source: .assetSet(assetSetID, titled: "Before Rename"),
+                selectedAssetSetID: assetSetID
+            )
+        )
+        assetSet.name = "After Rename"
+        try catalogA.repository.upsert(assetSet)
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.selectedAssetSetID, assetSetID)
+        XCTAssertEqual(modelB.selectedSource, .assetSet(assetSetID, titled: "After Rename"))
+        XCTAssertEqual(modelB.scopeLine.sourceTitle, "After Rename")
+        XCTAssertEqual(
+            Set(modelB.assets.map(\.id)),
+            Set([AssetID(rawValue: "asset-1"), AssetID(rawValue: "asset-3")])
+        )
+    }
+
     // Pins the claim in SessionRestoreState.detachedFilterPredicates' doc
     // comment: a smart collection is only expressible through its query
     // predicates, so without restoring them a relaunch silently drops the
