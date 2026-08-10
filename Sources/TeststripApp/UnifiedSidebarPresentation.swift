@@ -140,6 +140,7 @@ public enum UnifiedSidebarPresentation {
         recentWork: [AppWorkActivity],
         starredWork: [AppWorkActivity],
         matchedWork: [AppWorkActivity],
+        isWorkHistorySearchActive: Bool = false,
         workSessionScopeCounts: [WorkSessionID: Int],
         selectionCount: Int
     ) -> [SidebarSection] {
@@ -211,9 +212,9 @@ public enum UnifiedSidebarPresentation {
 
         // Imports have their own section, so Recent Work carries only the
         // other work kinds — culling, export, relocation, collecting.
-        let workActivities = matchedWork.isEmpty
-            ? mergedWorkActivities(recentWork: recentWork, starredWork: starredWork)
-            : matchedWork
+        let workActivities = isWorkHistorySearchActive || !matchedWork.isEmpty
+            ? matchedWork
+            : mergedWorkActivities(recentWork: recentWork, starredWork: starredWork)
         let workRows = workActivities
             .filter { $0.kind != .ingest }
             .map { activity -> SidebarRow in
@@ -338,11 +339,9 @@ public enum UnifiedSidebarPresentation {
         recentWork: [AppWorkActivity],
         starredWork: [AppWorkActivity]
     ) -> [AppWorkActivity] {
-        // Ingest-kind sessions are filtered out before the 5-row windows are
-        // taken, not after — otherwise a run of imports fills both windows
-        // with rows the caller's kind filter then discards, leaving Recent
-        // Work empty even though older non-ingest sessions are sitting just
-        // past the window in the unbounded query.
+        // AppModel supplies eligibility-filtered caches, so these prefixes are
+        // display caps only. Keep the kind guards because this pure presenter
+        // is also constructed directly by tests and previews.
         let recentSlice = Array(recentWork.filter { $0.kind != .ingest }.prefix(5))
         let recentIDs = Set(recentSlice.map(\.id))
         return recentSlice + starredWork

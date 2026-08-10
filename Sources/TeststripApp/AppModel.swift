@@ -1995,9 +1995,10 @@ public final class AppModel {
             assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
             expandedFolderPaths: expandedFolderPaths,
-            recentWork: recentWork,
-            starredWork: starredWork,
+            recentWork: recentNonImportWork,
+            starredWork: starredNonImportWork,
             matchedWork: workHistorySearchResults,
+            isWorkHistorySearchActive: isWorkHistorySearchActive,
             workSessionScopeCounts: workSessionScopeCounts,
             selectionCount: selectedBatchAssetIDs.isEmpty
                 ? (selectedAssetID != nil ? 1 : 0)
@@ -2117,6 +2118,11 @@ public final class AppModel {
     }
     public var recentWork: [AppWorkActivity]
     public var starredWork: [AppWorkActivity]
+    // Recent Work excludes imports before applying either display window.
+    // Keep these separate because the mixed caches above still feed import
+    // completion and background-work surfaces.
+    private var recentNonImportWork: [AppWorkActivity]
+    private var starredNonImportWork: [AppWorkActivity]
     /// Every completed import, newest first — the Imports sidebar section's
     /// source of truth. Refreshed alongside `recentWork`.
     public private(set) var importSourceSummaries: [ImportSidebarSummary] = []
@@ -2141,6 +2147,9 @@ public final class AppModel {
     /// three most recent plus the overflow row.
     public private(set) var isShowingAllImports = false
     public var workHistorySearchResults: [AppWorkActivity]
+    // Empty results can mean either no residual search or a residual search
+    // with no matches; the sidebar must distinguish those two states.
+    private var isWorkHistorySearchActive: Bool
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     // SP-C: a Return that hit the render gate arms the commit; the moment the
     // staged frame's large preview lands, the decision fires. Deliberately
@@ -4120,6 +4129,8 @@ public final class AppModel {
         activeWork: AppWorkActivity? = nil,
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = [],
+        recentNonImportWork: [AppWorkActivity]? = nil,
+        starredNonImportWork: [AppWorkActivity]? = nil,
         workHistorySearchResults: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
@@ -4167,7 +4178,12 @@ public final class AppModel {
         self.activeWork = activeWork
         self.recentWork = recentWork
         self.starredWork = starredWork
+        self.recentNonImportWork = recentNonImportWork
+            ?? Array(recentWork.filter { $0.kind != .ingest }.prefix(5))
+        self.starredNonImportWork = starredNonImportWork
+            ?? Array(starredWork.filter { $0.kind != .ingest }.prefix(10))
         self.workHistorySearchResults = workHistorySearchResults
+        self.isWorkHistorySearchActive = !workHistorySearchResults.isEmpty
         self.lastCullingMetadataDecision = nil
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
@@ -4364,8 +4380,9 @@ public final class AppModel {
         )
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let nonImportWork = try Self.nonImportWorkActivities(repository: repository)
         let workSessionScopeCounts = try Self.workSessionScopeCounts(
-            activities: recentWork + starredWork,
+            activities: recentWork + starredWork + nonImportWork.recent + nonImportWork.starred,
             repository: repository
         )
         let totalAssetCount = try repository.assetCount()
@@ -4376,6 +4393,8 @@ public final class AppModel {
             totalAssetCount: totalAssetCount,
             recentWork: recentWork,
             starredWork: starredWork,
+            recentNonImportWork: nonImportWork.recent,
+            starredNonImportWork: nonImportWork.starred,
             pendingMetadataSyncItems: metadataSyncState.pendingItems,
             metadataSyncConflictItems: metadataSyncState.conflictItems,
             pendingMetadataSyncCount: metadataSyncState.pendingCount,
@@ -4425,8 +4444,9 @@ public final class AppModel {
         )
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let nonImportWork = try Self.nonImportWorkActivities(repository: catalog.repository)
         let workSessionScopeCounts = try Self.workSessionScopeCounts(
-            activities: recentWork + starredWork,
+            activities: recentWork + starredWork + nonImportWork.recent + nonImportWork.starred,
             repository: catalog.repository
         )
         let totalAssetCount = try catalog.repository.assetCount()
@@ -4438,6 +4458,8 @@ public final class AppModel {
             catalog: catalog,
             recentWork: recentWork,
             starredWork: starredWork,
+            recentNonImportWork: nonImportWork.recent,
+            starredNonImportWork: nonImportWork.starred,
             pendingMetadataSyncItems: metadataSyncState.pendingItems,
             metadataSyncConflictItems: metadataSyncState.conflictItems,
             pendingMetadataSyncCount: metadataSyncState.pendingCount,
@@ -5396,7 +5418,11 @@ public final class AppModel {
     }
 
     private func workActivity(id: WorkSessionID) -> AppWorkActivity? {
-        recentWork.first { $0.id == id.rawValue } ?? starredWork.first { $0.id == id.rawValue }
+        recentWork.first { $0.id == id.rawValue }
+            ?? starredWork.first { $0.id == id.rawValue }
+            ?? recentNonImportWork.first { $0.id == id.rawValue }
+            ?? starredNonImportWork.first { $0.id == id.rawValue }
+            ?? workHistorySearchResults.first { $0.id == id.rawValue }
     }
 
     public func applyAssetSet(id: AssetSetID) throws {
@@ -5438,9 +5464,12 @@ public final class AppModel {
         }
         recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let nonImportWork = try Self.nonImportWorkActivities(repository: catalog.repository)
+        recentNonImportWork = nonImportWork.recent
+        starredNonImportWork = nonImportWork.starred
         workSessionScopeCounts.merge(
             try Self.workSessionScopeCounts(
-                activities: recentWork + starredWork,
+                activities: recentWork + starredWork + recentNonImportWork + starredNonImportWork,
                 repository: catalog.repository
             )
         ) { _, refreshedCount in
@@ -10805,7 +10834,10 @@ public final class AppModel {
     }
 
     private var persistedWorkActivityIDs: Set<String> {
-        Set((recentWork + starredWork).map(\.id))
+        Set(
+            (recentWork + starredWork + recentNonImportWork + starredNonImportWork + workHistorySearchResults)
+                .map(\.id)
+        )
     }
 
     private var activeBackgroundImportItem: BackgroundWorkItem? {
@@ -10953,17 +10985,36 @@ public final class AppModel {
 
     private func refreshWorkHistorySearchResults(repository: CatalogRepository) throws {
         let previousResults = workHistorySearchResults
+        let wasSearchActive = isWorkHistorySearchActive
         let residualText = LibrarySearchIntent.parse(librarySearchText).residualText?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let refreshedResults: [AppWorkActivity]
+        let isSearchActive: Bool
         if let residualText, !residualText.isEmpty {
-            workHistorySearchResults = try repository.workSessions(matching: residualText, limit: 5)
+            refreshedResults = try repository.workSessions(
+                matching: residualText,
+                limit: 5,
+                excluding: .ingest
+            )
                 .map(AppWorkActivity.init)
+            isSearchActive = true
         } else {
-            workHistorySearchResults = []
+            refreshedResults = []
+            isSearchActive = false
+        }
+        let refreshedScopeCounts = try Self.workSessionScopeCounts(
+            activities: refreshedResults,
+            repository: repository
+        )
+        workHistorySearchResults = refreshedResults
+        isWorkHistorySearchActive = isSearchActive
+        workSessionScopeCounts.merge(refreshedScopeCounts) { _, refreshedCount in
+            refreshedCount
         }
         // The Collections group's Recent Work rows show the matched sessions
-        // while a query is active, so a result change re-renders the sidebar.
-        if workHistorySearchResults != previousResults {
+        // while a residual query is active. Track that state independently
+        // because an active search with no matches must suppress the defaults.
+        if workHistorySearchResults != previousResults || isWorkHistorySearchActive != wasSearchActive {
             rebuildSidebarSections()
         }
     }
@@ -13959,6 +14010,17 @@ public final class AppModel {
         currentSessionActivityIDs.insert(recordedActivity.id)
         recentWork.removeAll { $0.id == recordedActivity.id }
         recentWork.insert(recordedActivity, at: 0)
+        if recordedActivity.kind != .ingest {
+            recentNonImportWork.removeAll { $0.id == recordedActivity.id }
+            recentNonImportWork.insert(recordedActivity, at: 0)
+            recentNonImportWork = Array(recentNonImportWork.prefix(5))
+
+            starredNonImportWork.removeAll { $0.id == recordedActivity.id }
+            if recordedActivity.starred {
+                starredNonImportWork.insert(recordedActivity, at: 0)
+                starredNonImportWork = Array(starredNonImportWork.prefix(10))
+            }
+        }
         refreshLatestImportPresentation()
         guard let catalog else {
             rebuildSidebarSections()
@@ -14262,6 +14324,16 @@ public final class AppModel {
         case .dynamic(let query):
             return try repository.assetCount(matching: query)
         }
+    }
+
+    private static func nonImportWorkActivities(
+        repository: CatalogRepository
+    ) throws -> (recent: [AppWorkActivity], starred: [AppWorkActivity]) {
+        let recent = try repository.workSessions(limit: 5, excluding: .ingest)
+            .map(AppWorkActivity.init)
+        let starred = try repository.workSessions(limit: 10, starredOnly: true, excluding: .ingest)
+            .map(AppWorkActivity.init)
+        return (recent, starred)
     }
 
     private static func workSessionScopeCounts(

@@ -2193,39 +2193,76 @@ public final class CatalogRepository {
     }
 
     public func workSessions(limit: Int, starredOnly: Bool = false) throws -> [WorkSession] {
+        try workSessions(limit: limit, starredOnly: starredOnly, excluding: nil)
+    }
+
+    public func workSessions(
+        limit: Int,
+        starredOnly: Bool = false,
+        excluding kind: WorkSessionKind
+    ) throws -> [WorkSession] {
+        try workSessions(limit: limit, starredOnly: starredOnly, excluding: Optional(kind))
+    }
+
+    private func workSessions(
+        limit: Int,
+        starredOnly: Bool,
+        excluding kind: WorkSessionKind?
+    ) throws -> [WorkSession] {
         guard limit > 0 else { return [] }
-        let rows: [[String: String]]
+        var predicates: [String] = []
+        var bindings: [String] = []
         if starredOnly {
-            rows = try database.rows(
-                "SELECT * FROM work_sessions WHERE starred = 1 ORDER BY updated_at DESC LIMIT ?",
-                bindings: ["\(limit)"]
-            )
-        } else {
-            rows = try database.rows(
-                "SELECT * FROM work_sessions ORDER BY updated_at DESC LIMIT ?",
-                bindings: ["\(limit)"]
-            )
+            predicates.append("starred = 1")
         }
+        if let kind {
+            predicates.append("kind != ?")
+            bindings.append(kind.rawValue)
+        }
+        let whereClause = predicates.isEmpty ? "" : " WHERE \(predicates.joined(separator: " AND "))"
+        let rows = try database.rows(
+            "SELECT * FROM work_sessions\(whereClause) ORDER BY updated_at DESC LIMIT ?",
+            bindings: bindings + ["\(limit)"]
+        )
         return try rows.map(decodeWorkSession)
     }
 
     public func workSessions(matching text: String, limit: Int) throws -> [WorkSession] {
+        try workSessions(matching: text, limit: limit, excluding: nil)
+    }
+
+    public func workSessions(
+        matching text: String,
+        limit: Int,
+        excluding kind: WorkSessionKind
+    ) throws -> [WorkSession] {
+        try workSessions(matching: text, limit: limit, excluding: Optional(kind))
+    }
+
+    private func workSessions(
+        matching text: String,
+        limit: Int,
+        excluding kind: WorkSessionKind?
+    ) throws -> [WorkSession] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, limit > 0 else { return [] }
         let pattern = Self.likePattern(containing: trimmed)
+        let kindPredicate = kind == nil ? "" : "kind != ? AND"
         let rows = try database.rows(
             """
             SELECT * FROM work_sessions
-            WHERE LOWER(id) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(kind) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(intent) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(title) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(detail) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(status) LIKE LOWER(?) ESCAPE '\\'
+            WHERE \(kindPredicate) (
+                   LOWER(id) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(kind) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(intent) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(title) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(detail) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(status) LIKE LOWER(?) ESCAPE '\\'
+            )
             ORDER BY updated_at DESC
             LIMIT ?
             """,
-            bindings: Array(repeating: pattern, count: 6) + ["\(limit)"]
+            bindings: (kind.map { [$0.rawValue] } ?? []) + Array(repeating: pattern, count: 6) + ["\(limit)"]
         )
         return try rows.map(decodeWorkSession)
     }
