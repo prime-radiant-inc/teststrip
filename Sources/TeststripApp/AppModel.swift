@@ -3728,6 +3728,7 @@ public final class AppModel {
                 hasUnavailableSources: hasUnavailableSources
             )
         } catch {
+            peopleSourceSnapshot = PeopleSourceSnapshot()
             errorMessage = error.localizedDescription
         }
     }
@@ -10632,21 +10633,15 @@ public final class AppModel {
 
     /// Auto-applies the machine-label-provenance promoters for one
     /// just-evaluated asset, then refreshes the in-memory `assets` cache
-    /// (and, transitively, `selectedAsset`, which is derived from it) and
-    /// face-suggestion state so the promoted labels/faces are visible right
-    /// away — the fetch-and-splice half mirrors
-    /// `refreshLoadedAssetMetadataIfNeeded`'s pattern after other
-    /// catalog-mutating background work completes; the suggestion refresh
-    /// mirrors what runs after every other face-table mutation (confirm/
-    /// dismiss a face suggestion, dismiss face review). Bounded to the one
-    /// asset that just finished evaluating — never scans the whole catalog.
+    /// (and, transitively, `selectedAsset`, which is derived from it) so the
+    /// promoted labels/faces are visible right away. Bounded to the one asset
+    /// that just finished evaluating — never scans the whole catalog.
     private func promoteEvaluationResults(for assetID: AssetID) {
         guard catalog != nil else { return }
         do {
             try promoteMetadataLabels(for: assetID)
             try promoteFaceMatches(for: assetID)
             try refreshInMemoryAsset(assetID)
-            refreshPeopleFaceSuggestions()
         } catch {
             errorMessage = error.localizedDescription
         }
