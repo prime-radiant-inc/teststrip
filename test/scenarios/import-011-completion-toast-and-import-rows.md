@@ -586,3 +586,27 @@ No Sparkle modal or idle wedge occurred. The two old product defects are now
 verified fixed live; this re-drive supersedes their FAIL status while retaining
 the historical record above. The card remains failed because Step 9's required
 post-dismissal diagnostic-source Cull contract is not met.
+
+**FIXED / VERIFIED 2026-08-09 — scoped Step 9 VM re-run**, `feat/unified-shell`
+@ `d70a0f3e`, after RED pin `78688fa0` and an Approved independent review. One
+fresh `script/vm_scenario_run.sh launch empty` re-created CARD1 only and did
+not re-run the other five already-passing re-drive items or app-019. Starting
+from Cull, the actual expanded import child `⚠ Skipped files` opened its
+`2 Import Issues` sheet with both `notes.txt` and `readme.md`. After `Done`,
+live AX vended:
+
+```text
+window title=Teststrip – Grid
+Scope = ⚠ Skipped files, 4 photos · Import: import-DAAF0507-8797-439D-95D4-17FBCB78B56A
+Cull = enabled=false, help="Nothing here is cullable"
+```
+
+Nested catalog SQL confirmed that the applied import output set contains the
+four real CARD1 asset IDs while `issues_json` retains exactly two
+`skippedSourceFile` records and neither text file has an `assets` row. The
+sheet is therefore still the only skipped-file presentation, not a fake asset
+grid. This fixes the prior post-dismissal source/lens failure. Together with
+the preceding re-drive's five passes, **all six targeted re-drive items are
+now verified live**; this statement does not claim the historical 12-step
+card was wholly rerun. Full commands, AX/SQL output, inspected screenshots,
+and cleanup: `.superpowers/sdd/2026-08-07-unified-shell/task-vm-diagnostic-source-rerun-report.md`.
