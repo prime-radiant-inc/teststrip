@@ -1081,6 +1081,20 @@ public final class CatalogRepository {
         return count
     }
 
+    /// Prepares a value from one catalog snapshot, then writes the set as the
+    /// final operation in the same transaction. A separate worker connection
+    /// cannot interleave a catalog write between the preparation reads.
+    public func upsert<Result>(
+        _ assetSet: AssetSet,
+        afterPreparing prepare: (CatalogRepository) throws -> Result
+    ) throws -> Result {
+        try database.transaction {
+            let result = try prepare(self)
+            try upsert(assetSet)
+            return result
+        }
+    }
+
     public func upsert(_ assetSet: AssetSet) throws {
         let now = "\(Date().timeIntervalSince1970)"
         try database.execute(

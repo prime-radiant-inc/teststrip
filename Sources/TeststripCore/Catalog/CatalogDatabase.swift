@@ -80,13 +80,14 @@ public final class CatalogDatabase: @unchecked Sendable {
         }
     }
 
-    func transaction(_ work: () throws -> Void) throws {
+    func transaction<Result>(_ work: () throws -> Result) throws -> Result {
         handleLock.lock()
         defer { handleLock.unlock() }
         try execute("BEGIN IMMEDIATE TRANSACTION")
         do {
-            try work()
+            let result = try work()
             try execute("COMMIT")
+            return result
         } catch {
             try? execute("ROLLBACK")
             throw error

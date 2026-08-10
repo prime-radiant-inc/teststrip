@@ -1943,6 +1943,7 @@ private struct SavedAssetSetSelectionProjection {
     var proposedPhotos: [ProposedPersonPhoto]
     var placeProjection: CatalogPlaceProjection?
     var peopleSourceSnapshot: PeopleSourceSnapshot?
+    var nonfatalRefreshErrorMessage: String?
 }
 
 public enum MetadataSyncConflictSidecarMetadataState: Equatable {
@@ -2421,6 +2422,9 @@ public final class AppModel {
     // AppModel never touches real app preferences unless a caller opts in.
     @ObservationIgnored
     private let sessionRestoreDefaults: UserDefaults?
+
+    @ObservationIgnored
+    private var sessionPersistenceDeferralDepth = 0
 
     // Per-cell preview lookups hit the filesystem and scan the work queue; the grid
     // re-renders far more often than preview state can change, so all three are
@@ -5867,11 +5871,12 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let projection = try savedAssetSetSelectionProjection(
-            assetSet: assetSet,
-            repository: catalog.repository
-        )
-        try catalog.repository.upsert(assetSet)
+        let projection = try catalog.repository.upsert(assetSet, afterPreparing: { repository in
+            try savedAssetSetSelectionProjection(
+                assetSet: assetSet,
+                repository: repository
+            )
+        })
         publishSavedAssetSetSelection(projection, assetSet: assetSet)
         return assetSet
     }
@@ -5889,7 +5894,7 @@ public final class AppModel {
 
         let loadedAssets: [Asset]
         let totalAssetCount: Int
-        let mapQuery: SetQuery
+        let mapQuery: SetQuery?
         let peopleScopeAssetIDs: [AssetID]?
         let batchSelectionScopeAssetIDs: Set<AssetID>
         let proposedPhotos: [ProposedPersonPhoto]
@@ -5901,18 +5906,27 @@ public final class AppModel {
             peopleScopeAssetIDs = selectedView == .people ? loadedAssets.map(\.id) : nil
             batchSelectionScopeAssetIDs = Set(ids)
             proposedPhotos = []
-        case .dynamic(let query):
-            loadedAssets = try repository.allAssets(matching: query, sort: librarySortOption)
-            totalAssetCount = try repository.assetCount(matching: query)
-            mapQuery = query
-            peopleScopeAssetIDs = selectedView == .people
-                ? try repository.assetIDs(matching: query)
-                : nil
-            batchSelectionScopeAssetIDs = Set(try repository.assetIDs(
-                ids: selectedBatchAssetIDsInCatalogOrder,
-                matching: query
-            ))
-            proposedPhotos = try Self.proposedPhotos(matching: query, repository: repository)
+        case .dynamic(let storedQuery):
+            if storedQuery.predicates.isEmpty {
+                loadedAssets = try repository.allAssets(sort: librarySortOption)
+                totalAssetCount = try repository.assetCount()
+                mapQuery = nil
+                peopleScopeAssetIDs = nil
+                batchSelectionScopeAssetIDs = selectedBatchAssetIDs
+                proposedPhotos = []
+            } else {
+                loadedAssets = try repository.allAssets(matching: storedQuery, sort: librarySortOption)
+                totalAssetCount = try repository.assetCount(matching: storedQuery)
+                mapQuery = storedQuery
+                peopleScopeAssetIDs = selectedView == .people
+                    ? try repository.assetIDs(matching: storedQuery)
+                    : nil
+                batchSelectionScopeAssetIDs = Set(try repository.assetIDs(
+                    ids: selectedBatchAssetIDsInCatalogOrder,
+                    matching: storedQuery
+                ))
+                proposedPhotos = try Self.proposedPhotos(matching: storedQuery, repository: repository)
+            }
         }
 
         let smartCollectionCounts = try Self.smartCollectionCounts(repository: repository)
@@ -5952,9 +5966,22 @@ public final class AppModel {
             )
         }
 
-        let catalogFolders = try repository.folders()
-        let sourceRoots = try repository.sourceRoots()
-        let assetIDsWithBondedSecondaries = try repository.assetIDsWithBondedSecondaries()
+        var catalogFolders = self.catalogFolders
+        var sourceRoots = self.sourceRoots
+        var nonfatalRefreshErrorMessage: String?
+        do {
+            catalogFolders = try repository.folders()
+            sourceRoots = try repository.sourceRoots()
+        } catch {
+            nonfatalRefreshErrorMessage = error.localizedDescription
+        }
+
+        var assetIDsWithBondedSecondaries = self.assetIDsWithBondedSecondaries
+        do {
+            assetIDsWithBondedSecondaries = try repository.assetIDsWithBondedSecondaries()
+        } catch {
+            nonfatalRefreshErrorMessage = error.localizedDescription
+        }
         let placeProjection = selectedView == .map
             ? try Self.placeProjection(
                 bounds: nil,
@@ -5963,13 +5990,19 @@ public final class AppModel {
                 repository: repository
             )
             : nil
-        let peopleSourceSnapshot = selectedView == .people
-            ? try loadPeopleSourceSnapshot(
-                assetIDs: peopleScopeAssetIDs,
-                sourceRoots: sourceRoots,
-                repository: repository
-            )
-            : nil
+        var peopleSourceSnapshot: PeopleSourceSnapshot?
+        if selectedView == .people {
+            do {
+                peopleSourceSnapshot = try loadPeopleSourceSnapshot(
+                    assetIDs: peopleScopeAssetIDs,
+                    sourceRoots: sourceRoots,
+                    repository: repository
+                )
+            } catch {
+                peopleSourceSnapshot = PeopleSourceSnapshot()
+                nonfatalRefreshErrorMessage = error.localizedDescription
+            }
+        }
 
         return SavedAssetSetSelectionProjection(
             savedAssetSets: prospectiveSavedAssetSets,
@@ -5988,7 +6021,8 @@ public final class AppModel {
             batchSelectionScopeAssetIDs: batchSelectionScopeAssetIDs,
             proposedPhotos: proposedPhotos,
             placeProjection: placeProjection,
-            peopleSourceSnapshot: peopleSourceSnapshot
+            peopleSourceSnapshot: peopleSourceSnapshot,
+            nonfatalRefreshErrorMessage: nonfatalRefreshErrorMessage
         )
     }
 
@@ -5996,40 +6030,44 @@ public final class AppModel {
         _ projection: SavedAssetSetSelectionProjection,
         assetSet: AssetSet
     ) {
-        savedAssetSets = projection.savedAssetSets
-        assetSetCounts = projection.assetSetCounts
-        smartCollectionCounts = projection.smartCollectionCounts
-        workSessionScopeCounts = projection.workSessionScopeCounts
-        importSourceSummaries = projection.importSourceSummaries
-        completedImports = projection.completedImports
-        importChildCountsBySessionID = projection.importChildCountsBySessionID
-        catalogFolders = projection.catalogFolders
-        sourceRoots = projection.sourceRoots
-        assetIDsWithBondedSecondaries = projection.assetIDsWithBondedSecondaries
-        autopilotGhostAssetIDs = projection.autopilotGhostAssetIDs
-        isAutopilotReviewActive = false
-        proposedPhotos = projection.proposedPhotos
-        workHistorySearchResults = []
-        isWorkHistorySearchActive = false
-        selectedAssetSetID = assetSet.id
-        // Saving always selects what it just saved, but bypasses
-        // `applyAssetSet` (it already has the `AssetSet` in hand), so it
-        // owns `selectedSource` itself rather than leaving it stale.
-        selectedSource = .assetSet(assetSet.id, titled: assetSet.name)
-        clearLibraryQueryFilters()
-        replaceAssets(projection.assets)
-        totalAssetCount = projection.totalAssetCount
-        pruneBatchSelection(retaining: projection.batchSelectionScopeAssetIDs)
-        if let placeProjection = projection.placeProjection {
-            publishPlaceProjection(placeProjection)
+        withDeferredSessionPersistence {
+            savedAssetSets = projection.savedAssetSets
+            assetSetCounts = projection.assetSetCounts
+            smartCollectionCounts = projection.smartCollectionCounts
+            workSessionScopeCounts = projection.workSessionScopeCounts
+            importSourceSummaries = projection.importSourceSummaries
+            completedImports = projection.completedImports
+            importChildCountsBySessionID = projection.importChildCountsBySessionID
+            catalogFolders = projection.catalogFolders
+            sourceRoots = projection.sourceRoots
+            assetIDsWithBondedSecondaries = projection.assetIDsWithBondedSecondaries
+            autopilotGhostAssetIDs = projection.autopilotGhostAssetIDs
+            isAutopilotReviewActive = false
+            proposedPhotos = projection.proposedPhotos
+            workHistorySearchResults = []
+            isWorkHistorySearchActive = false
+            selectedAssetSetID = assetSet.id
+            // Saving always selects what it just saved, but bypasses
+            // `applyAssetSet` (it already has the `AssetSet` in hand), so it
+            // owns `selectedSource` itself rather than leaving it stale.
+            selectedSource = .assetSet(assetSet.id, titled: assetSet.name)
+            clearLibraryQueryFilters()
+            replaceAssets(projection.assets)
+            totalAssetCount = projection.totalAssetCount
+            pruneBatchSelection(retaining: projection.batchSelectionScopeAssetIDs)
+            if let placeProjection = projection.placeProjection {
+                publishPlaceProjection(placeProjection)
+            }
+            if let peopleSourceSnapshot = projection.peopleSourceSnapshot {
+                self.peopleSourceSnapshot = peopleSourceSnapshot
+            }
+            refreshLatestImportPresentation()
+            rebuildSidebarSections()
+            if let errorMessage = projection.nonfatalRefreshErrorMessage {
+                self.errorMessage = errorMessage
+            }
+            statusMessage = "Saved \(assetSet.name)"
         }
-        if let peopleSourceSnapshot = projection.peopleSourceSnapshot {
-            self.peopleSourceSnapshot = peopleSourceSnapshot
-        }
-        refreshLatestImportPresentation()
-        rebuildSidebarSections()
-        statusMessage = "Saved \(assetSet.name)"
-        persistSessionState()
     }
 
     public func openCullingSessionPicks() throws {
@@ -12217,8 +12255,21 @@ public final class AppModel {
     // other selected set; `isWorkStackSetID` drops it on the restore side, so a
     // mid-cull quit cannot land back inside a run's stack.
 
+    private func withDeferredSessionPersistence(_ publish: () -> Void) {
+        sessionPersistenceDeferralDepth += 1
+        defer {
+            sessionPersistenceDeferralDepth -= 1
+            if sessionPersistenceDeferralDepth == 0 {
+                persistSessionState()
+            }
+        }
+        publish()
+    }
+
     private func persistSessionState() {
-        guard let sessionRestoreDefaults, let catalog else { return }
+        guard sessionPersistenceDeferralDepth == 0,
+              let sessionRestoreDefaults,
+              let catalog else { return }
         SessionRestoreStore(defaults: sessionRestoreDefaults, catalogRoot: catalog.paths.root)
             .save(currentSessionRestoreState())
     }
