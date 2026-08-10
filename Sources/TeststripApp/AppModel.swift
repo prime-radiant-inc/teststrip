@@ -9818,16 +9818,22 @@ public final class AppModel {
     /// (orthogonality); only the explicit "Review" action moves the user to
     /// Grid, where the KEEP/CUT badges and the commit bar live.
     private func applyAutopilotSuggestionsScope() throws {
+        try loadAutopilotSuggestionsScope(preferredSelection: nil)
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+    }
+
+    private func loadAutopilotSuggestionsScope(preferredSelection: AssetID?) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let assetIDs = try catalog.repository.assetIDsWithAutopilotGhost()
-        autopilotGhostAssetIDs = assetIDs
-        selectedAssetSetID = nil
-        clearLibraryQueryFilters()
-        let loadedAssets = try catalog.repository.assets(ids: assetIDs, limit: assetIDs.count)
-        replaceAssets(loadedAssets)
-        totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
+        try refreshAutopilotGhostAssetIDs()
+        let loadedAssets = try catalog.repository.assets(
+            ids: autopilotGhostAssetIDs,
+            limit: autopilotGhostAssetIDs.count
+        )
+        replaceAssets(loadedAssets, preferredSelection: preferredSelection)
+        totalAssetCount = try catalog.repository.assetCount(ids: autopilotGhostAssetIDs)
         isAutopilotReviewActive = true
     }
 
@@ -10835,6 +10841,17 @@ public final class AppModel {
         try refreshImportSourceSummaries()
         refreshCatalogFolders()
         refreshAssetIDsWithBondedSecondaries()
+        if selectedSource == .autopilotSuggestions {
+            try loadAutopilotSuggestionsScope(preferredSelection: nil)
+            pruneBatchSelection(retaining: Set(autopilotGhostAssetIDs))
+            if selectedView == .map {
+                try refreshPlaceData()
+            }
+            if selectedView == .people {
+                refreshPeopleFaceSuggestions()
+            }
+            return
+        }
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
             replaceAssets(loadedAssets)
@@ -10932,6 +10949,10 @@ public final class AppModel {
     public func setLibrarySortOption(_ option: LibrarySortOption) throws {
         guard librarySortOption != option else { return }
         librarySortOption = option
+        if selectedSource == .autopilotSuggestions {
+            try loadAutopilotSuggestionsScope(preferredSelection: nil)
+            return
+        }
         try loadCatalogPage(preferredSelection: nil)
     }
 
@@ -11840,13 +11861,7 @@ public final class AppModel {
 
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         if restoringAutopilotSuggestions, !autopilotGhostAssetIDs.isEmpty {
-            let loadedAssets = try catalog.repository.assets(
-                ids: autopilotGhostAssetIDs,
-                limit: autopilotGhostAssetIDs.count
-            )
-            replaceAssets(loadedAssets, preferredSelection: state.selectedAssetID)
-            totalAssetCount = try catalog.repository.assetCount(ids: autopilotGhostAssetIDs)
-            isAutopilotReviewActive = true
+            try loadAutopilotSuggestionsScope(preferredSelection: state.selectedAssetID)
         } else if restoringAutopilotSuggestions {
             let contents = try Self.catalogContents(
                 repository: catalog.repository,
@@ -12585,6 +12600,11 @@ public final class AppModel {
     }
 
     private var selectedExplicitAssetIDs: [AssetID]? {
+        // AI Suggestions has no persisted AssetSet; its current derived IDs
+        // still participate in every downstream explicit-source operation.
+        if selectedSource == .autopilotSuggestions {
+            return autopilotGhostAssetIDs
+        }
         guard let selectedAssetSet else { return nil }
         switch selectedAssetSet.membership {
         case .manual(let ids), .snapshot(let ids):
@@ -13207,7 +13227,7 @@ public final class AppModel {
 
     private func refreshAutopilotGhostAssetIDs() throws {
         guard let catalog else { return }
-        autopilotGhostAssetIDs = try catalog.repository.assetIDsWithAutopilotGhost()
+        autopilotGhostAssetIDs = try catalog.repository.assetIDsWithAutopilotGhost(sort: librarySortOption)
     }
 
     // Exposed so the import sheet can open a read-only catalog off the main

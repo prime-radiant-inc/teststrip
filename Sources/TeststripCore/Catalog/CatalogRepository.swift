@@ -446,14 +446,16 @@ public final class CatalogRepository {
     /// "Autopilot Proposals" count must not silently shrink to whatever the
     /// grid happens to have loaded. Display-facing, so bonded secondaries are
     /// excluded like the other id listings.
-    public func assetIDsWithAutopilotGhost() throws -> [AssetID] {
+    public func assetIDsWithAutopilotGhost(
+        sort: LibrarySortOption = .importOrder
+    ) throws -> [AssetID] {
         let ghostClauseSQL = """
         json_extract(metadata_json, '$.flag') IS NOT NULL
         AND EXISTS (SELECT 1 FROM json_each(metadata_json, '$.aiUnconfirmedFields') WHERE json_each.value = ?)
         """
         let whereSQL = Self.excludingSecondaries(" WHERE \(ghostClauseSQL)")
         let rows = try database.rows(
-            "SELECT id FROM assets\(whereSQL) ORDER BY rowid ASC",
+            "SELECT id FROM assets\(whereSQL) ORDER BY \(Self.orderSQL(for: sort))",
             bindings: [MetadataField.flag.rawValue]
         )
         return try rows.map(decodeAssetID)
