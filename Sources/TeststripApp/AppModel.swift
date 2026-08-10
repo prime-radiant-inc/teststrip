@@ -4770,15 +4770,29 @@ public final class AppModel {
     /// selected source or the selection; the Cull lens returns to whichever
     /// sub-mode it was last in.
     public func selectLens(_ lens: LibraryLens) {
+        guard lensAvailability(for: lens).isEnabled else { return }
         selectedView = lens == .cull ? lastCullViewMode : lens.defaultViewMode
+    }
+
+    /// The current source's enabled state for one lens. Commands and toolbar
+    /// presentation share this calculation so neither can bypass source rules.
+    public func lensAvailability(for lens: LibraryLens) -> LensAvailability {
+        LensRules.availability(
+            for: lens,
+            sourceIsDiagnostic: selectedSource.isDiagnostic,
+            sourceAssetCount: assets.count
+        )
     }
 
     /// The switcher's per-lens enabled state for the current source.
     public var lensAvailabilities: [LensAvailability] {
-        LensRules.availabilities(
-            sourceIsDiagnostic: selectedSource.isDiagnostic,
-            sourceAssetCount: assets.count
-        )
+        LibraryLens.allCases.map(lensAvailability(for:))
+    }
+
+    /// Enters a Cull sub-mode only when the current source can use Cull.
+    public func selectCullSubMode(_ mode: LibraryViewMode) {
+        guard mode.lens == .cull, lensAvailability(for: .cull).isEnabled else { return }
+        selectedView = mode
     }
 
     /// ⌘I. Toggles the on-demand inspector, reachable in every lens
@@ -6287,6 +6301,10 @@ public final class AppModel {
                 break
             }
         }
+        if case .switchCullSubView = command,
+           !lensAvailability(for: .cull).isEnabled {
+            return
+        }
         switch command {
         case .move(let direction):
             moveGridSelection(direction, columns: columns)
@@ -6309,7 +6327,7 @@ public final class AppModel {
         case .returnToGrid:
             returnToLibraryGrid()
         case .switchCullSubView(let mode):
-            selectedView = mode
+            selectCullSubMode(mode)
         }
     }
 
@@ -6574,6 +6592,12 @@ public final class AppModel {
     }
 
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
+        switch shortcut {
+        case .showCullGrid, .showCompare, .showABCompare, .exitCullSubView:
+            guard isKeyMapOverlayVisible || lensAvailability(for: .cull).isEnabled else { return }
+        default:
+            break
+        }
         // Any input other than the arming Return itself disarms: an armed
         // commit must never fire against a frame the user has moved past. A
         // repeat Return re-enters the gate and re-arms the same asset, which
@@ -6658,15 +6682,15 @@ public final class AppModel {
         case .cycleScope:
             cycleCullScope()
         case .showCullGrid:
-            selectedView = .cullGrid
+            selectCullSubMode(.cullGrid)
         case .showCompare:
-            selectedView = .compare
+            selectCullSubMode(.compare)
         case .showABCompare:
             // "b" toggles (item 1): pressed again from inside .abCompare, it
             // exits back to .loupe instead of re-entering a no-op.
-            selectedView = selectedView == .abCompare ? .loupe : .abCompare
+            selectCullSubMode(selectedView == .abCompare ? .loupe : .abCompare)
         case .exitCullSubView:
-            selectedView = .loupe
+            selectCullSubMode(.loupe)
         case .keepAOverB:
             try keepCurrentABPair(preferPrimary: true)
         case .keepBOverA:

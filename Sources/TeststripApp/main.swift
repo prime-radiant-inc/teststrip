@@ -171,6 +171,7 @@ private struct LensCommands: Commands {
                     model.selectLens(lens)
                 }
                 .keyboardShortcut(lens.keyEquivalent, modifiers: [.command])
+                .disabled(!model.lensAvailability(for: lens).isEnabled)
             }
 
             Divider()
@@ -187,8 +188,9 @@ private struct LensCommands: Commands {
     private func cullSubModeButton(for mode: LibraryViewMode) -> some View {
         if let title = mode.cullSubModeMenuTitle {
             Button(title) {
-                model.selectedView = mode
+                model.selectCullSubMode(mode)
             }
+            .disabled(!model.lensAvailability(for: .cull).isEnabled)
         }
     }
 }
