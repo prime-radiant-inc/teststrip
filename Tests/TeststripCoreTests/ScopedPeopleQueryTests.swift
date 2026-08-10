@@ -222,4 +222,69 @@ final class ScopedPeopleQueryTests: XCTestCase {
         XCTAssertEqual(try repository.faceObservationAssetCount(provenance: provenance), 2)
         XCTAssertEqual(try repository.faceObservationAssetCount(provenance: provenance, assetIDs: []), 0)
     }
+
+    func testEvaluationKindSummariesHonourNilEmptyAndExplicitAssetScopes() throws {
+        let repository = try makeRepository(named: "scoped-evaluation-kind-summaries")
+        let insideFace = asset(path: "/Photos/Inside/face.jpg")
+        let outsideFace = asset(path: "/Photos/Outside/face.jpg")
+        let outsideObject = asset(path: "/Photos/Outside/object.jpg")
+        let alternateProvenance = ProviderProvenance(
+            provider: "alternate-face-recognition",
+            model: "auraface-v1",
+            version: "1",
+            settingsHash: "default"
+        )
+        try repository.upsert([insideFace, outsideFace, outsideObject])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: insideFace.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: insideFace.id, kind: .faceCount, value: .count(1), confidence: 0.8, provenance: alternateProvenance),
+            EvaluationSignal(assetID: insideFace.id, kind: .faceQuality, value: .score(0.8), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: outsideFace.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: outsideFace.id, kind: .faceQuality, value: .score(0.7), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: outsideObject.id, kind: .object, value: .label("camera"), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.evaluationKindSummaries(assetIDs: nil),
+            try repository.evaluationKindSummaries()
+        )
+        XCTAssertEqual(try repository.evaluationKindSummaries(assetIDs: []), [])
+        XCTAssertEqual(
+            try repository.evaluationKindSummaries(assetIDs: [insideFace.id]),
+            [
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1),
+                CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 1)
+            ]
+        )
+    }
+
+    func testScopedEvaluationKindSummariesExcludeAssignedAndDismissedFaces() throws {
+        let repository = try makeRepository(named: "scoped-evaluation-kind-summary-exclusions")
+        let active = asset(path: "/Photos/Inside/active.jpg")
+        let assigned = asset(path: "/Photos/Inside/assigned.jpg")
+        let dismissed = asset(path: "/Photos/Inside/dismissed.jpg")
+        let outside = asset(path: "/Photos/Outside/decoy.jpg")
+        try repository.upsert([active, assigned, dismissed, outside])
+        try repository.recordEvaluationSignals(
+            [active, assigned, dismissed, outside].flatMap { frame in
+                [
+                    EvaluationSignal(assetID: frame.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+                    EvaluationSignal(assetID: frame.id, kind: .faceQuality, value: .score(0.8), confidence: 0.8, provenance: provenance)
+                ]
+            }
+        )
+        try repository.upsertPerson(id: "person-ada", name: "Ada")
+        try repository.assignAssets([assigned.id], toPersonID: "person-ada")
+        try repository.dismissFaceAssets([dismissed.id])
+
+        XCTAssertEqual(
+            try repository.evaluationKindSummaries(assetIDs: [active.id, assigned.id, dismissed.id]),
+            [
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1),
+                CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 1)
+            ]
+        )
+        XCTAssertEqual(try repository.evaluationSignals(assetID: assigned.id).map(\.kind), [.faceCount, .faceQuality])
+        XCTAssertEqual(try repository.evaluationSignals(assetID: dismissed.id).map(\.kind), [.faceCount, .faceQuality])
+    }
 }

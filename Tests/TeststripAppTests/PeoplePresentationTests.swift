@@ -20,6 +20,52 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.namedPeople.map(\.countText), ["2 confirmed photos", "1 confirmed photo"])
     }
 
+    func testKeepsScopedNamedPeopleSeparateFromCatalogWideMergeCandidates() {
+        let adaFace = PersonKeyFace(
+            assetID: AssetID(rawValue: "ada-face"),
+            faceIndex: 0,
+            boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+            captureQuality: 0.9
+        )
+        let graceFace = PersonKeyFace(
+            assetID: AssetID(rawValue: "grace-face"),
+            faceIndex: 0,
+            boundingBox: FaceBoundingBox(x: 0.2, y: 0.2, width: 0.2, height: 0.2),
+            captureQuality: 0.8
+        )
+        let presentation = makePresentation(
+            namedPeople: [CatalogPerson(id: "person-ada", name: "Ada", assetCount: 1)],
+            mergeCandidates: [
+                CatalogPerson(id: "person-ada", name: "Ada", assetCount: 1),
+                CatalogPerson(id: "person-grace", name: "Grace", assetCount: 1)
+            ],
+            keyFaces: [
+                "person-ada": adaFace,
+                "person-grace": graceFace
+            ]
+        )
+
+        let mergeCandidates: [NamedPersonPresentation] = presentation.mergeCandidates
+        XCTAssertEqual(presentation.namedPeople.map(\.name), ["Ada"])
+        XCTAssertEqual(presentation.namedPeople.map(\.keyFace), [adaFace])
+        XCTAssertEqual(mergeCandidates.map(\.name), ["Ada", "Grace"])
+        XCTAssertEqual(mergeCandidates.map(\.keyFace), [adaFace, graceFace])
+    }
+
+    private func makePresentation(
+        namedPeople: [CatalogPerson],
+        mergeCandidates: [CatalogPerson],
+        keyFaces: [String: PersonKeyFace]
+    ) -> PeoplePresentation {
+        PeoplePresentation(
+            totalAssetCount: 1,
+            namedPeople: namedPeople,
+            mergeCandidates: mergeCandidates,
+            evaluationSummaries: [],
+            keyFaces: keyFaces
+        )
+    }
+
     func testBuildsFaceReviewStripFromRealFaceSignals() {
         let presentation = PeoplePresentation(
             totalAssetCount: 1204,

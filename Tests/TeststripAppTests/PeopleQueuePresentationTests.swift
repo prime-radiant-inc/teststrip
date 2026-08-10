@@ -99,13 +99,13 @@ final class PeopleQueuePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.confirmAction(), .nameSuggestion(suggestionCard("a", isOneTapConfirm: false).suggestion))
     }
 
-    func testConfirmActionOnFocusedReviewCardSelectsItsQueue() {
+    func testConfirmActionOnFocusedReviewCardSelectsItsEvaluationKind() {
         let presentation = PeopleQueuePresentation(
             suggestionCards: [],
             reviewCards: [reviewCard("unnamed-faces")]
         )
 
-        XCTAssertEqual(presentation.confirmAction(), .selectReview(.smartCollection(.facesFound)))
+        XCTAssertEqual(presentation.confirmAction(), .selectReview(.faceCount))
     }
 
     func testConfirmActionOnEmptyQueueIsNone() {
