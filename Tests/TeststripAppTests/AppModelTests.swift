@@ -18061,37 +18061,76 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reimportModel.recentWork.first?.detail, "No new photos found in photos")
     }
 
-    // Covers the import row's **Stacks** child count.
-    func testTheImportRowsStacksChildCountsTimeAdjacentStacks() throws {
+    // The Stacks child badge counts groups, while selecting it reveals the
+    // union of frames in those groups. Singleton import members remain in the
+    // parent import scope but do not belong in this child.
+    func testSelectingTheImportRowsStacksChildLoadsOnlyTimeAdjacentStackMembers() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
+        let leadingSingleton = makeAsset(
+            id: "stack-child-leading-singleton",
+            path: "/Photos/Import/stack-child-leading-singleton.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(-10))
+        )
         let first = makeAsset(
-            id: "stack-summary-first",
-            path: "/Photos/Import/stack-summary-first.cr2",
+            id: "stack-child-first",
+            path: "/Photos/Import/stack-child-first.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
         )
         let second = makeAsset(
-            id: "stack-summary-second",
-            path: "/Photos/Import/stack-summary-second.cr2",
+            id: "stack-child-second",
+            path: "/Photos/Import/stack-child-second.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
         )
-        let singleton = makeAsset(
-            id: "stack-summary-singleton",
-            path: "/Photos/Import/stack-summary-singleton.cr2",
+        let trailingSingleton = makeAsset(
+            id: "stack-child-trailing-singleton",
+            path: "/Photos/Import/stack-child-trailing-singleton.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(10))
         )
+        let outsideImport = makeAsset(
+            id: "stack-child-outside-import",
+            path: "/Photos/Other/stack-child-outside-import.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let importedAssets = [leadingSingleton, first, second, trailingSingleton]
         let (model, _, _) = try makeModelWithCompletedImportSession(
-            named: "import-summary-stack-counts",
-            assets: [first, second, singleton],
-            outputAssetIDs: [first.id, second.id, singleton.id]
+            named: "import-stack-child-members",
+            assets: importedAssets + [outsideImport],
+            outputAssetIDs: importedAssets.map(\.id)
         )
 
         let summary = try XCTUnwrap(model.latestImportCompletionSummary)
-
-        let counts = try model.importChildCounts(sessionID: WorkSessionID(rawValue: summary.activityID))
+        let sessionID = WorkSessionID(rawValue: summary.activityID)
+        let counts = try model.importChildCounts(sessionID: sessionID)
         XCTAssertEqual(counts.stacks, 1)
+
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first { $0.id == "import-\(sessionID.rawValue)" })
+        XCTAssertEqual(importRow.disclosure, .collapsed)
+        model.toggleSidebarExpansion(importRow)
+        let expandedImportsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let stacksRow = try XCTUnwrap(
+            expandedImportsSection.rows.first { $0.id == "import-\(sessionID.rawValue)-stacks" }
+        )
+        let expectedSource = LibrarySource.importChild(session: sessionID, child: .stacks)
+        XCTAssertEqual(stacksRow.title, "Stacks")
+        XCTAssertEqual(stacksRow.countText, "1")
+        XCTAssertEqual(try XCTUnwrap(stacksRow.target), expectedSource)
+
+        try model.selectSidebarRow(stacksRow)
+
+        XCTAssertEqual(model.selectedSource, expectedSource)
+        XCTAssertEqual(model.selectedSource.title, "Stacks")
+        let loadedAssetIDs = model.assets.map(\.id)
+        XCTAssertEqual(loadedAssetIDs, [first.id, second.id])
+        XCTAssertEqual(loadedAssetIDs.count, 2)
+        XCTAssertFalse(loadedAssetIDs.contains(leadingSingleton.id))
+        XCTAssertFalse(loadedAssetIDs.contains(trailingSingleton.id))
+        XCTAssertFalse(loadedAssetIDs.contains(outsideImport.id))
     }
 
     // The single "cull this import" primitive, over a real background import.
