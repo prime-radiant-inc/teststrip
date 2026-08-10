@@ -4373,7 +4373,6 @@ public final class AppModel {
             let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: previousQueue)
             self.lastProcessedBackgroundWorkQueue = queue
             self.publishBackgroundWorkState()
-            self.recordPersistedActiveBackgroundWorkActivities(in: queue)
             if Self.metadataSyncWorkChanged(from: previousQueue, to: queue) {
                 try? self.refreshMetadataSyncState()
             }
@@ -10344,8 +10343,10 @@ public final class AppModel {
     }
 
     private func flushBackgroundWorkPublication() {
+        let queue = currentBackgroundWorkQueue
         clearPreviewLookupCaches()
-        backgroundWorkQueue = currentBackgroundWorkQueue
+        backgroundWorkQueue = queue
+        recordPersistedActiveBackgroundWorkActivities(in: queue)
         previewCacheGenerationsByAssetID = currentPreviewCacheGenerationsByAssetID
         if pendingPreviewGenerationQueueStatesRefresh {
             pendingPreviewGenerationQueueStatesRefresh = false
