@@ -541,3 +541,48 @@ Environment: no Sparkle modal on this card's launches (suppressed in the VM
 via `defaults write com.teststrip.app SUEnableAutomaticChecks -bool NO` after
 it fired once during `app-019`), and no idle-wedge. Nothing here is
 environment-blocked.
+
+**RE-DRIVE 2026-08-09 — FAIL (one new diagnostic-source contract defect)**,
+`feat/unified-shell` @ `47718d3c`, one fresh `script/vm_scenario_run.sh launch
+empty` in `teststrip-e2e`. This targeted the six required checks only; it did
+not re-run app-019 or the previously-passing import steps. CARD1 was four
+face-bearing JPEGs plus `notes.txt`/`readme.md`; CARD2 reused those four exact
+byte-identical JPEGs and added two new JPEGs. Full commands, SQL, AX output,
+screenshots, and cleanup are in
+`.superpowers/sdd/2026-08-07-unified-shell/task-vm-redrive-report.md`.
+
+- **Steps 1-2 setup: PASS.** CARD1 session
+  `import-F8641D6A-C759-4BF0-886B-1516DA4997E6` recorded 4 new photos and 2
+  serialised `skippedSourceFile` issues; live toast vended `Import complete`,
+  `Imported 4 photos`, `2 files skipped`, and `Start culling`.
+- **Step 7 disclosure/counts: PASS.** AX vended and pressed
+  `Expand Aug 10 · Imported 4 photos from card1 (2 files skipped)`. The
+  expanded row showed `⚠ Skipped files` = 2 and `Faces found` = 4, matching
+  nested-catalog SQL. The live `issues_json` kind was exactly
+  `skippedSourceFile`.
+- **Step 8 zero omissions: PASS.** `Stacks=0`, `⚠ Preview failed=0`, and
+  `⚠ Likely issues=0` were each absent from AX, not disabled; the two nonzero
+  children above were present. CARD1 had no multi-frame stack, no failed
+  preview queue row, and no asset matching the app's scoped `likelyIssue`
+  predicate.
+- **Step 9: FAIL.** The skipped-files child correctly opened a `2 Import
+  Issues` sheet listing both `notes.txt` and `readme.md` with their full paths,
+  rather than a generic grid. After `Done`, however, the required disabled
+  Cull control did not vend: `Cull` instead vended enabled with help `Cull`,
+  and scope remained `All Photos`. Root cause: `selectSidebarRow` requests the
+  issue sheet for `.skippedFiles` and returns before selecting the diagnostic
+  `LibrarySource`, making the card's `Nothing here is cullable` contract
+  unreachable. This is a new product defect; no fix was attempted.
+- **Step 11 existing-only: PASS.** The second CARD2 session had 0 new, 6
+  existing by the nested catalog and AX exactly read
+  `No new photos imported — 6 already in catalog`; no `Start culling` button
+  was present.
+- **Mixed CARD2 import: PASS.** The first CARD2 session had 2 new plus 4
+  existing (`completed_unit_count=2`, `total_unit_count=6`, two-member output
+  set). AX exactly read `Imported 2 photos (4 photos already in catalog)`,
+  never the old incorrect `Imported 6 photos`.
+
+No Sparkle modal or idle wedge occurred. The two old product defects are now
+verified fixed live; this re-drive supersedes their FAIL status while retaining
+the historical record above. The card remains failed because Step 9's required
+post-dismissal diagnostic-source Cull contract is not met.
