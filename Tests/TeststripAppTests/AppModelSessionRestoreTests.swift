@@ -456,6 +456,75 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.selectedAssetID, rejectGhost.id)
     }
 
+    func testRestoresAISuggestionsMapScopeAndAggregates() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-ai-suggestions-map")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        var ghost = makeGeotaggedAsset(
+            id: "map-ghost",
+            filename: "ghost.dng",
+            latitude: 13.25,
+            longitude: 23.25
+        )
+        ghost.metadata.flag = .pick
+        ghost.metadata.aiUnconfirmedFields = [.flag]
+        let ordinary = makeGeotaggedAsset(
+            id: "map-ordinary",
+            filename: "ordinary.dng",
+            latitude: 33.25,
+            longitude: 43.25
+        )
+        var confirmed = makeGeotaggedAsset(
+            id: "map-confirmed",
+            filename: "confirmed.dng",
+            latitude: 53.25,
+            longitude: 63.25
+        )
+        confirmed.metadata.flag = .reject
+        try catalogA.repository.upsert([ghost, ordinary, confirmed])
+        try catalogA.repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 13.25, longitude: 23.25),
+            displayName: "Restored Ghost Place"
+        ))
+        try catalogA.repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 33.25, longitude: 43.25),
+            displayName: "Ordinary Place"
+        ))
+        try catalogA.repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 53.25, longitude: 63.25),
+            displayName: "Confirmed Place"
+        ))
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.autopilotSuggestions)
+        modelA.selectLens(.map)
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+        try modelB.refreshPlaceData()
+
+        XCTAssertEqual(modelB.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(modelB.selectedLens, .map)
+        XCTAssertEqual(modelB.assets.map(\.id), [ghost.id])
+        XCTAssertEqual(
+            modelB.geotaggedCoverage,
+            CatalogGeotaggedCoverage(geotaggedCount: 1, totalCount: 1)
+        )
+        XCTAssertEqual(
+            modelB.catalogPlaceClusters,
+            [CatalogPlaceCluster(latitude: 13.25, longitude: 23.25, assetCount: 1)]
+        )
+        XCTAssertEqual(
+            modelB.catalogTopLocations,
+            [CatalogTopLocation(
+                displayName: "Restored Ghost Place",
+                assetCount: 1,
+                latitude: 13.25,
+                longitude: 23.25
+            )]
+        )
+    }
+
     func testRestoredAISuggestionsStayScopedAcrossSortingAndReload() throws {
         let directory = try makeTemporaryDirectory(named: "restore-ai-suggestions-sorting")
         let defaults = try makeIsolatedDefaults()
