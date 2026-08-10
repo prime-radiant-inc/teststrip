@@ -1906,6 +1906,14 @@ private struct MetadataSyncStateSnapshot {
     var conflictCount: Int
 }
 
+private struct PeopleSourceSnapshot {
+    var faceSuggestions: [PeopleFaceSuggestion] = []
+    var faceObservationAssetCount = 0
+    var namedPeople: [CatalogPerson] = []
+    var evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
+    var hasUnavailableSources = false
+}
+
 public enum MetadataSyncConflictSidecarMetadataState: Equatable {
     case none
     case readable(AssetMetadata)
@@ -1960,6 +1968,13 @@ public final class AppModel {
     /// relaunch can restore it.
     public private(set) var selectedSource: LibrarySource = .allPhotos {
         didSet { persistSessionState() }
+    }
+
+    @ObservationIgnored
+    private var sourceBeingApplied: LibrarySource?
+
+    private var sourceForScopeResolution: LibrarySource {
+        sourceBeingApplied ?? selectedSource
     }
 
     /// Which lens `selectedView` currently belongs to.
@@ -2296,13 +2311,30 @@ public final class AppModel {
     private func noteRecentlyNamedPerson(_ personID: String) {
         recentlyNamedPersonIDs = [personID] + recentlyNamedPersonIDs.filter { $0 != personID }
     }
-    public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
-    public private(set) var peopleFaceObservationAssetCount = 0
+    private var peopleSourceSnapshot = PeopleSourceSnapshot()
+
+    public var peopleFaceSuggestions: [PeopleFaceSuggestion] {
+        peopleSourceSnapshot.faceSuggestions
+    }
+
+    public var peopleFaceObservationAssetCount: Int {
+        peopleSourceSnapshot.faceObservationAssetCount
+    }
     /// The people present in the currently selected source — what the People
     /// lens lists. `catalogPeople` stays catalog-wide on purpose: naming,
     /// merging, and autocomplete must still reach a person who isn't in this
     /// shoot.
-    public private(set) var peopleInCurrentSource: [CatalogPerson] = []
+    public var peopleInCurrentSource: [CatalogPerson] {
+        peopleSourceSnapshot.namedPeople
+    }
+
+    public var peopleEvaluationKindSummaries: [CatalogEvaluationKindSummary] {
+        peopleSourceSnapshot.evaluationKindSummaries
+    }
+
+    public var peopleHasUnavailableSources: Bool {
+        peopleSourceSnapshot.hasUnavailableSources
+    }
     /// True for the duration of `importFacesFromContacts()` — drives the People
     /// menu's busy guard so a large address book can't be re-imported mid-run.
     public private(set) var isImportingContacts = false
@@ -3078,8 +3110,8 @@ public final class AppModel {
 
     /// True when any catalog source root is unreachable — its recorded path
     /// no longer exists on this machine, or assets under it are offline.
-    /// The People lens uses this to say "sources offline" instead of
-    /// advertising a scan that cannot enqueue any work.
+    /// The unfiltered People scope uses this global fact; narrowed People
+    /// scopes derive the same status only from their intersecting sources.
     public var hasUnavailableSourceRoots: Bool {
         sourceRoots.contains { root in
             root.unavailableAssetCount > 0 || !FileManager.default.fileExists(atPath: root.path)
@@ -3645,6 +3677,13 @@ public final class AppModel {
         return try currentAssetScopeIDs(repository: catalog.repository)
     }
 
+    private func currentSourceScopePredicates() -> [SetQuery.Predicate] {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            return [.assetIDs(explicitAssetIDs)]
+        }
+        return currentLibraryQuery()?.predicates ?? []
+    }
+
     public func refreshPeopleFaceSuggestions() {
         guard let catalog else { return }
         do {
@@ -3665,20 +3704,56 @@ public final class AppModel {
             )
             let personNamesByID = try unionedPersonNamesByID()
             let rejectedPairs = try catalog.repository.rejectedFacePeople()
-            peopleFaceSuggestions = Self.peopleFaceSuggestions(
+            let faceSuggestions = Self.peopleFaceSuggestions(
                 from: suggestions,
                 observationsByFaceID: observationsByFaceID,
                 personNamesByID: personNamesByID,
                 rejectedPairs: rejectedPairs
             )
-            peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(
+            let faceObservationAssetCount = try catalog.repository.faceObservationAssetCount(
                 provenance: provenance,
                 assetIDs: scopeAssetIDs
             )
-            peopleInCurrentSource = try catalog.repository.people(assetIDs: scopeAssetIDs)
+            let namedPeople = try catalog.repository.people(assetIDs: scopeAssetIDs)
+            let evaluationKindSummaries = try catalog.repository.evaluationKindSummaries(assetIDs: scopeAssetIDs)
+            let hasUnavailableSources = try peopleScopeHasUnavailableSources(
+                assetIDs: scopeAssetIDs,
+                repository: catalog.repository
+            )
+            peopleSourceSnapshot = PeopleSourceSnapshot(
+                faceSuggestions: faceSuggestions,
+                faceObservationAssetCount: faceObservationAssetCount,
+                namedPeople: namedPeople,
+                evaluationKindSummaries: evaluationKindSummaries,
+                hasUnavailableSources: hasUnavailableSources
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func peopleScopeHasUnavailableSources(
+        assetIDs: [AssetID]?,
+        repository: CatalogRepository
+    ) throws -> Bool {
+        guard let assetIDs else { return hasUnavailableSourceRoots }
+        guard !assetIDs.isEmpty else { return false }
+        let scopedAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
+        return scopedAssets.contains { asset in
+            if asset.availability != .online {
+                return true
+            }
+            let assetPath = asset.originalURL.standardizedFileURL.path
+            return sourceRoots.contains { root in
+                let rootPath = URL(fileURLWithPath: root.path).standardizedFileURL.path
+                guard Self.path(assetPath, isWithin: rootPath) else { return false }
+                return !FileManager.default.fileExists(atPath: rootPath)
+            }
+        }
+    }
+
+    private static func path(_ path: String, isWithin rootPath: String) -> Bool {
+        rootPath == "/" || path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     /// Candidate people for naming a face, ranked by similarity to that face (or
@@ -4011,13 +4086,26 @@ public final class AppModel {
     }
 
     public func showPersonPhotos(named name: String) throws {
-        let query = SetQuery(predicates: [.person(name)])
-        selectedAssetSetID = nil
-        clearLibraryQueryFilters()
-        librarySearchText = Self.librarySearchText(residualText: nil, predicates: query.predicates)
-        try reload()
-        selectedSource = .search(query, titled: name)
-        selectedView = .grid
+        let basePredicates = currentSourceScopePredicates()
+        var predicates = basePredicates
+        let personPredicate = SetQuery.Predicate.person(name)
+        Self.append(personPredicate, to: &predicates)
+        let query = SetQuery(predicates: predicates)
+        try selectSource(.search(query, titled: name))
+
+        // Only expose a query string when parsing it reconstructs the same
+        // predicates; reserved plain text such as "pick" otherwise changes scope.
+        if let searchText = Self.losslessLibrarySearchText(for: predicates) {
+            librarySearchText = searchText
+            detachedLibraryFilterPredicates = []
+        } else if let personSearchText = Self.losslessLibrarySearchText(for: [personPredicate]) {
+            librarySearchText = personSearchText
+            detachedLibraryFilterPredicates = basePredicates
+        } else {
+            librarySearchText = ""
+            detachedLibraryFilterPredicates = predicates
+        }
+        selectLens(.grid)
     }
 
     /// Builds the review-first surface behind a face-group suggestion: resolves
@@ -4883,6 +4971,11 @@ public final class AppModel {
         guard catalog != nil else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        let previousSourceBeingApplied = sourceBeingApplied
+        let refreshPeopleAfterApplyingSource = selectedView == .people
+        sourceBeingApplied = source
+        defer { sourceBeingApplied = previousSourceBeingApplied }
+
         switch source.kind {
         case .allPhotos:
             selectedAssetSetID = nil
@@ -4935,6 +5028,9 @@ public final class AppModel {
         )
         if resolvedLens != selectedLens {
             selectLens(resolvedLens)
+        }
+        if refreshPeopleAfterApplyingSource || selectedView == .people {
+            refreshPeopleFaceSuggestions()
         }
     }
 
@@ -8959,6 +9055,9 @@ public final class AppModel {
         guard let catalog else { return }
         sourceRoots = try catalog.repository.sourceRoots()
         sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
+        if selectedView == .people {
+            refreshPeopleFaceSuggestions()
+        }
         rebuildSidebarSections()
     }
 
@@ -10899,13 +10998,13 @@ public final class AppModel {
         try refreshImportSourceSummaries()
         refreshCatalogFolders()
         refreshAssetIDsWithBondedSecondaries()
-        if selectedSource == .autopilotSuggestions {
+        if sourceForScopeResolution == .autopilotSuggestions {
             try loadAutopilotSuggestionsScope(preferredSelection: nil)
             pruneBatchSelection(retaining: Set(autopilotGhostAssetIDs))
             if selectedView == .map {
                 try refreshPlaceData()
             }
-            if selectedView == .people {
+            if sourceBeingApplied == nil, selectedView == .people {
                 refreshPeopleFaceSuggestions()
             }
             return
@@ -10920,7 +11019,7 @@ public final class AppModel {
             }
             // The People lens is source-scoped like every other lens, and `reload()`
             // is the single funnel every source change passes through.
-            if selectedView == .people {
+            if sourceBeingApplied == nil, selectedView == .people {
                 refreshPeopleFaceSuggestions()
             }
             return
@@ -10945,7 +11044,7 @@ public final class AppModel {
         }
         // The People lens is source-scoped like every other lens, and `reload()`
         // is the single funnel every source change passes through.
-        if selectedView == .people {
+        if sourceBeingApplied == nil, selectedView == .people {
             refreshPeopleFaceSuggestions()
         }
     }
@@ -11041,7 +11140,12 @@ public final class AppModel {
     }
 
     public func selectPeopleSignal(_ kind: EvaluationKind) throws {
-        try applyEvaluationKindFilter(kind)
+        var predicates = selectedLens == .people ? currentSourceScopePredicates() : []
+        Self.append(.evaluationKind(kind), to: &predicates)
+        try selectSource(
+            .search(SetQuery(predicates: predicates), titled: Self.filterName(for: kind))
+        )
+        selectLens(.grid)
     }
 
     public func selectTimelineDay(_ day: CatalogTimelineDay, calendar: Calendar = .current) throws {
@@ -11107,7 +11211,7 @@ public final class AppModel {
     /// use their set membership, while derived explicit scopes such as AI
     /// Suggestions carry their current IDs, including an empty scope.
     private func currentMapQuery() -> SetQuery? {
-        var predicates = selectedSource == .autopilotSuggestions
+        var predicates = sourceForScopeResolution == .autopilotSuggestions
             ? []
             : currentLibraryQuery()?.predicates ?? []
         if let selectedExplicitAssetIDs {
@@ -11219,9 +11323,7 @@ public final class AppModel {
         persistSecurityScopedBookmarkForSourceRoot(newRoot)
         try loadCatalogPage(preferredSelection: preferredSelection)
         catalogFolders = try catalog.repository.folders()
-        sourceRoots = try catalog.repository.sourceRoots()
-        sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
-        rebuildSidebarSections()
+        try refreshSourceAvailabilitySummaries()
         try enqueuePendingPreviewGeneration()
         let sourceLabel = result.reconnectedAssetCount == 1 ? "source" : "sources"
         statusMessage = "Reconnected \(result.reconnectedAssetCount) \(sourceLabel)"
@@ -12008,6 +12110,13 @@ public final class AppModel {
             .joined(separator: " ")
     }
 
+    private static func losslessLibrarySearchText(for predicates: [SetQuery.Predicate]) -> String? {
+        let searchText = librarySearchText(residualText: nil, predicates: predicates)
+        let intent = LibrarySearchIntent.parse(searchText)
+        guard intent.residualText == nil, intent.predicates == predicates else { return nil }
+        return searchText
+    }
+
     private static func searchTextToken(for predicate: SetQuery.Predicate) -> String? {
         switch predicate {
         case .text(let text):
@@ -12713,7 +12822,7 @@ public final class AppModel {
     private var selectedExplicitAssetIDs: [AssetID]? {
         // AI Suggestions has no persisted AssetSet; its current derived IDs
         // still participate in every downstream explicit-source operation.
-        if selectedSource == .autopilotSuggestions {
+        if sourceForScopeResolution == .autopilotSuggestions {
             return autopilotGhostAssetIDs
         }
         guard let selectedAssetSet else { return nil }

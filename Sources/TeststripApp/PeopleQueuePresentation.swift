@@ -71,8 +71,7 @@ struct PeopleQueuePresentation: Equatable {
         case .suggestion(let card):
             return card.isOneTapConfirm ? .confirmSuggestion(card.suggestion) : .nameSuggestion(card.suggestion)
         case .review(let card):
-            guard let target = card.target else { return .none }
-            return .selectReview(target)
+            return card.reviewAction
         }
     }
 
@@ -106,7 +105,7 @@ struct PeopleQueuePresentation: Equatable {
 enum PeopleQueueConfirmAction: Equatable {
     case confirmSuggestion(PeopleFaceSuggestion)
     case nameSuggestion(PeopleFaceSuggestion)
-    case selectReview(LibrarySource)
+    case selectReview(EvaluationKind)
     case none
 }
 

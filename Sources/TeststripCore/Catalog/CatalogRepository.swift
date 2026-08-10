@@ -2360,7 +2360,13 @@ public final class CatalogRepository {
         return try rows.map(decodeEvaluationFailure)
     }
 
-    public func evaluationKindSummaries() throws -> [CatalogEvaluationKindSummary] {
+    public func evaluationKindSummaries(assetIDs: [AssetID]? = nil) throws -> [CatalogEvaluationKindSummary] {
+        guard assetIDs?.isEmpty != true else { return [] }
+
+        let scopeClause = assetIDs == nil
+            ? ""
+            : "AND evaluation_signals.asset_id IN (SELECT json_extract(value, '$.rawValue') FROM json_each(?))"
+        let bindings = try assetIDs.map { [try encode($0)] } ?? []
         let rows = try database.rows(
             """
             SELECT kind, COUNT(DISTINCT asset_id) AS asset_count
@@ -2386,9 +2392,11 @@ public final class CatalogRepository {
                 WHERE assets.id = evaluation_signals.asset_id
                   AND assets.bonded_to_asset_id IS NOT NULL
             )
+            \(scopeClause)
             GROUP BY kind
             ORDER BY kind COLLATE NOCASE ASC
-            """
+            """,
+            bindings: bindings
         )
         return try rows.map { row in
             guard let kindRawValue = row["kind"],
