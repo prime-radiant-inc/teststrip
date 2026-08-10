@@ -126,6 +126,51 @@ final class LibraryLensTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
+    func testCullEntryCommandsAreNoOpsOnANonemptyDiagnosticSource() throws {
+        let asset = makeAsset(id: "diagnostic-command", path: "/Photos/diagnostic.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "diagnostic-command",
+            assets: [asset]
+        )
+        try repository.recordEvaluationFailure(
+            assetID: asset.id,
+            provider: "local-http-model",
+            message: "model timed out"
+        )
+        model.selectedView = .loupe
+        model.selectedView = .timeline
+        try model.selectSource(.smartCollection(.providerFailures))
+        model.setBatchSelection(asset.id, isSelected: true)
+
+        XCTAssertEqual(model.assets.map(\.id), [asset.id], "diagnostic fixture must be nonempty")
+        try assertUnavailableCullEntryCommandsAreNoOps(model)
+    }
+
+    func testCullEntryCommandsAreNoOpsOnAnEmptyOrdinarySource() throws {
+        let asset = makeAsset(id: "empty-command", path: "/Photos/Somewhere/photo.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "empty-command", assets: [asset])
+        model.selectedView = .loupe
+        model.selectedView = .timeline
+        try model.selectSource(.folder("/Photos/Nowhere"))
+
+        XCTAssertFalse(model.selectedSource.isDiagnostic, "fixture must exercise ordinary-source emptiness")
+        XCTAssertTrue(model.assets.isEmpty, "ordinary source fixture must be empty")
+        try assertUnavailableCullEntryCommandsAreNoOps(model)
+    }
+
+    func testCullEntryCommandsEnterTheirModesOnANonemptyOrdinarySource() throws {
+        let asset = makeAsset(id: "cullable-command", path: "/Photos/cullable.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "cullable-command", assets: [asset])
+        model.selectedView = .timeline
+
+        for command in cullEntryCommands() {
+            try command.apply(model)
+            XCTAssertEqual(model.selectedView, command.expectedView, command.name)
+            XCTAssertEqual(model.selectedLens, .cull, command.name)
+            model.selectedView = .timeline
+        }
+    }
+
     func testLoupePresentationChromeFlagByMode() {
         XCTAssertTrue(LoupePresentation(mode: .loupe).showsCullChrome)
         XCTAssertFalse(LoupePresentation(mode: .libraryLoupe).showsCullChrome)
@@ -168,4 +213,67 @@ final class LibraryLensTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
         return (model, repository)
     }
+
+    private func assertUnavailableCullEntryCommandsAreNoOps(_ model: AppModel) throws {
+        let cullAvailability = try XCTUnwrap(model.lensAvailabilities.first { $0.lens == .cull })
+        XCTAssertFalse(cullAvailability.isEnabled)
+        let state = navigationState(of: model)
+
+        for command in cullEntryCommands() {
+            try command.apply(model)
+            XCTAssertEqual(navigationState(of: model), state, command.name)
+            model.selectedView = state.view
+        }
+
+        try model.selectSource(.allPhotos)
+        model.selectLens(.cull)
+        XCTAssertEqual(model.selectedView, .loupe, "rejected commands changed the remembered Cull mode")
+    }
+
+    private func navigationState(of model: AppModel) -> NavigationState {
+        NavigationState(
+            view: model.selectedView,
+            lens: model.selectedLens,
+            source: model.selectedSource,
+            assetIDs: model.assets.map(\.id),
+            selectedAssetID: model.selectedAssetID,
+            selectedBatchAssetIDs: model.selectedBatchAssetIDs
+        )
+    }
+
+    private func cullEntryCommands() -> [CullEntryCommand] {
+        [
+            CullEntryCommand(name: "selectLens(.cull)", expectedView: .loupe) { $0.selectLens(.cull) },
+            CullEntryCommand(name: "applyCullingShortcut(.showCompare)", expectedView: .compare) {
+                try $0.applyCullingShortcut(.showCompare)
+            },
+            CullEntryCommand(name: "applyCullingShortcut(.showABCompare)", expectedView: .abCompare) {
+                try $0.applyCullingShortcut(.showABCompare)
+            },
+            CullEntryCommand(name: "applyCullingShortcut(.exitCullSubView)", expectedView: .loupe) {
+                try $0.applyCullingShortcut(.exitCullSubView)
+            },
+            CullEntryCommand(name: "applyGridKeyCommand(.switchCullSubView(.compare))", expectedView: .compare) {
+                try $0.applyGridKeyCommand(.switchCullSubView(.compare), columns: 4)
+            },
+            CullEntryCommand(name: "applyCullingShortcut(.showCullGrid)", expectedView: .cullGrid) {
+                try $0.applyCullingShortcut(.showCullGrid)
+            }
+        ]
+    }
+}
+
+private struct NavigationState: Equatable {
+    var view: LibraryViewMode
+    var lens: LibraryLens
+    var source: LibrarySource
+    var assetIDs: [AssetID]
+    var selectedAssetID: AssetID?
+    var selectedBatchAssetIDs: Set<AssetID>
+}
+
+private struct CullEntryCommand {
+    var name: String
+    var expectedView: LibraryViewMode
+    var apply: (AppModel) throws -> Void
 }
