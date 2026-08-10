@@ -375,6 +375,35 @@ final class PeopleSourceScopingTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterChips, ["Search: pick", "Person: Ada"])
     }
 
+    func testShowingPersonPhotosKeepsAnUnserializablePersonNameStructured() throws {
+        let personName = "Ada \"Ace\" O'Neil"
+        let inside = makeAsset(id: "people-person-quoted-inside", path: "/Photos/Inside/ada.jpg")
+        let outside = makeAsset(id: "people-person-quoted-outside", path: "/Photos/Outside/plain.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "people-person-quoted",
+            assets: [inside, outside]
+        ) { repository in
+            try repository.upsertPerson(id: "person-ada", name: personName)
+            try repository.assignAssets([inside.id], toPersonID: "person-ada")
+        }
+        model.selectLens(.people)
+
+        try model.showPersonPhotos(named: personName)
+
+        XCTAssertEqual(model.selectedLens, .grid)
+        XCTAssertEqual(
+            model.selectedSource,
+            .search(SetQuery(predicates: [.person(personName)]), titled: personName)
+        )
+        XCTAssertEqual(model.assets.map(\.id), [inside.id])
+        XCTAssertEqual(model.librarySearchText, "")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: \(personName)"])
+
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.map(\.id), [inside.id])
+    }
+
     func testShowingPersonPhotosIntersectsPopulatedAndEmptyStaticSets() throws {
         let fixture = try makePersonDrillFixture(named: "people-person-static-sets")
         let populated = AssetSet.manual(
