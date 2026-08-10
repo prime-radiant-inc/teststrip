@@ -5406,6 +5406,9 @@ public final class AppModel {
         var session = try catalog.repository.session(id: id)
         session.starred = starred
         try catalog.repository.save(session)
+        if let index = workHistorySearchResults.firstIndex(where: { $0.id == id.rawValue }) {
+            workHistorySearchResults[index].starred = starred
+        }
         try refreshWorkSessions()
     }
 
@@ -11105,11 +11108,19 @@ public final class AppModel {
             activities: refreshedResults,
             repository: repository
         )
-        workHistorySearchResults = refreshedResults
-        isWorkHistorySearchActive = isSearchActive
-        workSessionScopeCounts.merge(refreshedScopeCounts) { _, refreshedCount in
+        let retainedScopeCountIDs = Set(
+            (recentWork + starredWork + recentNonImportWork + starredNonImportWork)
+                .map { WorkSessionID(rawValue: $0.id) }
+        ).union(importSourceSummaries.map(\.sessionID))
+        var refreshedWorkSessionScopeCounts = workSessionScopeCounts.filter {
+            retainedScopeCountIDs.contains($0.key)
+        }
+        refreshedWorkSessionScopeCounts.merge(refreshedScopeCounts) { _, refreshedCount in
             refreshedCount
         }
+        workHistorySearchResults = refreshedResults
+        isWorkHistorySearchActive = isSearchActive
+        workSessionScopeCounts = refreshedWorkSessionScopeCounts
         // The Collections group's Recent Work rows show the matched sessions
         // while a residual query is active. Track that state independently
         // because an active search with no matches must suppress the defaults.
