@@ -242,6 +242,146 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(model.selectedSource, .assetSet(saved.id, titled: "Keepers"))
     }
 
+    // A set save crosses the repository, model caches, the loaded asset scope,
+    // Map aggregates, and persisted browsing state. A late read failure must
+    // leave every boundary at the state that was visible before the save.
+    func testSaveAndSelectIsAtomicWhenMapRefreshFails() throws {
+        var selected = makeAsset(
+            id: "atomic-selected",
+            path: "/Photos/Atomic/selected.jpg",
+            technicalMetadata: Self.technicalMetadata(
+                capturedAt: Date(timeIntervalSince1970: 10),
+                latitude: 10,
+                longitude: 20
+            )
+        )
+        selected.metadata.rating = 5
+        selected.metadata.flag = .pick
+        var batchSelected = makeAsset(
+            id: "atomic-batch-selected",
+            path: "/Photos/Atomic/batch-selected.jpg",
+            technicalMetadata: Self.technicalMetadata(
+                capturedAt: Date(timeIntervalSince1970: 20),
+                latitude: 40,
+                longitude: 50
+            )
+        )
+        batchSelected.metadata.rating = 5
+        batchSelected.metadata.flag = .pick
+        let outside = makeAsset(
+            id: "atomic-outside",
+            path: "/Photos/Outside/outside.jpg",
+            technicalMetadata: Self.technicalMetadata(
+                capturedAt: Date(timeIntervalSince1970: 30),
+                latitude: -20,
+                longitude: -30
+            )
+        )
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-library-source-atomic-\(UUID().uuidString)", isDirectory: true)
+        let paths = AppCatalog.defaultPaths(
+            applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)
+        )
+        let catalog = try AppCatalog.open(paths: paths)
+        let repository = catalog.repository
+        try repository.upsert([selected, batchSelected, outside])
+
+        let existingSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "atomic-existing-set"),
+            name: "Existing Set",
+            assetIDs: [selected.id, batchSelected.id]
+        )
+        try repository.upsert(existingSet)
+        let workSession = WorkSession(
+            id: WorkSessionID(rawValue: "atomic-existing-work"),
+            kind: .culling,
+            intent: "Review Atomic photos",
+            title: "Atomic review",
+            detail: "Existing Atomic work",
+            status: .completed,
+            inputSetIDs: [existingSet.id],
+            outputSetIDs: [],
+            completedUnitCount: 2,
+            totalUnitCount: 2,
+            createdAt: Date(timeIntervalSince1970: 40),
+            updatedAt: Date(timeIntervalSince1970: 40)
+        )
+        try repository.save(workSession)
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 10, longitude: 20),
+            displayName: "Selected Place"
+        ))
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 40, longitude: 50),
+            displayName: "Batch Place"
+        ))
+
+        let defaultsSuite = "teststrip.library-source-atomic.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuite))
+        defaults.removePersistentDomain(forName: defaultsSuite)
+        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: nil,
+            sessionRestoreDefaults: defaults
+        )
+        try model.selectSource(.smartCollection(.picks))
+        model.librarySearchText = "Atomic"
+        model.minimumRatingFilter = 4
+        try model.applyLibraryFilters()
+        model.selectLens(.map)
+        try model.refreshPlaceData()
+        model.select(selected.id)
+        model.setBatchSelection(batchSelected.id, isSelected: true)
+        model.statusMessage = "State before save"
+        model.errorMessage = "Error before save"
+
+        XCTAssertEqual(model.assets.map(\.id), [selected.id, batchSelected.id])
+        XCTAssertEqual(Set(model.activeLibraryFilterChips), Set(["Pick", "Search: Atomic", "Rating >= 4"]))
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [workSession.id.rawValue])
+        XCTAssertEqual(
+            model.geotaggedCoverage,
+            CatalogGeotaggedCoverage(geotaggedCount: 2, totalCount: 2)
+        )
+        XCTAssertEqual(model.catalogPlaceClusters.map(\.assetCount).reduce(0, +), 2)
+        XCTAssertEqual(
+            Set(model.catalogTopLocations.map(\.displayName)),
+            Set(["Selected Place", "Batch Place"])
+        )
+
+        let stateBeforeSave = SaveAndSelectState(model: model)
+        let repositorySetsBeforeSave = try repository.assetSets()
+        let restoreStore = SessionRestoreStore(defaults: defaults, catalogRoot: paths.root)
+        let persistedStateBeforeSave = try XCTUnwrap(restoreStore.load())
+
+        var changedBatchAsset = try repository.asset(id: batchSelected.id)
+        changedBatchAsset.metadata.rating = 1
+        changedBatchAsset.technicalMetadata?.latitude = 70
+        changedBatchAsset.technicalMetadata?.longitude = 80
+        try repository.upsert(changedBatchAsset)
+        XCTAssertEqual(SaveAndSelectState(model: model), stateBeforeSave)
+
+        // Open the same on-disk catalog without migration: migrating after the
+        // DROP would repair the failure seam instead of exercising it.
+        let faultDatabase = try CatalogDatabase.open(at: paths.catalogURL)
+        try faultDatabase.execute("DROP TABLE place_cache")
+
+        XCTAssertThrowsError(try model.saveSelectedAssetAsManualSet(named: "Atomic Keepers")) { error in
+            guard case CatalogError.sqlite(let message) = error else {
+                return XCTFail("expected a late place-cache SQLite error, got \(error)")
+            }
+            XCTAssertTrue(
+                message.contains("place_cache"),
+                "expected the Map top-locations read to fail, got \(message)"
+            )
+        }
+
+        XCTAssertEqual(try repository.assetSets(), repositorySetsBeforeSave)
+        XCTAssertEqual(SaveAndSelectState(model: model), stateBeforeSave)
+        XCTAssertEqual(restoreStore.load(), persistedStateBeforeSave)
+    }
+
     // Import-child selection resolves the persisted import before it can claim
     // that source identity. A singleton output is a real import scope but has
     // no multi-frame Stacks membership.
@@ -567,13 +707,95 @@ final class LibrarySourceTests: XCTestCase {
         )
     }
 
-    private static func technicalMetadata(capturedAt: Date) -> AssetTechnicalMetadata {
+    private static func technicalMetadata(
+        capturedAt: Date,
+        latitude: Double? = nil,
+        longitude: Double? = nil
+    ) -> AssetTechnicalMetadata {
         AssetTechnicalMetadata(
             pixelWidth: 6000,
             pixelHeight: 4000,
+            latitude: latitude,
+            longitude: longitude,
             capturedAt: capturedAt,
             provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
         )
+    }
+
+    private struct SaveAndSelectState: Equatable {
+        var sidebarSections: [SidebarSection]
+        var savedAssetSets: [AssetSet]
+        var assetSetCounts: [AssetSetID: Int]
+        var smartCollectionCounts: [SmartCollection: Int]
+        var workSessionScopeCounts: [WorkSessionID: Int]
+        var importSourceSummaries: [ImportSidebarSummary]
+        var completedImports: [AppWorkActivity]
+        var expandedImportSessionIDs: Set<String>
+        var importChildCountsBySessionID: [String: ImportChildCounts]
+        var isShowingAllImports: Bool
+        var catalogFolders: [CatalogFolder]
+        var sourceRoots: [CatalogSourceRoot]
+        var assetIDsWithBondedSecondaries: Set<AssetID>
+        var autopilotGhostAssetIDs: [AssetID]
+        var isAutopilotReviewActive: Bool
+        var proposedPhotos: [ProposedPersonPhoto]
+        var selectedSource: LibrarySource
+        var selectedView: LibraryViewMode
+        var selectedLens: LibraryLens
+        var selectedAssetSetID: AssetSetID?
+        var activeLibraryFilterRows: [ActiveLibraryFilterRow]
+        var activeLibraryFilterChips: [String]
+        var hasActiveLibraryFilters: Bool
+        var assets: [Asset]
+        var totalAssetCount: Int
+        var selectedAssetID: AssetID?
+        var selectedBatchAssetIDs: Set<AssetID>
+        var selectedBatchAssetIDsInCatalogOrder: [AssetID]
+        var catalogPlaceClusters: [CatalogPlaceCluster]
+        var catalogTopLocations: [CatalogTopLocation]
+        var geotaggedCoverage: CatalogGeotaggedCoverage
+        var statusMessage: String?
+        var errorMessage: String?
+        var importError: String?
+        var workHistorySearchResults: [AppWorkActivity]
+
+        init(model: AppModel) {
+            sidebarSections = model.sidebarSections
+            savedAssetSets = model.savedAssetSets
+            assetSetCounts = model.assetSetCounts
+            smartCollectionCounts = model.smartCollectionCounts
+            workSessionScopeCounts = model.workSessionScopeCounts
+            importSourceSummaries = model.importSourceSummaries
+            completedImports = model.completedImports
+            expandedImportSessionIDs = model.expandedImportSessionIDs
+            importChildCountsBySessionID = model.importChildCountsBySessionID
+            isShowingAllImports = model.isShowingAllImports
+            catalogFolders = model.catalogFolders
+            sourceRoots = model.sourceRoots
+            assetIDsWithBondedSecondaries = model.assetIDsWithBondedSecondaries
+            autopilotGhostAssetIDs = model.autopilotGhostAssetIDs
+            isAutopilotReviewActive = model.isAutopilotReviewActive
+            proposedPhotos = model.proposedPhotos
+            selectedSource = model.selectedSource
+            selectedView = model.selectedView
+            selectedLens = model.selectedLens
+            selectedAssetSetID = model.selectedAssetSetID
+            activeLibraryFilterRows = model.activeLibraryFilterRows
+            activeLibraryFilterChips = model.activeLibraryFilterChips
+            hasActiveLibraryFilters = model.hasActiveLibraryFilters
+            assets = model.assets
+            totalAssetCount = model.totalAssetCount
+            selectedAssetID = model.selectedAssetID
+            selectedBatchAssetIDs = model.selectedBatchAssetIDs
+            selectedBatchAssetIDsInCatalogOrder = model.selectedBatchAssetIDsInCatalogOrder
+            catalogPlaceClusters = model.catalogPlaceClusters
+            catalogTopLocations = model.catalogTopLocations
+            geotaggedCoverage = model.geotaggedCoverage
+            statusMessage = model.statusMessage
+            errorMessage = model.errorMessage
+            importError = model.importError
+            workHistorySearchResults = model.workHistorySearchResults
+        }
     }
 
     private func makeModelWithCatalogAssets(
