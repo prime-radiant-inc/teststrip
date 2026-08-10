@@ -23,25 +23,25 @@ over from any older card):
   `HStack` with the primary "Keep" button and (if any secondary actions
   exist) an `ellipsis.circle` `Menu` labeled "More stack actions" —
   Keep/menu are footer controls, not a top-of-stage chip row.
-- **Rail cell**: `cullStackRailCell(_:)`, `LibraryGridView.swift:4473-4524` —
+- **Rail cell**: `cullStackRailCell(_:)`, `LibraryGridView.swift:4830-4900` —
   thumbnail (`CachedPreviewImage`), a pick/reject decision overlay
-  (`cullStackRailDecisionOverlay`, `:4530-4547`: `.picked` →
+  (`cullStackRailDecisionOverlay`, `:4905-4922`: `.picked` →
   `DesignGlyph.pick.symbolName` ("flag.fill", green); `.rejected` → literal
   SF Symbol `"xmark.circle.fill"` (red) plus 0.45 opacity dim
   (`CullingFilmstripPresentation.DecisionState.isDimmed`,
-  `:5960`, true only for `.rejected`); a `✦` recommended marker
-  (top-trailing overlay, orange-on-black, `:4495-4503`) rendered when
+  `:6343`, true only for `.rejected`); a `✦` recommended marker
+  (top-trailing overlay, orange-on-black, `:4857-4865`) rendered when
   `item.isRecommended`; a selection-highlight stroke (orange, 2pt) when
   `item.isSelected`; and, **below** the thumbnail (a sibling in the outer
   `VStack`, not inside the button's `ZStack`), one mark per AI read via
-  `compareDecisionBadges(item.flawBadges)` (`:4515-4517`) — each flaw
+  `compareDecisionBadges(item.flawBadges)` (`:4891-4893`) — each flaw
   (`EYES CLOSED` / `SOFT`), replacing the old single red dot. **Reconciled
   2026-07-17**: each flaw's `CompareDecisionBadge.tone` is `.flaw` (not
   `.destructive`), rendered as quiet, secondary-colored caption text (no
   filled pill, no bold) — the text itself is unchanged, only the visual
   weight; red stays reserved for the decision overlay's genuinely
   destructive `.rejected` state above. Tap dispatches
-  `model.select(item.assetID)` (`:4475`).
+  `model.select(item.assetID)` (`:4836-4837`).
 - **`CullingStackRailPresentation`**, `LibraryGridView.swift:6288-6536`
   (corrected 2026-07-28; see Run status for the general citation-drift
   note) — `Item.flawBadges` comes from
