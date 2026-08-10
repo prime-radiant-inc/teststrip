@@ -17514,17 +17514,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(importsSection.rows.contains { $0.id == "import-with-output-session" })
     }
 
-    // Skipped files are never catalogued (see `ImportChildKind.isDiagnostic`'s
-    // doc), so unlike every other import child this one must not select a
-    // Grid scope — a Grid scope over uncatalogued files would silently show
-    // an empty grid rather than the issue-review sheet.
-    func testSelectingTheSkippedFilesChildRequestsTheIssueReviewSheetInsteadOfAGridScope() throws {
+    func testSelectingTheSkippedFilesChildSelectsItsDiagnosticSourceAndRequestsIssueReview() throws {
         let imported = makeAsset(id: "skipped-files-child-imported", path: "/Volumes/Archive/Import/imported.jpg", rating: 0)
+        let outsideImport = makeAsset(id: "skipped-files-child-outside-import", path: "/Volumes/Archive/Library/outside-import.jpg", rating: 0)
         let sessionID = WorkSessionID(rawValue: "skipped-files-child-session")
         let skippedFileURL = URL(fileURLWithPath: "/Volumes/Archive/Import/bad.raf")
         let (model, _) = try makeModelWithCatalogAssets(
             named: "app-model-skipped-files-child",
-            assets: [imported],
+            assets: [imported, outsideImport],
             configureRepository: { repository in
                 let outputSet = AssetSet.manual(
                     id: AssetSetID(rawValue: "skipped-files-child-output"),
@@ -17558,17 +17555,19 @@ final class AppModelTests: XCTestCase {
         model.toggleSidebarExpansion(importRow)
         let expandedImportsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
         let skippedFilesRow = try XCTUnwrap(expandedImportsSection.rows.first { $0.id == "import-\(sessionID.rawValue)-skippedFiles" })
-        let sourceBeforeSelection = model.selectedSource
+        model.selectLens(.cull)
+        XCTAssertEqual(model.selectedLens, .cull)
 
         try model.selectSidebarRow(skippedFilesRow)
 
         XCTAssertEqual(model.importIssueReviewSessionID, sessionID)
         XCTAssertEqual(model.importIssueReviewRequestToken, 1)
-        // The negative half: skipped files are not in the catalog, so this
-        // click must leave the Grid scope alone rather than selecting into
-        // an empty grid.
-        XCTAssertEqual(model.selectedSource, sourceBeforeSelection, "the Grid scope must not change")
-        XCTAssertNotEqual(model.selectedSource.kind, .importChild(session: sessionID, child: .skippedFiles))
+        XCTAssertEqual(model.selectedSource, .importChild(session: sessionID, child: .skippedFiles))
+        XCTAssertEqual(model.selectedLens, .grid)
+        XCTAssertEqual(model.assets.map(\.id), [imported.id])
+        let cull = try XCTUnwrap(model.lensAvailabilities.first { $0.lens == .cull })
+        XCTAssertFalse(cull.isEnabled)
+        XCTAssertEqual(cull.disabledReason, "Nothing here is cullable")
 
         let issues = try model.importIssues(sessionID: sessionID)
         XCTAssertEqual(issues.count, 1)
