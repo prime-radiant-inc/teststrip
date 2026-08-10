@@ -382,6 +382,261 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(restoreStore.load(), persistedStateBeforeSave)
     }
 
+    // People refreshes are best effort on every other source-selection path.
+    // Saving a set while People is visible must keep that contract: persist
+    // and select the set, then publish an empty People snapshot with the error.
+    func testSaveAndSelectSucceedsWhenThePeopleSnapshotReadFails() throws {
+        let asset = makeAsset(id: "people-save-failure", path: "/Photos/People/ada.jpg")
+        let unassignedFaceAsset = makeAsset(
+            id: "people-save-failure-unassigned",
+            path: "/Photos/People/unassigned.jpg"
+        )
+        let unavailableRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-people-save-unavailable-\(UUID().uuidString)", isDirectory: true)
+        let fixture = try makeCatalogFixture(
+            named: "save-select-people-read-failure",
+            assets: [asset, unassignedFaceAsset]
+        ) { repository in
+            let provenance = AppleVisionEvaluationProvider.faceProvenance
+            try repository.upsertPerson(id: "person-ada", name: "Ada")
+            try repository.assignAssets([asset.id], toPersonID: "person-ada")
+            try repository.recordSourceRoot(unavailableRoot)
+            try repository.replaceFaceObservations(
+                assetID: unassignedFaceAsset.id,
+                provenance: provenance,
+                with: [CatalogFaceObservation(
+                    assetID: unassignedFaceAsset.id,
+                    faceIndex: 0,
+                    boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                    captureQuality: 0.9,
+                    embedding: [1, 0, 0],
+                    provenance: provenance
+                ), CatalogFaceObservation(
+                    assetID: unassignedFaceAsset.id,
+                    faceIndex: 1,
+                    boundingBox: FaceBoundingBox(x: 0.5, y: 0.1, width: 0.2, height: 0.2),
+                    captureQuality: 0.8,
+                    embedding: [1, 0, 0],
+                    provenance: provenance
+                )]
+            )
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(
+                    assetID: unassignedFaceAsset.id,
+                    kind: .faceCount,
+                    value: .count(1),
+                    confidence: 0.9,
+                    provenance: provenance
+                )
+            ])
+        }
+        fixture.model.selectLens(.people)
+        fixture.model.refreshPeopleFaceSuggestions()
+        fixture.model.select(asset.id)
+
+        XCTAssertEqual(fixture.model.selectedLens, .people)
+        XCTAssertEqual(fixture.model.peopleInCurrentSource.map(\.name), ["Ada"])
+        XCTAssertFalse(fixture.model.peopleFaceSuggestions.isEmpty)
+        XCTAssertEqual(fixture.model.peopleFaceObservationAssetCount, 1)
+        XCTAssertEqual(fixture.model.peopleEvaluationKindSummaries.count, 1)
+        XCTAssertTrue(fixture.model.peopleHasUnavailableSources)
+
+        let faultDatabase = try CatalogDatabase.open(at: fixture.catalogURL)
+        try faultDatabase.execute("DROP TABLE face_observations")
+        fixture.model.errorMessage = nil
+
+        let saved = try fixture.model.saveSelectedAssetAsManualSet(named: "Ada Keepers")
+
+        XCTAssertEqual(try fixture.repository.assetSet(id: saved.id), saved)
+        XCTAssertEqual(fixture.model.selectedLens, .people)
+        XCTAssertEqual(fixture.model.selectedSource, .assetSet(saved.id, titled: "Ada Keepers"))
+        XCTAssertEqual(fixture.model.assets.map(\.id), [asset.id])
+        XCTAssertEqual(fixture.model.peopleInCurrentSource, [])
+        XCTAssertEqual(fixture.model.peopleFaceSuggestions, [])
+        XCTAssertEqual(fixture.model.peopleFaceObservationAssetCount, 0)
+        XCTAssertEqual(fixture.model.peopleEvaluationKindSummaries, [])
+        XCTAssertFalse(fixture.model.peopleHasUnavailableSources)
+        XCTAssertTrue(fixture.model.errorMessage?.contains("face_observations") == true)
+    }
+
+    // An empty dynamic query is the catalog-wide source: currentLibraryQuery()
+    // canonicalizes it to nil. Save-and-select must use that same global People
+    // scope instead of materializing all current asset IDs as a narrowed scope.
+    func testSaveAndSelectTreatsAnEmptyDynamicQueryAsTheGlobalPeopleScope() throws {
+        let asset = makeAsset(id: "empty-query-global", path: "/Photos/Global/photo.jpg")
+        let unavailableEmptyRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-empty-query-unavailable-\(UUID().uuidString)", isDirectory: true)
+        let globalSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "empty-query-global-set"),
+            name: "Everything",
+            query: SetQuery(predicates: [])
+        )
+        let fixture = try makeCatalogFixture(
+            named: "save-select-empty-query-global",
+            assets: [asset]
+        ) { repository in
+            try repository.recordSourceRoot(unavailableEmptyRoot)
+            try repository.upsert(globalSet)
+        }
+        try fixture.model.applyAssetSet(id: globalSet.id)
+        fixture.model.selectLens(.people)
+        fixture.model.refreshPeopleFaceSuggestions()
+
+        XCTAssertNil(try fixture.model.peopleScopeAssetIDs())
+        XCTAssertTrue(fixture.model.peopleHasUnavailableSources)
+
+        let duplicate = try fixture.model.duplicateAssetSet(id: globalSet.id, named: "Everything Copy")
+
+        XCTAssertEqual(duplicate.membership, .dynamic(SetQuery(predicates: [])))
+        XCTAssertEqual(fixture.model.selectedSource, .assetSet(duplicate.id, titled: "Everything Copy"))
+        XCTAssertEqual(fixture.model.assets.map(\.id), [asset.id])
+        XCTAssertEqual(fixture.model.totalAssetCount, 1)
+        XCTAssertNil(try fixture.model.peopleScopeAssetIDs())
+        XCTAssertTrue(
+            fixture.model.peopleHasUnavailableSources,
+            "the empty dynamic set should retain the catalog-wide unavailable-root projection"
+        )
+    }
+
+    // A save projection spans multiple reads. A concurrent matching import may
+    // be blocked by a read transaction or admitted and detected by a version
+    // guard, but the published asset rows and source/sidebar counts must come
+    // from one version.
+    func testSaveAndSelectPublishesACoherentProjectionAcrossAConcurrentImport() throws {
+        var existing = makeAsset(id: "coherent-existing", path: "/Photos/Coherent/existing.jpg")
+        existing.metadata.rating = 5
+        var imported = makeAsset(id: "coherent-imported", path: "/Photos/Coherent/imported.jpg")
+        imported.metadata.rating = 5
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "coherent-five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let fixture = try makeCatalogFixture(
+            named: "save-select-coherent-projection",
+            assets: [existing]
+        ) { repository in
+            try repository.upsert(dynamicSet)
+        }
+        let importingDatabase = try CatalogDatabase.open(at: fixture.catalogURL)
+        _ = try importingDatabase.rows("PRAGMA busy_timeout = 0")
+        let importingRepository = CatalogRepository(database: importingDatabase)
+        var didReadCandidateProjection = false
+        var didAttemptImport = false
+        var unexpectedImportError: Error?
+        fixture.database.rowQueryObserver = { sql in
+            if !didReadCandidateProjection,
+               sql.contains("FROM assets"),
+               sql.contains("rating") {
+                didReadCandidateProjection = true
+                return
+            }
+            guard didReadCandidateProjection, !didAttemptImport else { return }
+            didAttemptImport = true
+            do {
+                try importingRepository.upsert(imported)
+            } catch CatalogError.sqlite(let message) where
+                message.contains("locked") || message.contains("busy") {
+                // A read transaction is itself a valid coherent-snapshot fix.
+            } catch {
+                unexpectedImportError = error
+            }
+        }
+
+        let duplicate = try fixture.model.duplicateAssetSet(id: dynamicSet.id, named: "Five Stars Copy")
+
+        XCTAssertTrue(didAttemptImport, "the controlled import never reached the projection boundary")
+        XCTAssertNil(unexpectedImportError)
+        XCTAssertEqual(duplicate.membership, dynamicSet.membership)
+        let projectedSmartCount = fixture.model.smartCollectionCounts[.fiveStars]
+        let projectedSetCount = fixture.model.assetSetCounts[duplicate.id]
+        let projectedFolderCount = fixture.model.catalogFolders.reduce(0) { $0 + $1.assetCount }
+        let publishedBeforeImport = fixture.model.assets.map(\.id) == [existing.id]
+            && fixture.model.totalAssetCount == 1
+            && projectedSmartCount == 1
+            && projectedSetCount == 1
+            && projectedFolderCount == 1
+        let publishedAfterImport = fixture.model.assets.map(\.id) == [existing.id, imported.id]
+            && fixture.model.totalAssetCount == 2
+            && projectedSmartCount == 2
+            && projectedSetCount == 2
+            && projectedFolderCount == 2
+        XCTAssertTrue(
+            publishedBeforeImport || publishedAfterImport,
+            "published mixed catalog versions: ids=\(fixture.model.assets.map(\.id)), "
+                + "count=\(fixture.model.totalAssetCount), smart=\(String(describing: projectedSmartCount)), "
+                + "set=\(String(describing: projectedSetCount)), folder=\(projectedFolderCount)"
+        )
+    }
+
+    // Both selected IDs exist in the old global scope, but only one matches
+    // the dynamic set. A no-op prune would leave the hidden reject selected.
+    func testSaveAndSelectPrunesBatchSelectionToTheDynamicSet() throws {
+        var keeper = makeAsset(id: "dynamic-batch-keeper", path: "/Photos/Batch/keeper.jpg")
+        keeper.metadata.rating = 5
+        var reject = makeAsset(id: "dynamic-batch-reject", path: "/Photos/Batch/reject.jpg")
+        reject.metadata.rating = 1
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "dynamic-batch-five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let fixture = try makeCatalogFixture(
+            named: "save-select-dynamic-batch-pruning",
+            assets: [keeper, reject]
+        ) { repository in
+            try repository.upsert(dynamicSet)
+        }
+        fixture.model.setBatchSelection(keeper.id, isSelected: true)
+        fixture.model.setBatchSelection(reject.id, isSelected: true)
+        XCTAssertEqual(fixture.model.selectedBatchAssetIDsInCatalogOrder, [keeper.id, reject.id])
+
+        let duplicate = try fixture.model.duplicateAssetSet(id: dynamicSet.id, named: "Five Stars Copy")
+
+        XCTAssertEqual(duplicate.membership, dynamicSet.membership)
+        XCTAssertEqual(fixture.model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(fixture.model.selectedBatchAssetIDs, [keeper.id])
+        XCTAssertEqual(fixture.model.selectedBatchAssetIDsInCatalogOrder, [keeper.id])
+    }
+
+    // Session restore is an observable boundary of save-and-select. Property
+    // observers may write the final state more than once, but must never expose
+    // a new set ID paired with the old source or partially cleared filters.
+    func testSaveAndSelectOnlyPersistsTheFinalSessionState() throws {
+        var asset = makeAsset(id: "atomic-session-state", path: "/Photos/Atomic/session-state.jpg")
+        asset.metadata.rating = 5
+        let defaultsSuite = "teststrip.save-select-session-state.\(UUID().uuidString)"
+        let defaults = RecordingUserDefaults(suiteName: defaultsSuite)
+        defaults.removePersistentDomain(forName: defaultsSuite)
+        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+        let fixture = try makeCatalogFixture(
+            named: "save-select-session-state",
+            assets: [asset],
+            sessionRestoreDefaults: defaults
+        )
+        fixture.model.librarySearchText = "Atomic"
+        fixture.model.minimumRatingFilter = 4
+        try fixture.model.applyLibraryFilters()
+        fixture.model.select(asset.id)
+        let catalogRoot = fixture.catalogURL.deletingLastPathComponent()
+        let restoreStore = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot)
+        defaults.beginRecording(key: SessionRestoreStore.key(forCatalogRoot: catalogRoot))
+
+        let saved = try fixture.model.saveSelectedAssetAsManualSet(named: "Atomic Session")
+
+        let finalState = try XCTUnwrap(restoreStore.load())
+        let recordedStates = try defaults.recordedValues.map {
+            try JSONDecoder().decode(SessionRestoreState.self, from: $0)
+        }
+        XCTAssertFalse(recordedStates.isEmpty)
+        XCTAssertEqual(finalState.selectedAssetSetID, saved.id)
+        XCTAssertEqual(finalState.source, .assetSet(saved.id, titled: "Atomic Session"))
+        XCTAssertTrue(
+            recordedStates.allSatisfy { $0 == finalState },
+            "save-and-select persisted an intermediate browsing state"
+        )
+    }
+
     // Import-child selection resolves the persisted import before it can claim
     // that source identity. A singleton output is a real import scope but has
     // no multi-frame Stacks membership.
@@ -821,5 +1076,65 @@ final class LibrarySourceTests: XCTestCase {
         )
         let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
         return (model, repository)
+    }
+
+    private func makeCatalogFixture(
+        named name: String,
+        assets: [Asset],
+        sessionRestoreDefaults: UserDefaults? = nil,
+        configureRepository: (CatalogRepository) throws -> Void = { _ in }
+    ) throws -> (
+        model: AppModel,
+        repository: CatalogRepository,
+        database: CatalogDatabase,
+        catalogURL: URL
+    ) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-library-source-\(name)-\(UUID().uuidString)", isDirectory: true)
+        let paths = AppCatalog.defaultPaths(
+            applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)
+        )
+        let database = try CatalogDatabase.open(at: paths.catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(assets)
+        try configureRepository(repository)
+        let previewCache = PreviewCache(root: paths.previewCacheRoot)
+        let catalog = AppCatalog(
+            paths: paths,
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: nil,
+            sessionRestoreDefaults: sessionRestoreDefaults
+        )
+        return (model, repository, database, paths.catalogURL)
+    }
+
+    private final class RecordingUserDefaults: UserDefaults {
+        private(set) var recordedValues: [Data] = []
+        private var keyToRecord: String?
+
+        init(suiteName: String) {
+            super.init(suiteName: suiteName)!
+        }
+
+        func beginRecording(key: String) {
+            keyToRecord = key
+            recordedValues = []
+        }
+
+        override func set(_ value: Any?, forKey defaultName: String) {
+            super.set(value, forKey: defaultName)
+            guard defaultName == keyToRecord,
+                  let data = data(forKey: defaultName) else { return }
+            recordedValues.append(data)
+        }
     }
 }
