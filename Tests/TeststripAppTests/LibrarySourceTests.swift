@@ -270,6 +270,49 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(model.selectedSource, .selection)
     }
 
+    // Selection's deterministic backing set is mutable so re-activating the
+    // transient source can replace its contents. A work session must instead
+    // retain the exact Selection membership it began with.
+    func testCullingSelectionSourceSnapshotsItsInputBeforeSelectionChanges() throws {
+        let first = makeAsset(id: "selection-cull-first", path: "/Photos/Inside/first.jpg")
+        let second = makeAsset(id: "selection-cull-second", path: "/Photos/Inside/second.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "source-selection-cull-snapshot",
+            assets: [first, second]
+        )
+        model.select(first.id)
+        try model.selectSource(.selection)
+        let transientSelectionSetID = try XCTUnwrap(model.selectedAssetSetID)
+        XCTAssertEqual(model.assets.map(\.id), [first.id])
+
+        let session = try model.cullCurrentResults()
+        let inputSetID = try XCTUnwrap(session.inputSetIDs.first)
+
+        XCTAssertNotEqual(inputSetID, transientSelectionSetID)
+        XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-\(session.id.rawValue)"))
+        XCTAssertEqual(try repository.assetSet(id: inputSetID).membership, .snapshot([first.id]))
+
+        try model.selectSource(.allPhotos)
+        model.select(second.id)
+        try model.selectSource(.selection)
+
+        XCTAssertEqual(model.selectedSource, .selection)
+        XCTAssertEqual(model.selectedAssetSetID, transientSelectionSetID)
+        XCTAssertEqual(model.assets.map(\.id), [second.id])
+
+        let storedSession = try repository.session(id: session.id)
+        XCTAssertEqual(storedSession.inputSetIDs, [inputSetID])
+        XCTAssertEqual(
+            try repository.assetIDs(matching: SetQuery(predicates: [.workSession(session.id.rawValue)])),
+            [first.id]
+        )
+
+        try model.applyWorkSession(id: session.id)
+
+        XCTAssertEqual(model.selectedSource.kind, .workSession(session.id))
+        XCTAssertEqual(model.assets.map(\.id), [first.id])
+    }
+
     // Correction A9: `applySource`'s `.autopilotSuggestions` arm used to call
     // `beginAutopilotReview()`, which wrote `selectedView = .grid` directly —
     // violating orthogonality (selecting a source must never change the
