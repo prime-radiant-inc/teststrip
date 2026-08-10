@@ -18061,44 +18061,125 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reimportModel.recentWork.first?.detail, "No new photos found in photos")
     }
 
+    // Resolving a source must succeed before it replaces the currently visible
+    // scope. A stale import child can survive in navigation/session state after
+    // its work session is removed, so selecting it must report the missing
+    // session without clearing the user's saved-set scope or active filters.
+    func testSelectingAMissingImportStacksChildLeavesTheCurrentLibraryStateUnchanged() throws {
+        let priorPick = makeAsset(
+            id: "missing-stack-child-prior-pick",
+            path: "/Photos/Prior/pick.cr2",
+            rating: 5,
+            flag: .pick
+        )
+        let priorPlain = makeAsset(
+            id: "missing-stack-child-prior-plain",
+            path: "/Photos/Prior/plain.cr2",
+            rating: 5
+        )
+        let importSingleton = makeAsset(
+            id: "missing-stack-child-import-singleton",
+            path: "/Photos/Import/singleton.cr2",
+            rating: 0
+        )
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "missing-import-stack-child-state",
+            assets: [priorPick, priorPlain, importSingleton],
+            outputAssetIDs: [importSingleton.id]
+        )
+        let priorSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "missing-stack-child-prior-set"),
+            name: "Prior Picks",
+            assetIDs: [priorPlain.id, priorPick.id]
+        )
+        try repository.upsert(priorSet)
+        let priorSource = LibrarySource.assetSet(priorSet.id, titled: priorSet.name)
+        try model.selectSource(priorSource)
+        model.flagFilter = .pick
+        try model.applyLibraryFilters()
+        model.selectLens(.loupe)
+
+        XCTAssertEqual(model.selectedSource, priorSource)
+        XCTAssertEqual(model.selectedAssetSetID, priorSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [priorPick.id])
+        XCTAssertEqual(model.selectedLens, .loupe)
+        XCTAssertEqual(model.selectedView, .libraryLoupe)
+        XCTAssertEqual(model.activeLibraryFilterRows.map(\.title), ["Prior Picks", "Pick"])
+        XCTAssertTrue(model.hasActiveLibraryFilters)
+
+        let sourceBeforeSelection = model.selectedSource
+        let assetSetIDBeforeSelection = model.selectedAssetSetID
+        let flagBeforeSelection = model.flagFilter
+        let assetsBeforeSelection = model.assets
+        let totalAssetCountBeforeSelection = model.totalAssetCount
+        let selectedAssetIDBeforeSelection = model.selectedAssetID
+        let viewBeforeSelection = model.selectedView
+        let lensBeforeSelection = model.selectedLens
+        let sortBeforeSelection = model.librarySortOption
+        let filterRowsBeforeSelection = model.activeLibraryFilterRows
+        let hadActiveFiltersBeforeSelection = model.hasActiveLibraryFilters
+        let lensAvailabilitiesBeforeSelection = model.lensAvailabilities
+        let missingSessionID = WorkSessionID(rawValue: "missing-import-session")
+
+        XCTAssertThrowsError(
+            try model.selectSource(.importChild(session: missingSessionID, child: .stacks))
+        ) { error in
+            XCTAssertEqual(error as? CatalogError, CatalogError.notFound(missingSessionID.rawValue))
+        }
+
+        XCTAssertEqual(model.selectedSource, sourceBeforeSelection)
+        XCTAssertEqual(model.selectedAssetSetID, assetSetIDBeforeSelection)
+        XCTAssertEqual(model.flagFilter, flagBeforeSelection)
+        XCTAssertEqual(model.assets, assetsBeforeSelection)
+        XCTAssertEqual(model.totalAssetCount, totalAssetCountBeforeSelection)
+        XCTAssertEqual(model.selectedAssetID, selectedAssetIDBeforeSelection)
+        XCTAssertEqual(model.selectedView, viewBeforeSelection)
+        XCTAssertEqual(model.selectedLens, lensBeforeSelection)
+        XCTAssertEqual(model.librarySortOption, sortBeforeSelection)
+        XCTAssertEqual(model.activeLibraryFilterRows, filterRowsBeforeSelection)
+        XCTAssertEqual(model.hasActiveLibraryFilters, hadActiveFiltersBeforeSelection)
+        XCTAssertEqual(model.lensAvailabilities, lensAvailabilitiesBeforeSelection)
+    }
+
     // The Stacks child badge counts groups, while selecting it reveals the
-    // union of frames in those groups. Singleton import members remain in the
-    // parent import scope but do not belong in this child.
+    // union of frames in those groups in the library's current sort order.
+    // Singleton import members remain in the parent import scope but do not
+    // belong in this child.
     func testSelectingTheImportRowsStacksChildLoadsOnlyTimeAdjacentStackMembers() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let leadingSingleton = makeAsset(
             id: "stack-child-leading-singleton",
-            path: "/Photos/Import/stack-child-leading-singleton.cr2",
+            path: "/Photos/Import/m-singleton.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(-10))
         )
         let firstStackLead = makeAsset(
             id: "stack-child-first-lead",
-            path: "/Photos/Import/stack-child-first-lead.cr2",
+            path: "/Photos/Import/zulu.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
         )
         let firstStackAlternate = makeAsset(
             id: "stack-child-first-alternate",
-            path: "/Photos/Import/stack-child-first-alternate.cr2",
+            path: "/Photos/Import/alpha.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
         )
         let secondStackLead = makeAsset(
             id: "stack-child-second-lead",
-            path: "/Photos/Import/stack-child-second-lead.cr2",
+            path: "/Photos/Import/yankee.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(10))
         )
         let secondStackAlternate = makeAsset(
             id: "stack-child-second-alternate",
-            path: "/Photos/Import/stack-child-second-alternate.cr2",
+            path: "/Photos/Import/bravo.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(11))
         )
         let trailingSingleton = makeAsset(
             id: "stack-child-trailing-singleton",
-            path: "/Photos/Import/stack-child-trailing-singleton.cr2",
+            path: "/Photos/Import/omega-singleton.cr2",
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(20))
         )
@@ -18114,7 +18195,7 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(101))
         )
-        let importedAssets = [
+        let importOutputOrder = [
             leadingSingleton,
             firstStackLead,
             firstStackAlternate,
@@ -18122,11 +18203,23 @@ final class AppModelTests: XCTestCase {
             secondStackAlternate,
             trailingSingleton,
         ]
+        let repositoryInsertionOrder = [
+            secondStackLead,
+            leadingSingleton,
+            firstStackAlternate,
+            outsideStackLead,
+            firstStackLead,
+            trailingSingleton,
+            secondStackAlternate,
+            outsideStackAlternate,
+        ]
         let (model, repository, _) = try makeModelWithCompletedImportSession(
             named: "import-stack-child-members",
-            assets: importedAssets + [outsideStackLead, outsideStackAlternate],
-            outputAssetIDs: importedAssets.map(\.id)
+            assets: repositoryInsertionOrder,
+            outputAssetIDs: importOutputOrder.map(\.id)
         )
+        try model.setLibrarySortOption(.filename)
+        XCTAssertEqual(model.librarySortOption, .filename)
 
         let summary = try XCTUnwrap(model.latestImportCompletionSummary)
         let sessionID = WorkSessionID(rawValue: summary.activityID)
@@ -18154,10 +18247,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .grid)
         let loadedAssetIDs = model.assets.map(\.id)
         XCTAssertEqual(loadedAssetIDs, [
-            firstStackLead.id,
             firstStackAlternate.id,
-            secondStackLead.id,
             secondStackAlternate.id,
+            secondStackLead.id,
+            firstStackLead.id,
         ])
         XCTAssertEqual(loadedAssetIDs.count, 4)
         XCTAssertFalse(loadedAssetIDs.contains(leadingSingleton.id))
