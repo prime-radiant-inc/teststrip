@@ -93,6 +93,8 @@ final class AppModelSessionRestoreTests: XCTestCase {
         let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
 
         XCTAssertEqual(modelB.selectedAssetSetID, assetSetID)
+        XCTAssertEqual(modelB.selectedSource, .assetSet(assetSetID, titled: "Top Picks"))
+        XCTAssertEqual(modelB.scopeLine.sourceTitle, "Top Picks")
         XCTAssertEqual(modelB.assets.count, 3)
         XCTAssertTrue(modelB.assets.allSatisfy { $0.metadata.rating == 5 })
     }
@@ -248,10 +250,10 @@ final class AppModelSessionRestoreTests: XCTestCase {
         let catalogA = try makeCatalog(directory: directory)
         try seedAssets(count: 4, in: catalogA.repository)
         let assetSetID = AssetSetID(rawValue: "gone-by-relaunch")
-        try catalogA.repository.upsert(AssetSet.dynamic(
+        try catalogA.repository.upsert(AssetSet.manual(
             id: assetSetID,
             name: "Gone Set",
-            query: SetQuery(predicates: [.ratingAtLeast(1)])
+            assetIDs: [AssetID(rawValue: "asset-0"), AssetID(rawValue: "asset-2")]
         ))
 
         let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
@@ -264,7 +266,15 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertNil(modelB.selectedAssetSetID)
         XCTAssertEqual(modelB.selectedSource, .allPhotos)
         XCTAssertEqual(modelB.scopeLine.sourceTitle, "All Photos")
-        XCTAssertEqual(modelB.assets.count, 4)
+        XCTAssertEqual(
+            Set(modelB.assets.map(\.id)),
+            Set([
+                AssetID(rawValue: "asset-0"),
+                AssetID(rawValue: "asset-1"),
+                AssetID(rawValue: "asset-2"),
+                AssetID(rawValue: "asset-3")
+            ])
+        )
     }
 
     func testFallsBackSilentlyWhenSelectedAssetIsGone() throws {
