@@ -2258,11 +2258,6 @@ public final class AppModel {
     public var metadataSyncConflictFilter: Bool {
         didSet { persistSessionState() }
     }
-    /// The visible map region a cluster or top-location tap drilled into. Set
-    /// from the map, applied through `.withinGeoBounds` in `currentLibraryQuery`,
-    /// and cleared by `clearLibraryQueryFilters`. In-memory only — not part of
-    /// session restore.
-    public var geoBoundsFilter: GeoBounds?
     private var detachedLibraryFilterPredicates: [SetQuery.Predicate] {
         didSet { persistSessionState() }
     }
@@ -4477,8 +4472,8 @@ public final class AppModel {
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.enqueuePendingGeocoding()
-        try model.restoreSessionStateIfAvailable()
         try model.refreshAutopilotGhostAssetIDs()
+        try model.restoreSessionStateIfAvailable()
         // The Imports section reads `importSourceSummaries`, which the
         // initializer cannot compute (it takes no repository), so a launch
         // would otherwise show no imports until the next work-session refresh.
@@ -10974,11 +10969,10 @@ public final class AppModel {
     /// A Map drill-down with an explicit destination: the drawn area becomes
     /// the selected source and the Grid renders what fell inside it.
     public func selectPlaceBounds(_ bounds: GeoBounds) throws {
-        selectedAssetSetID = nil
-        geoBoundsFilter = bounds
         selectedView = .grid
-        selectedSource = .search(SetQuery(predicates: [.withinGeoBounds(bounds)]), titled: "Map area")
-        try reload()
+        try applySource(
+            .search(SetQuery(predicates: [.withinGeoBounds(bounds)]), titled: "Map area")
+        )
     }
 
     /// Fills the place-data properties the map surface reads. Bounded: cluster
@@ -11693,9 +11687,6 @@ public final class AppModel {
         if let captureDateEndFilter {
             Self.append(.capturedBefore(captureDateEndFilter), to: &predicates)
         }
-        if let geoBoundsFilter {
-            Self.append(.withinGeoBounds(geoBoundsFilter), to: &predicates)
-        }
         if let availabilityFilter {
             Self.append(.availability(availabilityFilter), to: &predicates)
         }
@@ -11738,7 +11729,6 @@ public final class AppModel {
         minimumISOFilter = nil
         captureDateStartFilter = nil
         captureDateEndFilter = nil
-        geoBoundsFilter = nil
         availabilityFilter = nil
         evaluationKindFilter = nil
         needsKeywordsFilter = false
@@ -11842,12 +11832,30 @@ public final class AppModel {
             selectedAssetSetID = assetSetID
         }
 
-        selectedSource = state.source
+        let restoringAutopilotSuggestions = state.source == .autopilotSuggestions
+        let restoredSource: LibrarySource = restoringAutopilotSuggestions && autopilotGhostAssetIDs.isEmpty
+            ? .allPhotos
+            : state.source
         selectLens(Self.isRestorableLens(state.lens) ? state.lens : .grid)
-        selectedAssetID = state.selectedAssetID
 
         try refreshWorkHistorySearchResults(repository: catalog.repository)
-        if let explicitAssetIDs = selectedExplicitAssetIDs {
+        if restoringAutopilotSuggestions, !autopilotGhostAssetIDs.isEmpty {
+            let loadedAssets = try catalog.repository.assets(
+                ids: autopilotGhostAssetIDs,
+                limit: autopilotGhostAssetIDs.count
+            )
+            replaceAssets(loadedAssets, preferredSelection: state.selectedAssetID)
+            totalAssetCount = try catalog.repository.assetCount(ids: autopilotGhostAssetIDs)
+            isAutopilotReviewActive = true
+        } else if restoringAutopilotSuggestions {
+            let contents = try Self.catalogContents(
+                repository: catalog.repository,
+                query: nil,
+                sort: librarySortOption
+            )
+            replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
+            totalAssetCount = contents.totalAssetCount
+        } else if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
             replaceAssets(loadedAssets, preferredSelection: state.selectedAssetID)
             totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs, flag: flagFilter)
@@ -11860,6 +11868,7 @@ public final class AppModel {
             replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
             totalAssetCount = contents.totalAssetCount
         }
+        selectedSource = restoredSource
         refreshAssetIDsWithBondedSecondaries()
         try refreshProposedAssets()
     }
