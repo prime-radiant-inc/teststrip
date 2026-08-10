@@ -244,6 +244,18 @@ final class LibraryLensTests: XCTestCase {
     private func cullEntryCommands() -> [CullEntryCommand] {
         [
             CullEntryCommand(name: "selectLens(.cull)", expectedView: .loupe) { $0.selectLens(.cull) },
+            CullEntryCommand(name: "selectCullSubMode(.loupe)", expectedView: .loupe) {
+                $0.selectCullSubMode(.loupe)
+            },
+            CullEntryCommand(name: "selectCullSubMode(.cullGrid)", expectedView: .cullGrid) {
+                $0.selectCullSubMode(.cullGrid)
+            },
+            CullEntryCommand(name: "selectCullSubMode(.compare)", expectedView: .compare) {
+                $0.selectCullSubMode(.compare)
+            },
+            CullEntryCommand(name: "selectCullSubMode(.abCompare)", expectedView: .abCompare) {
+                $0.selectCullSubMode(.abCompare)
+            },
             CullEntryCommand(name: "applyCullingShortcut(.showCompare)", expectedView: .compare) {
                 try $0.applyCullingShortcut(.showCompare)
             },
