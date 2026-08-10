@@ -285,6 +285,14 @@ struct ActivityCenterView: View {
                             .foregroundStyle(.yellow)
                             .lineLimit(1)
                     }
+                    if receipt.issueCount > 0 {
+                        Button("Review issues") {
+                            reviewIssues(receipt)
+                        }
+                        .font(.caption)
+                        .buttonStyle(.link)
+                        .accessibilityLabel("Review issues")
+                    }
                     if receipt.canStartCulling {
                         Button("Start culling") {
                             startCulling(receipt)
@@ -297,6 +305,11 @@ struct ActivityCenterView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func reviewIssues(_ receipt: ImportReceiptRow) {
+        model.isActivityCenterPresented = false
+        model.requestImportIssueReview(sessionID: receipt.sessionID)
     }
 
     private func startCulling(_ receipt: ImportReceiptRow) {

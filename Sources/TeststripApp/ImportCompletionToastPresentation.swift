@@ -96,6 +96,7 @@ public struct ImportReceiptRow: Equatable, Identifiable, Sendable {
     public var sessionID: WorkSessionID
     public var title: String
     public var detail: String
+    public var issueCount: Int
     public var canStartCulling: Bool
 
     public init(
@@ -103,12 +104,14 @@ public struct ImportReceiptRow: Equatable, Identifiable, Sendable {
         sessionID: WorkSessionID,
         title: String,
         detail: String,
+        issueCount: Int,
         canStartCulling: Bool
     ) {
         self.id = id
         self.sessionID = sessionID
         self.title = title
         self.detail = detail
+        self.issueCount = issueCount
         self.canStartCulling = canStartCulling
     }
 
@@ -125,6 +128,7 @@ public struct ImportReceiptRow: Equatable, Identifiable, Sendable {
                     detail: skippedCount > 0
                         ? "\(skippedCount) \(skippedCount == 1 ? "file" : "files") skipped"
                         : "",
+                    issueCount: activity.issues.count,
                     canStartCulling: activity.completedUnitCount > 0
                 )
             }
