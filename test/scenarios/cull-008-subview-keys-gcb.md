@@ -12,8 +12,11 @@ Source — **the G-key ambiguity is real but is two separate, non-conflicting
 key monitors, not one context-sensitive branch**:
 - `Sources/TeststripApp/AppModel.swift:6615-6621, 6703-6714, 4790-4792` — while the **culling
   shortcut monitor** is active (loupe/culling context; `CullingShortcut.showCullGrid`,
-  keyed `"g"` at `AppModel.swift:233`), pressing `g` sets
-  `selectedView = .cullGrid` — loupe → grid.
+  keyed `"g"` at `AppModel.swift:233`), pressing `g` routes through
+  `selectCullSubMode(.cullGrid)` — loupe → grid. `selectCullSubMode`
+  assigns `selectedView` only when the requested mode belongs to the Cull
+  lens and Cull is available for the current source; otherwise the
+  sub-mode command is a no-op.
 - `Sources/TeststripApp/GridKeyCaptureView.swift:37-58` — while
   `GridKeyCaptureNSView.mode == .cullGrid` (the **grid key-capture view**,
   active only when the cull grid subview itself has focus), `command(for:)`
@@ -22,6 +25,9 @@ key monitors, not one context-sensitive branch**:
   `.switchCullSubView(.loupe)` in this branch (`:46-47`), so **G and Esc are
   synonyms while in the grid subview**. `c`/`b` in this same branch jump
   straight to `.compare`/`.abCompare` (`:51-52`), skipping the loupe.
+  `AppModel.applyGridKeyCommand` (`AppModel.swift:6309-6352`) rejects these
+  switches when Cull is unavailable (`:6325-6327`) and otherwise dispatches
+  them through `selectCullSubMode` (`:6350-6351`).
 - **Resolution — confirmed by the explicit gate, not just by inference**:
   `CullingKeyCaptureGate.isActive(lens:selectedView:)`
   (`Sources/TeststripApp/CullingKeyCaptureView.swift:12-14`) returns

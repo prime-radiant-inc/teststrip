@@ -61,14 +61,20 @@ a human place name, cross-checked against the `place_cache` table.
 
 6. **Assert the map is query-scoped, not whole-catalog** (per commit
    `62e0a31`, "fix: scope Library Map geo queries to the current filtered
-   result set" — `AppModel.refreshPlaceData` now passes
-   `currentLibraryQuery()` through to
+   result set" — `AppModel.refreshPlaceData`
+   (`AppModel.swift:11009-11017`) now obtains `currentMapQuery()`
+   (`AppModel.swift:11020-11031`) and passes that query through to
    `CatalogRepository.placeClusters(bounds:cellSize:matching:)`,
    `.topLocations(limit:matching:)`, and `.geotaggedCoverage(matching:)`,
-   which push the shared `SetQuery` WHERE-building (`compileClauses`) into the
-   geo SQL instead of materializing filtered asset IDs). With Places/Map open
-   and clusters showing the full `GEO` count, type a query token in the
-   Library search field that excludes some of the GPS-tagged fixtures (e.g. a
+   which push the shared `SetQuery` WHERE-building into the geo SQL
+   (`CatalogRepository.swift:680-704, 739-758, 944-954`) instead of
+   materializing filtered asset IDs). `currentMapQuery()` preserves the
+   library predicates assembled by `currentLibraryQuery()` and adds an
+   `.assetSet` predicate when a static saved set or the Selection's synthetic
+   set supplies the explicit scope. This card does not claim coverage for a
+   derived explicit-ID source with no backing asset set. With Places/Map open
+   and clusters showing the full `GEO` count, type a query token in the Library
+   search field that excludes some of the GPS-tagged fixtures (e.g. a
    `keyword:`/filename-scoped token matching only a subset — pick one from the
    imported fixture set), submit it, and:
    - Assert the coverage badge's numerator drops to match only the assets the
@@ -110,11 +116,14 @@ Quit the launched instance.
 - Confirm the `technical_metadata_json` latitude JSON path against a real row
   (`sqlite3 "$DB" "SELECT technical_metadata_json FROM assets LIMIT 1;"`) — a
   wrong path silently reads 0 and makes step 1 vacuous.
-- Step 6 (query-scoping) is new as of commit `62e0a31`; the scoping code path
-  (`AppModel.refreshPlaceData` → `CatalogRepository.placeClusters/topLocations/geotaggedCoverage(matching:)`)
-  was confirmed by reading the diff, not by a live drive — no live GUI drive
-  has been performed for this addition. Needs a human-present or VM run
-  before this step can be marked passing.
+- Step 6 (query-scoping) is new as of commit `62e0a31`; the current scoping
+  code path is `AppModel.refreshPlaceData` → `currentMapQuery` →
+  `CatalogRepository.placeClusters/topLocations/geotaggedCoverage(matching:)`.
+  It was confirmed by reading source, not by a live drive; this card's claim
+  covers library-query predicates plus static saved-set/Selection membership,
+  not every possible derived explicit-ID source. No live GUI drive has been
+  performed for this addition. Needs a human-present or VM run before this
+  step can be marked passing.
 
 ## Run status
 NOT YET RUN — this card (renamed from `places-map-and-geocode.md`) has no

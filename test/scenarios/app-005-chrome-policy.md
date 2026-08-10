@@ -90,9 +90,8 @@ user on a bare "0 keepers".
   ```
 - Step 4: exactly six lens buttons; `Search`/`Review`/`Places` are absent
   from the switcher (present elsewhere instead). **Fails if** People is
-  reported absent from the switcher (that is the correct, current
-  behaviour, not a bug) or if any of the three named controls IS found on
-  the switcher.
+  reported absent from the switcher or if any of the three named controls
+  IS found on the switcher.
 - Step 5: browse chrome disappears in both Cull and People, never in Grid;
   ⌘I opens the inspector in place in every lens, including Cull. **Fails
   if** any browse control leaks into Cull/People, if browse chrome is
