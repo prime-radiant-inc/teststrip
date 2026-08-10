@@ -9249,6 +9249,229 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testSearchOnlyStarActionTracksPersistenceAcrossRepeatedToggles() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-search-only-star-action")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let searchOnlySession = sidebarWorkSession(
+            id: "needle-old-starred",
+            kind: .culling,
+            title: "Needle Old Starred",
+            starred: true,
+            updatedAt: 1
+        )
+        try repository.save(searchOnlySession)
+        for index in 1...11 {
+            try repository.save(sidebarWorkSession(
+                id: "newer-starred-filler-\(index)",
+                kind: .export,
+                title: "Newer Starred Filler \(index)",
+                starred: true,
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+        let model = try AppModel.load(catalog: workHistoryCatalog(in: directory, repository: repository))
+
+        model.librarySearchText = "needle"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [searchOnlySession.id.rawValue])
+        XCTAssertEqual(
+            recentWorkCollectionRows(model).compactMap(workSessionTargetID),
+            [searchOnlySession.id]
+        )
+        var row = try XCTUnwrap(recentWorkCollectionRows(model).first)
+        var actions = model.sidebarContextActions(for: row)
+        XCTAssertEqual(actions, [
+            SidebarRowContextAction(
+                kind: .toggleWorkSessionStarred(searchOnlySession.id),
+                title: "Remove Star",
+                systemImage: "star.slash"
+            )
+        ])
+
+        try model.performSidebarContextAction(try XCTUnwrap(actions.first))
+
+        XCTAssertFalse(try repository.session(id: searchOnlySession.id).starred)
+        XCTAssertEqual(
+            recentWorkCollectionRows(model).compactMap(workSessionTargetID),
+            [searchOnlySession.id]
+        )
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [searchOnlySession.id.rawValue])
+        XCTAssertEqual(model.workHistorySearchResults.first?.starred, false)
+        row = try XCTUnwrap(recentWorkCollectionRows(model).first)
+        actions = model.sidebarContextActions(for: row)
+        XCTAssertEqual(actions, [
+            SidebarRowContextAction(
+                kind: .toggleWorkSessionStarred(searchOnlySession.id),
+                title: "Star Work",
+                systemImage: "star"
+            )
+        ])
+        XCTAssertFalse(try repository.session(id: searchOnlySession.id).starred)
+
+        try model.performSidebarContextAction(try XCTUnwrap(actions.first))
+
+        XCTAssertTrue(try repository.session(id: searchOnlySession.id).starred)
+        XCTAssertEqual(
+            recentWorkCollectionRows(model).compactMap(workSessionTargetID),
+            [searchOnlySession.id]
+        )
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [searchOnlySession.id.rawValue])
+        XCTAssertEqual(model.workHistorySearchResults.first?.starred, true)
+        row = try XCTUnwrap(recentWorkCollectionRows(model).first)
+        XCTAssertEqual(model.sidebarContextActions(for: row), [
+            SidebarRowContextAction(
+                kind: .toggleWorkSessionStarred(searchOnlySession.id),
+                title: "Remove Star",
+                systemImage: "star.slash"
+            )
+        ])
+    }
+
+    func testRepeatedWorkHistorySearchesPruneRetiredScopeCountsWithoutDroppingPersistentPaths() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-repeated-work-history-search-counts")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = makeAsset(id: "search-count-first", path: "/Photos/search-count-first.jpg", rating: 5)
+        let second = makeAsset(id: "search-count-second", path: "/Photos/search-count-second.jpg", rating: 3)
+        let third = makeAsset(id: "search-count-third", path: "/Photos/search-count-third.jpg", rating: 1)
+        try repository.upsert([first, second, third])
+        let oneAssetSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "search-count-one"),
+            name: "One search-count asset",
+            assetIDs: [first.id]
+        )
+        let twoAssetSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "search-count-two"),
+            name: "Two search-count assets",
+            assetIDs: [first.id, second.id]
+        )
+        let threeAssetSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "search-count-three"),
+            name: "Three search-count assets",
+            assetIDs: [first.id, second.id, third.id]
+        )
+        try repository.upsert(oneAssetSet)
+        try repository.upsert(twoAssetSet)
+        try repository.upsert(threeAssetSet)
+
+        let retainedImport = sidebarWorkSession(
+            id: "alpha-retained-import",
+            kind: .ingest,
+            title: "Alpha Retained Import",
+            outputSetIDs: [threeAssetSet.id],
+            updatedAt: 0
+        )
+        let alphaSearchOnly = sidebarWorkSession(
+            id: "alpha-search-only",
+            kind: .culling,
+            title: "Alpha Search Only",
+            inputSetIDs: [oneAssetSet.id],
+            updatedAt: 1
+        )
+        let betaSearchOnly = sidebarWorkSession(
+            id: "beta-search-only",
+            kind: .export,
+            title: "Beta Search Only",
+            inputSetIDs: [twoAssetSet.id],
+            updatedAt: 2
+        )
+        let retainedStarred = sidebarWorkSession(
+            id: "alpha-retained-starred",
+            kind: .culling,
+            title: "Alpha Retained Starred",
+            inputSetIDs: [twoAssetSet.id],
+            starred: true,
+            updatedAt: 3
+        )
+        let retainedRecent = sidebarWorkSession(
+            id: "alpha-retained-recent",
+            kind: .export,
+            title: "Alpha Retained Recent",
+            inputSetIDs: [oneAssetSet.id],
+            updatedAt: 105
+        )
+        try repository.save(retainedImport)
+        try repository.save(alphaSearchOnly)
+        try repository.save(betaSearchOnly)
+        try repository.save(retainedStarred)
+        for index in 1...4 {
+            try repository.save(sidebarWorkSession(
+                id: "newer-work-filler-\(index)",
+                kind: .export,
+                title: "Newer Work Filler \(index)",
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+        try repository.save(retainedRecent)
+        for index in 1...11 {
+            try repository.save(sidebarWorkSession(
+                id: "newer-starred-import-\(index)",
+                kind: .ingest,
+                title: "Newer Starred Import \(index)",
+                starred: true,
+                updatedAt: TimeInterval(200 + index)
+            ))
+        }
+        let model = try AppModel.load(catalog: workHistoryCatalog(in: directory, repository: repository))
+
+        XCTAssertFalse(model.recentWork.map(\.id).contains(retainedRecent.id.rawValue))
+        XCTAssertFalse(model.starredWork.map(\.id).contains(retainedStarred.id.rawValue))
+        let defaultWorkTargets = recentWorkCollectionRows(model).compactMap(workSessionTargetID)
+        XCTAssertTrue(defaultWorkTargets.contains(retainedRecent.id))
+        XCTAssertTrue(defaultWorkTargets.contains(retainedStarred.id))
+        XCTAssertTrue(model.importSourceSummaries.map(\.sessionID).contains(retainedImport.id))
+        XCTAssertEqual(model.workSessionScopeCounts[retainedRecent.id], 1)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedStarred.id], 2)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedImport.id], 3)
+
+        model.librarySearchText = "alpha"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [
+            retainedRecent.id.rawValue,
+            retainedStarred.id.rawValue,
+            alphaSearchOnly.id.rawValue
+        ])
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), [
+            retainedRecent.id,
+            retainedStarred.id,
+            alphaSearchOnly.id
+        ])
+        XCTAssertEqual(model.workSessionScopeCounts[retainedRecent.id], 1)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedStarred.id], 2)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedImport.id], 3)
+        XCTAssertEqual(model.workSessionScopeCounts[alphaSearchOnly.id], 1)
+        XCTAssertNil(model.workSessionScopeCounts[betaSearchOnly.id])
+
+        model.librarySearchText = "beta"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [betaSearchOnly.id.rawValue])
+        XCTAssertEqual(
+            recentWorkCollectionRows(model).compactMap(workSessionTargetID),
+            [betaSearchOnly.id]
+        )
+        XCTAssertNil(model.workSessionScopeCounts[alphaSearchOnly.id])
+        XCTAssertEqual(model.workSessionScopeCounts[betaSearchOnly.id], 2)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedRecent.id], 1)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedStarred.id], 2)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedImport.id], 3)
+
+        model.librarySearchText = "no-work-history-match"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.workHistorySearchResults, [])
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), [])
+        XCTAssertNil(model.workSessionScopeCounts[betaSearchOnly.id])
+        XCTAssertEqual(model.workSessionScopeCounts[retainedRecent.id], 1)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedStarred.id], 2)
+        XCTAssertEqual(model.workSessionScopeCounts[retainedImport.id], 3)
+    }
+
     func testOnlyResidualSearchSuppressesDefaultRecentWorkWhenThereAreNoMatches() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-empty-work-history-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
