@@ -4700,10 +4700,10 @@ public final class AppModel {
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
         guard let source = row.target else { return }
-        // Skipped files are not in the catalog at all, so this one child
-        // does not select into a Grid scope like every other row — it opens
-        // the issue-review sheet instead (see `importIssueReviewRequestToken`).
+        // Skipped files use the import's catalogued output scope while the
+        // issue-review sheet presents the uncatalogued issue records.
         if case .importChild(let sessionID, .skippedFiles) = source.kind {
+            try selectSource(source)
             requestImportIssueReview(sessionID: sessionID)
             return
         }
