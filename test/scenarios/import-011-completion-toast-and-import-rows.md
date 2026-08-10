@@ -9,18 +9,20 @@ per-import children and expose a context menu for re-running work over that
 import. No unit test can reach any of this — the repo has no SwiftUI
 view-inspection library. This card is the **only gate** on: the toast's
 content/dismissal, the "no banner chrome" negative, the toast's relaunch and
-same-session non-resurrection, the import row's children and their counts,
+same-session non-resurrection, the retained receipt's issue-review and
+Start-culling bindings, the import row's children and their counts,
 zero-count-child omission, the skipped-files child opening the issue-review
-sheet instead of an (empty) grid, the row's context menu, and culling an
-older (not just the newest) import.
+sheet instead of an (empty) grid, the row's context menu, and culling an older
+(not just the newest) import.
 
 Source: `Sources/TeststripApp/ImportCompletionToastPresentation.swift`
 (`ImportCompletionToastPresentation.toast(for:isCurrentSessionActivity:
 isImporting:)` `:40-58`, `headline(for:isExistingOnly:)` `:71-84`,
-`ImportReceiptRow` `:90-131`), `Sources/TeststripApp/LibraryGridView.swift`
+`ImportReceiptRow` `:90-135`), `Sources/TeststripApp/LibraryGridView.swift`
 (toast overlay + `.task(id:)` re-show guard `:247-260`, `importCompletionToast`
 view `:771-824`, `dismissToast`/`showToastThenFade` `:826-844`),
-`Sources/TeststripApp/ActivityCenterView.swift` (`receiptsSection` `:272-299`),
+`Sources/TeststripApp/ActivityCenterView.swift` (`receiptsSection` `:272-308`,
+`reviewIssues` `:310-312`, `startCulling` `:315-322`),
 `Sources/TeststripApp/UnifiedSidebarPresentation.swift` (`ImportSidebarSummary`
 `:14-51`, `ImportChildCounts` `:61-87`, `importSectionRows`/`runningImportRow`/
 `childRows` `:248-323`), `Sources/TeststripApp/LibrarySource.swift`
@@ -29,9 +31,11 @@ view `:771-824`, `dismissToast`/`showToastThenFade` `:826-844`),
 `requestImportIssueReview` `:2543-2546`, `sidebarContextActions(for:)`
 `:5161-5233`, with the work-session star toggle
 at `:5202-5207` and import verbs at `:5212-5227`, `beginStackCulling`
-`:5019-5041`), `Sources/TeststripApp/
-LibraryGridView.swift` (`ImportIssueReview` `:8801`, `importIssueReviewSheet`
-`:1904`, `presentRequestedImportIssueReview` `:3117`),
+`:5019-5041`, `startCullingImport` `:5011-5017`, `cullingInputSetID`
+`:13135-13159`), `Sources/TeststripApp/LibraryGridView.swift`
+(`ImportIssueReview` `:8801-8810`, `importIssueReviewSheet` `:1904-1955`,
+`importIssueTitle` `:1957-1962`, `presentRequestedImportIssueReview`
+`:3117-3126`),
 `Sources/TeststripCore/Ingest/FolderScanner.swift` (`.unrecognizedFile` skip
 reason `:90-98`), `Sources/TeststripCore/Catalog/CatalogMigrations.swift`
 (`work_sessions` schema `:94-110`, `asset_sets` schema `:53-61`).
@@ -139,14 +143,66 @@ reproducible).
    ```bash
    ! script/vm_scenario_run.sh ax find --contains "Import complete"
    ```
-   Open the bell (Activity Center) and assert its popover holds a
-   `"Recent Imports"` receipt (`ActivityCenterView.swift:274`) with the same
-   counts and its own `Start culling`:
+   Open the bell (Activity Center) and assert its popover holds CARD1's
+   retained `"Recent Imports"` receipt (`ActivityCenterView.swift:272-308`)
+   with the same counts and both link-style actions. Drive `Review issues`
+   first: it must close the popover, route this receipt's session into the
+   existing issue-review sheet, show the exact two CARD1 issues, and dismiss
+   through the sheet's exact `Done` action (`reviewIssues`,
+   `ActivityCenterView.swift:310-312`; `importIssueReviewSheet`,
+   `LibraryGridView.swift:1904-1955`; `importIssueTitle`, `:1957-1962`):
    ```bash
    script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
-   script/vm_scenario_run.sh ax find --contains "Recent Imports"
-   script/vm_scenario_run.sh ax find --contains "2 files skipped"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "2 files skipped"
+   script/vm_scenario_run.sh ax find --role AXLink --label "Review issues"
    script/vm_scenario_run.sh ax find --role AXLink --label "Start culling"
+   script/vm_scenario_run.sh ax press --role AXLink --label "Review issues"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "2 Import Issues"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Skipped notes.txt"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Skipped readme.md"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Done"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "2 Import Issues"
+   ```
+   Now bind `Start culling` to one genuinely new post-action culling row. The
+   action must close the reopened popover, land in the Cull lens on the new
+   `work-input-<session>` snapshot source, and give that exact run all four
+   CARD1 assets and nothing else (`startCullingImport`,
+   `AppModel.swift:5011-5017`; `beginCullingSession`, `:5806-5859`;
+   `cullingInputSetID`, `:13135-13159`; `applyAssetSet`, `:5389-5410`;
+   `scopeLineBar`, `LibraryGridView.swift:748-768`). Return to Grid afterward
+   so the same-session and relaunch probes can continue:
+   ```bash
+   BEFORE_RECEIPT_CULL_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='culling';")
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax find --role AXLink --label "Start culling"
+   script/vm_scenario_run.sh ax press --role AXLink --label "Start culling"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
+
+   for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+     RECEIPT_CULL_RUN_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_RECEIPT_CULL_ROWID;")
+     test "$RECEIPT_CULL_RUN_COUNT" -eq 1 && break
+     sleep 1
+   done
+   test "$RECEIPT_CULL_RUN_COUNT" -eq 1
+   RECEIPT_CULL_RUN_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_RECEIPT_CULL_ROWID;")
+   test -n "$RECEIPT_CULL_RUN_ID"
+   RECEIPT_CULL_SET_ID=$(script/vm_scenario_run.sh sql empty "SELECT json_extract(input_set_ids_json,'\$[0]') FROM work_sessions WHERE id='$RECEIPT_CULL_RUN_ID';")
+   test "$RECEIPT_CULL_SET_ID" = "work-input-$RECEIPT_CULL_RUN_ID"
+   test "$(script/vm_scenario_run.sh sql empty "SELECT title FROM work_sessions WHERE id='$RECEIPT_CULL_RUN_ID';")" = "Imported 4 photos from card1 (2 files skipped)"
+   test "$(script/vm_scenario_run.sh sql empty "SELECT name FROM asset_sets WHERE id='$RECEIPT_CULL_SET_ID';")" = "Imported 4 photos from card1 (2 files skipped) Input"
+
+   RECEIPT_CULL_INPUT_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='$RECEIPT_CULL_SET_ID'));")
+   RECEIPT_CULL_CARD1_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='$RECEIPT_CULL_SET_ID')) m JOIN assets a ON a.id=json_extract(m.value,'\$.rawValue') WHERE a.original_path LIKE '/Users/admin/teststrip-vm/fixtures/import-011/card1/%';")
+   test "$RECEIPT_CULL_INPUT_COUNT" -eq 4
+   test "$RECEIPT_CULL_CARD1_COUNT" -eq 4
+   script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Cull"
+   script/vm_scenario_run.sh ax find --label "Scope" --contains "Imported 4 photos from card1 (2 files skipped) Input"
+
+   script/vm_scenario_run.sh key 'keystroke "2" using {command down}'
+   script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Grid"
+   script/vm_scenario_run.sh ax find --label "Scope" --contains "Imported 4 photos from card1 (2 files skipped) Input"
    ```
 5. **Same-session non-resurrection** (a correction added for this push — the
    fade records the dismissal into `dismissedToastSummaryID`,
@@ -304,7 +360,9 @@ reproducible).
 12. First prove the discriminator is non-vacuous: CARD1 contributed exactly
     four catalog rows and CARD2 contributed exactly two CARD2-only rows. Then
     record the culling-session count, latest row ID, and latest session ID
-    **after Step 10** and before pressing `Cull these`. Step 10 entered the
+    **after Step 10** and before pressing `Cull these`. The receipt action in
+    Step 4 created an earlier culling run, but this later boundary excludes it
+    (and Step 10's run) from the one-new-run query below. Step 10 entered the
     Cull lens, which hides the query/result header; switch to Grid first so
     the browse-only header is vended (`LensChromePolicy.showsFilterTokens`,
     `LibraryGridView.swift:8276-8278`). Then cull the **older** import (CARD1)
@@ -376,8 +434,13 @@ reproducible).
 - Step 3: **fails if** either banner-chrome string is found — that would
   mean the deleted panel (or new prose resembling it) leaked back onto the
   canvas.
-- Step 4: **fails if** the toast is still visible past ~10s, or the bell's
-  receipt is missing/mismatched.
+- Step 4: **fails if** the toast is still visible past ~10s; CARD1's retained
+  receipt is missing either exact AXLink; Review issues leaves the popover
+  open, opens anything other than the exact two-issue CARD1 sheet, or cannot
+  dismiss through exact Done; Start culling leaves the popover open, fails to
+  create exactly one post-boundary run, lands outside Cull or on the wrong
+  source, snapshots anything other than CARD1's four assets, or cannot return
+  to Grid without changing that source.
 - Step 5: **fails if** navigating away and back resurrects the toast within
   the same session — that is precisely the bug the dismissal-recording fix
   in this push closes.
@@ -458,9 +521,11 @@ script/vm_scenario_run.sh shell 'rm -rf /Users/admin/teststrip-vm/fixtures/impor
 
 ## Run status
 CURRENT PROCEDURE: PENDING FRESH VM RUN. The reusable procedure above is
-wrapper-only and Step 12 was hardened after the dated runs below. No fresh VM
-run was performed for this repair, so the revised Step 12 must not inherit the
-historical pass claim.
+wrapper-only; Step 4's two-action receipt binding and Step 12's new-run
+discriminator were hardened after the dated runs below. No fresh VM run was
+performed for either repair, so neither revised leg inherits a historical
+pass claim. In particular, no dated run below exercised `Review issues` from
+the Activity receipt.
 
 UNRUN — authored 2026-08-08 for the unified-shell push (Task 12), source-cited
 against `feat/unified-shell` @ `496abf1e`. This is the original authoring state,
@@ -596,7 +661,9 @@ summary.newPhotoCount > 0` with `newPhotoCount == 0`.
 - **Step 4** — the toast auto-faded after **10.2s** (watcher timestamps
   `APPEAR t=27.6s` → `GONE t=37.9s`), matching `visibleDuration = 10`. The
   bell then held `Recent Imports` / `Imported 4 photos from card1 (2 files
-  skipped)` / `2 files skipped` / `Start culling`.
+  skipped)` / `2 files skipped` / `Start culling`. This historical run only
+  found the Start-culling link; it pressed neither receipt action, and it
+  predates the `Review issues` link entirely.
 - **Step 5** — same-session non-resurrection holds. Under a continuous
   watcher: lens switch (⌘4 then ⌘2), source switch (import row → All Photos),
   and minimize/restore. Result `NEVER-APPEARED within 75.0s`.
@@ -623,7 +690,9 @@ summary.newPhotoCount > 0` with `newPhotoCount == 0`.
   `find --role AXButton --label "Start culling"` → not-found;
   `find --role AXLink --label "Start culling"` → found. (The toast's own
   `Start culling` was an `AXButton` — only the bell receipt differed.) The
-  executable Step 4 above now uses the live-proven `AXLink` role.
+  executable Step 4 above now uses the live-proven `AXLink` role. `Review
+  issues` did not exist in that build, so its AXLink role, sheet routing, and
+  session binding remain pending the fresh run required above.
 - **Step 10's "exactly three items" assertion was wrong in the version
   driven.** The menu vended four: `Star Work`, `Cull stacks`, `Evaluate
   import`, `Manual Compare over the import`. `Star Work` was deliberate; the
