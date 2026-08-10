@@ -5424,10 +5424,14 @@ public final class AppModel {
         }
         recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
-        workSessionScopeCounts = try Self.workSessionScopeCounts(
-            activities: recentWork + starredWork,
-            repository: catalog.repository
-        )
+        workSessionScopeCounts.merge(
+            try Self.workSessionScopeCounts(
+                activities: recentWork + starredWork,
+                repository: catalog.repository
+            )
+        ) { _, refreshedCount in
+            refreshedCount
+        }
         // Cull progress cannot change an import's persisted output membership.
         // Reuse the counts already refreshed on load/import completion so this
         // hot path does not rescan every import output set on each P/X press.
@@ -10833,6 +10837,7 @@ public final class AppModel {
         // counts while the HUD and catalog already tell the new story
         // (persona-7's "three surfaces, three stories").
         try refreshCatalogSidebarCounts()
+        try refreshImportSourceSummaries()
         refreshCatalogFolders()
         refreshAssetIDsWithBondedSecondaries()
         if let explicitAssetIDs = selectedExplicitAssetIDs {
