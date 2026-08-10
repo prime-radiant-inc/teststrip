@@ -83,25 +83,28 @@ over from any older card):
   `.abCompare`, false for `.cullGrid`; the `11cdf360` review fix replaced a
   hardcoded `selectedView == .loupe` check that silently ate an arm made
   from Compare/A-B), and that the `.large` file genuinely exists now
-  (`:6463-6464`) — then disarms and calls `promoteCurrentFrameAndRejectSiblings()`
-  again (`:6468-6470`), which this time finds the gate open and commits for
-  real with the exact same pick/reject/toast/undo-group semantics
+  (`AppModel.swift:6463-6464`) — then disarms and calls
+  `promoteCurrentFrameAndRejectSiblings()` again
+  (`AppModel.swift:6468-6470`), which this time finds the gate open and
+  commits for real with the exact same pick/reject/toast/undo-group semantics
   `cull-023-return-commit-undo.md` already covers in depth (unchanged by
   this branch).
 - **Disarm is deliberately promiscuous** — anything other than a repeat
   Return clears `armedStackCommitAssetID`: `selectAssetID` on any target
-  other than the armed asset (`:4622-4628` — covers every arrow-key/Space/
-  click navigation path, since they all funnel through this one choke
-  point); the top of `applyCullingShortcut` for any shortcut that isn't
-  `.promoteAndRejectSiblings` itself (`:6622-6628` — a repeat Return
-  re-arms the same asset, the specced no-op); and every rail/menu/Inspector
-  write path that bypasses `applyCullingShortcut` entirely —
-  `applyCompareFlags` (`:6082-6091`, the shared Compare/A-B "keep" write
-  path), `keepAllFramesInSelectedCullingStack` (`:6536-6543`),
-  `keepTopRankedFramesInSelectedCullingStack` (`:6545-6555`),
-  `setFlagForSelectedAsset` (`:7339-7344`), and `setFlagForSelectedAssets`
-  (`:7408-7411`). A render *failure* on the armed asset also disarms, inside
-  the queue-changed handler (`:4281-4287`), showing the same
+  other than the armed asset (`AppModel.swift:4622-4628` — covers every
+  arrow-key/Space/click navigation path, since they all funnel through this
+  one choke point); the top of `applyCullingShortcut` for any shortcut that
+  isn't `.promoteAndRejectSiblings` itself (`AppModel.swift:6622-6628` — a
+  repeat Return re-arms the same asset, the specced no-op); and every
+  rail/menu/Inspector write path that bypasses `applyCullingShortcut`
+  entirely — `applyCompareFlags` (`AppModel.swift:6082-6091`, the shared
+  Compare/A-B "keep" write path), `keepAllFramesInSelectedCullingStack`
+  (`AppModel.swift:6536-6543`),
+  `keepTopRankedFramesInSelectedCullingStack` (`AppModel.swift:6545-6555`),
+  `setFlagForSelectedAsset` (`AppModel.swift:7339-7344`), and
+  `setFlagForSelectedAssets` (`AppModel.swift:7408-7411`). A render *failure*
+  on the armed asset also disarms, inside the queue-changed handler
+  (`AppModel.swift:4281-4287`), showing the same
   `renderUnavailableFeedback` toast — not exercised live by this card (no
   seed fixture induces a genuine render failure; see Sharp edges).
 - **Fixture reality**: `burst` (`seed-burst-catalog` →

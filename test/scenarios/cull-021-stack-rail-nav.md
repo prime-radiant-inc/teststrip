@@ -69,8 +69,8 @@ over from any older card):
   the two can legitimately disagree on which frame gets attention (✦ shows
   none, landing still picks one).
 - **Accessibility surface** (the actual AX-drivable proxy for "✦" —
-  `stackChipAccessibilityValue`, `:4929-4938`, corrected 2026-07-28): each
-  cell is one `AXButton`
+  `stackChipAccessibilityValue`, `LibraryGridView.swift:4929-4938`, corrected
+  2026-07-28): each cell is one `AXButton`
   labeled `"Stack frame \(label)"` (1-based index *within the stack*, not a
   global asset id) whose accessibility **value** is
   `"Selected"`/`"Recommended"`/`"Not selected"` followed by any flaw-badge

@@ -26,10 +26,11 @@ queues.
 string differs from the enum case name `needsEvaluation` — use the real
 string), "Rejects", "5 Stars", "Needs Keywords", "Faces Found", "OCR Found",
 "Analysis Failures" (the tenth and last of this fixed order). Building the
-section (`sections(...)`, `:168-194`):
+section (`sections(...)`, `UnifiedSidebarPresentation.swift:168-194`):
 - Each of the 10 is filtered by `smartCollectionCounts[collection] > 0`
-  (`:170`) — a `compactMap` returning `nil` for a zero/missing count, so a
-  zero-count row is **omitted entirely**, never rendered `disabled`.
+  (`UnifiedSidebarPresentation.swift:170`) — a `compactMap` returning `nil`
+  for a zero/missing count, so a zero-count row is **omitted entirely**, never
+  rendered `disabled`.
 - `AI Suggestions` (`LibrarySource.autopilotSuggestions`, title fixed at
   `"AI Suggestions"`, `LibrarySource.swift:89`) is appended **after** the 10,
   present only while `autopilotGhostCount > 0`
@@ -37,12 +38,14 @@ section (`sections(...)`, `:168-194`):
   `autopilotGhostAssetIDs.count`, passed in from `AppModel.swift:1993`).
   There is no zero-count disabled state for this row either.
 - Every **saved dynamic set** (`AssetSet.isDynamic`, i.e. a saved search)
-  joins the section last, one row per set (`:188-192` — "a saved dynamic
-  search IS a smart collection — that is exactly what the section header's
-  '+ New from search…' produces").
+  joins the section last, one row per set
+  (`UnifiedSidebarPresentation.swift:188-192` — "a saved dynamic search IS a
+  smart collection — that is exactly what the section header's '+ New from
+  search…' produces").
 - The whole section (`UnifiedSidebarPresentation.smartCollectionsSectionTitle
   == "Smart Collections"`) is appended to the sidebar **only if** the
-  combined row list is non-empty (`:193-194`) — there is no "Nothing to
+  combined row list is non-empty
+  (`UnifiedSidebarPresentation.swift:193-194`) — there is no "Nothing to
   cull"/all-empty message any more (`grep -rn "Nothing to cull" Sources/`
   finds zero hits); the section simply does not render.
 

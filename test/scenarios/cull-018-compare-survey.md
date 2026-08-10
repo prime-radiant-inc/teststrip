@@ -25,7 +25,8 @@ into manual culling. Covers inventory items 55-62:
   (`LibraryGridView.swift:5909-5938`), `CompareDecisionBadge` (`:5940-5961`;
   texts include "PRIMARY", "PICKED", "REJECTED", "N STAR", "✦ BEST", "#N",
   "EYES CLOSED", "SOFT"), `CompareFocusMetric` (`:6030-6046`; unevaluated
-  tiles show title "No read yet", value "Evaluate").
+  tiles show title "No read yet", value "Evaluate" at
+  `LibraryGridView.swift:6067-6068`).
 - Item 59 — keep-primary group action button (`:7350-7357`). Its title is
   DYNAMIC ("Keep primary" or "Keep primary · reject N", `:5713-5731`) —
   match by help: "Marks the current compare primary as Pick and the visible

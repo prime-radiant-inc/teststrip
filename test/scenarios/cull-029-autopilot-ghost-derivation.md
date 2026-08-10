@@ -87,12 +87,12 @@ Every surface this card drives reads that one field, never a status row:
   (`Tests/TeststripAppTests/AppModelTests.swift:5935-5963`). If instead the
   flag was already **confirmed** (a prior `P`/`X` already ran — confirming
   unconditionally removes `.flag` from `aiUnconfirmedFields` per the same
-  function's doc comment, `:7356-7362`), `U` takes the plain-clear branch
-  instead (`updateSelectedAssetMetadata`, no `removeAIField` call, no
-  `removed_ai_labels` row) — the frame returns to genuinely neutral
-  undecided, not "rejected," so nothing blocks a later run from proposing it
-  again. This distinction is load-bearing for Step 6 below and is pinned
-  separately by `testDirectFlagThenClearLeavesNoGhostAnywhere`
+  function's doc comment, `AppModel.swift:7356-7362`), `U` takes the
+  plain-clear branch instead (`updateSelectedAssetMetadata`, no
+  `removeAIField` call, no `removed_ai_labels` row) — the frame returns to
+  genuinely neutral undecided, not "rejected," so nothing blocks a later run
+  from proposing it again. This distinction is load-bearing for Step 6 below
+  and is pinned separately by `testDirectFlagThenClearLeavesNoGhostAnywhere`
   (`AppModelTests.swift:5905-5931`, whose own comment: "A direct user flag
   replaces the ghost; pressing U afterwards returns the frame to neutral
   undecided").

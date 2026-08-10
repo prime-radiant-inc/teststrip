@@ -49,7 +49,8 @@ fresh grep, not carried over from any older card):
   two lines by the view (`readsCard`'s two `signalGlyphLine` calls over
   `.prefix(2)`/`.dropFirst(2)`, `LibraryGridView.swift:4157-4158` — a
   2026-07-29 width-truncation fix, since the panel is too narrow for all
-  four whole-photo words on one line), then `faceGlyphEntries` (`:68-70`)
+  four whole-photo words on one line), then `faceGlyphEntries`
+  (`CullReadsCardPresentation.swift:68-70`)
   on a further line when present (`LibraryGridView.swift:4159`) —
   `earlyReadCaveat` nil. The doc comment
   (`CullReadsCardPresentation.swift:3-19`) documents exactly these three

@@ -110,22 +110,23 @@ behavior live):
   bypassing `AppModel`/`syncMetadataSidecar` entirely, **no `.xmp` exists
   for any seeded asset until the app itself writes one** — this card's own
   first live step re-confirms that baseline rather than assuming it.
-- **Undo**, `undoMetadataChange()` (`:8064-8071`): pops the last
+- **Undo**, `undoMetadataChange()` (`AppModel.swift:8064-8071`): pops the last
   `MetadataChangeGroup` and reapplies each change's `before` snapshot via
   `applyMetadataSnapshot` — for a change whose `before` included a tentative
   AI marker, undo restores `aiUnconfirmedFields` exactly as it was, not just
   the flag value. Undo is a plain LIFO stack (`metadataUndoStack`,
-  `:8057-8062`), so a single `⌘Z` after two independent Return commits pops
-  only the most recent group, leaving the earlier commit's writes untouched
-  — this card exercises two independent stack commits in one session and
-  checks that isolation explicitly.
+  `AppModel.swift:8057-8062`), so a single `⌘Z` after two independent Return
+  commits pops only the most recent group, leaving the earlier commit's
+  writes untouched — this card exercises two independent stack commits in
+  one session and checks that isolation explicitly.
 - **Keys**: `Return`/keypad-Enter map to `.promoteAndRejectSiblings`
   (`CullingShortcut.init(event:)`, `Sources/TeststripApp/
   CullingKeyCaptureView.swift:164-165`; keycode 36,
   `MacKeyCode.returnKey`, `:183`), dispatched at `AppModel.swift:6691-6693`.
   `Space` is `.nextPhoto` → `selectNextAssetForCulling()` — plain,
   decision-free catalog-order advance (`:6962-6975`), used here only to
-  navigate between legs; sent as `key code 49` (`MacKeyCode.space`, `:185`),
+  navigate between legs; sent as `key code 49` (`MacKeyCode.space`,
+  `CullingKeyCaptureView.swift:185`),
   the same keycode-based form as Return's `key code 36` rather than a
   quoted-string `keystroke " "`. Undo's `⌘Z` is sent as
   `script/vm_scenario_run.sh key 'keystroke "z" using {command down}'`

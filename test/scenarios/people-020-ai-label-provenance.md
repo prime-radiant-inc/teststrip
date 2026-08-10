@@ -13,7 +13,7 @@ counterpart to the unit suite (`Tests/TeststripAppTests/AppModelTests.swift`,
 assembled AppKit UI and asserts against the live catalog/filesystem, not a
 mock.
 
-Source (current working tree, `feat/machine-label-provenance`):
+Source (current working tree, `feat/unified-shell`):
 - **Promotion** (auto-apply): `AppModel.promoteMetadataLabels(for:)`
   (`Sources/TeststripApp/AppModel.swift:8294-8321`, floor
   `objectKeywordConfidenceFloor = 0.5` at `:8285` — an `.object` evaluation
@@ -56,8 +56,9 @@ Source (current working tree, `feat/machine-label-provenance`):
   (`AppModel.swift:12048-12091`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
   (`AppModel.swift:12070-12072`) before it can ever reach a `RejectRelocationPlan` — a tentative
   AI reject can never be included in Move Rejects (folder) or Move Rejects to
-  Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`/
-  `confirmationText` (`Sources/TeststripApp/AppModel.swift:1448-1450`) reflect
+  Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`
+  (`Sources/TeststripApp/AppModel.swift:1444`) and `confirmationText`
+  (`AppModel.swift:1448-1450`) reflect
   the same confirmed-only count, so the sheet's own button label ("Move N
   reject photo(s) to `<folder>`") is a live, AX-visible witness of the
   exclusion.
