@@ -1,5 +1,7 @@
+import CoreGraphics
 import ImageIO
 import Observation
+import UniformTypeIdentifiers
 import XCTest
 @testable import TeststripCore
 @testable import TeststripApp
@@ -17646,6 +17648,105 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(expandedImportsSection.rows.contains { $0.id == "import-\(sessionID.rawValue)-skippedFiles" })
     }
 
+    // Pins vm-fix-review.md finding 1: `refreshImportSourceSummaries()`'s
+    // child-count priming is documented (`AppModel.swift` comments at
+    // `refreshImportSourceSummaries` and its doc header) as running "only on
+    // load and import completion," but `refreshWorkSessions()` also calls it,
+    // and `refreshWorkSessions()` sits on the cull loop's hottest path:
+    // `applyCullingShortcut(.pick/.reject)` -> `applyCullingCommandAndAdvance`
+    // -> `applyCullingCommand` -> `setFlagForSelectedAsset` ->
+    // `updateActiveCullingSessionProgressAfterFlagChange` -> `refreshWorkSessions`.
+    // Each visible import row's `importChildCounts` call fans out into
+    // `visualSimilarityVectorsByAssetID`, which runs
+    // `repository.evaluationSignals(assetID:)` once per asset in that
+    // import — a real `SELECT ... FROM evaluation_signals WHERE asset_id = ?`
+    // — plus a full stack build. On a completed import with several assets,
+    // that means a single P/X keystroke during an active culling session
+    // issues one evaluation_signals query per asset in the import, which the
+    // cull loop needs none of.
+    //
+    // The fixture's import has 8 assets (none of them the culled asset) so
+    // the per-asset fan-out is unmistakable in the count: a fixture with no
+    // completed import would trivially read 0 both before and after the fix,
+    // proving nothing.
+    func testCullFlagChangeDoesNotReQueryImportChildEvaluationSignals() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-cull-hotpath-import-priming")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        var evaluationSignalQueryCount = 0
+        database.rowQueryObserver = { sql in
+            if sql.contains("FROM evaluation_signals") {
+                evaluationSignalQueryCount += 1
+            }
+        }
+        let repository = CatalogRepository(database: database)
+
+        let importedAssets = (0..<8).map { index in
+            makeAsset(
+                id: "cull-hotpath-import-\(index)",
+                path: "/Photos/Import/cull-hotpath-import-\(index).cr2",
+                rating: 0
+            )
+        }
+        let target = makeAsset(id: "cull-hotpath-target", path: "/Photos/Import/cull-hotpath-target.cr2", rating: 0)
+        try repository.upsert(importedAssets + [target])
+
+        let outputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "cull-hotpath-import-output"),
+            name: "Imported photos",
+            assetIDs: importedAssets.map(\.id)
+        )
+        try repository.upsert(outputSet)
+        let sessionID = WorkSessionID(rawValue: "cull-hotpath-import-session")
+        try repository.save(WorkSession(
+            id: sessionID,
+            kind: .ingest,
+            intent: "Import photos",
+            title: "Import photos",
+            detail: "Imported 8 photos from Import",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [outputSet.id],
+            completedUnitCount: importedAssets.count,
+            totalUnitCount: importedAssets.count,
+            failureCount: 0,
+            issues: [],
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        ))
+
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        model.select(target.id)
+        try model.beginCullingSession(named: "Hotpath Cull")
+
+        // `AppModel.load` (cold, fine) and `beginCullingSession` (an ingest
+        // activity is never recorded here, so its `recordRecentActivity` does
+        // not re-prime) both legitimately touch the Imports section once.
+        // Only queries issued by the *next* flag change are being pinned.
+        evaluationSignalQueryCount = 0
+
+        try model.applyCullingShortcut(.pick)
+
+        XCTAssertEqual(
+            evaluationSignalQueryCount,
+            0,
+            "a single cull flag change queried evaluation_signals \(evaluationSignalQueryCount) time(s) — " +
+            "refreshWorkSessions() is re-priming import child counts " +
+            "(importChildCounts -> visualSimilarityVectorsByAssetID -> evaluationSignals) on every " +
+            "P/X keystroke, once per asset in the completed import, not only on load/import-completion"
+        )
+    }
+
     func testLatestImportCompletionSummarySeparatesExistingReimportedPhotos() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-reimport")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -17721,6 +17822,126 @@ final class AppModelTests: XCTestCase {
 
         let toast = try XCTUnwrap(model.importCompletionToast)
         XCTAssertEqual(toast.headline, "No new photos imported — 1 already in catalog")
+    }
+
+    // Pins vm-fix-review.md finding 2: `recordCompletedImportActivity` sets
+    // `totalUnitCount: result.newAssetCount + result.existingAssetCount`
+    // (the finding-2 arithmetic fix, correct on its own), but
+    // `ImportCompletionToastPresentation.headline`'s default branch renders
+    // `"Imported \(summary.photoCountText)"`, and `photoCountText` is
+    // `photoCountDescription(importedPhotoCount)` where `importedPhotoCount
+    // == totalUnitCount`. So a real mixed re-import — some files new, some
+    // already cataloged — now claims the combined total was imported, not
+    // just the new files.
+    //
+    // Whether the intended mixed-case copy should mention the
+    // already-cataloged count at all is genuinely ambiguous (compare the
+    // existing-only headline above, which does), so this only asserts the
+    // unambiguous half: the headline must not claim all 6 photos were
+    // imported when only 2 were.
+    @MainActor
+    func testMixedBackgroundReimportToastHeadlineDoesNotOverstateImportedCount() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-summary-mixed-background-reimport")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        for index in 0..<4 {
+            try writeDistinctTestPNG(to: photoFolder.appendingPathComponent("existing-\(index).png"), tag: index)
+        }
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        // First pass catalogs the 4 "existing" files; the second pass adds 2
+        // genuinely new files alongside them, so the reimport sees 2 new + 4
+        // already-cataloged — a real mixed background import through the
+        // same `.skipCatalogedContent` default every real entry point uses.
+        // Each file needs distinct content: dedup keys off content hash, so
+        // same-bytes files at different paths would collide as duplicates of
+        // each other rather than behaving as 6 independent photos.
+        _ = try await model.importFolderInBackground(photoFolder)
+        for index in 0..<2 {
+            try writeDistinctTestPNG(to: photoFolder.appendingPathComponent("new-\(index).png"), tag: 100 + index)
+        }
+        let secondResult = try await model.importFolderInBackground(photoFolder)
+
+        XCTAssertEqual(secondResult.newAssetCount, 2)
+        XCTAssertEqual(secondResult.existingAssetCount, 4)
+
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        XCTAssertEqual(summary.newPhotoCount, 2)
+        XCTAssertEqual(summary.existingPhotoCount, 4)
+
+        let toast = try XCTUnwrap(model.importCompletionToast)
+        XCTAssertFalse(
+            toast.headline.contains("6 photo"),
+            "toast headline '\(toast.headline)' claims 6 photos were imported (2 new + 4 already " +
+            "cataloged) — photoCountText is derived from totalUnitCount (new + existing), not newAssetCount"
+        )
+    }
+
+    // Pins vm-fix-review.md finding 3: `importCompletionStatus` and
+    // `importCompletionDetail`'s "nothing found" guard was widened from
+    // `!result.importedAssets.isEmpty` to
+    // `!result.importedAssets.isEmpty || result.existingAssetCount > 0`, so a
+    // folder that's entirely already-cataloged says "No new photos found"
+    // instead of "No supported photos found". Both existing tests for these
+    // strings (`testReimportFolderReportsNoNewPhotos`,
+    // `testImportFolderReportsNoSupportedPhotosWhenFolderIsEmpty`) drive the
+    // synchronous `importFolder(_:)`, which defaults to `.importAll` — on
+    // that path `existingAssetCount` never participates because
+    // already-cataloged files still land in `importedAssets`, so the widened
+    // clause is inert and reverting it leaves the suite green. This drives
+    // both cases through `importFolderInBackground`'s `.skipCatalogedContent`
+    // default instead, where `importedAssets` really is empty for an
+    // all-cataloged reimport, so the widened clause is load-bearing.
+    //
+    // Both cases live in one test so the empty-folder and all-cataloged
+    // messages stay distinguished rather than conflated into "any empty
+    // `importedAssets` means no supported photos": the difference between
+    // them is entirely `existingAssetCount`.
+    @MainActor
+    func testBackgroundImportDistinguishesEmptyFolderFromAllCatalogedReimport() async throws {
+        // Case A: a genuinely empty folder. No supported photos were ever
+        // there, so `existingAssetCount == 0` too.
+        let emptyDirectory = try makeTemporaryDirectory(named: "app-model-empty-background-import")
+        let emptyFolder = emptyDirectory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyFolder, withIntermediateDirectories: true)
+        let emptyPaths = AppCatalog.defaultPaths(
+            applicationSupportDirectory: emptyDirectory.appendingPathComponent("app-support", isDirectory: true)
+        )
+        let emptyModel = try AppModel.load(catalog: try AppCatalog.open(paths: emptyPaths))
+
+        _ = try await emptyModel.importFolderInBackground(emptyFolder)
+
+        XCTAssertEqual(emptyModel.statusMessage, "No supported photos found")
+        XCTAssertEqual(emptyModel.recentWork.first?.detail, "No supported photos found in photos")
+
+        // Case B: a folder with one real photo, already cataloged by a prior
+        // background import. `importedAssets` is empty here too (the ingest
+        // `continue`s past cataloged files before ever building an `Asset`
+        // for them), but `existingAssetCount == 1` — the exact distinction
+        // the widened guard exists to make.
+        let reimportDirectory = try makeTemporaryDirectory(named: "app-model-all-cataloged-background-reimport")
+        let reimportFolder = reimportDirectory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: reimportFolder, withIntermediateDirectories: true)
+        try writeTestPNG(to: reimportFolder.appendingPathComponent("one.png"))
+        let reimportPaths = AppCatalog.defaultPaths(
+            applicationSupportDirectory: reimportDirectory.appendingPathComponent("app-support", isDirectory: true)
+        )
+        let reimportModel = try AppModel.load(catalog: try AppCatalog.open(paths: reimportPaths))
+
+        _ = try await reimportModel.importFolderInBackground(reimportFolder)
+        let secondResult = try await reimportModel.importFolderInBackground(reimportFolder)
+
+        XCTAssertEqual(secondResult.importedAssets.count, 0, "already-cataloged files never reach importedAssets")
+        XCTAssertEqual(secondResult.existingAssetCount, 1)
+        XCTAssertNotEqual(
+            reimportModel.statusMessage,
+            "No supported photos found",
+            "an all-already-cataloged reimport is not the same as an empty folder"
+        )
+        XCTAssertEqual(reimportModel.statusMessage, "No new photos found")
+        XCTAssertEqual(reimportModel.recentWork.first?.detail, "No new photos found in photos")
     }
 
     // Covers the import row's **Stacks** child count.
@@ -19066,6 +19287,41 @@ final class AppModelTests: XCTestCase {
     private func writeTestPNG(to url: URL) throws {
         let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
         try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
+    }
+
+    // `writeTestPNG` always writes the same fixed bytes, which is fine when a
+    // test only ever re-imports the same path — dedup keys off content hash
+    // (`ContentHash.compute`, whole-file for anything this small), so two
+    // `writeTestPNG` files at *different* paths hash identically and collide
+    // as "already cataloged" duplicates of one another. Use this instead
+    // whenever a test needs several files in one folder that must each
+    // register as their own distinct asset (e.g. a real mixed new+existing
+    // reimport): the fill color varies with `tag`, so the encoded bytes do
+    // too.
+    private func writeDistinctTestPNG(to url: URL, tag: Int) throws {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: 2,
+            height: 2,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw TeststripError.io("could not create test bitmap context")
+        }
+        let component = CGFloat(tag % 256) / 255
+        context.setFillColor(CGColor(red: component, green: 0.4, blue: 0.8, alpha: 1.0))
+        context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw TeststripError.io("could not create distinct test png")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw TeststripError.io("could not write distinct test png")
+        }
     }
 
     private func imageProperties(of url: URL) throws -> [CFString: Any] {
