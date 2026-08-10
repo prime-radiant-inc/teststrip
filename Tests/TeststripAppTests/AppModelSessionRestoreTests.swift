@@ -456,6 +456,68 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.selectedAssetID, rejectGhost.id)
     }
 
+    func testRestoredAISuggestionsStayScopedAcrossSortingAndReload() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-ai-suggestions-sorting")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let importFirstGhost = makeGhostAsset(id: "ghost-zulu", filename: "zulu.dng", flag: .pick)
+        let ordinaryAsset = makeAsset(id: "ordinary", filename: "middle.dng")
+        let importLastGhost = makeGhostAsset(id: "ghost-alpha", filename: "alpha.dng", flag: .reject)
+        try catalogA.repository.upsert([importFirstGhost, ordinaryAsset, importLastGhost])
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.setLibrarySortOption(.filename)
+        try modelA.selectSource(.autopilotSuggestions)
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.librarySortOption, .filename)
+        XCTAssertEqual(modelB.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(modelB.assets.map(\.id), [importLastGhost.id, importFirstGhost.id])
+
+        try modelB.setLibrarySortOption(.importOrder)
+
+        XCTAssertEqual(modelB.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(modelB.assets.map(\.id), [importFirstGhost.id, importLastGhost.id])
+
+        try modelB.applyLibraryFilters()
+
+        XCTAssertEqual(modelB.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(modelB.assets.map(\.id), [importFirstGhost.id, importLastGhost.id])
+    }
+
+    func testRestoredAISuggestionsSelectionFallsBackWithinCurrentGhosts() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-ai-suggestions-selection-fallback")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let disappearingGhost = makeGhostAsset(id: "ghost-a", filename: "a.dng", flag: .pick)
+        let ordinaryAsset = makeAsset(id: "ordinary", filename: "ordinary.dng")
+        let survivingGhost = makeGhostAsset(id: "ghost-b", filename: "b.dng", flag: .reject)
+        try catalogA.repository.upsert([disappearingGhost, ordinaryAsset, survivingGhost])
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.autopilotSuggestions)
+        modelA.select(disappearingGhost.id)
+        let persistedState = try XCTUnwrap(
+            SessionRestoreStore(defaults: defaults, catalogRoot: try makePaths(directory: directory).root).load()
+        )
+        XCTAssertEqual(persistedState.selectedAssetID, disappearingGhost.id)
+
+        try catalogA.repository.updateMetadata(assetID: disappearingGhost.id) { metadata in
+            metadata.flag = nil
+            metadata.aiUnconfirmedFields.remove(.flag)
+        }
+        XCTAssertEqual(try catalogA.repository.assetIDsWithAutopilotGhost(), [survivingGhost.id])
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(modelB.assets.map(\.id), [survivingGhost.id])
+        XCTAssertEqual(modelB.selectedAssetID, survivingGhost.id)
+    }
+
     func testFallsBackToAllPhotosWhenRestoredAISuggestionsHaveNoGhosts() throws {
         let directory = try makeTemporaryDirectory(named: "restore-ai-suggestions-empty")
         let defaults = try makeIsolatedDefaults()
