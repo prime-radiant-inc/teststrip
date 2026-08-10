@@ -6,6 +6,13 @@ actions, the XMP Conflicts section listing conflicted assets separately from
 Sources, and the popover's quiet floor state, `"No active work"`, when
 nothing needs attention.
 
+Source: `Sources/TeststripApp/ActivityCenterView.swift` (section gates and
+quiet text `:14-63`, `sourcesSection` plus refresh/reconnect routes `:173-238`,
+`conflictsSection` `:241-268`, durable `receiptsSection` `:270-309`),
+`Sources/TeststripApp/AppModel.swift` (`activityCenterPresentation`
+`:2907-2955`, `refreshVisibleAssetAvailability` `:11101-11114`,
+`sourceAvailabilityDisplayName` `:14179-14192`).
+
 ## Pre-state
 ```bash
 ./script/build_and_run.sh --smoke
@@ -19,19 +26,27 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 1. `script/ax_drive.sh wait-vended Teststrip`, then wait for the
    preview/evaluation queue to drain (poll per `activity-icon-states.md`
    step 2 — 0 rows across `preview_generation_queue` +
-   active `work_sessions`).
+   active `work_sessions`). Establish the full quiet precondition: no current
+   import error or paused/idle-worker notice, no provider failures, no offline
+   or bookmark-repair source rows, and no XMP conflicts.
 2. Open the Activity popover. With no jobs, no import in progress, no
    offline sources, and no XMP conflicts, assert the exact quiet-state text
-   (`ActivityCenterView.swift:42-46`, `isQuiet(_:)` at lines 59-64):
-   `ax_drive.sh find --role AXStaticText --contains "No active work"`. This
-   is the *only* thing that renders in the popover body at true idle — no
-   other section header (`"Sources"`, `"XMP Conflicts"`, `"Activity"`)
-   should be present.
+   (`ActivityCenterView.swift:42-46`, `isQuiet(_:)` at `:59-63`):
+   `ax_drive.sh find --role AXStaticText --contains "No active work"`. Under
+   this precondition it denotes no active/problem state: the `"Activity"`,
+   `"Sources"`, and `"XMP Conflicts"` section headers must be absent (their
+   body gates are at `ActivityCenterView.swift:22-38`). Durable completed-
+   import receipts are history, not active work or problems, so a
+   `"Recent Imports"` section may legitimately coexist with `"No active
+   work"` (`receiptsSection`, `:272-299`; receipts are intentionally omitted
+   from `isQuiet(_:)` and from the problem badge,
+   `ActivityCenterPresentation.swift:159-182`). Its presence is not a
+   failure.
 
 ### 2. Sources — refresh and reconnect are separate, per-row actions
 `--smoke` seeds no `source_roots` rows (confirmed empty via `sqlite3`
 2026-07-10) — the Sources section's two row families
-(`AppModel.activityCenterPresentation`, `AppModel.swift:2489-2511`) are:
+(`AppModel.activityCenterPresentation`, `AppModel.swift:2913-2955`) are:
   - **availability rows** (`SourceStatusRow` per non-online
     `sourceAvailabilitySummaries` bucket) — always show a refresh action
     (`refreshActionID` is the availability's raw value, never nil for these
@@ -48,12 +63,13 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    catalog, or waiting for the next scan the app runs on its own).
 4. In the popover's Sources section, assert an availability row whose name
    reads exactly `"Offline Originals"`
-   (`sourceAvailabilityDisplayName(.offline)`, `AppModel.swift:11776-11789`)
+   (`sourceAvailabilityDisplayName(.offline)`, `AppModel.swift:14179-14192`)
    with a secondary status label `"Offline"` (`source.availability.rawValue
-   .capitalized`, `ActivityCenterView.swift:239-243`) and a refresh button:
+   .capitalized`, `ActivityCenterView.swift:175-212`) and a refresh button:
    `ax_drive.sh find --role AXButton --help "Refresh source availability"`.
    Press it; it calls `model.refreshVisibleAssetAvailability()`
-   (`ActivityCenterView.swift:267-273`) — assert the row disappears once the
+   (`ActivityCenterView.swift:191-220`; model method
+   `AppModel.swift:11101-11114`) — assert the row disappears once the
    asset's `original_path` is restored:
    ```bash
    sqlite3 "$DB" "UPDATE assets SET original_path = (SELECT original_path FROM assets WHERE id != 'smoke-0' LIMIT 1) WHERE id = 'smoke-0';"
@@ -64,26 +80,30 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    card-import or Import Path flow that registers a source root, then an
    out-of-band invalidation of its security-scoped bookmark), assert the
    reconnect button `ax_drive.sh find --role AXButton --help "Reconnect <name>"`
-   opens `SourceReconnectSheet` (`ActivityCenterView.swift:275-278`) rather
-   than acting inline — distinct from refresh, which acts immediately with
-   no sheet.
+   opens `SourceReconnectSheet` (`ActivityCenterView.swift:49-55,200-238`)
+   rather than acting inline — distinct from refresh, which acts immediately
+   with no sheet.
 
 ### 3. XMP Conflicts — listed separately from Sources
 6. Seed an XMP conflict (per `quiet-activity-badge.md` step 3 — edit a
    sidecar out-of-band so catalog and sidecar diverge) and trigger the next
    sync scan.
 7. Open the popover. Assert the conflict renders under its own `"XMP
-   Conflicts"` header (`ActivityCenterView.swift:296-313`), never merged
+   Conflicts"` header (`ActivityCenterView.swift:243-268`), never merged
    into the `"Sources"` list — the two sections are structurally
    independent `VStack`s gated on `presentation.sources.isEmpty` and
    `presentation.xmpConflicts.isEmpty` respectively
-   (`ActivityCenterView.swift:36-41`). Both can be simultaneously visible
+   (`ActivityCenterView.swift:33-38`; the presentation constructs the two row
+   families separately at `AppModel.swift:2918-2954`). Both can be
+   simultaneously visible
    (an offline source and an XMP conflict at once) without merging into a
    combined list.
 
 ## Expected
-- Step 2: **Fails if** `"No active work"` renders alongside any other
-  section, or fails to render when all sections are genuinely empty.
+- Step 2: **Fails if** `"No active work"` is absent under the full quiet
+  precondition, or if `"Activity"`, `"Sources"`, or `"XMP Conflicts"` renders
+  alongside it. A durable `"Recent Imports"` receipt section may coexist and
+  is explicitly **not** a failure.
 - Step 4: **Fails if** the refresh action doesn't clear the row once the
   path is restored, or if a reconnect button (rather than refresh) appears
   on an availability row.
@@ -113,7 +133,7 @@ Quit the launched instance.
   (step 5) needs a fixture this card cannot self-produce; it's included for
   completeness with the gap called out rather than silently dropped.
 - Verified all five `sourceAvailabilityDisplayName` strings by direct read of
-  `AppModel.swift:11776-11789`: Online → "Online Originals", Offline →
+  `AppModel.swift:14179-14192`: Online → "Online Originals", Offline →
   "Offline Originals", Missing → "Missing Originals", Moved → "Moved
   Originals", Stale → "Stale Originals". Step 4 only exercises Offline; a
   future card could sweep the rest.
@@ -125,6 +145,16 @@ seeded `--smoke` catalog on 2026-07-10 (schema per
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift`). Section
 structure/control wiring confirmed by source citation
 (`Sources/TeststripApp/ActivityCenterView.swift`,
-`Sources/TeststripApp/AppModel.swift:2923-2945`). Needs a human-present or
-console-unlocked re-run to drive the AX steps, and confirmation of the exact
-`sourceAvailabilityDisplayName` strings.
+`Sources/TeststripApp/AppModel.swift:2913-2955`). Needs a human-present or
+console-unlocked re-run to drive the AX steps; the exact
+`sourceAvailabilityDisplayName` strings are current-source-confirmed but not
+freshly AX-driven.
+
+**Reconciled 2026-08-10 (whole-branch contract cleanup; NOT RUN)**: all
+`ActivityCenterView`/`AppModel` anchors above were re-derived from the current
+symbols. The executable quiet assertion now reflects the implemented
+semantics: active/problem section headers are absent under the stated
+precondition, while durable `Recent Imports` receipts may coexist with `No
+active work` because receipts are history and never badge. No VM or local UI
+leg ran, so this does not promote the card's `NOT RUN` status or the LEDGER's
+`Tested-Fail` verdict.

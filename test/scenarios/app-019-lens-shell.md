@@ -24,7 +24,7 @@ subtitle install `:140`), `Sources/TeststripApp/LibraryLens.swift`
 11772`, `currentMapQuery` `:10900-10910`, `timelinePresentation` `:3324-3325`,
 `peopleInCurrentSource` `:2296,3669`), `Sources/TeststripApp/SidebarView.swift`
 (Stacks gating `:46-55`, `sectionHeader`/`headerWithAddButton`/`addButton`
-`:99-166`), `Sources/TeststripApp/main.swift` (`LensCommands` ⌘1-⌘6
+`:99-169`), `Sources/TeststripApp/main.swift` (`LensCommands` ⌘1-⌘6
 `:168-174`, `InspectorCommands` ⌥⌘1-3 `:586-607`),
 `Sources/TeststripApp/SessionRestoreState.swift` (`currentVersion = 2`
 `:15`).
@@ -204,13 +204,19 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
     Collections header's add button
     (`accessibilityLabel("New from search")`) passes `hintBinding: nil`
     (`SidebarView.swift:115`, `headerWithAddButton`/`addButton` at
-    `:123-166` — a single shared `@State` bound to two `.popover`s was the
+    `:123-169` — a single shared `@State` bound to two `.popover`s was the
     bug this guards against). With no selection, click each header's "+" in
-    turn:
+    turn. On `--smoke`, first run the zero-result search `zzzznotfound`, wait
+    until the result header reports 0 photos, and do not batch-select anything;
+    this establishes the actual no-selection branch
+    (`canSaveSelectedAssetAsManualSet`, `AppModel.swift:3282-3284`). SwiftUI
+    vends each header/button pair as one `AXHeading`, with the button's exact
+    U+2026-ellipsis help string on that heading, so drive the live-proven
+    heading/help routes rather than the discarded button labels:
     ```bash
-    script/ax_drive.sh press --role AXButton --label "New from search"
+    script/ax_drive.sh press --role AXHeading --label "Smart Collections" --help "New from search…"
     script/ax_drive.sh find --contains "Select photos, then save them as a set"   # expect not-found
-    script/ax_drive.sh press --role AXButton --label "New Set from Selection"
+    script/ax_drive.sh press --role AXHeading --label "Sets" --help "New Set from Selection…"
     script/ax_drive.sh find --contains "Select photos, then save them as a set"   # expect found
     ```
 13. **Sharp edge to record:** ⌥⌘1/⌥⌘2/⌥⌘3 remain the inspector-section
@@ -354,24 +360,27 @@ What passed, with the evidence:
   it. Verified twice, including with both headers exercised in the same
   no-selection state.
 
-Two corrections the live run found in this card's own driving instructions
-(the app is right; the assertions were stale):
-- **Step 12's matchers are wrong.** The add buttons are *not* reachable as
+Two corrections the live run found in the then-current driving instructions
+(the app was right; the assertions were stale):
+- **Step 12's matchers were wrong in the version driven.** The add buttons
+  were *not* reachable as
   `--role AXButton --label "New from search"` / `"New Set from Selection"` —
-  both come back not-found. SwiftUI folds each section header's
+  both came back not-found. SwiftUI folded each section header's
   `HStack { Text; Button }` into one combined element, so what the tree
-  actually vends is `AXHeading desc="Smart Collections" help="New from
+  actually vended was `AXHeading desc="Smart Collections" help="New from
   search…"` and `AXHeading desc="Sets" help="New Set from Selection…"`; the
-  button's `accessibilityLabel` is discarded and its `.help` lands on the
-  heading. Drive them with `press --help "New from search…"` /
-  `press --help "New Set from Selection…"` (note the U+2026 ellipsis, which
-  the `.help(…)` strings carry but the accessibility labels do not).
-- **Step 12's "with no selection" precondition needs manufacturing on
-  `--smoke`.** `canSaveSelectedAssetAsManualSet` falls back to
-  `selectedAssetID` (`AppModel.swift:4669-4675`), which is non-nil on any
-  non-empty source, so the Sets "+" opens `Save Selection` rather than the
-  hint. Reaching the hint branch needs a zero-result scope; this run used the
-  search `zzzznotfound` on top of `5 Stars`.
+  button's `accessibilityLabel` was discarded and its `.help` landed on the
+  heading. The executable step above now uses both exact `AXHeading` labels
+  and exact help strings, including the U+2026 ellipsis.
+- **Step 12's "with no selection" precondition needed manufacturing on
+  `--smoke` in the version driven.**
+  `canSaveSelectedAssetAsManualSet` reads the current manual-selection IDs
+  (`AppModel.swift:3282-3284`), which remain nonempty on an ordinary nonempty
+  scope. Reaching the hint branch required a zero-result scope; that run used
+  `zzzznotfound` on top of `5 Stars`. The executable step above now establishes
+  that state explicitly. This reconciliation does not change the recorded
+  **11 of 12** status: Step 6's positive Stacks fixture half and the visible
+  tooltip gap remain open.
 
 Not verified, and why:
 - **Step 6's Stacks positive half — NOT RUN, no fixture.** The negative half

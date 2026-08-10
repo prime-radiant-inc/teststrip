@@ -57,21 +57,21 @@ doesn't reflect a real failure mode.
 
 **The unified-shell push added a durable receipt this card must also cover.**
 With the post-import completion banner deleted, the Activity popover's
-`receiptsSection` (`Sources/TeststripApp/ActivityCenterView.swift:270-296`) —
+`receiptsSection` (`Sources/TeststripApp/ActivityCenterView.swift:272-299`) —
 rendering `ActivityCenterPresentation.receipts: [ImportReceiptRow]`
 (`ActivityCenterPresentation.swift:162`) under the header **"Recent Imports"**
 — is now the sole durable, always-reachable record of a completed import
 inside the Activity popover (the toast that briefly shows on completion
 fades after ~10s and never resurrects on relaunch; see
 `import-011-completion-toast-and-import-rows.md`). `ImportReceiptRow.rows
-(from:limit:)` (`ImportCompletionToastPresentation.swift:99-113`) keeps at
-most `ImportReceiptRow.retentionLimit == 5` receipts (`:79`) — older imports
+(from:limit:)` (`ImportCompletionToastPresentation.swift:115-131`) keeps at
+most `ImportReceiptRow.retentionLimit == 5` receipts (`:93`) — older imports
 stay reachable through the sidebar's Imports section instead, which is
 unbounded. Each receipt row shows its title (the import's own detail text,
 or "Import complete" if that's empty), a skipped-file-count caption when
 nonzero, and — only when `canStartCulling` (`activity.completedUnitCount >
-0`) — a **"Start culling"** link button
-(`ActivityCenterView.swift:287-292`) that calls `model.startCullingImport
+0`) — a **"Start culling"** link
+(`ActivityCenterView.swift:288-295`) that calls `model.startCullingImport
 (sessionID:title:)`.
 
 **Invariant: receipts never change the badge.** The Activity icon's badge
@@ -178,16 +178,16 @@ level.
    Assert its caption reads the skipped-file count text
    (`"N files skipped"`/`"1 file skipped"`, singular/plural per
    `ImportReceiptRow.rows(from:limit:)`) and it carries a **"Start culling"**
-   link button (`canStartCulling` is true whenever the import actually
+   link (`canStartCulling` is true whenever the import actually
    catalogued something):
    ```bash
-   script/ax_drive.sh find --role AXButton --label "Start culling"
+   script/ax_drive.sh find --role AXLink --label "Start culling"
    ```
 10. **Retention limit of 5.** Run five more completed imports (any tiny
     fixture; six total including Part B's). Reopen the popover and count the
     receipt rows: assert exactly 5 render, the oldest of the six dropped
     (`ImportReceiptRow.retentionLimit == 5`,
-    `ImportCompletionToastPresentation.swift:79`). Cross-check the dropped
+    `ImportCompletionToastPresentation.swift:93`). Cross-check the dropped
     import is still reachable via the sidebar's Imports section (unbounded),
     just not in this popover.
 11. **Receipts never badge.** With the skipped-files receipt from step 9
@@ -309,9 +309,9 @@ deleted by this push, this card's `receiptsSection`/"Recent Imports" content
 (new Part C, steps 9-11) is now the **only** scenario-card coverage of a
 completed import's durable record inside the Activity popover. Added: the
 "Recent Imports" header and its per-receipt "Start culling" action
-(`ActivityCenterView.swift:270-296`, `ImportReceiptRow`,
-`ImportCompletionToastPresentation.swift:77-113`), the 5-receipt retention
-limit (`ImportReceiptRow.retentionLimit`, `:79`) and its oldest-drops-first
+(`ActivityCenterView.swift:272-299`, `ImportReceiptRow`,
+`ImportCompletionToastPresentation.swift:90-131`), the 5-receipt retention
+limit (`ImportReceiptRow.retentionLimit`, `:93`) and its oldest-drops-first
 behavior, and the receipts-never-badge invariant — verified against
 `ActivityCenterPresentation.init`'s actual badge computation
 (`ActivityCenterPresentation.swift:180-181`: `problemCount = xmpConflicts
@@ -328,3 +328,13 @@ surface, because the toast/receipt split didn't exist yet at that revision
 — it is not wrong, just incomplete for what this card now needs to gate.
 Needs a fresh VM/human-present run for both the pre-existing Part A/B legs
 and the new Part C steps.
+
+**Reconciled 2026-08-10 (whole-branch scenario evidence)**: Step 9's durable
+receipt assertion now matches the live accessibility role proved by the
+separate `import-011` VM run: the bell receipt's `Start culling` vended as an
+`AXLink` while the toast's action remained an `AXButton`. This is cross-card
+evidence only; `activity-002` was **not re-run**, so its prior
+SOURCE-GROUNDED/AX-UNRUN and LEDGER `Reconciled — NOT re-run` verdicts remain
+unchanged. The receipt citations were also re-anchored to the current
+`ActivityCenterView.receiptsSection` (`:272-299`) and
+`ImportReceiptRow.rows(from:limit:)` (`:115-131`).

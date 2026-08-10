@@ -16,18 +16,20 @@ older (not just the newest) import.
 
 Source: `Sources/TeststripApp/ImportCompletionToastPresentation.swift`
 (`ImportCompletionToastPresentation.toast(for:isCurrentSessionActivity:
-isImporting:)` `:40-58`, `headline(for:isExistingOnly:)` `:63-71`,
-`ImportReceiptRow` `:77-119`), `Sources/TeststripApp/LibraryGridView.swift`
-(toast overlay + `.task(id:)` re-show guard `:246-260`, `importCompletionToast`
-view `:770-814`, `dismissToast`/`showToastThenFade` `:826-844`),
-`Sources/TeststripApp/ActivityCenterView.swift` (`receiptsSection` `:272-300`),
+isImporting:)` `:40-58`, `headline(for:isExistingOnly:)` `:71-84`,
+`ImportReceiptRow` `:90-131`), `Sources/TeststripApp/LibraryGridView.swift`
+(toast overlay + `.task(id:)` re-show guard `:247-260`, `importCompletionToast`
+view `:771-824`, `dismissToast`/`showToastThenFade` `:826-844`),
+`Sources/TeststripApp/ActivityCenterView.swift` (`receiptsSection` `:272-299`),
 `Sources/TeststripApp/UnifiedSidebarPresentation.swift` (`ImportSidebarSummary`
 `:14-49`, `ImportChildCounts` `:61-79`, `importSectionRows`/`runningImportRow`/
 `childRows` `:248-320`), `Sources/TeststripApp/LibrarySource.swift`
 (`ImportChildKind` `:5-39`), `Sources/TeststripApp/AppModel.swift`
-(`isCurrentSessionActivity` `:13750-13752`, `applyImportChild` `:4913-`,
-`requestImportIssueReview` `:2543`, sidebar context menu's import-row actions
-`:5170-5199`, `beginStackCulling` `:4992-5022`), `Sources/TeststripApp/
+(`isCurrentSessionActivity` `:13888-13894`, `applyImportChild` `:4939-4983`,
+`requestImportIssueReview` `:2543-2546`, `sidebarContextActions(for:)`
+`:5161-5233`, with the work-session star toggle
+at `:5202-5207` and import verbs at `:5212-5227`, `beginStackCulling`
+`:5019-5041`), `Sources/TeststripApp/
 LibraryGridView.swift` (`ImportIssueReview` `:8802`, `importIssueReviewSheet`
 `:1904`, `presentRequestedImportIssueReview` `:3117`),
 `Sources/TeststripCore/Ingest/FolderScanner.swift` (`.unrecognizedFile` skip
@@ -127,7 +129,7 @@ reproducible).
    script/ax_drive.sh press --role AXButton --help "Activity"
    script/ax_drive.sh find --contains "Recent Imports"
    script/ax_drive.sh find --contains "2 files skipped"
-   script/ax_drive.sh find --role AXButton --label "Start culling"
+   script/ax_drive.sh find --role AXLink --label "Start culling"
    ```
 5. **Same-session non-resurrection** (a correction added for this push — the
    fade records the dismissal into `dismissedToastSummaryID`,
@@ -227,9 +229,13 @@ reproducible).
 10. Right-click CARD1's import row
     (`ax_drive.sh press --contains "<CARD1 row title>" --button right`, the
     SwiftUI-`.contextMenu` idiom `test/scenarios/README.md` documents).
-    Assert the menu offers exactly `Cull stacks`, `Evaluate import`,
-    `Manual Compare over the import` (`AppModel.swift:5184-5199`). Press
-    `Cull stacks` (`beginStackCulling`, `:4992-5022`) and assert per-stack
+    Assert the menu offers exactly four current items: the star toggle
+    (`Star Work` when unstarred, `Remove Star` when starred), `Cull stacks`,
+    `Evaluate import`, and `Manual Compare over the import` — with no extras
+    (`AppModel.sidebarContextActions(for:)`, `AppModel.swift:5161-5233`,
+    specifically the star toggle at `:5202-5207` and the three import verbs at
+    `:5212-5227`). Press `Cull stacks` (`beginStackCulling`, `:5019-5041`) and
+    assert per-stack
     `work-stack-` sets exist if CARD1's frames landed within the stack
     builder's time-adjacency threshold, per Sharp edges below:
     ```bash
@@ -238,7 +244,7 @@ reproducible).
     If the count is 0, confirm (before reporting a defect) that
     `beginStackCulling`'s no-stacks fallback fired instead — a plain culling
     session over CARD1 with `statusMessage` reading `"...; no time-adjacent
-    stacks found"` (`AppModel.swift:5007-5011`) — and record that as the
+    stacks found"` (`AppModel.swift:5037-5041`) — and record that as the
     honest, source-grounded outcome for this fixture rather than a failure.
 11. Import CARD2 (same route: `submit_import_path.sh Teststrip "$CARD2"`) —
     the same 4 frames as CARD1 plus 2 new ones, so this is **not** the "same
@@ -259,7 +265,8 @@ reproducible).
 12. Cull the **older** import (CARD1) from its sidebar row rather than the
     newest (CARD2): click CARD1's row to select it as the source
     (`selectSidebarRow`/`applySource`'s `.workSession` case,
-    `AppModel.swift:4870,4888-4907` — this sets `selectedAssetSetID = nil`),
+    `AppModel.swift:4698-4708,4852-4917`; `applyWorkSession` sets
+    `selectedAssetSetID = nil` at `:4919-4936`),
     then press the result-header **"Cull these"** button (exact-case label,
     same disambiguation `app-019-lens-shell.md` documents against the grid's
     "Cull These" context-menu item — do not batch-select assets first and
@@ -269,10 +276,14 @@ reproducible).
     ```bash
     sqlite3 "$DB" "SELECT id FROM work_sessions WHERE kind='culling' ORDER BY created_at DESC LIMIT 1;" # get RUN_ID
     sqlite3 "$DB" "SELECT json_extract(input_set_ids_json,'\$[0]') FROM work_sessions WHERE id='<RUN_ID>';" # SET_ID
-    sqlite3 "$DB" "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='<SET_ID>')) m, assets a WHERE a.id = m.value AND a.original_path LIKE '%/card2/%';"
+    sqlite3 "$DB" "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='<SET_ID>')) m, assets a WHERE a.id = json_extract(m.value,'\$.rawValue') AND a.original_path LIKE '%/card2/%';"
     ```
-    The last query's count must be **0** — none of CARD1's run's input
-    assets should be CARD2-only frames. (CARD1∩CARD2's 4 shared frames will
+    `json_each` yields snapshot-member objects such as
+    `{"rawValue":"<asset-id>"}`, so the join must extract each object's
+    `rawValue`; joining `a.id` directly to `m.value` would never match and
+    would make this required-zero assertion pass vacuously. The last query's
+    count must be **0** — none of CARD1's run's input assets should be
+    CARD2-only frames. (CARD1∩CARD2's 4 shared frames will
     still match `%/card1/%` too since dedup means only one row exists per
     original path — the discriminator is that zero rows in CARD1's input
     set have an `original_path` under `card2` exclusively, i.e. one of the
@@ -299,8 +310,9 @@ reproducible).
 - Step 9: **fails if** clicking `⚠ Skipped files` opens an empty/generic
   grid instead of the named issue-review sheet, or if the two skipped
   filenames aren't both listed.
-- Step 10: **fails if** the context menu is missing any of the three items
-  or offers extras, or if pressing `Cull stacks` neither creates
+- Step 10: **fails if** the context menu does not contain exactly the current
+  star toggle plus the three import verbs (four items total), offers any
+  extras, or if pressing `Cull stacks` neither creates
   `work-stack-` sets NOR falls back to the documented no-stacks path.
 - Step 11: **fails if** the second identical-files import's toast doesn't
   read the exact existing-only string, or if it shows a `Start culling`
@@ -517,25 +529,26 @@ summary.newPhotoCount > 0` with `newPhotoCount == 0`.
 
 ### Corrections this run found in the card (app is right, assertions stale)
 
-- **Step 4's bell assertion has the wrong role.** The receipt's
-  `Start culling` vends as `AXLink`, not `AXButton`:
+- **Step 4's bell assertion had the wrong role in the version driven.** The
+  receipt's `Start culling` vended as `AXLink`, not `AXButton`:
   `find --role AXButton --label "Start culling"` → not-found;
   `find --role AXLink --label "Start culling"` → found. (The toast's own
-  `Start culling` *is* an `AXButton` — only the bell receipt's differs.)
-- **Step 10's "exactly three items" is wrong.** The menu vends four:
-  `Star Work`, `Cull stacks`, `Evaluate import`, `Manual Compare over the
-  import`. `Star Work` is deliberate — `sidebarContextMenu`'s
-  `canToggleWorkSessionStarred` branch sits at `AppModel.swift:5171-5178`,
-  immediately above the import verbs; the card's cited range (`:5184-5199`)
-  simply started below it. The correct assertion is "a star toggle
-  (`Star Work`/`Remove Star`) plus the three import verbs, and nothing else".
-- **Step 12's discriminator SQL is malformed.** `json_each` over
-  `.snapshot._0` yields JSON *objects* (`{"rawValue":"…"}`), so `a.id =
-  m.value` never joins and the query returns 0 for the wrong reason. The
-  working form, used for the result above, is
-  `a.id = json_extract(m.value,'$.rawValue')`. Worth fixing before the
-  count-must-be-0 assertion is trusted, since the broken form passes
-  vacuously.
+  `Start culling` was an `AXButton` — only the bell receipt differed.) The
+  executable Step 4 above now uses the live-proven `AXLink` role.
+- **Step 10's "exactly three items" assertion was wrong in the version
+  driven.** The menu vended four: `Star Work`, `Cull stacks`, `Evaluate
+  import`, `Manual Compare over the import`. `Star Work` was deliberate; the
+  then-cited range simply started below the star branch. The executable step
+  above now requires the current star toggle (`Star Work`/`Remove Star`) plus
+  the three import verbs, and nothing else, anchored at the current
+  `AppModel.sidebarContextActions(for:)` symbols.
+- **Step 12's discriminator SQL was malformed in the version driven.**
+  `json_each` over `.snapshot._0` yielded JSON *objects*
+  (`{"rawValue":"…"}`), so `a.id = m.value` never joined and the query
+  returned 0 for the wrong reason. The live-proven working form was
+  `a.id = json_extract(m.value,'$.rawValue')`; the executable step above now
+  uses that form, with the `$` escaped for the surrounding shell double
+  quotes. The scoped run verdict is unchanged.
 
 Environment: no Sparkle modal on this card's launches (suppressed in the VM
 via `defaults write com.teststrip.app SUEnableAutomaticChecks -bool NO` after
