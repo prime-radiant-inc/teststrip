@@ -2686,7 +2686,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .grid)
 
         // Empty reveal is a no-op: no lens switch or filter churn.
-        model.selectLens(.cull)
+        model.selectedView = .loupe
         model.isInspectorVisible = false
         try model.revealConflicts([])
         XCTAssertEqual(model.selectedLens, .cull)
