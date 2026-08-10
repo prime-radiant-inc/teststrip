@@ -382,6 +382,74 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(restoreStore.load(), persistedStateBeforeSave)
     }
 
+    // A failed dynamic save must retain both the prior single selection and
+    // batch selection instead of publishing its pending membership prune.
+    func testDynamicSaveAndSelectPreservesSelectionsWhenLateMapRefreshFails() throws {
+        var keeper = makeAsset(
+            id: "dynamic-map-keeper",
+            path: "/Photos/Dynamic/keeper.jpg",
+            technicalMetadata: Self.technicalMetadata(
+                capturedAt: Date(timeIntervalSince1970: 10),
+                latitude: 10,
+                longitude: 20
+            )
+        )
+        keeper.metadata.rating = 5
+        var reject = makeAsset(
+            id: "dynamic-map-reject",
+            path: "/Photos/Dynamic/reject.jpg",
+            technicalMetadata: Self.technicalMetadata(
+                capturedAt: Date(timeIntervalSince1970: 20),
+                latitude: 30,
+                longitude: 40
+            )
+        )
+        reject.metadata.rating = 1
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "dynamic-map-five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let fixture = try makeCatalogFixture(
+            named: "save-select-dynamic-map-failure",
+            assets: [keeper, reject]
+        ) { repository in
+            try repository.upsert(dynamicSet)
+        }
+        fixture.model.selectLens(.map)
+        try fixture.model.refreshPlaceData()
+        fixture.model.select(reject.id)
+        fixture.model.setBatchSelection(keeper.id, isSelected: true)
+        fixture.model.setBatchSelection(reject.id, isSelected: true)
+
+        XCTAssertEqual(fixture.model.selectedAssetID, reject.id)
+        XCTAssertEqual(
+            fixture.model.selectedBatchAssetIDs,
+            [keeper.id, reject.id]
+        )
+        let stateBeforeSave = SaveAndSelectState(model: fixture.model)
+        let setsBeforeSave = try fixture.repository.assetSets()
+        let faultDatabase = try CatalogDatabase.open(at: fixture.catalogURL)
+        try faultDatabase.execute("DROP TABLE place_cache")
+
+        XCTAssertThrowsError(
+            try fixture.model.duplicateAssetSet(id: dynamicSet.id, named: "Five Stars Copy")
+        ) { error in
+            guard case CatalogError.sqlite(let message) = error else {
+                return XCTFail("expected a late place-cache SQLite error, got \(error)")
+            }
+            XCTAssertTrue(message.contains("place_cache"))
+        }
+
+        XCTAssertEqual(try fixture.repository.assetSets(), setsBeforeSave)
+        XCTAssertEqual(SaveAndSelectState(model: fixture.model), stateBeforeSave)
+        XCTAssertEqual(fixture.model.selectedAssetID, reject.id)
+        XCTAssertEqual(
+            fixture.model.selectedBatchAssetIDs,
+            [keeper.id, reject.id]
+        )
+    }
+
     // People refreshes are best effort on every other source-selection path.
     // Saving a set while People is visible must keep that contract: persist
     // and select the set, then publish an empty People snapshot with the error.
@@ -459,6 +527,156 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertTrue(fixture.model.errorMessage?.contains("face_observations") == true)
     }
 
+    // reload() treats folder discovery as best effort and retains both folder
+    // and source-root caches when the folder query fails before either update.
+    func testSaveAndSelectSucceedsWhenFolderDiscoveryFails() throws {
+        let selected = makeAsset(id: "folder-failure-selected", path: "/Photos/Existing/selected.jpg")
+        let fixture = try makeCatalogFixture(
+            named: "save-select-folder-failure",
+            assets: [selected]
+        )
+        fixture.model.select(selected.id)
+        let foldersBeforeSave = fixture.model.catalogFolders
+        let sourceRootsBeforeSave = fixture.model.sourceRoots
+        XCTAssertFalse(foldersBeforeSave.isEmpty)
+        let importedBehindModel = makeAsset(
+            id: "folder-failure-imported",
+            path: "/Photos/New/imported.jpg"
+        )
+        try fixture.repository.upsert(importedBehindModel)
+        XCTAssertNotEqual(try fixture.repository.folders(), foldersBeforeSave)
+
+        var didInjectFault = false
+        var faultInjectionError: Error?
+        fixture.database.rowQueryObserver = { sql in
+            guard !didInjectFault,
+                  sql.contains("rtrim(original_path, replace(original_path, '/', '')) AS folder_path") else { return }
+            didInjectFault = true
+            do {
+                try fixture.database.execute(
+                    "ALTER TABLE assets RENAME COLUMN original_path TO faulted_original_path"
+                )
+            } catch {
+                faultInjectionError = error
+            }
+        }
+        defer { fixture.database.rowQueryObserver = nil }
+        fixture.model.errorMessage = nil
+
+        let saved = try fixture.model.saveSelectedAssetAsManualSet(named: "Folder Fallback")
+
+        XCTAssertTrue(didInjectFault)
+        XCTAssertNil(faultInjectionError)
+        XCTAssertEqual(try fixture.repository.assetSet(id: saved.id), saved)
+        XCTAssertEqual(fixture.model.selectedSource, .assetSet(saved.id, titled: "Folder Fallback"))
+        XCTAssertEqual(fixture.model.catalogFolders, foldersBeforeSave)
+        XCTAssertEqual(fixture.model.sourceRoots, sourceRootsBeforeSave)
+        XCTAssertTrue(fixture.model.errorMessage?.contains("original_path") == true)
+        XCTAssertEqual(fixture.model.statusMessage, "Saved Folder Fallback")
+    }
+
+    // reload() retains the last source-root cache when its independent refresh
+    // fails, while still completing the surrounding source transition.
+    func testSaveAndSelectSucceedsWhenSourceRootDiscoveryFails() throws {
+        let selected = makeAsset(id: "root-failure-selected", path: "/Photos/Existing/selected.jpg")
+        let originalRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-root-failure-original-\(UUID().uuidString)", isDirectory: true)
+        let addedRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-root-failure-added-\(UUID().uuidString)", isDirectory: true)
+        let fixture = try makeCatalogFixture(
+            named: "save-select-root-failure",
+            assets: [selected]
+        ) { repository in
+            try repository.recordSourceRoot(originalRoot)
+        }
+        fixture.model.select(selected.id)
+        let foldersBeforeSave = fixture.model.catalogFolders
+        let sourceRootsBeforeSave = fixture.model.sourceRoots
+        XCTAssertFalse(sourceRootsBeforeSave.isEmpty)
+        let importedBehindModel = makeAsset(
+            id: "root-failure-imported",
+            path: "/Photos/New/imported.jpg"
+        )
+        try fixture.repository.upsert(importedBehindModel)
+        let foldersAfterImport = try fixture.repository.folders()
+        XCTAssertNotEqual(foldersAfterImport, foldersBeforeSave)
+        try fixture.repository.recordSourceRoot(addedRoot)
+        XCTAssertNotEqual(try fixture.repository.sourceRoots(), sourceRootsBeforeSave)
+
+        var didInjectFault = false
+        var faultInjectionError: Error?
+        fixture.database.rowQueryObserver = { sql in
+            guard !didInjectFault,
+                  sql.contains("SELECT path, name, security_scoped_bookmark_base64"),
+                  sql.contains("FROM source_roots") else { return }
+            didInjectFault = true
+            do {
+                try fixture.database.execute("DROP TABLE source_roots")
+            } catch {
+                faultInjectionError = error
+            }
+        }
+        defer { fixture.database.rowQueryObserver = nil }
+        fixture.model.errorMessage = nil
+
+        let saved = try fixture.model.saveSelectedAssetAsManualSet(named: "Root Fallback")
+
+        XCTAssertTrue(didInjectFault)
+        XCTAssertNil(faultInjectionError)
+        XCTAssertEqual(try fixture.repository.assetSet(id: saved.id), saved)
+        XCTAssertEqual(fixture.model.selectedSource, .assetSet(saved.id, titled: "Root Fallback"))
+        XCTAssertEqual(fixture.model.catalogFolders, foldersAfterImport)
+        XCTAssertEqual(fixture.model.sourceRoots, sourceRootsBeforeSave)
+        XCTAssertTrue(fixture.model.errorMessage?.contains("source_roots") == true)
+        XCTAssertEqual(fixture.model.statusMessage, "Saved Root Fallback")
+    }
+
+    // Bond-badge discovery is best effort in reload(): failure retains the
+    // last published primary-ID set instead of aborting the source transition.
+    func testSaveAndSelectSucceedsWhenBondDiscoveryFails() throws {
+        let primary = makeAsset(id: "bond-failure-primary", path: "/Photos/Bond/shot.cr2")
+        let secondary = makeAsset(id: "bond-failure-secondary", path: "/Photos/Bond/shot.jpg")
+        let fixture = try makeCatalogFixture(
+            named: "save-select-bond-failure",
+            assets: [primary, secondary]
+        ) { repository in
+            try repository.setBond(secondaryID: secondary.id, primaryID: primary.id)
+        }
+        fixture.model.select(primary.id)
+        let bondedPrimaryIDsBeforeSave = fixture.model.assetIDsWithBondedSecondaries
+        XCTAssertEqual(bondedPrimaryIDsBeforeSave, [primary.id])
+        XCTAssertEqual(
+            try fixture.repository.assetIDsWithBondedSecondaries(),
+            bondedPrimaryIDsBeforeSave
+        )
+
+        var didInjectFault = false
+        var faultInjectionError: Error?
+        fixture.database.rowQueryObserver = { sql in
+            guard !didInjectFault, sql.contains("SELECT DISTINCT bonded_to_asset_id") else { return }
+            didInjectFault = true
+            do {
+                try fixture.database.execute(
+                    "ALTER TABLE assets RENAME COLUMN bonded_to_asset_id TO faulted_bonded_to_asset_id"
+                )
+            } catch {
+                faultInjectionError = error
+            }
+        }
+        defer { fixture.database.rowQueryObserver = nil }
+        fixture.model.errorMessage = nil
+
+        let saved = try fixture.model.saveSelectedAssetAsManualSet(named: "Bond Fallback")
+
+        XCTAssertTrue(didInjectFault)
+        XCTAssertNil(faultInjectionError)
+        XCTAssertEqual(try fixture.repository.assetSet(id: saved.id), saved)
+        XCTAssertEqual(fixture.model.selectedSource, .assetSet(saved.id, titled: "Bond Fallback"))
+        XCTAssertEqual(fixture.model.assetIDsWithBondedSecondaries, bondedPrimaryIDsBeforeSave)
+        XCTAssertTrue(fixture.model.errorMessage?.contains("bonded_to_asset_id") == true)
+        XCTAssertEqual(fixture.model.statusMessage, "Saved Bond Fallback")
+    }
+
     // An empty dynamic query is the catalog-wide source: currentLibraryQuery()
     // canonicalizes it to nil. Save-and-select must use that same global People
     // scope instead of materializing all current asset IDs as a narrowed scope.
@@ -495,6 +713,45 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertTrue(
             fixture.model.peopleHasUnavailableSources,
             "the empty dynamic set should retain the catalog-wide unavailable-root projection"
+        )
+    }
+
+    // Reload canonicalizes an empty dynamic query to the global nil scope,
+    // which deliberately does not prune stale batch IDs. Save-and-select must
+    // not turn the same source into a filtering query merely because it saves.
+    func testSaveAndSelectDoesNotPruneBatchForAnEmptyDynamicGlobalScope() throws {
+        let survivor = makeAsset(id: "empty-batch-survivor", path: "/Photos/survivor.jpg")
+        let deleted = makeAsset(id: "empty-batch-deleted", path: "/Photos/deleted.jpg")
+        let globalSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "empty-batch-global"),
+            name: "Everything",
+            query: SetQuery(predicates: [])
+        )
+        let fixture = try makeCatalogFixture(
+            named: "save-select-empty-batch",
+            assets: [survivor, deleted]
+        ) { repository in
+            try repository.upsert(globalSet)
+        }
+        try fixture.model.applyAssetSet(id: globalSet.id)
+        fixture.model.setBatchSelection(survivor.id, isSelected: true)
+        fixture.model.setBatchSelection(deleted.id, isSelected: true)
+        try fixture.repository.deleteAsset(id: deleted.id)
+        try fixture.model.reload()
+
+        XCTAssertEqual(fixture.model.assets.map(\.id), [survivor.id])
+        XCTAssertEqual(
+            fixture.model.selectedBatchAssetIDsInCatalogOrder,
+            [survivor.id, deleted.id]
+        )
+
+        let duplicate = try fixture.model.duplicateAssetSet(id: globalSet.id, named: "Everything Copy")
+
+        XCTAssertEqual(duplicate.membership, .dynamic(SetQuery(predicates: [])))
+        XCTAssertEqual(fixture.model.assets.map(\.id), [survivor.id])
+        XCTAssertEqual(
+            fixture.model.selectedBatchAssetIDsInCatalogOrder,
+            [survivor.id, deleted.id]
         )
     }
 
