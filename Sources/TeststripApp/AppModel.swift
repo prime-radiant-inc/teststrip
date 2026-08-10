@@ -13136,7 +13136,7 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        if let selectedAssetSetID {
+        if selectedSource.kind != .selection, let selectedAssetSetID {
             let selectedSet = try assetSetForSelection(id: selectedAssetSetID, repository: catalog.repository)
             switch selectedSet.membership {
             case .manual, .snapshot:
