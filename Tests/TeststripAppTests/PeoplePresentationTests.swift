@@ -46,10 +46,13 @@ final class PeoplePresentationTests: XCTestCase {
         )
 
         let mergeCandidates: [NamedPersonPresentation] = presentation.mergeCandidates
+        let mergeTargets: [NamedPersonPresentation] = presentation.mergeTargets(for: "person-ada")
         XCTAssertEqual(presentation.namedPeople.map(\.name), ["Ada"])
         XCTAssertEqual(presentation.namedPeople.map(\.keyFace), [adaFace])
         XCTAssertEqual(mergeCandidates.map(\.name), ["Ada", "Grace"])
         XCTAssertEqual(mergeCandidates.map(\.keyFace), [adaFace, graceFace])
+        XCTAssertEqual(mergeTargets.map(\.name), ["Grace"])
+        XCTAssertEqual(mergeTargets.map(\.keyFace), [graceFace])
     }
 
     private func makePresentation(
@@ -84,10 +87,12 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.countText), ["3 photos", "44 photos"])
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertEqual(presentation.reviewCards.map(\.filterKind), [.faceCount, .faceQuality])
-        XCTAssertEqual(
-            presentation.reviewCards.map(\.target),
-            [LibrarySource.smartCollection(.facesFound), .evaluationKind(.faceQuality, titled: "Face Quality")]
-        )
+        let reviewActions: [PeopleQueueConfirmAction] = presentation.reviewCards.map(\.reviewAction)
+        let expectedReviewActions: [PeopleQueueConfirmAction] = [
+            .selectReview(.faceCount),
+            .selectReview(.faceQuality)
+        ]
+        XCTAssertEqual(reviewActions, expectedReviewActions)
         XCTAssertFalse(presentation.reviewCards.contains(where: \.showsUnbuiltFaceActionLock))
         XCTAssertEqual(presentation.namedPeopleTitle, "ALL PEOPLE")
         XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")
@@ -215,10 +220,12 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["5", "5"])
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [.faceQuality, .faceQuality])
         XCTAssertEqual(presentation.signalRows.map(\.isActionEnabled), [true, true])
-        XCTAssertEqual(
-            presentation.reviewCards.map(\.target),
-            [LibrarySource.evaluationKind(.faceQuality, titled: "Face Quality"), .evaluationKind(.faceQuality, titled: "Face Quality")]
-        )
+        let reviewActions: [PeopleQueueConfirmAction] = presentation.reviewCards.map(\.reviewAction)
+        let expectedReviewActions: [PeopleQueueConfirmAction] = [
+            .selectReview(.faceQuality),
+            .selectReview(.faceQuality)
+        ]
+        XCTAssertEqual(reviewActions, expectedReviewActions)
     }
 
     func testFaceCountRowCountMatchesItsFilterWhenFaceQualityCountIsHigher() {

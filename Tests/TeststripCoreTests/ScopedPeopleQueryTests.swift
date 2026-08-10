@@ -226,6 +226,7 @@ final class ScopedPeopleQueryTests: XCTestCase {
     func testEvaluationKindSummariesHonourNilEmptyAndExplicitAssetScopes() throws {
         let repository = try makeRepository(named: "scoped-evaluation-kind-summaries")
         let insideFace = asset(path: "/Photos/Inside/face.jpg")
+        let insideSecondary = asset(path: "/Photos/Inside/face.jpg.xmp")
         let outsideFace = asset(path: "/Photos/Outside/face.jpg")
         let outsideObject = asset(path: "/Photos/Outside/object.jpg")
         let alternateProvenance = ProviderProvenance(
@@ -234,11 +235,14 @@ final class ScopedPeopleQueryTests: XCTestCase {
             version: "1",
             settingsHash: "default"
         )
-        try repository.upsert([insideFace, outsideFace, outsideObject])
+        try repository.upsert([insideFace, insideSecondary, outsideFace, outsideObject])
+        try repository.setBond(secondaryID: insideSecondary.id, primaryID: insideFace.id)
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: insideFace.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: insideFace.id, kind: .faceCount, value: .count(1), confidence: 0.8, provenance: alternateProvenance),
             EvaluationSignal(assetID: insideFace.id, kind: .faceQuality, value: .score(0.8), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: insideSecondary.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: insideSecondary.id, kind: .faceQuality, value: .score(0.8), confidence: 0.8, provenance: provenance),
             EvaluationSignal(assetID: outsideFace.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: outsideFace.id, kind: .faceQuality, value: .score(0.7), confidence: 0.7, provenance: provenance),
             EvaluationSignal(assetID: outsideObject.id, kind: .object, value: .label("camera"), confidence: 0.7, provenance: provenance)
@@ -250,7 +254,7 @@ final class ScopedPeopleQueryTests: XCTestCase {
         )
         XCTAssertEqual(try repository.evaluationKindSummaries(assetIDs: []), [])
         XCTAssertEqual(
-            try repository.evaluationKindSummaries(assetIDs: [insideFace.id]),
+            try repository.evaluationKindSummaries(assetIDs: [insideFace.id, insideSecondary.id]),
             [
                 CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1),
                 CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 1)

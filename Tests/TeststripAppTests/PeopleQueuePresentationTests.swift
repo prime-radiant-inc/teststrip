@@ -36,7 +36,6 @@ final class PeopleQueuePresentationTests: XCTestCase {
             countText: "1 photo",
             suggestedActionTitle: "Review",
             filterKind: .faceCount,
-            target: .smartCollection(.facesFound),
             gradientColors: [.orange]
         )
     }
@@ -100,12 +99,15 @@ final class PeopleQueuePresentationTests: XCTestCase {
     }
 
     func testConfirmActionOnFocusedReviewCardSelectsItsEvaluationKind() {
+        let card = reviewCard("unnamed-faces")
         let presentation = PeopleQueuePresentation(
             suggestionCards: [],
-            reviewCards: [reviewCard("unnamed-faces")]
+            reviewCards: [card]
         )
 
-        XCTAssertEqual(presentation.confirmAction(), .selectReview(.faceCount))
+        let expectedAction = PeopleQueueConfirmAction.selectReview(.faceCount)
+        XCTAssertEqual(card.reviewAction, expectedAction)
+        XCTAssertEqual(presentation.confirmAction(), card.reviewAction)
     }
 
     func testConfirmActionOnEmptyQueueIsNone() {

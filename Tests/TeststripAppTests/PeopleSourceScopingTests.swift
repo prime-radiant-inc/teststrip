@@ -155,19 +155,86 @@ final class PeopleSourceScopingTests: XCTestCase {
         )
     }
 
+    func testSelectingFaceReviewIntersectsTheCurrentSelectionSource() throws {
+        let fixture = try makeFaceSignalFixture(named: "people-review-selection")
+        fixture.model.selectedAssetID = fixture.insideFace.id
+        try fixture.model.selectSource(.selection)
+        fixture.model.selectLens(.people)
+
+        try fixture.model.selectPeopleSignal(.faceCount)
+
+        assertFaceReviewRoute(
+            fixture.model,
+            query: SetQuery(predicates: [
+                .assetIDs([fixture.insideFace.id]),
+                .evaluationKind(.faceCount)
+            ]),
+            assetIDs: [fixture.insideFace.id]
+        )
+    }
+
+    func testSelectingFaceReviewIntersectsTheCurrentDynamicSetQuery() throws {
+        let fixture = try makeFaceSignalFixture(named: "people-review-dynamic-set")
+        let set = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "people-review-dynamic-set"),
+            name: "Inside folder",
+            query: SetQuery(predicates: [.folderPrefix("/Photos/Inside")])
+        )
+        try fixture.repository.upsert(set)
+        try fixture.model.refreshSavedAssetSets()
+        try fixture.model.selectSource(.assetSet(set.id, titled: set.name))
+        fixture.model.selectLens(.people)
+
+        try fixture.model.selectPeopleSignal(.faceCount)
+
+        assertFaceReviewRoute(
+            fixture.model,
+            query: SetQuery(predicates: [
+                .folderPrefix("/Photos/Inside"),
+                .evaluationKind(.faceCount)
+            ]),
+            assetIDs: [fixture.insideFace.id]
+        )
+    }
+
+    func testSelectingFaceReviewIntersectsARealImportWorkSession() throws {
+        let fixture = try makeFaceSignalFixture(named: "people-review-work-session")
+        let session = try saveCompletedImport(
+            id: "people-review-work-session",
+            assetIDs: [fixture.insideFace.id, fixture.insidePlain.id],
+            repository: fixture.repository
+        )
+        try fixture.model.selectSource(.workSession(session.id, titled: session.detail))
+        fixture.model.selectLens(.people)
+
+        try fixture.model.selectPeopleSignal(.faceCount)
+
+        assertFaceReviewRoute(
+            fixture.model,
+            query: SetQuery(predicates: [
+                .workSession(session.id.rawValue),
+                .evaluationKind(.faceCount)
+            ]),
+            assetIDs: [fixture.insideFace.id]
+        )
+    }
+
     func testPeopleReviewFromAISuggestionsSnapshotsCurrentGhostIDsAndLoadsExactGrid() throws {
-        var ghost = makeAsset(id: "people-review-ai-ghost", path: "/Photos/AI/ghost.jpg")
-        ghost.metadata.flag = .pick
-        ghost.metadata.aiUnconfirmedFields = [.flag]
+        var signaledGhost = makeAsset(id: "people-review-ai-signaled-ghost", path: "/Photos/AI/a-signaled.jpg")
+        signaledGhost.metadata.flag = .pick
+        signaledGhost.metadata.aiUnconfirmedFields = [.flag]
+        var unsignaledGhost = makeAsset(id: "people-review-ai-unsignaled-ghost", path: "/Photos/AI/b-unsignaled.jpg")
+        unsignaledGhost.metadata.flag = .pick
+        unsignaledGhost.metadata.aiUnconfirmedFields = [.flag]
         let ordinaryOutside = makeAsset(id: "people-review-ai-ordinary", path: "/Photos/Outside/ordinary.jpg")
         var confirmedOutside = makeAsset(id: "people-review-ai-confirmed", path: "/Photos/Outside/confirmed.jpg")
         confirmedOutside.metadata.flag = .pick
         let (model, _) = try makeModelWithCatalogAssets(
             named: "people-review-ai",
-            assets: [ghost, ordinaryOutside, confirmedOutside]
+            assets: [signaledGhost, unsignaledGhost, ordinaryOutside, confirmedOutside]
         ) { repository in
             try repository.recordEvaluationSignals(
-                faceSignals(assetID: ghost.id)
+                faceSignals(assetID: signaledGhost.id)
                     + faceSignals(assetID: ordinaryOutside.id)
                     + faceSignals(assetID: confirmedOutside.id)
             )
@@ -175,7 +242,7 @@ final class PeopleSourceScopingTests: XCTestCase {
         model.selectLens(.people)
         try model.selectSource(.autopilotSuggestions)
         let ghostIDs = model.autopilotGhostAssetIDs
-        XCTAssertEqual(ghostIDs, [ghost.id])
+        XCTAssertEqual(Set(ghostIDs), Set([signaledGhost.id, unsignaledGhost.id]))
 
         try model.selectPeopleSignal(.faceCount)
 
@@ -185,8 +252,45 @@ final class PeopleSourceScopingTests: XCTestCase {
                 .assetIDs(ghostIDs),
                 .evaluationKind(.faceCount)
             ]),
-            assetIDs: [ghost.id]
+            assetIDs: [signaledGhost.id]
         )
+    }
+
+    func testSelectingAnotherPeopleSignalReplacesThePreviousKindOutsidePeople() throws {
+        let faceCount = makeAsset(id: "people-review-replace-count", path: "/Photos/Signals/count.jpg")
+        let faceQuality = makeAsset(id: "people-review-replace-quality", path: "/Photos/Signals/quality.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "people-review-replace-kind",
+            assets: [faceCount, faceQuality]
+        ) { repository in
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(
+                    assetID: faceCount.id,
+                    kind: .faceCount,
+                    value: .count(1),
+                    confidence: 0.9,
+                    provenance: faceProvenance
+                ),
+                EvaluationSignal(
+                    assetID: faceQuality.id,
+                    kind: .faceQuality,
+                    value: .score(0.8),
+                    confidence: 0.8,
+                    provenance: faceProvenance
+                )
+            ])
+        }
+        model.selectLens(.grid)
+
+        try model.selectPeopleSignal(.faceCount)
+        try model.selectPeopleSignal(.faceQuality)
+
+        XCTAssertEqual(model.selectedLens, .grid)
+        XCTAssertEqual(
+            model.selectedSource.kind,
+            .search(SetQuery(predicates: [.evaluationKind(.faceQuality)]))
+        )
+        XCTAssertEqual(model.assets.map(\.id), [faceQuality.id])
     }
 
     func testPeopleReviewFromEmptyAISuggestionsDoesNotFallBackToAllPhotos() throws {
@@ -210,6 +314,138 @@ final class PeopleSourceScopingTests: XCTestCase {
                 .evaluationKind(.faceCount)
             ]),
             assetIDs: []
+        )
+    }
+
+    func testShowingPersonPhotosIntersectsTheCurrentFolderScope() throws {
+        let fixture = try makePersonDrillFixture(named: "people-person-folder")
+        try fixture.model.selectSource(.folder("/Photos/Inside"))
+        fixture.model.selectLens(.people)
+
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        assertPersonDrillRoute(
+            fixture.model,
+            query: SetQuery(predicates: [
+                .folderPrefix("/Photos/Inside"),
+                .person("Ada")
+            ]),
+            assetIDs: [fixture.inside.id],
+            proposedAssetIDs: []
+        )
+    }
+
+    func testShowingPersonPhotosIntersectsPopulatedAndEmptyStaticSets() throws {
+        let fixture = try makePersonDrillFixture(named: "people-person-static-sets")
+        let populated = AssetSet.manual(
+            id: AssetSetID(rawValue: "people-person-populated"),
+            name: "Inside selection",
+            assetIDs: [fixture.inside.id, fixture.insidePlain.id]
+        )
+        let empty = AssetSet.manual(
+            id: AssetSetID(rawValue: "people-person-empty"),
+            name: "Empty selection",
+            assetIDs: []
+        )
+        try fixture.repository.upsert(populated)
+        try fixture.repository.upsert(empty)
+        try fixture.model.refreshSavedAssetSets()
+        try fixture.model.selectSource(.assetSet(populated.id, titled: populated.name))
+        fixture.model.selectLens(.people)
+
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        assertPersonDrillRoute(
+            fixture.model,
+            query: SetQuery(predicates: [
+                .assetIDs([fixture.inside.id, fixture.insidePlain.id]),
+                .person("Ada")
+            ]),
+            assetIDs: [fixture.inside.id],
+            proposedAssetIDs: []
+        )
+
+        try fixture.model.selectSource(.assetSet(empty.id, titled: empty.name))
+        fixture.model.selectLens(.people)
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        assertPersonDrillRoute(
+            fixture.model,
+            query: SetQuery(predicates: [.assetIDs([]), .person("Ada")]),
+            assetIDs: [],
+            proposedAssetIDs: []
+        )
+    }
+
+    func testShowingPersonPhotosIntersectsARealImportWorkSession() throws {
+        let fixture = try makePersonDrillFixture(named: "people-person-work-session")
+        let session = try saveCompletedImport(
+            id: "people-person-work-session",
+            assetIDs: [fixture.inside.id, fixture.insidePlain.id],
+            repository: fixture.repository
+        )
+        try fixture.model.selectSource(.workSession(session.id, titled: session.detail))
+        fixture.model.selectLens(.people)
+
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        assertPersonDrillRoute(
+            fixture.model,
+            query: SetQuery(predicates: [
+                .workSession(session.id.rawValue),
+                .person("Ada")
+            ]),
+            assetIDs: [fixture.inside.id],
+            proposedAssetIDs: []
+        )
+    }
+
+    func testShowingPersonPhotosIntersectsPopulatedAndEmptyAISuggestions() throws {
+        let fixture = try makePersonDrillFixture(named: "people-person-ai")
+        fixture.model.selectLens(.people)
+        try fixture.model.selectSource(.autopilotSuggestions)
+        XCTAssertEqual(fixture.model.autopilotGhostAssetIDs, [fixture.inside.id])
+
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        assertPersonDrillRoute(
+            fixture.model,
+            query: SetQuery(predicates: [
+                .assetIDs([fixture.inside.id]),
+                .person("Ada")
+            ]),
+            assetIDs: [fixture.inside.id],
+            proposedAssetIDs: []
+        )
+
+        try fixture.repository.updateMetadata(assetID: fixture.inside.id) { metadata in
+            metadata.flag = nil
+            metadata.aiUnconfirmedFields.remove(.flag)
+        }
+        try fixture.model.selectSource(.autopilotSuggestions)
+        fixture.model.selectLens(.people)
+        XCTAssertEqual(fixture.model.autopilotGhostAssetIDs, [])
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        assertPersonDrillRoute(
+            fixture.model,
+            query: SetQuery(predicates: [.assetIDs([]), .person("Ada")]),
+            assetIDs: [],
+            proposedAssetIDs: []
+        )
+    }
+
+    func testShowingPersonPhotosOverAllPhotosKeepsTheLonePersonProposedPhotoSemantics() throws {
+        let fixture = try makePersonDrillFixture(named: "people-person-all-photos")
+        fixture.model.selectLens(.people)
+
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        assertPersonDrillRoute(
+            fixture.model,
+            query: SetQuery(predicates: [.person("Ada")]),
+            assetIDs: [fixture.inside.id, fixture.outside.id],
+            proposedAssetIDs: [fixture.proposed.id]
         )
     }
 
@@ -426,6 +662,7 @@ final class PeopleSourceScopingTests: XCTestCase {
 
         let presentation = peoplePresentation(model)
         let mergeCandidates: [NamedPersonPresentation] = presentation.mergeCandidates
+        let mergeTargets: [NamedPersonPresentation] = presentation.mergeTargets(for: "person-ada")
         XCTAssertEqual(presentation.namedPeople.map(\.name), ["Ada"])
         XCTAssertEqual(presentation.namedPeople.map(\.keyFace?.assetID), [inside.id])
         XCTAssertEqual(Set(mergeCandidates.map(\.name)), Set(["Ada", "Grace"]))
@@ -433,6 +670,8 @@ final class PeopleSourceScopingTests: XCTestCase {
             Set(mergeCandidates.compactMap(\.keyFace?.assetID)),
             Set([inside.id, outside.id])
         )
+        XCTAssertEqual(mergeTargets.map(\.name), ["Grace"])
+        XCTAssertEqual(mergeTargets.map(\.keyFace?.assetID), [outside.id])
         XCTAssertEqual(Set(model.catalogPeople.map(\.name)), Set(["Ada", "Grace"]))
         XCTAssertEqual(Set(model.personKeyFaces.values.map(\.assetID)), Set([inside.id, outside.id]))
     }
@@ -471,6 +710,64 @@ final class PeopleSourceScopingTests: XCTestCase {
             )
         }
         return (model, repository, insideFace, insidePlain, outsideFace)
+    }
+
+    private func makePersonDrillFixture(
+        named name: String
+    ) throws -> (
+        model: AppModel,
+        repository: CatalogRepository,
+        inside: Asset,
+        insidePlain: Asset,
+        outside: Asset,
+        proposed: Asset
+    ) {
+        var inside = makeAsset(id: "\(name)-inside", path: "/Photos/Inside/ada.jpg")
+        inside.metadata.flag = .pick
+        inside.metadata.aiUnconfirmedFields = [.flag]
+        let insidePlain = makeAsset(id: "\(name)-inside-plain", path: "/Photos/Inside/plain.jpg")
+        let outside = makeAsset(id: "\(name)-outside", path: "/Photos/Outside/ada.jpg")
+        let proposed = makeAsset(id: "\(name)-proposed", path: "/Photos/Proposed/ada.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: name,
+            assets: [inside, insidePlain, outside, proposed]
+        ) { repository in
+            try repository.upsertPerson(id: "person-ada", name: "Ada")
+            try repository.assignAssets([inside.id, outside.id], toPersonID: "person-ada")
+            try repository.insertAIFace(assetID: proposed.id, faceIndex: 0, personID: "person-ada")
+        }
+        return (model, repository, inside, insidePlain, outside, proposed)
+    }
+
+    private func saveCompletedImport(
+        id: String,
+        assetIDs: [AssetID],
+        repository: CatalogRepository
+    ) throws -> WorkSession {
+        let outputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "\(id)-output"),
+            name: "Imported photos",
+            assetIDs: assetIDs
+        )
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: id),
+            kind: .ingest,
+            intent: "Import photos",
+            title: "Import photos",
+            detail: "Imported from /Cards/CARD-A",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [outputSet.id],
+            completedUnitCount: assetIDs.count,
+            totalUnitCount: assetIDs.count,
+            failureCount: 0,
+            issues: [],
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        try repository.upsert(outputSet)
+        try repository.save(session)
+        return session
     }
 
     private func faceSignals(assetID: AssetID) -> [EvaluationSignal] {
@@ -529,6 +826,20 @@ final class PeopleSourceScopingTests: XCTestCase {
             line: line
         )
         XCTAssertEqual(Set(model.assets.map(\.id)), Set(assetIDs), file: file, line: line)
+    }
+
+    private func assertPersonDrillRoute(
+        _ model: AppModel,
+        query: SetQuery,
+        assetIDs: [AssetID],
+        proposedAssetIDs: [AssetID],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(model.selectedLens, .grid, file: file, line: line)
+        XCTAssertEqual(model.selectedSource, .search(query, titled: "Ada"), file: file, line: line)
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set(assetIDs), file: file, line: line)
+        XCTAssertEqual(Set(model.proposedPhotos.map(\.asset.id)), Set(proposedAssetIDs), file: file, line: line)
     }
 
     private func makeModelWithCatalogAssets(

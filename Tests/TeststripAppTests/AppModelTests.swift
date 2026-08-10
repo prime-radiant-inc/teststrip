@@ -6489,7 +6489,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(framingSet.membership, .dynamic(SetQuery(predicates: [.evaluationKind(.framing)])))
     }
 
-    func testSelectingPeopleSignalAppliesEvaluationFilterAndShowsMatchingAssets() throws {
+    func testSelectingPeopleSignalLoadsStructuredGridAndReplacesThePreviousKind() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-people-signal-filter")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -6520,13 +6520,20 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.selectedView, .grid)
-        XCTAssertEqual(model.evaluationKindFilter, .faceCount)
+        XCTAssertEqual(
+            model.selectedSource.kind,
+            .search(SetQuery(predicates: [.evaluationKind(.faceCount)]))
+        )
         XCTAssertEqual(model.assets.map(\.id), [faceCount.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectPeopleSignal(.faceQuality)
 
-        XCTAssertEqual(model.evaluationKindFilter, .faceQuality)
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(
+            model.selectedSource.kind,
+            .search(SetQuery(predicates: [.evaluationKind(.faceQuality)]))
+        )
         XCTAssertEqual(model.assets.map(\.id), [faceQuality.id])
         XCTAssertEqual(model.totalAssetCount, 1)
     }
@@ -9646,6 +9653,7 @@ final class AppModelTests: XCTestCase {
             configureRepository: { repository in
                 try repository.upsertPerson(id: "person-anna", name: "Anna Lee")
                 try repository.assignAssets([annaRated.id, annaUnrated.id], toPersonID: "person-anna")
+                try repository.insertAIFace(assetID: unassigned.id, faceIndex: 0, personID: "person-anna")
             }
         )
         try model.selectSource(.folder("/Photos/Wedding"))
@@ -9656,20 +9664,31 @@ final class AppModelTests: XCTestCase {
         try model.showPersonPhotos(named: "Anna Lee")
 
         XCTAssertEqual(model.selectedView, .grid)
-        XCTAssertEqual(model.librarySearchText, "person:\"Anna Lee\"")
+        XCTAssertEqual(model.librarySearchText, "folder:/Photos/Wedding rating:3 person:\"Anna Lee\"")
         XCTAssertEqual(
             model.selectedSource,
-            .search(SetQuery(predicates: [.person("Anna Lee")]), titled: "Anna Lee")
+            .search(
+                SetQuery(predicates: [
+                    .folderPrefix("/Photos/Wedding"),
+                    .ratingAtLeast(3),
+                    .person("Anna Lee")
+                ]),
+                titled: "Anna Lee"
+            )
         )
         XCTAssertEqual(model.scopeLine.sourceTitle, "Anna Lee")
-        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee"])
-        XCTAssertEqual(model.assets.map(\.id), [annaRated.id, annaUnrated.id])
-        XCTAssertEqual(model.totalAssetCount, 2)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Folder: Wedding", "Rating >= 3", "Person: Anna Lee"])
+        XCTAssertEqual(model.assets.map(\.id), [annaRated.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertEqual(model.proposedPhotos, [])
 
         model.minimumRatingFilter = 4
         try model.applyLibraryFilters()
 
-        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee", "Rating >= 4"])
+        XCTAssertEqual(
+            model.activeLibraryFilterChips,
+            ["Folder: Wedding", "Rating >= 3", "Person: Anna Lee", "Rating >= 4"]
+        )
         XCTAssertEqual(model.assets.map(\.id), [annaRated.id])
         XCTAssertEqual(model.totalAssetCount, 1)
     }
