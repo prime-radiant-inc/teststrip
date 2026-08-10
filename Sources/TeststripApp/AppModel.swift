@@ -4944,14 +4944,20 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        let stackAssetIDs: [AssetID]
+        switch child {
+        case .stacks:
+            stackAssetIDs = try latestImportStacks(
+                activityID: sessionID.rawValue,
+                repository: catalog.repository
+            ).flatMap(\.assetIDs)
+        default:
+            stackAssetIDs = []
+        }
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         switch child {
         case .stacks:
-            let stackAssetIDs = try latestImportStacks(
-                activityID: sessionID.rawValue,
-                repository: catalog.repository
-            ).flatMap(\.assetIDs)
             detachedLibraryFilterPredicates = [.assetIDs(stackAssetIDs)]
             try reload()
         case .skippedFiles:
@@ -10890,10 +10896,10 @@ public final class AppModel {
         let loadedAssets: [Asset]
         let count: Int
         if let query = currentLibraryQuery() {
-            loadedAssets = try catalog.repository.allAssets(matching: query)
+            loadedAssets = try catalog.repository.allAssets(matching: query, sort: librarySortOption)
             count = try catalog.repository.assetCount(matching: query)
         } else {
-            loadedAssets = try catalog.repository.allAssets()
+            loadedAssets = try catalog.repository.allAssets(sort: librarySortOption)
             count = try catalog.repository.assetCount()
         }
         replaceAssets(loadedAssets)
