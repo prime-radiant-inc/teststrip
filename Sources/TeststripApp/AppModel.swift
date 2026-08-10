@@ -11888,9 +11888,14 @@ public final class AppModel {
         }
 
         let restoringAutopilotSuggestions = state.source == .autopilotSuggestions
-        let restoredSource: LibrarySource = restoringAutopilotSuggestions && autopilotGhostAssetIDs.isEmpty
-            ? .allPhotos
-            : state.source
+        let restoredSource: LibrarySource
+        if restoringAutopilotSuggestions && autopilotGhostAssetIDs.isEmpty {
+            restoredSource = .allPhotos
+        } else if case .assetSet(let id) = state.source.kind, selectedAssetSetID != id {
+            restoredSource = .allPhotos
+        } else {
+            restoredSource = state.source
+        }
         selectLens(Self.isRestorableLens(state.lens) ? state.lens : .grid)
 
         try refreshWorkHistorySearchResults(repository: catalog.repository)
