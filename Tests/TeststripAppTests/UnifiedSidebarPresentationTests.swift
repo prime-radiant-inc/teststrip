@@ -56,6 +56,20 @@ final class UnifiedSidebarPresentationTests: XCTestCase {
         XCTAssertEqual(library?.rows.first?.countText, "42")
     }
 
+    func testSmartCollectionsAndSetsRemainVisibleWhenEmpty() throws {
+        let result = sections()
+
+        XCTAssertEqual(result.map(\.title), ["Library", "Smart Collections", "Sets"])
+        let smartCollections = try XCTUnwrap(
+            result.first { $0.title == UnifiedSidebarPresentation.smartCollectionsSectionTitle }
+        )
+        let sets = try XCTUnwrap(
+            result.first { $0.title == UnifiedSidebarPresentation.setsSectionTitle }
+        )
+        XCTAssertTrue(smartCollections.rows.isEmpty)
+        XCTAssertTrue(sets.rows.isEmpty)
+    }
+
     func testImportsShowTheRecentThreePlusAnAllImportsOverflowRow() throws {
         let summaries = (0..<7).map { summary("import-\($0)", day: $0, count: 10 + $0) }.reversed()
         let imports = try XCTUnwrap(sections(importSummaries: Array(summaries)).first { $0.title == "Imports" })
@@ -203,14 +217,34 @@ final class UnifiedSidebarPresentationTests: XCTestCase {
         XCTAssertFalse(sets.rowTitles.contains("Recent Keepers"))
     }
 
-    func testInternalWorkSetsNeverAppear() {
+    func testInternalWorkSetsNeverAppearAsRows() throws {
         let output = AssetSet.manual(id: AssetSetID(rawValue: "work-output-1"), name: "Imported", assetIDs: [])
         let input = AssetSet.manual(id: AssetSetID(rawValue: "work-input-1"), name: "Cull input", assetIDs: [])
         let stack = AssetSet.manual(id: AssetSetID(rawValue: "work-stack-1"), name: "Stack 1", assetIDs: [])
+        let previewFailure = AssetSet.manual(
+            id: AssetSetID(rawValue: "import-preview-failed-1"),
+            name: "Preview failures",
+            assetIDs: []
+        )
+        let selectionSource = AssetSet.manual(
+            id: AssetSetID(rawValue: "selection-source-1"),
+            name: "Selection source",
+            assetIDs: []
+        )
+        let cullSelection = AssetSet.manual(
+            id: AssetSetID(rawValue: "cull-selection-1"),
+            name: "Cull selection",
+            assetIDs: []
+        )
 
-        let result = sections(savedAssetSets: [output, input, stack])
+        let result = sections(
+            savedAssetSets: [output, input, stack, previewFailure, selectionSource, cullSelection]
+        )
 
-        XCTAssertNil(result.first { $0.title == "Sets" })
+        let sets = try XCTUnwrap(
+            result.first { $0.title == UnifiedSidebarPresentation.setsSectionTitle }
+        )
+        XCTAssertTrue(sets.rows.isEmpty)
     }
 
     func testSelectionSectionIsTransientAndLast() throws {

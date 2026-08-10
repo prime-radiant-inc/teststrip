@@ -9,6 +9,22 @@ import XCTest
 /// live `AppModel` so catalog-backed inputs (saved queries, folders) are
 /// wired in correctly.
 final class SidebarSectionsTests: XCTestCase {
+    func testFreshlyLoadedSidebarKeepsEmptyCreationSections() throws {
+        let (model, _) = try makeModelWithCatalogAssets(named: "sidebar-sections-empty", assets: [])
+
+        let sections = model.sidebarSections
+
+        XCTAssertEqual(sections.map(\.title), ["Library", "Smart Collections", "Sets"])
+        let smartCollections = try XCTUnwrap(
+            sections.first { $0.title == UnifiedSidebarPresentation.smartCollectionsSectionTitle }
+        )
+        let sets = try XCTUnwrap(
+            sections.first { $0.title == UnifiedSidebarPresentation.setsSectionTitle }
+        )
+        XCTAssertTrue(smartCollections.rows.isEmpty)
+        XCTAssertTrue(sets.rows.isEmpty)
+    }
+
     func testSidebarSectionsAreTheUnifiedShellsSections() throws {
         let asset = makeAsset(id: "hero", path: "/Photos/hero.jpg", rating: 5)
         let (model, _) = try makeModelWithCatalogAssets(named: "sidebar-sections-unified", assets: [asset])
@@ -26,7 +42,8 @@ final class SidebarSectionsTests: XCTestCase {
         // A saved dynamic search is a smart collection, not a static set.
         let smart = try XCTUnwrap(sections.first { $0.title == "Smart Collections" })
         XCTAssertTrue(smart.rowTitles.contains("Five Stars"))
-        XCTAssertNil(sections.first { $0.title == "Sets" })
+        let sets = try XCTUnwrap(sections.first { $0.title == "Sets" })
+        XCTAssertTrue(sets.rows.isEmpty)
 
         let folders = try XCTUnwrap(sections.first { $0.title == "Folders" })
         XCTAssertEqual(folders.rowTitles, ["photos"])
