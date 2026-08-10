@@ -11898,8 +11898,14 @@ public final class AppModel {
         let restoredSource: LibrarySource
         if restoringAutopilotSuggestions && autopilotGhostAssetIDs.isEmpty {
             restoredSource = .allPhotos
-        } else if case .assetSet(let id) = state.source.kind, selectedAssetSetID != id {
-            restoredSource = .allPhotos
+        } else if case .assetSet(let id) = state.source.kind {
+            if selectedAssetSetID == id,
+               let assetSet = savedAssetSets.first(where: { $0.id == id }) {
+                restoredSource = .assetSet(id, titled: assetSet.name)
+            } else {
+                selectedAssetSetID = nil
+                restoredSource = .allPhotos
+            }
         } else {
             restoredSource = state.source
         }
