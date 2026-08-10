@@ -22,15 +22,15 @@ isImporting:)` `:40-58`, `headline(for:isExistingOnly:)` `:71-84`,
 view `:771-824`, `dismissToast`/`showToastThenFade` `:826-844`),
 `Sources/TeststripApp/ActivityCenterView.swift` (`receiptsSection` `:272-299`),
 `Sources/TeststripApp/UnifiedSidebarPresentation.swift` (`ImportSidebarSummary`
-`:14-49`, `ImportChildCounts` `:61-79`, `importSectionRows`/`runningImportRow`/
-`childRows` `:248-320`), `Sources/TeststripApp/LibrarySource.swift`
+`:14-51`, `ImportChildCounts` `:61-87`, `importSectionRows`/`runningImportRow`/
+`childRows` `:248-323`), `Sources/TeststripApp/LibrarySource.swift`
 (`ImportChildKind` `:5-39`), `Sources/TeststripApp/AppModel.swift`
 (`isCurrentSessionActivity` `:13888-13894`, `applyImportChild` `:4939-4983`,
 `requestImportIssueReview` `:2543-2546`, `sidebarContextActions(for:)`
 `:5161-5233`, with the work-session star toggle
 at `:5202-5207` and import verbs at `:5212-5227`, `beginStackCulling`
 `:5019-5041`), `Sources/TeststripApp/
-LibraryGridView.swift` (`ImportIssueReview` `:8802`, `importIssueReviewSheet`
+LibraryGridView.swift` (`ImportIssueReview` `:8801`, `importIssueReviewSheet`
 `:1904`, `presentRequestedImportIssueReview` `:3117`),
 `Sources/TeststripCore/Ingest/FolderScanner.swift` (`.unrecognizedFile` skip
 reason `:90-98`), `Sources/TeststripCore/Catalog/CatalogMigrations.swift`
@@ -54,21 +54,40 @@ this push deliberately does not have.
 
 ## Pre-state
 ```bash
-./script/build_and_run.sh --isolated
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
+script/vm_scenario_run.sh sync empty faces
+script/vm_scenario_run.sh launch empty
+script/vm_scenario_run.sh ax wait-vended Teststrip
 ```
-`--isolated` alone is an empty catalog (per `test/scenarios/README.md`) — the
-right baseline here, since every count in this card must be attributable to
-imports this card performs, not `--smoke`'s pre-seeded 24 photos.
+`empty` is the unseeded catalog (per `test/scenarios/README.md`) — the right
+baseline here, since every count in this card must be attributable to imports
+this card performs, not `smoke`'s pre-seeded photos. `sync` is the only
+host-side build/seed step; every launch, AX action, keystroke, shell action,
+and SQL query below goes through `script/vm_scenario_run.sh` into the Tart VM.
 
-Two fixture folders, reusing the bench seeder already proven in
-`import-004-new-only-dedupe.md`/`import-008-auto-cull-toggle.md`:
+Create two fixture folders in the VM from six supported JPEGs shipped by the
+`faces` sync. CARD1 has four distinct images; CARD2 contains byte-identical
+copies of those four plus two genuinely new images:
 ```bash
-DUP_FIXTURES=$(mktemp -d)/dup
-swift run TeststripBench seed-dup-fixtures "$DUP_FIXTURES"
-CARD1="$DUP_FIXTURES/card1"   # N=4 distinct JPEGs
-CARD2="$DUP_FIXTURES/card2"   # the same 4 frames byte-identical + M=2 brand-new
+script/vm_scenario_run.sh shell '
+set -eu
+fixture=/Users/admin/teststrip-vm/fixtures/import-011
+rm -rf "$fixture"
+mkdir -p "$fixture/card1" "$fixture/card2"
+set -- /Users/admin/teststrip-vm/sample-data/photos/faces/*.jpg
+test "$#" -ge 6
+cp "$1" "$fixture/card1/shared-1.jpg"
+cp "$2" "$fixture/card1/shared-2.jpg"
+cp "$3" "$fixture/card1/shared-3.jpg"
+cp "$4" "$fixture/card1/shared-4.jpg"
+cp "$fixture/card1/shared-1.jpg" "$fixture/card2/shared-1.jpg"
+cp "$fixture/card1/shared-2.jpg" "$fixture/card2/shared-2.jpg"
+cp "$fixture/card1/shared-3.jpg" "$fixture/card2/shared-3.jpg"
+cp "$fixture/card1/shared-4.jpg" "$fixture/card2/shared-4.jpg"
+cp "$5" "$fixture/card2/card2-only-1.jpg"
+cp "$6" "$fixture/card2/card2-only-2.jpg"
+printf "%s\n" "not a photo" > "$fixture/card1/notes.txt"
+printf "%s\n" "not a photo either" > "$fixture/card1/readme.md"
+'
 ```
 A skipped-file fixture — one real, producible skip, not a placeholder. Any
 file extension outside the supported image set and outside
@@ -77,13 +96,9 @@ file extension outside the supported image set and outside
 `skippedSourceFile` issue with message "file type not supported"
 (`Sources/TeststripCore/Ingest/LibraryImportService.swift:466-473`
 — not `Sources/TeststripApp/`, per the surrounding citations' path; verified
-against source). Drop two into CARD1 before the first
-import:
-```bash
-echo "not a photo" > "$CARD1/notes.txt"
-echo "not a photo either" > "$CARD1/readme.md"
-```
-This makes CARD1's first import produce exactly 2 skipped files (unlike
+against source). The fixture command above drops two into CARD1 before the
+first import. This makes CARD1's first import produce exactly 2 skipped files
+(unlike
 `activity-002-popover-import.md`'s still-open gap, which is about
 preview/backup *failures*, a different and not-yet-producible fixture — this
 card only needs the importer's own file-type filter, which is trivially
@@ -92,15 +107,17 @@ reproducible).
 ## Steps
 
 ### Part A — the toast, on a fresh import
-1. `script/ax_drive.sh wait-vended Teststrip`. Import CARD1 through the
-   typed-path sheet (`script/submit_import_path.sh Teststrip "$CARD1"`,
-   per `test/scenarios/README.md`'s recommended driver for the multi-field
-   Import Path sheet). Wait for completion.
+1. Import CARD1 through the typed-path sheet, using
+   `test/scenarios/README.md`'s recommended driver for the multi-field Import
+   Path sheet. Wait for completion.
+   ```bash
+   script/vm_scenario_run.sh shell '$HOME/teststrip-vm/script/submit_import_path.sh Teststrip /Users/admin/teststrip-vm/fixtures/import-011/card1'
+   ```
 2. On completion, assert the toast:
    ```bash
-   script/ax_drive.sh find --contains "Import complete"   # accessibilityLabel on the toast container
-   script/ax_drive.sh find --role AXButton --label "Start culling"
-   script/ax_drive.sh find --contains "2 files skipped"
+   script/vm_scenario_run.sh ax wait --contains "Import complete"   # accessibilityLabel on the toast container
+   script/vm_scenario_run.sh ax find --role AXButton --label "Start culling"
+   script/vm_scenario_run.sh ax find --contains "2 files skipped"
    ```
    (`ImportCompletionToastPresentation.toast`'s `warningText`, `:52-54`: the
    plural branch fires because CARD1 has exactly 2 skipped files.)
@@ -109,27 +126,27 @@ reproducible).
    current `Sources/`, confirming both really were deleted rather than
    renamed):
    ```bash
-   script/ax_drive.sh find --contains "Review imported frames"   # expect not-found
-   script/ax_drive.sh find --contains "Cull stacks"               # expect not-found
+   ! script/vm_scenario_run.sh ax find --contains "Review imported frames"
+   ! script/vm_scenario_run.sh ax find --contains "Cull stacks"
    ```
    The second check is a **canvas** absence only — no context menu is open
    at this point in the flow, so it cannot collide with the identical-text
-   `Cull stacks` sidebar **context-menu item** (`AppModel.swift:5185`,
+   `Cull stacks` sidebar **context-menu item** (`AppModel.swift:5212-5217`,
    exercised in Step 10) that legitimately exists but only renders inside an
    open `AXMenu`, never as loose canvas text.
 4. Let ~10s elapse (`ImportCompletionToastPresentation.visibleDuration`,
    `:11`). Assert the toast is gone:
    ```bash
-   script/ax_drive.sh find --contains "Import complete"   # expect not-found
+   ! script/vm_scenario_run.sh ax find --contains "Import complete"
    ```
    Open the bell (Activity Center) and assert its popover holds a
    `"Recent Imports"` receipt (`ActivityCenterView.swift:274`) with the same
    counts and its own `Start culling`:
    ```bash
-   script/ax_drive.sh press --role AXButton --help "Activity"
-   script/ax_drive.sh find --contains "Recent Imports"
-   script/ax_drive.sh find --contains "2 files skipped"
-   script/ax_drive.sh find --role AXLink --label "Start culling"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax find --contains "Recent Imports"
+   script/vm_scenario_run.sh ax find --contains "2 files skipped"
+   script/vm_scenario_run.sh ax find --role AXLink --label "Start culling"
    ```
 5. **Same-session non-resurrection** (a correction added for this push — the
    fade records the dismissal into `dismissedToastSummaryID`,
@@ -146,36 +163,48 @@ reproducible).
    and minimize/restore the window. After each, assert the toast has not
    reappeared:
    ```bash
-   script/ax_drive.sh find --contains "Import complete"   # expect not-found, after every probe above
+   ! script/vm_scenario_run.sh ax find --contains "Import complete"   # after every probe above
    ```
    This is a distinct guarantee from Step 6's relaunch case — nothing at the
    unit layer can pin either, so this card is the only gate for both.
-6. Quit and relaunch. Assert the toast does **not** reappear (the
-   `isCurrentSessionActivity` guard, `AppModel.swift:13750-13752` —
+6. Quit and relaunch the **same VM catalog** (do not call `launch` again; that
+   would create a new run directory). Assert the toast does **not** reappear
+   (the `isCurrentSessionActivity` guard, `AppModel.swift:13888-13894` —
    persona-7's zombie panel, which `app-006-session-restore.md` also tests
    for a different surface) while the receipt and the sidebar's Imports row
    survive:
    ```bash
-   script/ax_drive.sh find --contains "Import complete"   # expect not-found
-   script/ax_drive.sh press --role AXButton --help "Activity"
-   script/ax_drive.sh find --contains "Recent Imports"
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh shell '
+   latest=$(ls -dt "$HOME/teststrip-vm"/run/empty-* | head -1)
+   open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"
+   '
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   ! script/vm_scenario_run.sh ax find --contains "Import complete"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax find --contains "Recent Imports"
    ```
    Assert the sidebar's Imports section still shows CARD1's row (title is
    the import's date + detail, `ImportSidebarSummary.title`,
-   `UnifiedSidebarPresentation.swift:44-49`):
+   `UnifiedSidebarPresentation.swift:44-50`):
    ```bash
-   script/ax_drive.sh find --contains "Imports"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity" # close receipt popover
+   CARD1_ROW_TITLE=$(script/vm_scenario_run.sh ax find --role AXButton --contains "Imported 4 photos from card1 (2 files skipped)" | awk 'index($0,"Imported 4 photos from card1 (2 files skipped)") && $0 !~ /^(Expand|Collapse) / {print; exit}')
+   test -n "$CARD1_ROW_TITLE"
+   script/vm_scenario_run.sh ax find --role AXButton --label "$CARD1_ROW_TITLE"
    ```
 
 ### Part B — the import row's children
 7. Expand the newest import row (CARD1's): click its disclosure triangle
-   (`toggleSidebarExpansion`, `AppModel.swift:4722-4734`,
+   (`toggleSidebarExpansion`, `AppModel.swift:4722-4739`,
    accessibility label `"Expand <row title>"`, `SidebarView.swift:287`).
    Assert its children and their counts against the catalog. Get CARD1's
    session ID first:
    ```bash
-   SESSION_ID=$(sqlite3 "$DB" "SELECT id FROM work_sessions WHERE kind='ingest' ORDER BY created_at ASC LIMIT 1;")
-   sqlite3 "$DB" "SELECT COUNT(*) FROM work_sessions, json_each(work_sessions.issues_json) WHERE work_sessions.id='$SESSION_ID' AND json_extract(value,'\$.kind')='skippedSourceFile';"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Expand $CARD1_ROW_TITLE"
+   SESSION_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='ingest' ORDER BY created_at ASC LIMIT 1;")
+   SKIPPED_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions, json_each(work_sessions.issues_json) WHERE work_sessions.id='$SESSION_ID' AND json_extract(value,'\$.kind')='skippedSourceFile';")
+   test "$SKIPPED_COUNT" -eq 2
    ```
    (Verified against a scratch table with this exact shape before writing
    this card: `json_each` on a table column needs the table joined into the
@@ -187,48 +216,50 @@ reproducible).
    For `.likelyIssues`/`.facesFound`, the count is each smart source's own
    `SetQuery` ANDed with `.importBatch(sessionID)`
    (`UnifiedSidebarPresentation.swift`'s doc comment on `ImportChildCounts`,
-   `:54-59`; `AppModel.swift:5440,5443`) — cross-check via the app's own
+   `:54-60`; `AppModel.swift:5511-5534`) — cross-check via the app's own
    `Likely Issues`/`Faces Found` smart-collection predicates
    (`SmartCollection.likelyIssues`/`.facesFound`, `AppModel.swift`) scoped to
    CARD1's asset IDs:
    ```bash
-   sqlite3 "$DB" "SELECT id FROM assets WHERE original_path LIKE '%/card1/%' ORDER BY id;"
+   script/vm_scenario_run.sh sql empty "SELECT id FROM assets WHERE original_path LIKE '/Users/admin/teststrip-vm/fixtures/import-011/card1/%' ORDER BY id;"
    ```
    Assert the AX-rendered child titles match `ImportChildKind.title`
    (`LibrarySource.swift:12-20`) exactly: `"Stacks"`, `"⚠ Skipped files"`,
    `"⚠ Preview failed"`, `"⚠ Likely issues"`, `"Faces found"` — for whichever
    are nonzero on this fixture (CARD1's `.skippedFiles` is guaranteed
-   nonzero at 2; the rest depend on evaluation state, which `--isolated`
+   nonzero at 2; the rest depend on evaluation state, which the `empty` VM run
    does not auto-run — see Sharp edges).
 8. Assert a zero-count child is **absent**, not disabled (`childRows`
    filters `guard count > 0 else { return nil }`,
    `UnifiedSidebarPresentation.swift:314-315`). For any of the five children
    with a zero count on this fixture:
    ```bash
-   script/ax_drive.sh find --contains "<child title>"   # expect not-found, not a disabled row
+   ! script/vm_scenario_run.sh ax find --contains "<child title>"   # not a disabled row
    ```
 9. Click `⚠ Skipped files`. Assert it opens the issue-review sheet
-   (`ImportIssueReview`, `LibraryGridView.swift:8802`, presented via
+   (`ImportIssueReview`, `LibraryGridView.swift:8801`, presented via
    `requestImportIssueReview`, `AppModel.swift:2543`) rather than an empty
    grid — skipped files are not in the catalog at all
    (`ImportChildKind.isDiagnostic`'s doc comment, `LibrarySource.swift:32-38`):
    ```bash
-   script/ax_drive.sh press --contains "⚠ Skipped files"
-   script/ax_drive.sh find --contains "notes.txt"
-   script/ax_drive.sh find --contains "readme.md"
+   script/vm_scenario_run.sh ax press --contains "⚠ Skipped files"
+   script/vm_scenario_run.sh ax find --contains "notes.txt"
+   script/vm_scenario_run.sh ax find --contains "readme.md"
    ```
    Dismiss the sheet, then assert the Cull lens disables while this child's
    source is selected (`ImportChildKind.isDiagnostic == true` for
    `.skippedFiles`, `LensRules.availability`'s diagnostic branch,
    `LibraryLens.swift:118-120`):
    ```bash
-   script/ax_drive.sh find --role AXButton --label "Cull" --help "Nothing here is cullable"
+   script/vm_scenario_run.sh ax find --role AXButton --label "Cull" --help "Nothing here is cullable"
    ```
 
 ### Part C — the row's context menu, and an older import
-10. Right-click CARD1's import row
-    (`ax_drive.sh press --contains "<CARD1 row title>" --button right`, the
-    SwiftUI-`.contextMenu` idiom `test/scenarios/README.md` documents).
+10. Right-click CARD1's import row using the SwiftUI-`.contextMenu` idiom
+    `test/scenarios/README.md` documents:
+    ```bash
+    script/vm_scenario_run.sh ax press --role AXButton --label "$CARD1_ROW_TITLE" --button right
+    ```
     Assert the menu offers exactly four current items: the star toggle
     (`Star Work` when unstarred, `Remove Star` when starred), `Cull stacks`,
     `Evaluate import`, and `Manual Compare over the import` — with no extras
@@ -239,30 +270,38 @@ reproducible).
     `work-stack-` sets exist if CARD1's frames landed within the stack
     builder's time-adjacency threshold, per Sharp edges below:
     ```bash
-    sqlite3 "$DB" "SELECT COUNT(*) FROM asset_sets WHERE id LIKE 'work-stack-%';"
+    script/vm_scenario_run.sh ax press --role AXMenuItem --label "Cull stacks"
+    script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM asset_sets WHERE id LIKE 'work-stack-%';"
     ```
     If the count is 0, confirm (before reporting a defect) that
     `beginStackCulling`'s no-stacks fallback fired instead — a plain culling
     session over CARD1 with `statusMessage` reading `"...; no time-adjacent
     stacks found"` (`AppModel.swift:5037-5041`) — and record that as the
     honest, source-grounded outcome for this fixture rather than a failure.
-11. Import CARD2 (same route: `submit_import_path.sh Teststrip "$CARD2"`) —
+11. Import CARD2 (same typed-path route, through the VM wrapper) —
     the same 4 frames as CARD1 plus 2 new ones, so this is **not** the "same
     files" case yet; wait for completion, then re-import CARD2 a second
     time (identical path, identical files this time — genuinely the same
     set). Assert the second CARD2 import's toast reads exactly
-    `"No new photos imported — N already in catalog"`
+    `"No new photos imported — 6 already in catalog"`
     (`ImportCompletionToastPresentation.headline`'s `isExistingOnly` branch,
-    `:67-68`, distinct from the unrelated zero-photo string `"No photos
-    imported"` at `:65`, which fires only when nothing in the folder scanned
+    `:75-76`, distinct from the unrelated zero-photo string `"No photos
+    imported"` at `:72-73`, which fires only when nothing in the folder scanned
     as importable at all — do not conflate the two) and carries **no**
     `Start culling` button (`showsStartCulling = !isExistingOnly &&
     summary.newPhotoCount > 0`, `:55` — both conjuncts are false here):
     ```bash
-    script/ax_drive.sh find --contains "already in catalog"
-    script/ax_drive.sh find --role AXButton --label "Start culling"   # expect not-found on this toast
+    script/vm_scenario_run.sh shell '$HOME/teststrip-vm/script/submit_import_path.sh Teststrip /Users/admin/teststrip-vm/fixtures/import-011/card2'
+    script/vm_scenario_run.sh ax wait --contains "Imported 2 photos (4 photos already in catalog)"
+    script/vm_scenario_run.sh shell '$HOME/teststrip-vm/script/submit_import_path.sh Teststrip /Users/admin/teststrip-vm/fixtures/import-011/card2'
+    script/vm_scenario_run.sh ax wait --contains "No new photos imported — 6 already in catalog"
+    ! script/vm_scenario_run.sh ax find --role AXButton --label "Start culling"
     ```
-12. Cull the **older** import (CARD1) from its sidebar row rather than the
+12. First prove the discriminator is non-vacuous: CARD1 contributed exactly
+    four catalog rows and CARD2 contributed exactly two CARD2-only rows. Then
+    record the culling-session count, latest row ID, and latest session ID
+    **after Step 10** and before pressing `Cull these`. Cull the **older**
+    import (CARD1) from its sidebar row rather than the
     newest (CARD2): click CARD1's row to select it as the source
     (`selectSidebarRow`/`applySource`'s `.workSession` case,
     `AppModel.swift:4698-4708,4852-4917`; `applyWorkSession` sets
@@ -272,11 +311,44 @@ reproducible).
     "Cull These" context-menu item — do not batch-select assets first and
     use the context-menu item instead, which takes a different, `.manual`-
     membership code path and would invalidate this step's SQL). Assert the
-    run's input set matches CARD1's assets, not CARD2's:
+    new run's input set matches CARD1's assets, not CARD2's. The count must
+    increase by exactly one and the new ID must differ from Step 10's latest
+    culling run, so an old-run lookup cannot satisfy the membership checks:
     ```bash
-    sqlite3 "$DB" "SELECT id FROM work_sessions WHERE kind='culling' ORDER BY created_at DESC LIMIT 1;" # get RUN_ID
-    sqlite3 "$DB" "SELECT json_extract(input_set_ids_json,'\$[0]') FROM work_sessions WHERE id='<RUN_ID>';" # SET_ID
-    sqlite3 "$DB" "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='<SET_ID>')) m, assets a WHERE a.id = json_extract(m.value,'\$.rawValue') AND a.original_path LIKE '%/card2/%';"
+    CARD1_BASELINE=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets WHERE original_path LIKE '/Users/admin/teststrip-vm/fixtures/import-011/card1/%';")
+    CARD2_ONLY_BASELINE=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets WHERE original_path LIKE '/Users/admin/teststrip-vm/fixtures/import-011/card2/%';")
+    test "$CARD1_BASELINE" -eq 4
+    test "$CARD2_ONLY_BASELINE" -eq 2
+
+    BEFORE_CULL_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions WHERE kind='culling';")
+    BEFORE_CULL_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='culling';")
+    BEFORE_LATEST_RUN_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='culling' ORDER BY rowid DESC LIMIT 1;")
+    test -n "$BEFORE_LATEST_RUN_ID" # Step 10 already created a culling run
+    CARD1_ROW_TITLE=$(script/vm_scenario_run.sh ax find --role AXButton --contains "Imported 4 photos from card1 (2 files skipped)" | awk 'index($0,"Imported 4 photos from card1 (2 files skipped)") && $0 !~ /^(Expand|Collapse) / {print; exit}')
+    test -n "$CARD1_ROW_TITLE"
+    script/vm_scenario_run.sh ax press --role AXButton --label "$CARD1_ROW_TITLE"
+    script/vm_scenario_run.sh ax press --role AXButton --label "Cull these"
+
+    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+      AFTER_CULL_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions WHERE kind='culling';")
+      NEW_RUN_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_CULL_ROWID;")
+      test "$AFTER_CULL_COUNT" -eq "$((BEFORE_CULL_COUNT + 1))" && test "$NEW_RUN_COUNT" -eq 1 && break
+      sleep 1
+    done
+    test "$AFTER_CULL_COUNT" -eq "$((BEFORE_CULL_COUNT + 1))"
+    test "$NEW_RUN_COUNT" -eq 1
+    RUN_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_CULL_ROWID;")
+    test -n "$RUN_ID"
+    test "$RUN_ID" != "$BEFORE_LATEST_RUN_ID"
+    SET_ID=$(script/vm_scenario_run.sh sql empty "SELECT json_extract(input_set_ids_json,'\$[0]') FROM work_sessions WHERE id='$RUN_ID';")
+    test -n "$SET_ID"
+
+    INPUT_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='$SET_ID'));")
+    CARD1_INPUT_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='$SET_ID')) m JOIN assets a ON a.id=json_extract(m.value,'\$.rawValue') WHERE a.original_path LIKE '/Users/admin/teststrip-vm/fixtures/import-011/card1/%';")
+    CARD2_ONLY_INPUT_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='$SET_ID')) m JOIN assets a ON a.id=json_extract(m.value,'\$.rawValue') WHERE a.original_path LIKE '/Users/admin/teststrip-vm/fixtures/import-011/card2/%';")
+    test "$INPUT_COUNT" -eq 4
+    test "$CARD1_INPUT_COUNT" -eq 4
+    test "$CARD2_ONLY_INPUT_COUNT" -eq 0
     ```
     `json_each` yields snapshot-member objects such as
     `{"rawValue":"<asset-id>"}`, so the join must extract each object's
@@ -317,22 +389,23 @@ reproducible).
 - Step 11: **fails if** the second identical-files import's toast doesn't
   read the exact existing-only string, or if it shows a `Start culling`
   button it has no business showing.
-- Step 12: **fails if** the older import's run pulls in any CARD2-only
-  asset — that would mean "cull an older import" silently scoped to the
-  newest one instead.
+- Step 12: **fails if** the positive CARD2-only baseline is not exactly 2,
+  pressing `Cull these` does not create exactly one genuinely new run, the
+  exact new run's input does not contain all 4 CARD1 members, its total input
+  is not exactly 4, or it contains any CARD2-only asset. Those checks reject
+  empty/subset/old-run mutants as well as accidental newest-import scoping.
 
 ## Cleanup
 ```bash
-rm -rf "$DUP_FIXTURES"
-./script/reset_isolated_test_data.sh --delete
+script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+script/vm_scenario_run.sh shell 'rm -rf /Users/admin/teststrip-vm/fixtures/import-011'
 ```
-Quit the launched instance.
 
 ## Sharp edges
 - **The Stacks/Likely-issues/Faces-found children depend on evaluation
-  state that `--isolated` does not auto-run.** CARD1's `.skippedFiles` child
+  state that an `empty` VM run does not auto-run.** CARD1's `.skippedFiles` child
   is guaranteed nonzero (2, from the hand-added non-image files); the other
-  four children may all be legitimately absent on a fresh isolated import
+  four children may all be legitimately absent on a fresh empty-catalog import
   with no evaluation pass triggered, in which case Step 7's assertion
   degenerates to "only `⚠ Skipped files` renders, and the app is honest
   about the rest being zero" — note that as the actual (not a fallback)
@@ -342,9 +415,9 @@ Quit the launched instance.
   within `AssetStackBuilder`'s time-adjacency threshold** — the same
   structural gap `cull-013-filmstrip.md`/`cull-014-stack-rail.md`/
   `cull-015-sidebar-sources.md`/`cull-029-autopilot-ghost-derivation.md`
-  document for their own stack-dependent assertions (smoke's capture
-  spacing is far wider than the 2s threshold; the dup-fixture seeder's
-  timestamp spacing was not independently verified in this pass). Step 10
+  document for their own stack-dependent assertions. The copied `faces`
+  originals' capture spacing was not independently verified for this card, so
+  Step 10
   is written to accept either outcome and calls out which one actually
   happened, per those cards' established pattern — don't let a 0-stacks
   result get reported as a defect without first checking the no-stacks
@@ -359,10 +432,10 @@ Quit the launched instance.
   insurance.
 - Step 12's discriminator query reads the `.snapshot` JSON path, not
   `.manual`. Traced directly: scoping to CARD1 via its `.workSession` source
-  sets `selectedAssetSetID = nil` (`applyWorkSession`, `AppModel.swift:4894`),
-  so `cullingInputSetID` (`:13001-13026`) takes its `else` branch and writes
+  sets `selectedAssetSetID = nil` (`applyWorkSession`, `AppModel.swift:4919-4936`),
+  so `cullingInputSetID` (`:13135-13159`) takes its `else` branch and writes
   a **fresh `work-input-<sessionID>` set with `.snapshot(inputAssetIDs)`
-  membership** (`:13014-13020`), not `.manual`. The `.manual._0`/`.snapshot
+  membership** (`:13148-13154`), not `.manual`. The `.manual._0`/`.snapshot
   ._0` JSON-path pattern itself is the same synthesized-Codable shape
   already verified live in `cull-020-pass-scope-and-undo.md:58`
   (`.manual._0`, for a stack-rail set) and `cull-025-run-strip-completion.md:
@@ -373,9 +446,14 @@ Quit the launched instance.
   `cullingInputSetID`'s branch before trusting this JSON path.
 
 ## Run status
+CURRENT PROCEDURE: PENDING FRESH VM RUN. The reusable procedure above is
+wrapper-only and Step 12 was hardened after the dated runs below. No fresh VM
+run was performed for this repair, so the revised Step 12 must not inherit the
+historical pass claim.
+
 UNRUN — authored 2026-08-08 for the unified-shell push (Task 12), source-cited
-against `feat/unified-shell` @ `496abf1e`. Pending a live VM run per
-`script/vm_scenario_run.sh`.
+against `feat/unified-shell` @ `496abf1e`. This is the original authoring state,
+retained as historical evidence.
 
 **Reconciled 2026-08-09 (Task 13, citation fix)**: the skipped-file citation
 (`LibraryImportService.swift:466-473`) named no directory, which read as

@@ -15,17 +15,18 @@ reach any of this — the repo has no SwiftUI view-inspection library.
 Source: `Sources/TeststripApp/LibraryGridView.swift` (`lensSwitcher`
 `:499-526`, `libraryResultHeader`'s "Cull these" button `:964-970`, window
 subtitle install `:140`), `Sources/TeststripApp/LibraryLens.swift`
-(`LibraryLens` enum `:10-30`, `keyEquivalent` `:46-55`, `defaultViewMode`
+(`LibraryLens` enum/title `:10-29`, `keyEquivalent` `:46-55`, `defaultViewMode`
 `:58-67`, `LensRules.availability`/`.availabilities`/`.resolvedLens`
-`:106-144`), `Sources/TeststripApp/AppModel.swift` (`selectLens` `:4752-4754`,
-`lensAvailabilities` `:4757-4762`, `applySource`'s resolved-lens fallback
-`:4877-4885`, `cullCurrentResults`/`cullTheseSourceTitle` `:5811-5824`,
-`SessionRestoreState` restore `:11705-11766` — `isRestorableLens` `:11770-
-11772`, `currentMapQuery` `:10900-10910`, `timelinePresentation` `:3324-3325`,
+`:106-145`), `Sources/TeststripApp/AppModel.swift` (`selectLens` `:4769-4772`,
+`lensAvailabilities` `:4784-4786`, `applySource`'s resolved-lens fallback
+`:4852-4917`, `cullCurrentResults`/`cullTheseSourceTitle` `:5901-5914`,
+`SessionRestoreState` restore `:11821-11895` — `isRestorableLens` `:11897-
+11901`, `currentMapQuery` `:11026-11032`, `timelinePresentation` `:3324-3325`,
 `peopleInCurrentSource` `:2296,3669`), `Sources/TeststripApp/SidebarView.swift`
 (Stacks gating `:46-55`, `sectionHeader`/`headerWithAddButton`/`addButton`
-`:99-169`), `Sources/TeststripApp/main.swift` (`LensCommands` ⌘1-⌘6
-`:168-174`, `InspectorCommands` ⌥⌘1-3 `:586-607`),
+`:99-169`), `Sources/TeststripApp/main.swift` (`LensCommands` `:164-196`,
+with the ⌘1-⌘6 shortcut block at `:168-174`, `InspectorCommands` ⌥⌘1-3
+`:588-607`),
 `Sources/TeststripApp/SessionRestoreState.swift` (`currentVersion = 2`
 `:15`).
 
@@ -43,22 +44,22 @@ task-12 report for the grep evidence):
   **different controls that cull different things** — the header button
   culls the current result set (`cullCurrentResults()`), the context-menu
   item culls the current selection (`cullCurrentSelection()`,
-  `AppModel.swift:5789`/`:5794`). Match the header button by **exact-case
-  label** (`ax_drive.sh find --label "Cull these"`, not `--contains`, and
-  never case-insensitively) — a loosened match will silently hit the wrong
-  control and cull the wrong set.
+  `AppModel.swift:5867`). Match the header button by **exact-case label**
+  (`script/vm_scenario_run.sh ax find --label "Cull these"`, not
+  `--contains`, and never case-insensitively) — a loosened match will silently
+  hit the wrong control and cull the wrong set.
 - Reading `LibraryLens.defaultViewMode` (`:58-67`) directly: the Cull lens's
   *default* sub-mode is `.loupe`, not a grid. Pressing ⌘1 on a lens the app
   has not visited yet in this session lands straight in the culling loupe
   (`lastCullViewMode` defaults to `.loupe`, `AppModel.swift:2011`), and both
   that route and the Loupe lens's `.libraryLoupe` route render the window
-  subtitle `"Loupe"` (`LibraryGridView.swift:8378`). This is a known,
+  subtitle `"Loupe"` (`LibraryGridView.swift:8377`). This is a known,
   already-flagged UX quirk (see `app-003-workspace-switching.md`'s note:
   "switcher says Cull but ⌘1 lands on a view subtitled 'Loupe'") — the
   subtitle alone cannot disambiguate Cull-lens-in-loupe from Loupe-lens; Step
   4 below accounts for it.
 - Session restore does not special-case "mid-cull" — reading
-  `isRestorableLens` (`AppModel.swift:11770-11772`) directly, **every** quit
+  `isRestorableLens` (`AppModel.swift:11897-11901`) directly, **every** quit
   while the Cull lens is selected relaunches on Grid, whether or not a
   culling run was active; the other five lenses always restore as-is. Step 9
   below asserts the actual (simpler, unconditional) rule rather than the
@@ -66,13 +67,17 @@ task-12 report for the grep evidence):
 
 ## Pre-state
 ```bash
-./script/build_and_run.sh --smoke
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
+script/vm_scenario_run.sh sync smoke empty facestack
+script/vm_scenario_run.sh launch smoke
+script/vm_scenario_run.sh ax wait-vended Teststrip
 ```
+All launch, drive, shell, and SQL actions use the VM wrapper. Except for Step
+6's explicitly separate stack-bearing `empty` leg, a relaunch always reopens
+the latest `smoke` run directory; calling `launch smoke` again would create a
+different catalog and invalidate restore assertions.
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`.
+1. The wrapper launch above must vend Teststrip's window.
 2. Assert the toolbar's principal slot holds an accessibility container
    labelled `"Lens"` (`lensSwitcher`'s `.accessibilityLabel("Lens")`,
    `LibraryGridView.swift:525`) containing six buttons labelled `Cull`,
@@ -80,19 +85,19 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    (`LibraryLens.allCases`/`.title`, `LibraryLens.swift:11-16,20-29`):
    ```bash
    for name in Cull Grid Loupe Timeline Map People; do
-     script/ax_drive.sh find --role AXButton --label "$name"
+     script/vm_scenario_run.sh ax find --role AXButton --label "$name"
    done
    ```
 3. Assert **absence** of the deleted controls:
    ```bash
-   script/ax_drive.sh find --role AXRadioButton --label "Workspace"   # expect not-found
-   script/ax_drive.sh find --contains "Library View"                 # expect not-found
+   ! script/vm_scenario_run.sh ax find --role AXRadioButton --label "Workspace"
+   ! script/vm_scenario_run.sh ax find --contains "Library View"
    ```
 4. Press ⌘1 through ⌘6 in turn (`LensCommands`, `main.swift:168-174`, key
    equivalents `1`-`6` per `LibraryLens.keyEquivalent`,
    `LibraryLens.swift:46-55`). After each, read `.navigationSubtitle`
    (`LibraryGridChromePolicy.windowSubtitle(for:)`, `LibraryGridView.swift:
-   8375-8386`) via the window's AXSubrole/title, and assert the scope line's
+   8374-8385`) via the window's AXSubrole/title, and assert the scope line's
    source title (`model.scopeLine.sourceTitle`, rendered by `scopeLineBar`,
    `LibraryGridView.swift:750-767`, AX label `"Scope"`) is **unchanged**
    across all six:
@@ -104,44 +109,70 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    - ⌘5 (Map) → `"Map"`
    - ⌘6 (People) → `"People"`
    ```bash
-   script/ax_drive.sh find --role AXStaticText --contains "<expected subtitle>"
+   script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – <expected subtitle>"
    ```
 5. Select a source (a smart collection row in the sidebar with a nonzero
    count, e.g. whichever of `Rejects`/`Five Stars`/`Needs Keywords` is
-   present on `--smoke` — see `cull-015-sidebar-sources.md` for the exact
+   present on `smoke` — see `cull-015-sidebar-sources.md` for the exact
    predicate set), note its title in the scope line, then cycle ⌘1–⌘6 again
    and assert the scope line's source title still names that source after
    **every** switch — the ⌘1–⌘6 orthogonality contract
-   (`applySource`'s lens-preserving fallback, `AppModel.swift:4877-4885`;
+   (`applySource`'s lens-preserving fallback, `AppModel.swift:4908-4916`;
    `selectLens` only ever changes `selectedView`, never `selectedSource`,
-   `AppModel.swift:4752-4754`).
+   `AppModel.swift:4769-4772`).
 6. Assert the sidebar's non-Stacks sections are identical across all six
-   lenses, and that **Stacks · Auto-Grouped is Cull-only** — the corrected
-   assertion (see above), asserted in both directions:
+   lenses. Then use a distinct, real stack-bearing VM leg to prove that
+   **Stacks · Auto-Grouped is Cull-only** in both directions. An empty/smoke
+   catalog cannot prove either direction: absence outside Cull is vacuous
+   unless the same active run visibly has Stacks in Cull.
    ```bash
    # Present-everywhere sections: pick two that should always render.
-   script/ax_drive.sh find --contains "Library"
-   script/ax_drive.sh find --contains "Smart Collections"
+   script/vm_scenario_run.sh ax find --contains "Library"
+   script/vm_scenario_run.sh ax find --contains "Smart Collections"
+
+   # Dedicated stack-bearing leg: import the synced, EXIF-stamped facestack
+   # fixture into a fresh empty VM catalog, then use the import row's real
+   # Cull-stacks route to create persisted work-stack input sets.
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh launch empty
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   script/vm_scenario_run.sh shell '$HOME/teststrip-vm/script/submit_import_path.sh Teststrip $HOME/teststrip-vm/isolated/facestack/FaceStackOriginals'
+   script/vm_scenario_run.sh ax wait --contains "Import complete"
+   FACESTACK_ROW_TITLE=$(script/vm_scenario_run.sh ax find --role AXButton --contains "from FaceStackOriginals" | awk 'index($0,"from FaceStackOriginals") && $0 !~ /^(Expand|Collapse) / {print; exit}')
+   test -n "$FACESTACK_ROW_TITLE"
+   script/vm_scenario_run.sh ax press --role AXButton --label "$FACESTACK_ROW_TITLE" --button right
+   script/vm_scenario_run.sh ax press --role AXMenuItem --label "Cull stacks"
+   script/vm_scenario_run.sh ax find --contains "Stacks · Auto-Grouped"
+
+   for key_number in 2 3 4 5 6; do
+     script/vm_scenario_run.sh key "keystroke \"$key_number\" using {command down}"
+     ! script/vm_scenario_run.sh ax find --contains "Stacks · Auto-Grouped"
+   done
+
+   # Resume the original smoke catalog for the remaining steps.
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh shell '
+   latest=$(ls -dt "$HOME/teststrip-vm"/run/smoke-* | head -1)
+   open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"
+   '
+   script/vm_scenario_run.sh ax wait-vended Teststrip
    ```
-   With a stack-bearing fixture (`--smoke` has none per
-   `test/scenarios/README.md` — this half is expected untestable-without-
-   fixture, note it as such rather than fabricating one):
-   - In the Cull lens: `script/ax_drive.sh find --contains "Auto-Grouped"` →
-     found (if `model.cullingStackListEntries()` is nonempty).
-   - In every other lens: `script/ax_drive.sh find --contains "Auto-Grouped"`
-     → **not found**, even with the identical stack data present — this is
-     the load-bearing negative half of the assertion and must be checked
-     explicitly, not assumed from the Cull-lens positive.
 7. Force an `Analysis Failures` (`SmartCollection.providerFailures`) row into
-   existence — `--smoke` seeds no provider failures, so hand-seed one row
+   existence — `smoke` seeds no provider failures, so hand-seed one row
    directly (the same "prove the wiring, not the detection" pattern
    `inspect-004-retry-surfaces.md` already uses for provider-failure rows):
    ```bash
-   ASSET_ID=$(sqlite3 "$DB" "SELECT id FROM assets LIMIT 1;")
-   sqlite3 "$DB" "INSERT INTO evaluation_failures (asset_id, provider, message, failed_at, updated_at) VALUES ('$ASSET_ID', 'test-provider', 'synthetic failure', strftime('%s','now'), strftime('%s','now'));"
+   ASSET_ID=$(script/vm_scenario_run.sh sql smoke "SELECT id FROM assets LIMIT 1;")
+   script/vm_scenario_run.sh sql smoke "INSERT INTO evaluation_failures (asset_id, provider, message, failed_at, updated_at) VALUES ('$ASSET_ID', 'test-provider', 'synthetic failure', strftime('%s','now'), strftime('%s','now'));"
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh shell '
+   latest=$(ls -dt "$HOME/teststrip-vm"/run/smoke-* | head -1)
+   open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"
+   '
+   script/vm_scenario_run.sh ax wait-vended Teststrip
    ```
-   Relaunch or trigger a sidebar refresh so `smartCollectionCounts` picks it
-   up, then select the `Analysis Failures` row while in the Cull lens.
+   The same-catalog relaunch above makes `smartCollectionCounts` pick it up;
+   select the `Analysis Failures` row while in the Cull lens.
    Assert the app falls back to Grid (`LensRules.resolvedLens`,
    `LibraryLens.swift:137-144`) and the Cull segment renders `.disabled`
    with AXHelp `"Nothing here is cullable"` (`LensRules.availability`'s
@@ -149,36 +180,72 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    .isDiagnostic`'s `.smartCollection(.providerFailures)` case,
    `LibrarySource.swift:78-79`):
    ```bash
-   script/ax_drive.sh find --role AXButton --label "Cull" --help "Nothing here is cullable"
+   script/vm_scenario_run.sh key 'keystroke "1" using {command down}'
+   script/vm_scenario_run.sh ax press --contains "Analysis Failures"
+   script/vm_scenario_run.sh ax find --role AXButton --label "Cull" --help "Nothing here is cullable"
    ```
 8. Run a token search (`rating:5`), press the result-header **"Cull these"**
    button (exact-case match — see the correction above:
-   `script/ax_drive.sh find --label "Cull these"` then `press --label "Cull
-   these"`, never `--contains`), and assert the scope line names the search
+   `script/vm_scenario_run.sh ax find --label "Cull these"` then
+   `script/vm_scenario_run.sh ax press --label "Cull these"`, never
+   `--contains`), and assert the scope line names the search
    (the chip text, since `cullTheseSourceTitle()` prefers
    `activeLibraryFilterChips` over the raw source title,
-   `AppModel.swift:5822-5825`) and the catalog gained a `culling` work
+   `AppModel.swift:5911-5914`) and the catalog gained a `culling` work
    session:
    ```bash
-   sqlite3 "$DB" "SELECT kind, title FROM work_sessions WHERE kind='culling' ORDER BY created_at DESC LIMIT 1;"
+   script/vm_scenario_run.sh ax type --role AXTextField --label "Search Catalog" --text "rating:5"
+   script/vm_scenario_run.sh key 'key code 36'
+   script/vm_scenario_run.sh ax find --role AXButton --label "Cull these"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Cull these"
+   CULL_ROW=$(script/vm_scenario_run.sh sql smoke "SELECT kind || '|' || title FROM work_sessions WHERE kind='culling' ORDER BY rowid DESC LIMIT 1;")
+   test "$CULL_ROW" = "culling|Rating >= 5"
    ```
-9. Quit and relaunch. Assert the source and lens come back
+9. Quit and relaunch the same catalog once from **each** lens. Assert the source
+   and lens come back
    (`SessionRestoreState` v2, `SessionRestoreState.swift:15`) **for every
    lens except Cull**; and that quitting while the Cull lens was selected —
    regardless of whether a culling run was active — relaunches on the same
-   source in **Grid**, per `isRestorableLens` (`AppModel.swift:11770-11772`,
-   `lens != .cull`, unconditional). Drive this twice: once quitting from the
-   Timeline lens (expect Timeline restored), once quitting from the Cull
-   lens (expect Grid, not Cull).
+   source in **Grid**, per `isRestorableLens` (`AppModel.swift:11897-11901`,
+   `lens != .cull`, unconditional). The reusable matrix is:
+   ```bash
+   SOURCE_TITLE="Rating >= 5" # the source established in Step 8
+   for key_and_lens in "2 Grid" "3 Loupe" "4 Timeline" "5 Map" "6 People"; do
+     key_number=${key_and_lens%% *}
+     lens=${key_and_lens#* }
+     script/vm_scenario_run.sh key "keystroke \"$key_number\" using {command down}"
+     script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+     script/vm_scenario_run.sh shell '
+     latest=$(ls -dt "$HOME/teststrip-vm"/run/smoke-* | head -1)
+     open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"
+     '
+     script/vm_scenario_run.sh ax wait-vended Teststrip
+     script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – $lens"
+     script/vm_scenario_run.sh ax find --label "Scope" --contains "$SOURCE_TITLE"
+   done
+
+   script/vm_scenario_run.sh key 'keystroke "1" using {command down}'
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh shell '
+   latest=$(ls -dt "$HOME/teststrip-vm"/run/smoke-* | head -1)
+   open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"
+   '
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Grid"
+   script/vm_scenario_run.sh ax find --label "Scope" --contains "$SOURCE_TITLE"
+   ```
+   The dated run below drove only Timeline→Timeline and Cull→Grid. Those two
+   cells are historical evidence; Grid, Loupe, Map, and People remain pending
+   until this full matrix is driven.
 10. **Every lens is source-scoped — assert it, don't assume it.** With a
     saved static Set selected (create one via the Sets "+" button on a
     multi-asset selection first if none exists), press ⌘5 (Map) and assert
     the coverage badge (`model.geotaggedCoverage`, `LibraryGridView.swift:
-    7596,7674`) counts the **set**, not the catalog (behaviour change 11,
-    `currentMapQuery()`, `AppModel.swift:10900-10910`, which ANDs in
+    7591-7596,7665-7674`) counts the **set**, not the catalog (behaviour change 11,
+    `currentMapQuery()`, `AppModel.swift:11026-11032`, which ANDs in
     `.assetSet(selectedAssetSetID)` for explicit-ID sources):
     ```bash
-    sqlite3 "$DB" "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.manual._0') FROM asset_sets WHERE name='<set name>'));"
+    script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.manual._0') FROM asset_sets WHERE name='<set name>'));"
     ```
     (This `.manual._0` JSON path is the same pattern already used and
     live-verified in `cull-020-pass-scope-and-undo.md:58` and
@@ -192,35 +259,56 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
     (assetIDs: scopeAssetIDs)`) holds only people present in the set.
 11. Reopen a culling session from the sidebar's Recent Work section
     (`applySource`'s `.workSession` case → `applyWorkSession`,
-    `AppModel.swift:4870,4888-4907`) while in the Grid lens. Assert the lens
+    `AppModel.swift:4901-4902,4919-4936`) while in the Grid lens. Assert the lens
     is **still Grid** (behaviour change 10 — `applySource`'s resolved-lens
-    fallback at `:4877-4885` only forces a lens change when the *current*
+    fallback at `:4908-4916` only forces a lens change when the *current*
     lens is disabled for the reopened source; it used to force the loupe
     unconditionally).
-12. Assert the Sets "+" hint popover does **not** fire on the Smart
-    Collections header. The Sets header's add button
+12. Assert the Sets-only no-selection hint does **not** fire on the Smart
+    Collections header, and positively identify each header's own destination.
+    The Sets header's add button
     (`accessibilityLabel("New Set from Selection")`) is bound to
     `isShowingSavedSetsNoSelectionHint` (`SidebarView.swift:107`); the Smart
     Collections header's add button
     (`accessibilityLabel("New from search")`) passes `hintBinding: nil`
     (`SidebarView.swift:115`, `headerWithAddButton`/`addButton` at
     `:123-169` — a single shared `@State` bound to two `.popover`s was the
-    bug this guards against). With no selection, click each header's "+" in
-    turn. On `--smoke`, first run the zero-result search `zzzznotfound`, wait
-    until the result header reports 0 photos, and do not batch-select anything;
-    this establishes the actual no-selection branch
+    bug this guards against). On `smoke`, first run the zero-result search
+    `zzzznotfound`, wait for the result header's exact live text `No matches for
+    “zzzznotfound”` (`LibraryResultHeaderPresentation.swift:80-86`), and do
+    not batch-select anything; this establishes the actual no-selection branch
     (`canSaveSelectedAssetAsManualSet`, `AppModel.swift:3282-3284`). SwiftUI
     vends each header/button pair as one `AXHeading`, with the button's exact
     U+2026-ellipsis help string on that heading, so drive the live-proven
     heading/help routes rather than the discarded button labels:
     ```bash
-    script/ax_drive.sh press --role AXHeading --label "Smart Collections" --help "New from search…"
-    script/ax_drive.sh find --contains "Select photos, then save them as a set"   # expect not-found
-    script/ax_drive.sh press --role AXHeading --label "Sets" --help "New Set from Selection…"
-    script/ax_drive.sh find --contains "Select photos, then save them as a set"   # expect found
+    script/vm_scenario_run.sh ax type --role AXTextField --label "Search Catalog" --text "zzzznotfound"
+    script/vm_scenario_run.sh key 'key code 36'
+    script/vm_scenario_run.sh ax wait --contains "No matches for “zzzznotfound”"
+
+    script/vm_scenario_run.sh ax press --role AXHeading --label "Smart Collections" --help "New from search…"
+    script/vm_scenario_run.sh ax find --contains "New Smart Collection"
+    ! script/vm_scenario_run.sh ax find --contains "Select photos, then save them as a set"
+    script/vm_scenario_run.sh ax press --role AXButton --label "Cancel"
+    ! script/vm_scenario_run.sh ax find --contains "New Smart Collection"
+
+    # Restore a nonempty result and select one photo before testing Sets: that
+    # header should open its save UI, not the no-selection hint branch.
+    script/vm_scenario_run.sh ax type --role AXTextField --label "Search Catalog" --text ""
+    script/vm_scenario_run.sh key 'key code 36'
+    script/vm_scenario_run.sh ax wait --contains "smoke-0.jpg"
+    script/vm_scenario_run.sh ax press --role AXButton --label "smoke-0.jpg"
+    script/vm_scenario_run.sh ax press --role AXHeading --label "Sets" --help "New Set from Selection…"
+    script/vm_scenario_run.sh ax find --contains "Save Selection"
+    script/vm_scenario_run.sh ax press --role AXButton --label "Cancel"
     ```
+    `New Smart Collection` is the builder's positive identity
+    (`LibraryGridView.swift:2084`); `Save Selection` is the manual-set
+    popover's positive identity (`:1639-1646`). Closing the first popover
+    before pressing Sets prevents a stale Smart-Collection element from
+    making the second check pass accidentally.
 13. **Sharp edge to record:** ⌥⌘1/⌥⌘2/⌥⌘3 remain the inspector-section
-    scrolls (`InspectorCommands`, `main.swift:586-607`, `InspectorTab
+    scrolls (`InspectorCommands`, `main.swift:588-607`, `InspectorTab
     .keyEquivalent` `1`/`2`/`3`, `InspectorView.swift:495-500`) and sit
     directly beneath ⌘1–⌘3, which are now lens selectors, not the old
     workspace switch; `inspect-001-toggle-tabs.md` is the card that pins the
@@ -238,9 +326,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - Step 5: **fails if** the scope line's source title ever reverts to a
   different source mid-cycle — that would mean a lens switch silently
   re-scoped.
-- Step 6: **fails if** any non-Stacks section differs between lenses, if
-  Stacks renders outside the Cull lens, or if Stacks is absent from the Cull
-  lens despite `cullingStackListEntries()` being nonempty.
+- Step 6: **fails if** any non-Stacks section differs between lenses, if the
+  real facestack import produces no visible Stacks section in Cull, or if that
+  same section remains visible in any of the other five lenses. Neither
+  direction may be credited from an empty fixture.
 - Step 7: **fails if** the Cull segment is enabled while `Analysis Failures`
   is selected, if the AXHelp text doesn't read exactly `"Nothing here is
   cullable"`, or if the app doesn't fall back to Grid.
@@ -249,31 +338,33 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   driver's match is not case-sensitive — flag immediately, don't loosen the
   card), if the scope line doesn't name the search, or if no `culling`
   session row appears.
-- Step 9: **fails if** any of the five non-Cull lenses fails to restore, or
-  if a Cull-lens quit restores to anything other than Grid.
+- Step 9: **fails if** any cell in the five-non-Cull restore matrix fails, if
+  any relaunch changes the source, or if a Cull-lens quit restores to anything
+  other than Grid. Untested cells stay pending; two driven cells do not pass
+  the six-cell matrix.
 - Step 10: **fails if** the Map coverage badge, the Timeline year-ribbon
   total, or the People list count the whole catalog instead of the set —
   this is exactly the pre-existing gap behaviour change 11 fixes; a
   regression here is a P0 for this push.
 - Step 11: **fails if** reopening the culling session forces the loupe
   (Cull lens) instead of leaving Grid selected.
-- Step 12: **fails if** the Smart Collections "+" shows the "save them as a
-  set" hint popover, or if the Sets "+" fails to show it.
+- Step 12: **fails if** the exact zero-match header never appears, Smart
+  Collections fails to open `New Smart Collection`, the Sets-only hint leaks
+  into that popover, the Smart popover remains open after Cancel, or Sets with
+  a selected photo fails to open `Save Selection`.
 
 ## Cleanup
 ```bash
-sqlite3 "$DB" "DELETE FROM evaluation_failures WHERE provider = 'test-provider';"
-./script/reset_isolated_test_data.sh --delete
+script/vm_scenario_run.sh sql smoke "DELETE FROM evaluation_failures WHERE provider = 'test-provider';"
+script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
 ```
-Quit the launched instance.
 
 ## Sharp edges
-- Step 6's stack-presence positive half is untestable on `--smoke` (no
-  persisted stacks, per `test/scenarios/README.md`) — same gap already
-  tracked by `cull-013-filmstrip.md`/`cull-014-stack-rail.md`/
-  `cull-015-sidebar-sources.md`. The negative half (Stacks absent outside
-  Cull) is testable on any fixture, including `--smoke`, and must not be
-  skipped.
+- Step 6 cannot credit either direction on `smoke` (no persisted stacks, per
+  `test/scenarios/README.md`). The outside-Cull absence is vacuous unless the
+  same active session first proves Stacks present in Cull. The dedicated
+  `facestack` import leg above creates that real persisted stack session; both
+  directions remain pending until that leg runs.
 - Step 7's hand-seeded `evaluation_failures` row proves the wiring
   (`isDiagnostic` → `LensRules.availability` → disabled segment with the
   right AXHelp), not that the app's own evaluation pipeline ever produces
@@ -294,9 +385,17 @@ Quit the launched instance.
   confused.
 
 ## Run status
+CURRENT STATUS: PARTIALLY TESTED / PENDING. No fresh VM run was performed for
+this repair. The dated run below proves many individual legs, but does **not**
+pass the revised card: both Step 6 Stacks directions await the stack-bearing
+fixture leg; Step 9 has historical evidence only for Timeline→Timeline and
+Cull→Grid while Grid, Loupe, Map, and People remain pending; and Step 12's
+exact zero-match wait plus close-before-Sets positive identities have not been
+re-driven. Keep the card conservative until those procedures run.
+
 UNRUN — authored 2026-08-08 for the unified-shell push (Task 12), source-cited
-against `feat/unified-shell` @ `496abf1e`. Pending a live VM run per
-`script/vm_scenario_run.sh`.
+against `feat/unified-shell` @ `496abf1e`. This is the original authoring
+state, retained as historical evidence rather than the current status.
 
 **Reconciled 2026-08-09 (Task 13, citation fixes)**: two drifted line
 citations found in review and corrected here, both re-verified directly
@@ -311,7 +410,8 @@ other — tightened both to `:168-174`, the `ForEach`/`.keyboardShortcut`
 block itself. No step or assertion changed, only citations. Steps
 themselves not re-verified live.
 
-**PASS (11 of 12 steps) — live VM run 2026-08-09**, `feat/unified-shell` @
+**HISTORICAL RESULT: PASS (11 of 12 then-current steps) — live VM run
+2026-08-09**, `feat/unified-shell` @
 `8f598239`, `script/vm_scenario_run.sh launch smoke` in the `teststrip-e2e`
 Tart VM. Steps 1-5 and 7-12 run and passed; Step 6 ran in part (see below);
 Step 13 is a documentation note, not an assertion, and was not driven beyond
@@ -343,7 +443,8 @@ What passed, with the evidence:
   scope `Rating >= 5, 4 photos · ✓ 0 · ✕ 1 · 3 left` (the chip text, per
   `cullTheseSourceTitle()`), and the catalog gained
   `culling|Rating >= 5|running`.
-- **Step 9** — both directions. Quit from Timeline → relaunch restored
+- **Step 9** — both directions that the then-current two-leg procedure asked
+  for. Quit from Timeline → relaunch restored
   `Teststrip – Timeline` on the same source. Quit from Cull → relaunch came
   back on `Teststrip – Grid`, same source, per `isRestorableLens`.
 - **Step 10** — with a hand-made 2-photo static set `ScopeProbeSet` selected
