@@ -39,14 +39,24 @@ final class ImportSourceScopingTests: XCTestCase {
         XCTAssertFalse(model.importSourceSummaries.contains { $0.sessionID.rawValue == "cull-1" })
     }
 
-    func testImportRowTitleUsesTheSessionDateAndItsFolderDetail() throws {
-        let (model, repository) = try makeModelWithCatalogAssets(named: "import-title", assets: [])
+    func testImportRowTitleUsesTheSessionDateAndItsFolderDetailAndCountsItsOutputMembership() throws {
+        let outputAssets = (0..<4).map { index in
+            makeAsset(id: "import-title-\(index)", path: "/Photos/Import/title-\(index).jpg", rating: index)
+        }
+        let (model, repository) = try makeModelWithCatalogAssets(named: "import-title", assets: outputAssets)
+        let outputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "import-title-output"),
+            name: "Imported photos",
+            assetIDs: outputAssets.map(\.id)
+        )
+        try repository.upsert(outputSet)
         try repository.save(makeImportSession(
             id: "import-titled",
             detail: "Imported from /Cards/CARD-A",
             createdAt: Date(timeIntervalSince1970: 1_754_000_000),
             completedUnitCount: 4,
-            totalUnitCount: 9
+            totalUnitCount: 9,
+            outputSetIDs: [outputSet.id]
         ))
 
         try model.refreshImportSourceSummaries()
@@ -55,7 +65,7 @@ final class ImportSourceScopingTests: XCTestCase {
         XCTAssertTrue(summary.title.hasSuffix("Imported from /Cards/CARD-A"), summary.title)
         XCTAssertTrue(summary.title.contains(" · "), summary.title)
         XCTAssertNotEqual(summary.title, "Import photos")
-        XCTAssertEqual(summary.assetCount, 9, "assetCount prefers totalUnitCount (9) over completedUnitCount (4)")
+        XCTAssertEqual(summary.assetCount, 4, "assetCount describes the four-photo source, not the nine attempted photos")
     }
 
     func testImportSummaryAssetCountFallsBackToCompletedUnitCountWhenTotalIsNil() throws {
@@ -154,7 +164,8 @@ final class ImportSourceScopingTests: XCTestCase {
         detail: String,
         createdAt: Date,
         completedUnitCount: Int = 0,
-        totalUnitCount: Int? = nil
+        totalUnitCount: Int? = nil,
+        outputSetIDs: [AssetSetID] = []
     ) -> WorkSession {
         WorkSession(
             id: WorkSessionID(rawValue: id),
@@ -164,7 +175,7 @@ final class ImportSourceScopingTests: XCTestCase {
             detail: detail,
             status: .completed,
             inputSetIDs: [],
-            outputSetIDs: [],
+            outputSetIDs: outputSetIDs,
             completedUnitCount: completedUnitCount,
             totalUnitCount: totalUnitCount,
             createdAt: createdAt,

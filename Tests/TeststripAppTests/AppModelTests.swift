@@ -17899,23 +17899,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(toast.headline, "No new photos imported — 1 already in catalog")
     }
 
-    // Pins vm-fix-review.md finding 2: `recordCompletedImportActivity` sets
-    // `totalUnitCount: result.newAssetCount + result.existingAssetCount`
-    // (the finding-2 arithmetic fix, correct on its own), but
-    // `ImportCompletionToastPresentation.headline`'s default branch renders
-    // `"Imported \(summary.photoCountText)"`, and `photoCountText` is
-    // `photoCountDescription(importedPhotoCount)` where `importedPhotoCount
-    // == totalUnitCount`. So a real mixed re-import — some files new, some
-    // already cataloged — now claims the combined total was imported, not
-    // just the new files.
-    //
-    // Whether the intended mixed-case copy should mention the
-    // already-cataloged count at all is genuinely ambiguous (compare the
-    // existing-only headline above, which does), so this only asserts the
-    // unambiguous half: the headline must not claim all 6 photos were
-    // imported when only 2 were.
+    // A mixed import has two different count domains. Completion arithmetic
+    // includes every attempted photo, while the import source contains only
+    // newly cataloged output. Exercise the real background path once so its
+    // result, toast/receipt data, sidebar source, selection, and Cull input
+    // cannot silently disagree.
     @MainActor
-    func testMixedBackgroundReimportToastHeadlineDoesNotOverstateImportedCount() async throws {
+    func testMixedBackgroundImportKeepsAttemptArithmeticAndScopesTheRowAndCullToNewPhotos() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-mixed-background-reimport")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -17934,24 +17924,66 @@ final class AppModelTests: XCTestCase {
         // same-bytes files at different paths would collide as duplicates of
         // each other rather than behaving as 6 independent photos.
         _ = try await model.importFolderInBackground(photoFolder)
-        for index in 0..<2 {
-            try writeDistinctTestPNG(to: photoFolder.appendingPathComponent("new-\(index).png"), tag: 100 + index)
+        let newPhotoURLs = (0..<2).map { photoFolder.appendingPathComponent("new-\($0).png") }
+        for (index, newPhotoURL) in newPhotoURLs.enumerated() {
+            try writeDistinctTestPNG(to: newPhotoURL, tag: 100 + index)
         }
         let secondResult = try await model.importFolderInBackground(photoFolder)
 
+        XCTAssertEqual(secondResult.importedAssets.count, 2)
         XCTAssertEqual(secondResult.newAssetCount, 2)
         XCTAssertEqual(secondResult.existingAssetCount, 4)
+        XCTAssertEqual(secondResult.newAssetCount + secondResult.existingAssetCount, 6)
+        XCTAssertEqual(Set(secondResult.importedAssets.map(\.originalURL)), Set(newPhotoURLs))
+        let newAssetIDs = Set(secondResult.importedAssets.map(\.id))
 
         let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        XCTAssertEqual(summary.importedPhotoCount, 6)
         XCTAssertEqual(summary.newPhotoCount, 2)
         XCTAssertEqual(summary.existingPhotoCount, 4)
 
+        let activity = try XCTUnwrap(model.recentWork.first { $0.id == summary.activityID })
+        XCTAssertEqual(activity.completedUnitCount, 2)
+        XCTAssertEqual(activity.totalUnitCount, 6)
+
+        let receipt = try XCTUnwrap(model.activityCenterPresentation.receipts.first)
+        XCTAssertEqual(receipt.sessionID, WorkSessionID(rawValue: summary.activityID))
+        XCTAssertEqual(receipt.title, activity.detail)
+        XCTAssertTrue(receipt.canStartCulling)
+
         let toast = try XCTUnwrap(model.importCompletionToast)
+        XCTAssertEqual(toast.sessionID, WorkSessionID(rawValue: summary.activityID))
         XCTAssertFalse(
             toast.headline.contains("6 photo"),
             "toast headline '\(toast.headline)' claims 6 photos were imported (2 new + 4 already " +
             "cataloged) — photoCountText is derived from totalUnitCount (new + existing), not newAssetCount"
         )
+
+        let importSourceSummary = try XCTUnwrap(
+            model.importSourceSummaries.first { $0.sessionID.rawValue == summary.activityID }
+        )
+        XCTAssertEqual(importSourceSummary.assetCount, 2, "the row count describes the two-photo output source")
+
+        let importSessionID = WorkSessionID(rawValue: summary.activityID)
+        let importSession = try catalog.repository.session(id: importSessionID)
+        let outputSetID = try XCTUnwrap(importSession.outputSetIDs.first)
+        let outputAssetIDs = Set(assetIDs(in: try catalog.repository.assetSet(id: outputSetID)))
+        XCTAssertEqual(outputAssetIDs, newAssetIDs)
+
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first { row in
+            row.target?.kind == .workSession(importSessionID)
+        })
+        XCTAssertEqual(importRow.countText, "2")
+
+        try model.selectSidebarRow(importRow)
+
+        XCTAssertEqual(Set(model.assets.map(\.id)), newAssetIDs)
+
+        let cullingSession = try model.startCullingImport(sessionID: importSessionID, title: summary.cullingSessionName)
+        let inputSetID = try XCTUnwrap(cullingSession.inputSetIDs.first)
+        let inputAssetIDs = Set(assetIDs(in: try catalog.repository.assetSet(id: inputSetID)))
+        XCTAssertEqual(inputAssetIDs, newAssetIDs)
     }
 
     // Pins vm-fix-review.md finding 3: `importCompletionStatus` and
