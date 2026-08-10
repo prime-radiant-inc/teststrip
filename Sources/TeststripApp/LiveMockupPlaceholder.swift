@@ -234,7 +234,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Studio",
             status: .partial,
             placeholder: .studioLibrary,
-            currentImplementation: "The Grid lens (⌘2) has real catalog navigation, selectable Recently Added import output, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
+            currentImplementation: "The Grid lens (⌘2) has real catalog navigation, selectable import sources, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
         ),
         LiveMockupDesignSurface(
             designID: "1b",
@@ -302,7 +302,7 @@ public enum LiveMockupDesignSurfaces {
         LiveMockupDesignSurface(
             designID: "5b",
             title: "Places",
-            status: .deferred,
+            status: .partial,
             placeholder: .placesMap,
             currentImplementation: "The Map lens exposes catalog-backed clustering, reverse-geocoded top locations, and geo-bounds drill-down; custom basemap styling, region search, and drawn-region selection remain deferred."
         ),
