@@ -1,241 +1,330 @@
-**Task 7 note (2026-07-11)**: the Cull sidebar's former "Diagnostics"
-disclosure (Rejects/Five Stars/Needs Keywords/Faces Found/OCR Found/Provider
-Failures review-queue counts) was evaluated for a move into this popover's
-job-details area per spec §2a bullet 3, and **not** moved — those rows are
-click-to-cull review-queue sources, not background-job/source-availability
-status, and this popover has no structural equivalent (the per-kind rows
-section, `kindRowsSection`, is `work_sessions` rows grouped by kind;
-`sourcesSection` is source-root availability). They now render inline in the
-Cull sidebar's main list instead (`cull-015-sidebar-sources.md`). This
-popover's rows/sections are unchanged by Task 7.
+# activity-003-jobs-controls: one published row per work kind, with queue Pause/Resume and kind-scoped Cancel
 
-# activity-003-jobs-controls: Activity popover shows one bar per active work kind, with per-kind pause/resume/cancel
+**What this covers**: the Activity popover projects all active background work
+into one published snapshot per `WorkSessionKind`. Every row shares the current
+queue-wide Pause/Resume state. Cancel is different: it requests cancellation
+only for the active item IDs represented by the selected published kind row.
+After all lanes settle, the still-running worker appears as `Worker idle` with
+a Stop action.
 
-**What this covers**: **Reconciled 2026-07-13** for the per-kind-lanes
-rewrite (`docs/superpowers/specs/2026-07-13-parallel-worker-lanes-design.md`).
-The Activity popover's "Activity" section now renders one aggregate row per
-active `WorkSessionKind` — `ActivityCenterPresentation.kindRows:
-[ActivityKindRow]`, projected by `ActivityKindRow.rows(from:canPause:canResume:)`
-(`Sources/TeststripApp/ActivityCenterPresentation.swift:72-139`) and rendered
-by `kindRowsSection`/`kindRow`
-(`Sources/TeststripApp/ActivityCenterView.swift:67-131`) — **replacing** the
-former per-ITEM `jobsSection`/`jobRow` this card used to test: the star/pin
-control, the cap-at-4-with-"+N more queued" line, and first-row-only
-pause/resume are all **gone** (`ActivityKindRow` carries no `starred` field,
-and grep of both files confirms zero references to "star" or "more
-queued"). What's still there, in a per-kind rather than per-item shape:
-- **Pause/resume are still queue-wide**, not scoped to a kind — despite
-  being drawn on every kind row, `pauseWork(kind:)`/`resumeWork(kind:)` just
-  delegate to `pauseBackgroundWork()`/`resumeBackgroundWork()`
-  (`Sources/TeststripApp/AppModel.swift:8998-9008`), ignoring the `kind`
-  parameter entirely. Because
-  `canPause`/`canResume` are computed once and passed identically to every
-  produced row (`ActivityCenterPresentation.swift:108-112, 134-135`), *every*
-  visible kind row shows the same pause/resume affordance at the same
-  time — there's no "first row only" concept anymore, because there's no
-  concept of row order gating it to begin with.
-- **Cancel is genuinely kind-scoped** — `cancelWork(kind:)`
-  (`Sources/TeststripApp/AppModel.swift:8991-8996`) fans out over just that
-  kind's active items via `WorkerSupervisor.cancel(id:)` per item
-  (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211`), which the
-  supervisor's own comment documents as leaving "sibling lanes running"
-  (lines 198-201) — the concurrent-lanes headline feature this rewrite
-  shipped. This is the one place per-kind vs. per-item genuinely matters now.
-- **The idle-worker row is unchanged** by this rewrite.
+This is the current per-kind surface. The retired per-item list, four-row cap,
+`+N more queued`, first-row-only controls, and star/pin affordance are not part
+of the product and are not tested here.
+
+Source: `Sources/TeststripApp/ActivityCenterPresentation.swift`
+(`ActivityKindRow.rows` grouping and total rule),
+`Sources/TeststripApp/ActivityCenterView.swift` (row progress and controls),
+`Sources/TeststripApp/AppModel.swift` (`activeWorkKindRows`, queue-wide
+pause/resume, kind-scoped Cancel, idle-worker projection, and coalesced
+publication), and `Sources/TeststripCore/Worker/WorkerSupervisor.swift`
+(dispatched-item soft cancellation).
 
 ## Pre-state
+
+Every scripted UI, filesystem, and catalog operation must go through the Tart
+wrapper. The determinate-bar inspection and row-scoped Cancel below are
+explicit visible gestures inside Tart because the current AX driver cannot
+bind them; neither may be replaced by a host command. Copy the 130 public
+`smokebig` originals into a card-owned folder and import them into a fresh
+`empty` catalog. Do not launch the pre-populated `smokebig` catalog and do not
+use a host launch-window timing trick.
+
 ```bash
-./script/build_and_run.sh --smoke
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
+script/vm_scenario_run.sh sync empty smokebig
+script/vm_scenario_run.sh launch empty
+script/vm_scenario_run.sh ax wait-vended Teststrip
+test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets;")" -eq 0
+
+script/vm_scenario_run.sh shell '
+set -eu
+fixture="$HOME/teststrip-vm/fixtures/activity-003-smokebig"
+rm -rf "$fixture"
+mkdir -p "$fixture"
+set -- "$HOME"/teststrip-vm/isolated/smokebig/Teststrip/SmokeOriginals/*.jpg
+test "$#" -eq 130
+for source in "$@"; do
+    cp "$source" "$fixture/$(basename "$source")"
+done
+test "$(find "$fixture" -type f -name "*.jpg" | wc -l | tr -d " ")" -eq 130
+test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
+'
 ```
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`, then click the toolbar Activity
-   button to open the popover while import/preview work is still draining
-   (right after `--smoke` launch, before the queue empties — see
-   `activity-001-icon-states.md` step 1 for the same timing window). For
-   steps 4-6, which need **two concurrently active kinds** to be meaningful,
-   prefer driving straight into `activity-007-per-kind-lanes.md`'s fixture
-   (a mid-session import of `sample-data/photos/jesse-pictures`, 79 real
-   JPEGs) rather than relying on `--smoke`'s fast-draining 24-photo seed —
-   see Sharp edges.
-2. **One row per active kind, not per item**: with the popover open, count
-   rows under the "Activity" header (`kindRowsSection`,
-   `Sources/TeststripApp/ActivityCenterView.swift:67-76`) by their title text
-   (`ax_drive.sh find --role AXStaticText --label "<title>"` for each of the
-   worker-dispatched kinds' titles — "Import photos", "Generate previews",
-   "Evaluate photos", "Sync sidecars", "Check sources", "Find places",
-   "Backfill locations"; full map at
-   `Sources/TeststripApp/ActivityCenterPresentation.swift:85-100`). Assert no
-   title appears twice — even if several `.previewGeneration` items are
-   in-flight at once, they roll into a single "Generate previews" bar
-   (`ActivityKindRow.rows` groups by kind before building rows,
-   `Sources/TeststripApp/ActivityCenterPresentation.swift:113-118`).
-3. **Determinate vs. indeterminate progress**: for a visible kind row, its
-   `ProgressView` is determinate — `value: completedUnitCount, total:
-   max(totalUnitCount, 1)` — only if **every** active item of that kind
-   currently has a `totalUnitCount`; the aggregate `total` is computed as
-   `nil` the moment even one item of that kind lacks one
-   (`Sources/TeststripApp/ActivityCenterPresentation.swift:122-123`,
-   `totals.count == items.count ? totals.reduce(0, +) : nil`), which renders
-   a plain indeterminate `ProgressView()`
-   (`Sources/TeststripApp/ActivityCenterView.swift:81-87`). Confirm which
-   case is live for at least one row by cross-checking
-   `completedUnitCount`/`totalUnitCount` isn't rendered numerically anywhere
-   in the row when indeterminate (there's no percentage text — only the
-   spinner) versus a literal fraction when determinate.
-4. **Per-kind pause/resume is queue-wide, applied uniformly to every row**:
-   with at least two kind rows visible (e.g. "Generate previews" and
-   "Evaluate photos"), assert **both** show a pause button — `pause.circle`,
-   AXHelp exactly `"Pause background work"`
-   (`Sources/TeststripApp/ActivityCenterView.swift:94-102`) — at the same
-   time; this is the same boolean (`canPauseBackgroundWork`,
-   `Sources/TeststripApp/AppModel.swift:2861-2864`) passed to every row, not
-   a first-row-only gate. Press pause on **either** row's button
-   (`model.pauseWork(kind:)` → `pauseBackgroundWork()`,
-   `Sources/TeststripApp/AppModel.swift:9001-9003` → `8928-8939`). Assert:
-   - the **other** visible row's control also flips from pause to resume
-     (`play.circle`, AXHelp `"Resume background work"`,
-     `Sources/TeststripApp/ActivityCenterView.swift:103-111`) — proving one
-     press paused the whole queue, not just the pressed row's kind.
-   - the pause notice renders below the kind-rows section
-     (`model.backgroundWorkPauseNotice`,
-     `Sources/TeststripApp/AppModel.swift:2870-2873`; rendered at
-     `Sources/TeststripApp/ActivityCenterView.swift:25-29`) with the correct
-     variant: exact text `"Queue paused"` if nothing was running the instant
-     it was pressed, `"Queue paused after current task"` if a lane was
-     actively running.
-   - ground truth: poll `work_sessions`/`preview_generation_queue` a few
-     seconds apart; no additional item transitions from queued to running
-     while paused (`BackgroundWorkQueue.activateRunnableItems()` early-returns
-     while `isPaused`, `Sources/TeststripCore/Work/BackgroundWorkQueue.swift:89-90`)
-     — a currently-running item is allowed to finish (see Sharp edges: its
-     `status` does **not** flip to `.paused`, it just keeps reading whatever
-     it already was).
-     ```bash
-     sqlite3 "$DB" "SELECT kind, status FROM work_sessions WHERE status IN ('queued','running');"
-     ```
-5. **Resume**: press either row's resume button
-   (`model.resumeWork(kind:)` → `resumeBackgroundWork()`,
-   `Sources/TeststripApp/AppModel.swift:9006-9008` → `8941-8952`). Assert the
-   pause notice disappears entirely (no notice text at all) and, if items
-   remain queued, progress resumes across **all** active kinds, not only the
-   one whose button was pressed.
-6. **Per-kind cancel — the concurrency-preserving semantics**: with two kind
-   rows active, press cancel on **one** row only
-   (`xmark.circle`, AXHelp `"Cancel this work item"` for a non-`.ingest` kind
-   or `"Cancel import"` for `.ingest`,
-   `Sources/TeststripApp/ActivityCenterView.swift:112-124`). This calls
-   `model.cancelWork(kind:)` (or `cancelImportWork()` for `.ingest`), which
-   cancels only that kind's currently-active items
-   (`Sources/TeststripApp/AppModel.swift:8991-8996`) via
-   `WorkerSupervisor.cancel(id:)` per item — per-item cancel, leaving sibling
-   lanes running by design (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211`).
-   Assert:
-   - the cancelled kind's row disappears from the popover (its last active
-     item lands in `.cancelled`, so `canCancel`
-     (`Sources/TeststripApp/ActivityCenterPresentation.swift:136`) goes false
-     and no items remain to roll into a row) while the **other** kind's row
-     is still present and its `completedUnitCount` (or the underlying
-     table's row count) has increased across two samples a few seconds
-     apart — proving the sibling lane kept running rather than being
-     terminated alongside the cancelled one.
-   - ground truth:
-     ```bash
-     sqlite3 "$DB" "SELECT kind, status FROM work_sessions WHERE kind = '<cancelled-kind>' ORDER BY updated_at DESC LIMIT 5;"
-     ```
-     the cancelled kind's active items read `cancelled`; a parallel query for
-     the sibling kind shows `queued`/`running` rows still present.
-7. **Idle-worker row** (unchanged by this rewrite): wait for the queue to
-   fully drain (poll per `activity-001-icon-states.md` step 2). Once drained,
-   assert the idle-worker row appears:
-   `ax_drive.sh find --role AXStaticText --contains "Worker idle"`
-   (`model.idleWorkerStatusText`, `Sources/TeststripApp/AppModel.swift:2883-2885`)
-   with a co-located Stop button
-   (`ax_drive.sh find --role AXButton --help "Stop idle worker"`,
-   `Sources/TeststripApp/ActivityCenterView.swift:157-171`). The row's
-   condition is `canStopIdleWorkerProcess` = `transport.isRunning &&
-   dispatchedItemIDs.isEmpty && no queue item in an active status`
-   (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:116-118`) — with
-   concurrent lanes this now means **no lane** has anything dispatched, not
-   just a single one-at-a-time slot, but the observable condition is the
-   same: worker process alive, nothing dispatched or queued. Press Stop;
-   assert the worker process is no longer running (`model.isWorkerProcessRunning`
-   false / no `Teststrip-Worker` process in `ps`), and the idle-worker row
-   disappears (nothing left to stop).
+
+### 1. Import without automatic evaluation and establish a durable preview load
+
+1. Record the ingest frontier. Drive the real Import Path sheets with wrapper
+   AX, turn the default-on automatic-read checkbox **off**, and start the exact
+   130-photo import:
+
+   ```bash
+   BEFORE_INGEST_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='ingest';")
+   script/vm_scenario_run.sh ax press --role AXButton --label "Import Path"
+   script/vm_scenario_run.sh ax wait --role AXTextField --label "Folder path"
+   script/vm_scenario_run.sh ax type --role AXTextField --label "Folder path" --text "/Users/admin/teststrip-vm/fixtures/activity-003-smokebig"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Review Import"
+   script/vm_scenario_run.sh ax wait --role AXCheckBox --label "Read imported frames automatically"
+   script/vm_scenario_run.sh ax press --role AXCheckBox --label "Read imported frames automatically"
+   script/vm_scenario_run.sh ax wait --role AXButton --label "Import 130 Photos"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Import 130 Photos"
+   ```
+
+2. Bind the new ingest by `rowid` and wait for its persisted completion. Then
+   wait until at least 40 assets have a cached grid preview while real preview
+   backlog remains. Zero evaluation signals proves the toggle was off:
+
+   ```bash
+   attempt=0
+   INGEST_SESSION_ID=
+   while [ "$attempt" -lt 120 ]; do
+       INGEST_SESSION_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='ingest' AND rowid > $BEFORE_INGEST_ROWID AND status='completed' ORDER BY rowid LIMIT 1;")
+       test -n "$INGEST_SESSION_ID" && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test -n "$INGEST_SESSION_ID"
+   test "$(script/vm_scenario_run.sh sql empty "SELECT status FROM work_sessions WHERE id='$INGEST_SESSION_ID';")" = completed
+   test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets;")" -eq 130
+
+   attempt=0
+   while [ "$attempt" -lt 120 ]; do
+       CACHED_GRID_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets a WHERE NOT EXISTS (SELECT 1 FROM preview_generation_queue q WHERE q.asset_id=a.id AND q.level='grid');")
+       PENDING_PREVIEW_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+       test "$CACHED_GRID_COUNT" -ge 40 && test "$PENDING_PREVIEW_COUNT" -gt 0 && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$CACHED_GRID_COUNT" -ge 40
+   test "$PENDING_PREVIEW_COUNT" -gt 0
+   test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM evaluation_signals;")" -eq 0
+   ```
+
+   If all preview rows drain before this condition, the fixture did not sustain
+   the card and the run fails. Do not replace it with a launch race.
+
+### 2. Freeze the queue, add one finite evaluation batch, then publish both kinds
+
+3. Open the positive working control and pause the one visible Generate row.
+   Wait for exact `Queue paused`, not the transient `Queue paused after current
+   task`: the exact text proves all dispatched work reached a terminal and no
+   new command can dispatch while the queue stays frozen.
+
+   ```bash
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Generate previews"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Pause background work"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Queue paused"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Resume background work"
+   script/vm_scenario_run.sh key 'key code 53'
+   ```
+
+4. While frozen, invoke the real `Evaluate Matches` menu action. It enqueues
+   one finite batch over at most 40 cached assets; automatic import evaluation
+   is off, so preview completions cannot append hidden recognition IDs after
+   the published row is bound.
+
+   ```bash
+   script/vm_scenario_run.sh ax press --role AXMenuItem --label "Evaluate Matches"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Evaluate photos"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
+   ```
+
+5. Capture all static text in one AX traversal and both generic Cancel controls
+   in one control traversal. This avoids straddling two coalesced publications:
+
+   ```bash
+   ACTIVITY_TEXT=$(script/vm_scenario_run.sh ax find --role AXStaticText)
+   PREVIEW_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Generate previews" { count += 1 } END { print count + 0 }')
+   EVALUATION_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Evaluate photos" { count += 1 } END { print count + 0 }')
+   CONTROL_TEXT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Cancel this work item")
+   CANCEL_CONTROL_COUNT=$(printf '%s\n' "$CONTROL_TEXT" | awk 'NF { count += 1 } END { print count + 0 }')
+   RESUME_CONTROL_COUNT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Resume background work" | awk 'NF { count += 1 } END { print count + 0 }')
+   test "$PREVIEW_ROW_COUNT" -eq 1
+   test "$EVALUATION_ROW_COUNT" -eq 1
+   test "$CANCEL_CONTROL_COUNT" -eq 2
+   test "$RESUME_CONTROL_COUNT" -eq 2
+   ```
+
+   Many underlying commands still produce exactly one published row per kind.
+   The visible snapshot—not private supervisor state—is the Cancel ID binding.
+
+6. Inspect both progress indicators in the VM. They must be determinate bars,
+   not spinners: every published preview/evaluation item has
+   `totalUnitCount == 1`. The general rule is all-or-nothing over the **published
+   items** in one kind: sum totals only when every item has one; one `nil` total
+   makes the aggregate indeterminate. There is no numeric fraction in the row.
+
+7. Resume from either row. Wait for the two Pause controls to replace Resume,
+   then capture one static-text snapshot with both kind titles and at least two
+   `Running` labels:
+
+   ```bash
+   script/vm_scenario_run.sh ax press --role AXButton --help "Resume background work"
+   script/vm_scenario_run.sh ax wait --role AXButton --help "Pause background work"
+   PAUSE_CONTROL_COUNT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Pause background work" | awk 'NF { count += 1 } END { print count + 0 }')
+   ACTIVITY_TEXT=$(script/vm_scenario_run.sh ax find --role AXStaticText)
+   PREVIEW_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Generate previews" { count += 1 } END { print count + 0 }')
+   EVALUATION_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Evaluate photos" { count += 1 } END { print count + 0 }')
+   RUNNING_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Running" { count += 1 } END { print count + 0 }')
+   test "$PAUSE_CONTROL_COUNT" -eq 2
+   test "$PREVIEW_ROW_COUNT" -eq 1
+   test "$EVALUATION_ROW_COUNT" -eq 1
+   test "$RUNNING_ROW_COUNT" -ge 2
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused after current task"
+   ```
+
+   The returned Pause controls are the positive publication barrier for the
+   negative notice assertions.
+
+### 3. Cancel the finite published evaluation kind; preview continues
+
+8. Capture one visible snapshot and preview depth at the action boundary. Then
+   use the Tart VM's visible UI to click the `xmark.circle` on the **Evaluate
+   photos** row. This is one explicit manual row-scoped gesture inside the VM.
+
+   ```bash
+   ACTIVITY_TEXT_AT_CANCEL=$(script/vm_scenario_run.sh ax find --role AXStaticText)
+   PREVIEW_ROWS_AT_CANCEL=$(printf '%s\n' "$ACTIVITY_TEXT_AT_CANCEL" | awk '$0 == "Generate previews" { count += 1 } END { print count + 0 }')
+   EVALUATION_ROWS_AT_CANCEL=$(printf '%s\n' "$ACTIVITY_TEXT_AT_CANCEL" | awk '$0 == "Evaluate photos" { count += 1 } END { print count + 0 }')
+   CONTROL_TEXT_AT_CANCEL=$(script/vm_scenario_run.sh ax find --role AXButton --help "Cancel this work item")
+   CANCEL_CONTROLS_AT_CANCEL=$(printf '%s\n' "$CONTROL_TEXT_AT_CANCEL" | awk 'NF { count += 1 } END { print count + 0 }')
+   PENDING_BEFORE_CANCEL=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+   test "$PREVIEW_ROWS_AT_CANCEL" -eq 1
+   test "$EVALUATION_ROWS_AT_CANCEL" -eq 1
+   test "$CANCEL_CONTROLS_AT_CANCEL" -eq 2
+   test "$PENDING_BEFORE_CANCEL" -gt 0
+   ```
+
+   **Do not** substitute
+   `script/vm_scenario_run.sh ax press --help "Cancel this work item"`.
+   `ax_drive.sh` can only press the first of two identically helped buttons and
+   cannot bind it to the adjacent title. First-match order is not evidence.
+
+   All recognition IDs were enqueued while frozen and then published in the
+   visible Evaluate row. `cancelWork(kind:)` therefore requests exactly that
+   finite ID set. Do not query `work_sessions` for preview/evaluation IDs;
+   those queue items are not persisted ingest sessions.
+
+9. A dispatched evaluation does not disappear at the request. It stays running
+   until its natural terminal, finalizes as `cancelled`, and retires on the next
+   publication. Poll for the changed positive control set—one generic Cancel
+   control—plus decreasing preview depth. Only then assert Evaluate is absent:
+
+   ```bash
+   attempt=0
+   while [ "$attempt" -lt 60 ]; do
+       CONTROL_TEXT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Cancel this work item")
+       CANCEL_CONTROL_COUNT=$(printf '%s\n' "$CONTROL_TEXT" | awk 'NF { count += 1 } END { print count + 0 }')
+       PENDING_AFTER_CANCEL=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+       test "$CANCEL_CONTROL_COUNT" -eq 1 && test "$PENDING_AFTER_CANCEL" -lt "$PENDING_BEFORE_CANCEL" && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$CANCEL_CONTROL_COUNT" -eq 1
+   test "$PENDING_AFTER_CANCEL" -lt "$PENDING_BEFORE_CANCEL"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Generate previews"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Evaluate photos"
+   ```
+
+   The one remaining Cancel control now belongs unambiguously to Generate.
+   Preview depth falling proves the sibling lane continued while evaluation
+   cancellation waited for its natural terminal and next publication.
+
+### 4. Idle worker appears only after preview drain and final publication
+
+10. Close the popover and poll the preview queue to zero. Then wait for exact
+    `Activity` to replace working, reopen it, and assert `Worker idle` and Stop:
+
+   ```bash
+   script/vm_scenario_run.sh key 'key code 53'
+   attempt=0
+   while [ "$attempt" -lt 240 ]; do
+       PENDING_PREVIEW_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+       test "$PENDING_PREVIEW_COUNT" -eq 0 && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$PENDING_PREVIEW_COUNT" -eq 0
+
+   attempt=0
+   while [ "$attempt" -lt 12 ]; do
+       script/vm_scenario_run.sh ax find --role AXButton --help "Activity" && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$attempt" -lt 12
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Worker idle"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Stop idle worker"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Generate previews"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Evaluate photos"
+   ! script/vm_scenario_run.sh ax find --role AXButton --help "Cancel this work item"
+   ```
+
+11. Stop the idle worker. Wait for the positive quiet replacement before
+    asserting the idle row is gone:
+
+   ```bash
+   script/vm_scenario_run.sh ax press --role AXButton --help "Stop idle worker"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "No active work"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Worker idle"
+   ! script/vm_scenario_run.sh ax find --role AXButton --help "Stop idle worker"
+   ```
 
 ## Expected
-- Step 2: **Fails if** two rows ever render for the same kind simultaneously,
-  or a row's title doesn't match the exact map in
-  `ActivityKindRow.title(for:)`.
-- Step 3: **Fails if** a row shows a determinate progress value while any of
-  its underlying items lacks a `totalUnitCount`, or vice versa.
-- Step 4: **Fails if** a pause control appears on only one of several active
-  kind rows, or if pressing pause on one row leaves another row's
-  pause/resume control unchanged (proving it wrongly scoped pause to a single
-  kind), or if the notice text doesn't distinguish the running-when-paused
-  case from the queued-only case.
-- Step 5: **Fails if** resuming only un-pauses the kind whose button was
-  pressed, or the notice text persists after resume.
-- Step 6: **Fails if** cancelling one kind's row also stops or cancels the
-  other active kind's work — that would be a regression of the concurrent
-  per-lane cancel semantics this rewrite exists to ship.
-- Step 7: **Fails if** the idle-worker row appears while any queue item is
-  still active, or persists after a successful Stop, or Stop fails to
-  actually terminate the worker process.
+
+- Grouping fails unless a frozen multi-item workload produces exactly one
+  Generate row and one Evaluate row in one published snapshot.
+- Progress fails if either all-known-total row is indeterminate, or if a future
+  mixed-total published kind remains determinate.
+- Pause/Resume fails unless exact `Queue paused` proves the frozen state and all
+  rows replace Resume with Pause together.
+- Cancel fails if the action is automated by first-match order, if Evaluate is
+  assumed to disappear immediately, if controls do not change two-to-one, or
+  if preview depth does not continue falling.
+- Idle fails if it appears before preview depth reaches zero and both active
+  rows retire, or if Stop does not replace it with the quiet state.
 
 ## Cleanup
+
 ```bash
-./script/reset_isolated_test_data.sh --delete
+script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+script/vm_scenario_run.sh shell 'rm -rf "$HOME/teststrip-vm/fixtures/activity-003-smokebig"'
 ```
-Quit the launched instance.
 
 ## Sharp edges
-- **Dropped from this card, confirmed gone from source**: the "+N more
-  queued" cap-at-4 line and the star/pin control. Grep of
-  `ActivityCenterView.swift` and `ActivityCenterPresentation.swift` finds no
-  match for "more queued", "star", or "Unstar" — and `ActivityKindRow`
-  (`Sources/TeststripApp/ActivityCenterPresentation.swift:72-83`) simply has
-  no `starred` field to surface, unlike the retired `ActivityJobRow` (which
-  held the full `AppWorkActivity`, itself still `starred`-bearing at the
-  `WorkSession`/`work_sessions.starred` layer — that column is untouched, it
-  is just never read by this popover anymore).
-- **`WorkSessionStatus.paused` is never actually assigned to a live
-  `BackgroundWorkItem`** — this predates the per-kind rewrite (it's a
-  property of `Sources/TeststripCore/Work/BackgroundWorkQueue.swift`, which
-  this branch didn't touch) but is newly load-bearing for this card because
-  the prior version of this card assumed a paused row's status flips to
-  `"Paused"`. It doesn't: `pause()` (`BackgroundWorkQueue.swift:138-140`)
-  only flips the queue-level `isPaused` flag; grep of `Sources/` for
-  `= .paused` finds zero assignments anywhere, only defensive
-  `.contains([...])` filter checks. So a kind row's status label
-  (`label(for:)`, `Sources/TeststripApp/ActivityCenterView.swift:133-142`)
-  keeps reading whatever it was before the pause ("Running" for the item
-  that was mid-flight, "Queued" for backlog items) — the *only* visible
-  paused indicator is the separate notice text below the kind-rows section.
-  Step 4 above asserts the notice, not a per-row "Paused" status label;
-  don't reintroduce that assumption.
-- `--smoke`'s 24-photo seed is pre-rendered (no queued previews at idle,
-  confirmed in `worker-001-preview-lifecycle.md`) and drains its
-  preview/evaluation queue within single-digit seconds — steps 2-6 need
-  either the launch-window timing trick (step 1) or a fresh mid-session
-  import to reliably have two kinds visibly active long enough to drive by
-  hand. `activity-007-per-kind-lanes.md` is the card that establishes and
-  exercises that fixture in depth; this card can piggyback on the same
-  import rather than re-deriving a fixture.
+
+- Non-ingest Cancel buttons intentionally share one AXHelp string and have no
+  row-scoped accessibility identifier. The manual VM gesture is required until
+  the product or driver exposes one.
+- Automatic import reads must be off. Otherwise preview completions can enqueue
+  recognition IDs after the coalesced row was published, weakening its ID bind.
+- A dispatched Cancel is soft. The worker is not interrupted; its natural
+  terminal finalizes the item as cancelled and frees the lane.
+- `work_sessions` binds ingest history only, not every preview/evaluation item.
+- Visual determinate-vs-indeterminate inspection is manual because the current
+  AX driver does not print numeric `ProgressView` values.
 
 ## Run status
-NOT RUN — reconciled 2026-07-13 for the per-kind-lanes rewrite; no host GUI
-available in this session. All control semantics above (pause/resume
-uniformity across rows, per-kind cancel fan-out and sibling-lane survival,
-the dead `.paused` status finding, the idle-worker row) are confirmed by
-direct source citation (`Sources/TeststripApp/ActivityCenterView.swift`,
-`Sources/TeststripApp/ActivityCenterPresentation.swift`,
-`Sources/TeststripApp/AppModel.swift`,
-`Sources/TeststripCore/Worker/WorkerSupervisor.swift`,
-`Sources/TeststripCore/Work/BackgroundWorkQueue.swift`), not by driving the
-UI. Needs a human-present or console-unlocked re-run (VM, per
-`test/scenarios/README.md`) to confirm the AX labels/help text render as
-sourced and to drive the two-active-kinds scenario against real concurrent
-load.
+
+**Spec'd — NOT RUN (2026-08-10).** No step in this rewritten procedure was
+freshly driven. It replaces the fast pre-rendered `--smoke` window, direct host
+commands, stale per-item/four-row-cap expectations, transient pause text,
+immediate-cancel assumptions, and false preview/evaluation `work_sessions`
+queries with a frozen finite workload and positive publication barriers.
+
+Historical evidence remains historical:
+
+- 2026-07-13 source reconciliation established per-kind aggregation,
+  queue-wide Pause/Resume, kind-scoped Cancel, and the idle-worker row.
+- The old smoke attempt captured the popover but could not sustain useful job
+  rows. It did not execute this procedure and is not a current pass.
+- Unit tests cover aggregation and supervisor cancellation mechanics; this card
+  still needs its assembled VM run.
+
+**Task 7 note (2026-07-11)**: Cull review-queue rows remain in the Cull
+sidebar. They are navigation sources, not background jobs, and are intentionally
+outside this popover card.
