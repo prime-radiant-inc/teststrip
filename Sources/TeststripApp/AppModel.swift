@@ -2130,10 +2130,11 @@ public final class AppModel {
     /// Which import rows are disclosed. Child counts for the rows the
     /// Imports section actually shows (the `recentImportRowLimit` most
     /// recent, plus whichever overflow rows "All imports…" has revealed) are
-    /// primed in `refreshImportSourceSummaries`/`toggleSidebarExpansion` — on
-    /// load, after an import completes, or on that explicit click, never on
-    /// a sidebar rebuild — so a catalog with hundreds of imports does not pay
-    /// five queries per row on every render.
+    /// primed in `primeVisibleImportChildCounts`/`toggleSidebarExpansion` —
+    /// on load, after an import completes, or on that explicit click, never
+    /// on a sidebar rebuild or a cull-session refresh — so a catalog with
+    /// hundreds of imports does not pay five queries per row on every render
+    /// or every P/X keystroke.
     public private(set) var expandedImportSessionIDs: Set<String> = []
     public private(set) var importChildCountsBySessionID: [String: ImportChildCounts] = [:]
     /// Whether the Imports section is showing every import rather than the
@@ -4482,6 +4483,7 @@ public final class AppModel {
         // initializer cannot compute (it takes no repository), so a launch
         // would otherwise show no imports until the next work-session refresh.
         try model.refreshImportSourceSummaries()
+        model.primeVisibleImportChildCounts()
         model.rebuildSidebarSections()
         if let sessionRestoreDefaults {
             model.autopilotEnabled = sessionRestoreDefaults.bool(forKey: autopilotEnabledDefaultsKey)
@@ -5422,14 +5424,16 @@ public final class AppModel {
     /// completed-ingest query. `recentWork` is limit-10 across all thirteen
     /// work kinds, so it cannot promise even the three most recent imports.
     ///
-    /// Also primes `importChildCountsBySessionID` for the rows the section
-    /// actually shows by default (the `recentImportRowLimit` most recent,
-    /// matching `importSectionRows`'s own filter-then-prefix) so their
-    /// disclosure triangle is correct the first time they render, not only
-    /// after the user has already expanded them once. This runs on load and
-    /// after an import completes — never per render — so it costs at most
-    /// `recentImportRowLimit` lots of `importChildCounts` queries, not one
-    /// per import ever taken.
+    /// This also runs on `refreshWorkSessions()`'s hot path — every P/X
+    /// keystroke goes through `updateActiveCullingSessionProgressAfterFlagChange`
+    /// -> `refreshWorkSessions` -> here — so it must stay limited to rebuilding
+    /// summaries. Priming `importChildCountsBySessionID` is a much more
+    /// expensive operation (each entry walks `importChildCounts` ->
+    /// `latestImportStacks` -> `visualSimilarityVectorsByAssetID` ->
+    /// `evaluationSignals`, once per asset in that import) and lives in
+    /// `primeVisibleImportChildCounts()`, called only from `AppModel.load`
+    /// and `recordRecentActivity`'s ingest branch — on load or after an
+    /// import completes, never on a cull-session refresh.
     public func refreshImportSourceSummaries() throws {
         guard let catalog else { return }
         let sessions = try catalog.repository.workSessions(kind: .ingest, statuses: [.completed])
@@ -5444,6 +5448,22 @@ public final class AppModel {
                 producedOutputSet: !session.outputSetIDs.isEmpty
             )
         }
+    }
+
+    /// Primes `importChildCountsBySessionID` for the rows the Imports
+    /// section actually shows by default (the `recentImportRowLimit` most
+    /// recent, matching `importSectionRows`'s own filter-then-prefix) so
+    /// their disclosure triangle is correct the first time they render, not
+    /// only after the user has already expanded them once.
+    ///
+    /// Call this only from `AppModel.load` and `recordRecentActivity`'s
+    /// ingest branch — on load or after an import completes. It must never
+    /// be reachable from `refreshWorkSessions()`/`refreshImportSourceSummaries()`,
+    /// which also run on every cull flag change; each priming here costs a
+    /// full stack build plus a per-asset `evaluationSignals` query for every
+    /// asset in the import, so on a keystroke path it turns a P/X press into
+    /// dozens of queries.
+    private func primeVisibleImportChildCounts() {
         let visibleSessionIDs = importSourceSummaries
             .filter(\.producedOutputSet)
             .prefix(UnifiedSidebarPresentation.recentImportRowLimit)
@@ -13826,6 +13846,7 @@ public final class AppModel {
             // in-progress row `activeWork` was driving a moment ago.
             if recordedActivity.kind == .ingest {
                 try refreshImportSourceSummaries()
+                primeVisibleImportChildCounts()
             }
             rebuildSidebarSections()
         } catch {
