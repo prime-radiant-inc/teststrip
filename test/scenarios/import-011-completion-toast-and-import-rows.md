@@ -152,8 +152,13 @@ reproducible).
    `ActivityCenterView.swift:310-312`; `importIssueReviewSheet`,
    `LibraryGridView.swift:1904-1955`; `importIssueTitle`, `:1957-1962`):
    ```bash
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   if script/vm_scenario_run.sh ax find --role AXButton --help "Activity - working" >/dev/null; then
+     script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   else
+     script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   fi
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Imported 4 photos from card1 (2 files skipped)"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "2 files skipped"
    script/vm_scenario_run.sh ax find --role AXLink --label "Review issues"
    script/vm_scenario_run.sh ax find --role AXLink --label "Start culling"
@@ -166,16 +171,22 @@ reproducible).
    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "2 Import Issues"
    ```
    Now bind `Start culling` to one genuinely new post-action culling row. The
-   action must close the reopened popover, land in the Cull lens on the new
-   `work-input-<session>` snapshot source, and give that exact run all four
-   CARD1 assets and nothing else (`startCullingImport`,
+   action must close the reopened popover, land in the selected Cull lens's
+   Loupe sub-mode on the new `work-input-<session>` snapshot source (with no
+   browse-only search field), and give that exact run all four CARD1 assets
+   and nothing else (`startCullingImport`,
    `AppModel.swift:5011-5017`; `beginCullingSession`, `:5806-5859`;
    `cullingInputSetID`, `:13135-13159`; `applyAssetSet`, `:5389-5410`;
    `scopeLineBar`, `LibraryGridView.swift:748-768`). Return to Grid afterward
    so the same-session and relaunch probes can continue:
    ```bash
    BEFORE_RECEIPT_CULL_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='culling';")
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   if script/vm_scenario_run.sh ax find --role AXButton --help "Activity - working" >/dev/null; then
+     script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   else
+     script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   fi
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Imported 4 photos from card1 (2 files skipped)"
    script/vm_scenario_run.sh ax find --role AXLink --label "Start culling"
    script/vm_scenario_run.sh ax press --role AXLink --label "Start culling"
    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
@@ -188,7 +199,9 @@ reproducible).
    test "$RECEIPT_CULL_RUN_COUNT" -eq 1
    RECEIPT_CULL_RUN_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_RECEIPT_CULL_ROWID;")
    test -n "$RECEIPT_CULL_RUN_ID"
-   RECEIPT_CULL_SET_ID=$(script/vm_scenario_run.sh sql empty "SELECT json_extract(input_set_ids_json,'\$[0]') FROM work_sessions WHERE id='$RECEIPT_CULL_RUN_ID';")
+   test "$(script/vm_scenario_run.sh sql empty "SELECT status FROM work_sessions WHERE id='$RECEIPT_CULL_RUN_ID';")" = "running"
+   test "$(script/vm_scenario_run.sh sql empty "SELECT json_array_length(input_set_ids_json) FROM work_sessions WHERE id='$RECEIPT_CULL_RUN_ID';")" -eq 1
+   RECEIPT_CULL_SET_ID=$(script/vm_scenario_run.sh sql empty "SELECT json_extract(input_set_ids_json,'\$[0].rawValue') FROM work_sessions WHERE id='$RECEIPT_CULL_RUN_ID';")
    test "$RECEIPT_CULL_SET_ID" = "work-input-$RECEIPT_CULL_RUN_ID"
    test "$(script/vm_scenario_run.sh sql empty "SELECT title FROM work_sessions WHERE id='$RECEIPT_CULL_RUN_ID';")" = "Imported 4 photos from card1 (2 files skipped)"
    test "$(script/vm_scenario_run.sh sql empty "SELECT name FROM asset_sets WHERE id='$RECEIPT_CULL_SET_ID';")" = "Imported 4 photos from card1 (2 files skipped) Input"
@@ -197,7 +210,9 @@ reproducible).
    RECEIPT_CULL_CARD1_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='$RECEIPT_CULL_SET_ID')) m JOIN assets a ON a.id=json_extract(m.value,'\$.rawValue') WHERE a.original_path LIKE '/Users/admin/teststrip-vm/fixtures/import-011/card1/%';")
    test "$RECEIPT_CULL_INPUT_COUNT" -eq 4
    test "$RECEIPT_CULL_CARD1_COUNT" -eq 4
-   script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Cull"
+   script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Loupe"
+   script/vm_scenario_run.sh ax find --role AXButton --label "Cull" --contains "Selected"
+   ! script/vm_scenario_run.sh ax find --role AXTextField --label "Search Catalog"
    script/vm_scenario_run.sh ax find --label "Scope" --contains "Imported 4 photos from card1 (2 files skipped) Input"
 
    script/vm_scenario_run.sh key 'keystroke "2" using {command down}'
@@ -407,7 +422,9 @@ reproducible).
     RUN_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_CULL_ROWID;")
     test -n "$RUN_ID"
     test "$RUN_ID" != "$BEFORE_LATEST_RUN_ID"
-    SET_ID=$(script/vm_scenario_run.sh sql empty "SELECT json_extract(input_set_ids_json,'\$[0]') FROM work_sessions WHERE id='$RUN_ID';")
+    test "$(script/vm_scenario_run.sh sql empty "SELECT status FROM work_sessions WHERE id='$RUN_ID';")" = "running"
+    test "$(script/vm_scenario_run.sh sql empty "SELECT json_array_length(input_set_ids_json) FROM work_sessions WHERE id='$RUN_ID';")" -eq 1
+    SET_ID=$(script/vm_scenario_run.sh sql empty "SELECT json_extract(input_set_ids_json,'\$[0].rawValue') FROM work_sessions WHERE id='$RUN_ID';")
     test -n "$SET_ID"
 
     INPUT_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.snapshot._0') FROM asset_sets WHERE id='$SET_ID'));")
@@ -438,9 +455,11 @@ reproducible).
   receipt is missing either exact AXLink; Review issues leaves the popover
   open, opens anything other than the exact two-issue CARD1 sheet, or cannot
   dismiss through exact Done; Start culling leaves the popover open, fails to
-  create exactly one post-boundary run, lands outside Cull or on the wrong
-  source, snapshots anything other than CARD1's four assets, or cannot return
-  to Grid without changing that source.
+  create exactly one running post-boundary run with exactly one input set,
+  lands outside the selected Cull lens's Loupe sub-mode, exposes the
+  browse-only Search Catalog field, selects the wrong source, snapshots
+  anything other than CARD1's four assets, or cannot return to Grid without
+  changing that source.
 - Step 5: **fails if** navigating away and back resurrects the toast within
   the same session — that is precisely the bug the dismissal-recording fix
   in this push closes.
@@ -464,10 +483,11 @@ reproducible).
   button it has no business showing.
 - Step 12: **fails if** the positive CARD2-only baseline is not exactly 2,
   Grid is not selected before targeting the browse-only `Cull these` button,
-  pressing that button does not create exactly one genuinely new run, the
-  exact new run's input does not contain all 4 CARD1 members, its total input
-  is not exactly 4, or it contains any CARD2-only asset. Those checks reject
-  empty/subset/old-run mutants as well as accidental newest-import scoping.
+  pressing that button does not create exactly one genuinely new run in the
+  running state with exactly one input set, the exact new run's input does not
+  contain all 4 CARD1 members, its total input is not exactly 4, or it contains
+  any CARD2-only asset. Those checks reject empty/subset/old-run mutants as
+  well as accidental newest-import scoping.
 
 ## Cleanup
 ```bash
