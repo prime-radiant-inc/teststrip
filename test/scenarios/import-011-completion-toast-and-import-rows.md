@@ -152,11 +152,8 @@ reproducible).
    `ActivityCenterView.swift:310-312`; `importIssueReviewSheet`,
    `LibraryGridView.swift:1904-1955`; `importIssueTitle`, `:1957-1962`):
    ```bash
-   if script/vm_scenario_run.sh ax find --role AXButton --help "Activity - working" >/dev/null; then
-     script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
-   else
-     script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
-   fi
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working" \
+     || script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Imported 4 photos from card1 (2 files skipped)"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "2 files skipped"
@@ -181,11 +178,8 @@ reproducible).
    so the same-session and relaunch probes can continue:
    ```bash
    BEFORE_RECEIPT_CULL_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='culling';")
-   if script/vm_scenario_run.sh ax find --role AXButton --help "Activity - working" >/dev/null; then
-     script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
-   else
-     script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
-   fi
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working" \
+     || script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Imported 4 photos from card1 (2 files skipped)"
    script/vm_scenario_run.sh ax find --role AXLink --label "Start culling"
    script/vm_scenario_run.sh ax press --role AXLink --label "Start culling"
@@ -252,14 +246,16 @@ reproducible).
    '
    script/vm_scenario_run.sh ax wait-vended Teststrip
    ! script/vm_scenario_run.sh ax find --contains "Import complete"
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working" \
+     || script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
    script/vm_scenario_run.sh ax find --contains "Recent Imports"
    ```
    Assert the sidebar's Imports section still shows CARD1's row (title is
    the import's date + detail, `ImportSidebarSummary.title`,
    `UnifiedSidebarPresentation.swift:44-50`):
    ```bash
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity" # close receipt popover
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working" \
+     || script/vm_scenario_run.sh ax press --role AXButton --help "Activity" # close receipt popover
    CARD1_ROW_TITLE=$(script/vm_scenario_run.sh ax find --role AXButton --contains "Imported 4 photos from card1 (2 files skipped)" | awk 'index($0,"Imported 4 photos from card1 (2 files skipped)") && $0 !~ /^(Expand|Collapse) / {print; exit}')
    test -n "$CARD1_ROW_TITLE"
    script/vm_scenario_run.sh ax find --role AXButton --label "$CARD1_ROW_TITLE"
