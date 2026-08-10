@@ -262,6 +262,8 @@ final class AppModelSessionRestoreTests: XCTestCase {
         let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
 
         XCTAssertNil(modelB.selectedAssetSetID)
+        XCTAssertEqual(modelB.selectedSource, .allPhotos)
+        XCTAssertEqual(modelB.scopeLine.sourceTitle, "All Photos")
         XCTAssertEqual(modelB.assets.count, 4)
     }
 
@@ -310,12 +312,18 @@ final class AppModelSessionRestoreTests: XCTestCase {
         ))
         let catalogRoot = try makePaths(directory: directory).root
         SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot).save(
-            Self.stateReferencing(selectedAssetSetID: workStackSetID)
+            Self.stateReferencing(
+                source: .assetSet(workStackSetID, titled: "In-progress cull stack"),
+                selectedAssetSetID: workStackSetID
+            )
         )
 
         let modelB = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
 
         XCTAssertNil(modelB.selectedAssetSetID)
+        XCTAssertEqual(modelB.selectedSource, .allPhotos)
+        XCTAssertEqual(modelB.scopeLine.sourceTitle, "All Photos")
+        XCTAssertEqual(Set(modelB.assets.map(\.id.rawValue)), Set(["asset-0", "asset-1", "asset-2"]))
     }
 
     func testDoesNotCrossRestoreBetweenDifferentCatalogPaths() throws {
