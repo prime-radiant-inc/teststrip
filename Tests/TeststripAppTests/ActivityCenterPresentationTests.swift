@@ -168,6 +168,48 @@ final class ActivityCenterPresentationTests: XCTestCase {
         XCTAssertTrue(receipts.first?.canStartCulling ?? false)
     }
 
+    func testReceiptRowsExposeExactPersistedIssueCounts() {
+        let receipts = ImportReceiptRow.rows(
+            from: [
+                AppWorkActivity(
+                    id: "import-with-issues",
+                    kind: .ingest,
+                    status: .completed,
+                    title: "Import photos",
+                    detail: "Imported 2 photos from /Cards/A",
+                    completedUnitCount: 2,
+                    totalUnitCount: 4,
+                    failureCount: 0,
+                    issues: [
+                        WorkSessionIssue(
+                            kind: .skippedSourceFile,
+                            sourceURL: URL(fileURLWithPath: "/Cards/A/unsupported.raf"),
+                            message: "unsupported raw format"
+                        ),
+                        WorkSessionIssue(
+                            kind: .skippedSourceFile,
+                            sourceURL: URL(fileURLWithPath: "/Cards/A/damaged.jpg"),
+                            message: "could not decode image"
+                        )
+                    ]
+                ),
+                AppWorkActivity(
+                    id: "import-without-issues",
+                    kind: .ingest,
+                    status: .completed,
+                    title: "Import photos",
+                    detail: "Imported 1 photo from /Cards/B",
+                    completedUnitCount: 1,
+                    totalUnitCount: 1,
+                    failureCount: 0
+                )
+            ],
+            limit: ImportReceiptRow.retentionLimit
+        )
+
+        XCTAssertEqual(receipts.map(\.issueCount), [2, 0])
+    }
+
     func testReceiptsAreCappedByTheRetentionLimit() {
         let activities = (0..<12).map { index in
             AppWorkActivity(
@@ -240,6 +282,7 @@ final class ActivityCenterPresentationTests: XCTestCase {
                     sessionID: WorkSessionID(rawValue: "import-1"),
                     title: "Imported 6 photos from /Cards/A",
                     detail: "2 files skipped",
+                    issueCount: 2,
                     canStartCulling: true
                 )
             ],
@@ -247,7 +290,11 @@ final class ActivityCenterPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.receipts.count, 1)
-        XCTAssertEqual(presentation.badge, .none, "receipts never badge — the badge counts problems only")
+        XCTAssertEqual(
+            presentation.badge,
+            ActivityCenterPresentation.Badge.none,
+            "receipts never badge — the badge counts problems only"
+        )
         XCTAssertFalse(presentation.isWorking)
     }
 }
