@@ -8792,165 +8792,121 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .people)
     }
 
-    // Pins the bug commit 3de5609d fixed: mergedWorkActivities took
-    // recentWork.prefix(5) before filtering out ingest-kind sessions, so a
-    // run of five-or-more recent imports filled the window with rows the
-    // caller's kind filter then discarded entirely, leaving Recent Work
-    // empty even though real (non-ingest) work sat just past the window.
+    // Recent Work's five-row cap applies to eligible work, not to the mixed
+    // activity history that also feeds import-facing surfaces. More imports
+    // than the mixed cache can hold must not evict older non-import work.
     func testWorkSidebarRecentWindowSurvivesImportsAheadOfRealWork() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-work-sidebar-recent-crowded-by-imports")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
-        // Five real (non-ingest) sessions, older...
-        for index in 1...5 {
-            try repository.save(WorkSession(
-                id: WorkSessionID(rawValue: "real-work-\(index)"),
+        for index in 1...7 {
+            try repository.save(sidebarWorkSession(
+                id: "real-work-\(index)",
                 kind: .culling,
-                intent: "Real work \(index)",
                 title: "Real Work \(index)",
-                detail: "Real work \(index)",
-                status: .completed,
-                inputSetIDs: [],
-                outputSetIDs: [],
                 completedUnitCount: index,
                 totalUnitCount: index,
-                failureCount: 0,
-                createdAt: Date(timeIntervalSince1970: TimeInterval(index)),
-                updatedAt: Date(timeIntervalSince1970: TimeInterval(index))
+                updatedAt: TimeInterval(index)
             ))
         }
-        // ...then a run of five more-recent imports ahead of them.
-        for index in 1...5 {
-            try repository.save(WorkSession(
-                id: WorkSessionID(rawValue: "import-\(index)"),
+        for index in 1...11 {
+            try repository.save(sidebarWorkSession(
+                id: "import-\(index)",
                 kind: .ingest,
-                intent: "Import \(index)",
                 title: "Import \(index)",
                 detail: "Imported photos",
-                status: .completed,
-                inputSetIDs: [],
-                outputSetIDs: [],
                 completedUnitCount: index,
                 totalUnitCount: index,
-                failureCount: 0,
-                createdAt: Date(timeIntervalSince1970: TimeInterval(100 + index)),
-                updatedAt: Date(timeIntervalSince1970: TimeInterval(100 + index))
+                updatedAt: TimeInterval(100 + index)
             ))
         }
 
         let model = try AppModel.load(repository: repository)
 
-        // Ruling 2 sanity: the cache itself still carries all 10 rows (5
-        // imports, 5 real) — only the section-building filter/window changed.
-        XCTAssertEqual(model.recentWork.count, 10)
-        let rows = recentWorkCollectionRows(model)
-        XCTAssertFalse(rows.isEmpty, "a run of completed imports must not empty Recent Work")
-        XCTAssertEqual(rows.map(\.id), [
-            "work-real-work-5",
-            "work-real-work-4",
-            "work-real-work-3",
-            "work-real-work-2",
-            "work-real-work-1"
+        XCTAssertEqual(model.recentWork.map(\.id), [
+            "import-11",
+            "import-10",
+            "import-9",
+            "import-8",
+            "import-7",
+            "import-6",
+            "import-5",
+            "import-4",
+            "import-3",
+            "import-2"
         ])
-        for index in 1...5 {
-            XCTAssertFalse(rows.contains { $0.id == "work-import-\(index)" })
-        }
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), [
+            WorkSessionID(rawValue: "real-work-7"),
+            WorkSessionID(rawValue: "real-work-6"),
+            WorkSessionID(rawValue: "real-work-5"),
+            WorkSessionID(rawValue: "real-work-4"),
+            WorkSessionID(rawValue: "real-work-3")
+        ])
     }
 
-    // Same bug, starred path: mergedWorkActivities took starredWork.prefix(5)
-    // before the kind filter too, so a run of five-or-more starred imports
-    // filled that window and hid starred real work sitting just past it.
-    func testWorkSidebarStarredWindowSurvivesImportsAheadOfRealWork() throws {
+    func testWorkSidebarMergesRecentAndOlderStarredWorkPastMixedCacheLimits() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-work-sidebar-starred-crowded-by-imports")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
-        // Five recent, unstarred sessions fill the recentWork window on
-        // their own, so what follows exercises the starredWork window, not
-        // the recentWork one.
-        for index in 1...5 {
-            try repository.save(WorkSession(
-                id: WorkSessionID(rawValue: "recent-filler-\(index)"),
-                kind: .culling,
-                intent: "Recent filler \(index)",
-                title: "Recent Filler \(index)",
-                detail: "Recent filler \(index)",
-                status: .completed,
-                inputSetIDs: [],
-                outputSetIDs: [],
-                completedUnitCount: index,
-                totalUnitCount: index,
-                failureCount: 0,
-                createdAt: Date(timeIntervalSince1970: TimeInterval(100 + index)),
-                updatedAt: Date(timeIntervalSince1970: TimeInterval(100 + index))
+        for index in 1...6 {
+            try repository.save(sidebarWorkSession(
+                id: "older-starred-work-\(index)",
+                kind: .export,
+                title: "Older Starred Work \(index)",
+                starred: true,
+                updatedAt: TimeInterval(index)
             ))
         }
-        // Two starred, genuine work sessions, older...
-        try repository.save(WorkSession(
-            id: WorkSessionID(rawValue: "starred-real-a"),
-            kind: .export,
-            intent: "Starred real a",
-            title: "Starred Real A",
-            detail: "Starred real a",
-            status: .completed,
-            inputSetIDs: [],
-            outputSetIDs: [],
-            completedUnitCount: 1,
-            totalUnitCount: 1,
-            failureCount: 0,
-            starred: true,
-            createdAt: Date(timeIntervalSince1970: 10),
-            updatedAt: Date(timeIntervalSince1970: 10)
-        ))
-        try repository.save(WorkSession(
-            id: WorkSessionID(rawValue: "starred-real-b"),
-            kind: .relocation,
-            intent: "Starred real b",
-            title: "Starred Real B",
-            detail: "Starred real b",
-            status: .completed,
-            inputSetIDs: [],
-            outputSetIDs: [],
-            completedUnitCount: 1,
-            totalUnitCount: 1,
-            failureCount: 0,
-            starred: true,
-            createdAt: Date(timeIntervalSince1970: 20),
-            updatedAt: Date(timeIntervalSince1970: 20)
-        ))
-        // ...then a run of five more-recent starred imports ahead of them.
-        for index in 1...5 {
-            try repository.save(WorkSession(
-                id: WorkSessionID(rawValue: "starred-import-\(index)"),
+        for index in 1...11 {
+            try repository.save(sidebarWorkSession(
+                id: "starred-import-\(index)",
                 kind: .ingest,
-                intent: "Starred import \(index)",
                 title: "Starred Import \(index)",
                 detail: "Imported photos",
-                status: .completed,
-                inputSetIDs: [],
-                outputSetIDs: [],
                 completedUnitCount: index,
                 totalUnitCount: index,
-                failureCount: 0,
                 starred: true,
-                createdAt: Date(timeIntervalSince1970: TimeInterval(50 + index)),
-                updatedAt: Date(timeIntervalSince1970: TimeInterval(50 + index))
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+        for index in 1...5 {
+            try repository.save(sidebarWorkSession(
+                id: "newest-starred-work-\(index)",
+                kind: .culling,
+                title: "Newest Starred Work \(index)",
+                starred: true,
+                updatedAt: TimeInterval(200 + index)
             ))
         }
 
         let model = try AppModel.load(repository: repository)
 
-        // Ruling 2 sanity: the cache itself still carries all 7 starred rows
-        // (5 imports, 2 real) — only the section-building filter/window
-        // changed.
-        XCTAssertEqual(model.starredWork.count, 7)
-        let starredRows = starredWorkCollectionRows(model)
-        XCTAssertFalse(starredRows.isEmpty, "a run of starred imports must not empty the starred work window")
-        XCTAssertEqual(starredRows.map(\.id), ["work-starred-real-b", "work-starred-real-a"])
-        for index in 1...5 {
-            XCTAssertFalse(starredRows.contains { $0.id == "work-starred-import-\(index)" })
-        }
+        XCTAssertEqual(model.starredWork.map(\.id), [
+            "newest-starred-work-5",
+            "newest-starred-work-4",
+            "newest-starred-work-3",
+            "newest-starred-work-2",
+            "newest-starred-work-1",
+            "starred-import-11",
+            "starred-import-10",
+            "starred-import-9",
+            "starred-import-8",
+            "starred-import-7"
+        ])
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), [
+            WorkSessionID(rawValue: "newest-starred-work-5"),
+            WorkSessionID(rawValue: "newest-starred-work-4"),
+            WorkSessionID(rawValue: "newest-starred-work-3"),
+            WorkSessionID(rawValue: "newest-starred-work-2"),
+            WorkSessionID(rawValue: "newest-starred-work-1"),
+            WorkSessionID(rawValue: "older-starred-work-6"),
+            WorkSessionID(rawValue: "older-starred-work-5"),
+            WorkSessionID(rawValue: "older-starred-work-4"),
+            WorkSessionID(rawValue: "older-starred-work-3"),
+            WorkSessionID(rawValue: "older-starred-work-2")
+        ])
     }
 
     func testSettingWorkSessionStarredRefreshesWorkLists() throws {
@@ -9190,111 +9146,129 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .grid)
     }
 
-    func testActiveQueryReplacesRecentWorkSidebarRowsWithMatchedSessions() throws {
+    func testResidualSearchFindsEligibleWorkPastMatchingImports() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-matched-work-sidebar")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
-        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
-        try repository.upsert([keeper])
-        let ceremony = WorkSession(
-            id: WorkSessionID(rawValue: "ceremony-cull"),
-            kind: .culling,
-            intent: "Pick ceremony keepers",
-            title: "Cull Ceremony",
-            detail: "Reviewed ceremony candidates",
-            status: .completed,
-            inputSetIDs: [],
-            outputSetIDs: [],
-            completedUnitCount: 2,
-            totalUnitCount: 2,
-            failureCount: 0,
-            createdAt: Date(timeIntervalSince1970: 10),
-            updatedAt: Date(timeIntervalSince1970: 20)
-        )
-        // Ingest-kind sessions never populate Recent Work (Imports owns
-        // completed imports under the seven-section shell), so the "doesn't
-        // match the search" session needs a kind Recent Work actually shows.
-        let unrelated = WorkSession(
-            id: WorkSessionID(rawValue: "portrait-export"),
-            kind: .export,
-            intent: "Export portraits",
-            title: "Export Portraits",
-            detail: "Exported portraits",
-            status: .completed,
-            inputSetIDs: [],
-            outputSetIDs: [],
-            completedUnitCount: 4,
-            totalUnitCount: 4,
-            failureCount: 0,
-            createdAt: Date(timeIntervalSince1970: 11),
-            updatedAt: Date(timeIntervalSince1970: 30)
-        )
-        // M26: a completed import that matches the search text too — Imports
-        // owns completed imports, so it must stay absent from Recent Work
-        // even while a search is actively surfacing session matches (the
-        // only guard for this on the search path is `mergedWorkActivities`'s
-        // sibling ingest filter over `matchedWork`, not `mergedWorkActivities`
-        // itself, since the matched branch bypasses that helper entirely).
-        let ceremonyImport = WorkSession(
-            id: WorkSessionID(rawValue: "ceremony-import"),
-            kind: .ingest,
-            intent: "Import ceremony photos",
-            title: "Import Photos",
-            detail: "Imported ceremony photos",
-            status: .completed,
-            inputSetIDs: [],
-            outputSetIDs: [],
-            completedUnitCount: 4,
-            totalUnitCount: 4,
-            failureCount: 0,
-            createdAt: Date(timeIntervalSince1970: 12),
-            updatedAt: Date(timeIntervalSince1970: 40)
-        )
-        try repository.save(ceremony)
-        try repository.save(unrelated)
-        try repository.save(ceremonyImport)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog)
-        let defaultRows = recentWorkCollectionRows(model)
-        XCTAssertEqual(
-            Set(defaultRows.compactMap(workSessionTargetID)),
-            [ceremony.id, unrelated.id]
-        )
+        for index in 1...7 {
+            try repository.save(sidebarWorkSession(
+                id: "needle-work-\(index)",
+                kind: .culling,
+                title: "Needle Work \(index)",
+                updatedAt: TimeInterval(index)
+            ))
+        }
+        for index in 1...6 {
+            try repository.save(sidebarWorkSession(
+                id: "needle-import-\(index)",
+                kind: .ingest,
+                title: "Needle Import \(index)",
+                detail: "Imported needle photos",
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+        let model = try AppModel.load(catalog: workHistoryCatalog(in: directory, repository: repository))
 
-        model.librarySearchText = "ceremony"
+        model.librarySearchText = "needle"
         try model.applyLibraryFilters()
 
-        // The ingest import must actually match the search (or the
-        // assertion below proves nothing about the ingest guard).
-        XCTAssertTrue(
-            model.workHistorySearchResults.contains { $0.id == ceremonyImport.id.rawValue },
-            "the ceremony import must match the search for this test to prove anything"
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [
+            "needle-work-7",
+            "needle-work-6",
+            "needle-work-5",
+            "needle-work-4",
+            "needle-work-3"
+        ])
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), [
+            WorkSessionID(rawValue: "needle-work-7"),
+            WorkSessionID(rawValue: "needle-work-6"),
+            WorkSessionID(rawValue: "needle-work-5"),
+            WorkSessionID(rawValue: "needle-work-4"),
+            WorkSessionID(rawValue: "needle-work-3")
+        ])
+    }
+
+    func testSearchOnlyWorkRowKeepsScopeCountAndStarActionOutsideRecentWindows() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-search-only-work-row")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = makeAsset(id: "search-only-first", path: "/Photos/search-only-first.jpg", rating: 5)
+        let second = makeAsset(id: "search-only-second", path: "/Photos/search-only-second.jpg", rating: 1)
+        try repository.upsert([first, second])
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "search-only-input"),
+            name: "Search-only input",
+            assetIDs: [first.id, second.id]
         )
-        let matchedRows = recentWorkCollectionRows(model)
-        // The old work-matched-/work-recent-/work-starred- id split is gone
-        // (single "work-" id for every Recent Work row); the substantive
-        // claim — matched mode shows exactly the matched session, not the
-        // merged recent+starred view, and never the matched ingest import —
-        // is the equality above.
-        XCTAssertEqual(matchedRows.compactMap(workSessionTargetID), [ceremony.id])
+        try repository.upsert(inputSet)
+        let searchOnlySession = sidebarWorkSession(
+            id: "needle-search-only",
+            kind: .culling,
+            title: "Needle Cull",
+            inputSetIDs: [inputSet.id],
+            completedUnitCount: 7,
+            totalUnitCount: 99,
+            updatedAt: 1
+        )
+        try repository.save(searchOnlySession)
+        for index in 1...11 {
+            try repository.save(sidebarWorkSession(
+                id: "search-filler-\(index)",
+                kind: .export,
+                title: "Search Filler \(index)",
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+        let model = try AppModel.load(catalog: workHistoryCatalog(in: directory, repository: repository))
+
+        model.librarySearchText = "needle"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [searchOnlySession.id.rawValue])
+        let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
+        XCTAssertEqual(row.countText, "2")
+        XCTAssertEqual(model.sidebarContextActions(for: row), [
+            SidebarRowContextAction(
+                kind: .toggleWorkSessionStarred(searchOnlySession.id),
+                title: "Star Work",
+                systemImage: "star"
+            )
+        ])
+    }
+
+    func testOnlyResidualSearchSuppressesDefaultRecentWorkWhenThereAreNoMatches() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-empty-work-history-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let defaultSession = sidebarWorkSession(
+            id: "default-work",
+            kind: .export,
+            title: "Default Work",
+            updatedAt: 2
+        )
+        try repository.save(defaultSession)
+        let model = try AppModel.load(catalog: workHistoryCatalog(in: directory, repository: repository))
+        let defaultTargets = [defaultSession.id]
+
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), defaultTargets)
+
+        model.librarySearchText = "rating:4 pick"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), defaultTargets)
+
+        model.librarySearchText = "no-session-has-this-residual"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), [])
 
         model.librarySearchText = ""
         try model.applyLibraryFilters()
 
-        XCTAssertEqual(
-            Set(recentWorkCollectionRows(model).compactMap(workSessionTargetID)),
-            [ceremony.id, unrelated.id]
-        )
+        XCTAssertEqual(recentWorkCollectionRows(model).compactMap(workSessionTargetID), defaultTargets)
     }
 
     private func workSessionTargetID(_ row: SidebarRow) -> WorkSessionID? {
@@ -19660,6 +19634,51 @@ final class AppModelTests: XCTestCase {
                 guard row.id.hasPrefix("asset-set-") else { return false }
                 return starredIDs.contains(AssetSetID(rawValue: String(row.id.dropFirst("asset-set-".count))))
             }
+    }
+
+    private func sidebarWorkSession(
+        id: String,
+        kind: WorkSessionKind,
+        title: String,
+        intent: String? = nil,
+        detail: String? = nil,
+        status: WorkSessionStatus = .completed,
+        inputSetIDs: [AssetSetID] = [],
+        outputSetIDs: [AssetSetID] = [],
+        completedUnitCount: Int = 0,
+        totalUnitCount: Int? = nil,
+        starred: Bool = false,
+        updatedAt: TimeInterval
+    ) -> WorkSession {
+        WorkSession(
+            id: WorkSessionID(rawValue: id),
+            kind: kind,
+            intent: intent ?? title,
+            title: title,
+            detail: detail ?? title,
+            status: status,
+            inputSetIDs: inputSetIDs,
+            outputSetIDs: outputSetIDs,
+            completedUnitCount: completedUnitCount,
+            totalUnitCount: totalUnitCount,
+            failureCount: 0,
+            starred: starred,
+            createdAt: Date(timeIntervalSince1970: 10_000 - updatedAt),
+            updatedAt: Date(timeIntervalSince1970: updatedAt)
+        )
+    }
+
+    private func workHistoryCatalog(in directory: URL, repository: CatalogRepository) -> AppCatalog {
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        return AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
     }
 
     // The old top-level "Recent Work"/"Starred Work" sections are now the
