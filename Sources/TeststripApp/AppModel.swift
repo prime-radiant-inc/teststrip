@@ -5428,7 +5428,10 @@ public final class AppModel {
             activities: recentWork + starredWork,
             repository: catalog.repository
         )
-        try refreshImportSourceSummaries()
+        // Cull progress cannot change an import's persisted output membership.
+        // Reuse the counts already refreshed on load/import completion so this
+        // hot path does not rescan every import output set on each P/X press.
+        try refreshImportSourceSummaries(recomputeAssetCounts: false)
         refreshLatestImportPresentation()
         rebuildSidebarSections()
     }
@@ -5448,15 +5451,28 @@ public final class AppModel {
     /// and `recordRecentActivity`'s ingest branch — on load or after an
     /// import completes, never on a cull-session refresh.
     public func refreshImportSourceSummaries() throws {
+        try refreshImportSourceSummaries(recomputeAssetCounts: true)
+    }
+
+    private func refreshImportSourceSummaries(recomputeAssetCounts: Bool) throws {
         guard let catalog else { return }
         let sessions = try catalog.repository.workSessions(kind: .ingest, statuses: [.completed])
+        if recomputeAssetCounts {
+            workSessionScopeCounts.merge(
+                try Self.importSourceAssetCounts(sessions: sessions, repository: catalog.repository)
+            ) { _, refreshedCount in
+                refreshedCount
+            }
+        }
         completedImports = sessions.map(AppWorkActivity.init)
         importSourceSummaries = sessions.map { session in
             ImportSidebarSummary(
                 sessionID: session.id,
                 createdAt: session.createdAt,
                 detail: session.detail,
-                assetCount: session.totalUnitCount ?? session.completedUnitCount,
+                assetCount: session.outputSetIDs.isEmpty
+                    ? session.totalUnitCount ?? session.completedUnitCount
+                    : workSessionScopeCounts[session.id] ?? 0,
                 issues: session.issues,
                 producedOutputSet: !session.outputSetIDs.isEmpty
             )
@@ -14168,6 +14184,51 @@ public final class AppModel {
             }
         }
         return counts
+    }
+
+    private static func importSourceAssetCounts(
+        sessions: [WorkSession],
+        repository: CatalogRepository
+    ) throws -> [WorkSessionID: Int] {
+        let outputSetIDs = Set(sessions.flatMap(\.outputSetIDs))
+        guard !outputSetIDs.isEmpty else { return [:] }
+
+        let outputSetsByID = Dictionary(
+            uniqueKeysWithValues: try repository.assetSets()
+                .filter { outputSetIDs.contains($0.id) }
+                .map { ($0.id, $0) }
+        )
+        let hasExplicitMembership = outputSetsByID.values.contains { outputSet in
+            switch outputSet.membership {
+            case .manual, .snapshot:
+                true
+            case .dynamic:
+                false
+            }
+        }
+        let selectableCatalogAssetIDs = hasExplicitMembership
+            ? Set(try repository.assetIDs())
+            : []
+        var selectableAssetIDsBySetID: [AssetSetID: Set<AssetID>] = [:]
+        for outputSetID in outputSetIDs {
+            guard let outputSet = outputSetsByID[outputSetID] else {
+                selectableAssetIDsBySetID[outputSetID] = []
+                continue
+            }
+            switch outputSet.membership {
+            case .manual(let assetIDs), .snapshot(let assetIDs):
+                selectableAssetIDsBySetID[outputSetID] = Set(assetIDs).intersection(selectableCatalogAssetIDs)
+            case .dynamic(let query):
+                selectableAssetIDsBySetID[outputSetID] = Set(try repository.assetIDs(matching: query))
+            }
+        }
+
+        return Dictionary(uniqueKeysWithValues: sessions.map { session in
+            let selectableAssetIDs = session.outputSetIDs.reduce(into: Set<AssetID>()) { assetIDs, outputSetID in
+                assetIDs.formUnion(selectableAssetIDsBySetID[outputSetID] ?? [])
+            }
+            return (session.id, selectableAssetIDs.count)
+        })
     }
 
     fileprivate static func workKindTitle(_ kind: WorkSessionKind) -> String {
