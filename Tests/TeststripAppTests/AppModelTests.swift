@@ -17669,7 +17669,25 @@ final class AppModelTests: XCTestCase {
     // the per-asset fan-out is unmistakable in the count: a fixture with no
     // completed import would trivially read 0 both before and after the fix,
     // proving nothing.
-    func testCullFlagChangeDoesNotReQueryImportChildEvaluationSignals() throws {
+    //
+    // A flag change legitimately issues some `evaluation_signals` queries
+    // that have nothing to do with import priming — `selectedCullingStackScope`
+    // reads one per currently loaded asset, and `smartCollectionCounts`'s
+    // sidebar-badge refresh reads a fixed handful — so asserting an exact
+    // total (including 0) conflates "priming queries" with "all
+    // evaluation-signal queries" and is either wrong (0) or a brittle magic
+    // number that silently absorbs unrelated future changes to cull
+    // navigation. What actually distinguishes priming is that its cost
+    // scales with the assets in a *newly completed import*, while the other
+    // two sources don't move when an import is added mid-session (neither
+    // reads `importChildCounts`/`importSourceSummaries` at all). So this
+    // pins the differential: seed one completed import, measure a flag
+    // change's query count, add a *second* completed import with a
+    // different asset count without touching anything else the model has
+    // loaded, and measure another flag change. Under the bug the second
+    // count would be higher by (that import's asset count + 2); under the
+    // fix it's identical, whatever the pre-existing baseline happens to be.
+    func testCullFlagChangeQueryCountIsUnaffectedByAddingAnotherCompletedImport() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-cull-hotpath-import-priming")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -17732,18 +17750,76 @@ final class AppModelTests: XCTestCase {
         // `AppModel.load` (cold, fine) and `beginCullingSession` (an ingest
         // activity is never recorded here, so its `recordRecentActivity` does
         // not re-prime) both legitimately touch the Imports section once.
-        // Only queries issued by the *next* flag change are being pinned.
+        // Only queries issued by the *next* flag change are being measured.
         evaluationSignalQueryCount = 0
 
         try model.applyCullingShortcut(.pick)
+        let firstFlagChangeQueryCount = evaluationSignalQueryCount
+
+        // Seed a second completed import directly on the repository — the
+        // same way the fixture above seeded the first one, bypassing
+        // `AppModel` entirely — with a different asset count (3, not 8) so
+        // a size-proportional regression can't hide behind a coincidence.
+        // `refreshWorkSessions()`/`refreshImportSourceSummaries()` re-query
+        // `work_sessions` fresh on every flag change, so the model picks
+        // this up on the very next keystroke with no explicit notification
+        // and without ever reloading `assets` — the loaded-asset count
+        // `selectedCullingStackScope` scales with, and the fixed sidebar
+        // smart-collection set `smartCollectionCounts` reads, both stay
+        // exactly as they were. Only import-child-count priming, if it were
+        // reintroduced, would react to this new row at all.
+        let secondImportAssets = (0..<3).map { index in
+            makeAsset(
+                id: "cull-hotpath-import-b-\(index)",
+                path: "/Photos/Import/cull-hotpath-import-b-\(index).cr2",
+                rating: 0
+            )
+        }
+        try repository.upsert(secondImportAssets)
+        let secondOutputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "cull-hotpath-import-b-output"),
+            name: "Imported photos (second import)",
+            assetIDs: secondImportAssets.map(\.id)
+        )
+        try repository.upsert(secondOutputSet)
+        try repository.save(WorkSession(
+            id: WorkSessionID(rawValue: "cull-hotpath-import-b-session"),
+            kind: .ingest,
+            intent: "Import photos",
+            title: "Import photos",
+            detail: "Imported 3 photos from Import",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [secondOutputSet.id],
+            completedUnitCount: secondImportAssets.count,
+            totalUnitCount: secondImportAssets.count,
+            failureCount: 0,
+            issues: [],
+            createdAt: Date(timeIntervalSince1970: 30),
+            updatedAt: Date(timeIntervalSince1970: 40)
+        ))
+
+        // Select a fresh, still-undecided asset explicitly rather than
+        // relying on cull auto-advance: `target` was inserted last, so
+        // auto-advance (which only looks *after* the current index) has
+        // nothing to move to and would silently re-flag the same asset —
+        // a no-op that short-circuits before `refreshCatalogSidebarCounts`
+        // ever runs, which would hide the very difference this test exists
+        // to catch.
+        model.select(importedAssets[0].id)
+        evaluationSignalQueryCount = 0
+
+        try model.applyCullingShortcut(.pick)
+        let secondFlagChangeQueryCount = evaluationSignalQueryCount
 
         XCTAssertEqual(
-            evaluationSignalQueryCount,
-            0,
-            "a single cull flag change queried evaluation_signals \(evaluationSignalQueryCount) time(s) — " +
+            secondFlagChangeQueryCount,
+            firstFlagChangeQueryCount,
+            "a cull flag change queried evaluation_signals \(firstFlagChangeQueryCount) time(s) before a " +
+            "second completed import existed and \(secondFlagChangeQueryCount) time(s) after — " +
             "refreshWorkSessions() is re-priming import child counts " +
             "(importChildCounts -> visualSimilarityVectorsByAssetID -> evaluationSignals) on every " +
-            "P/X keystroke, once per asset in the completed import, not only on load/import-completion"
+            "P/X keystroke, fanning out over every visible import's assets, not only on load/import-completion"
         )
     }
 
