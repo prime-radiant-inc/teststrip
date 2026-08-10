@@ -84,6 +84,93 @@ final class ImportSourceScopingTests: XCTestCase {
         XCTAssertEqual(summary.assetCount, 6, "assetCount falls back to completedUnitCount when totalUnitCount is nil")
     }
 
+    func testWorkSessionRefreshKeepsAnEvictedImportCountAlignedWithSelectionAndCull() throws {
+        let first = makeAsset(id: "evicted-import-first", path: "/Photos/Import/first.jpg", rating: 1)
+        let second = makeAsset(id: "evicted-import-second", path: "/Photos/Import/second.jpg", rating: 2)
+        let importSessionID = WorkSessionID(rawValue: "evicted-import")
+        let refreshSessionID = WorkSessionID(rawValue: "newer-cull-10")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "evicted-import-count",
+            assets: [first, second]
+        ) { repository in
+            try self.saveCompletedImport(
+                sessionID: importSessionID,
+                assetIDs: [first.id, second.id],
+                repository: repository
+            )
+            // Keep the import outside the model's limit-10 recent cache;
+            // starring the newest Cull below also leaves it outside starred.
+            for index in 0..<11 {
+                try repository.save(self.makeCompletedCullingSession(
+                    id: "newer-cull-\(index)",
+                    createdAt: Date(timeIntervalSince1970: TimeInterval(1_000 + index))
+                ))
+            }
+        }
+
+        XCTAssertFalse(model.recentWork.contains { $0.id == importSessionID.rawValue })
+        XCTAssertFalse(model.starredWork.contains { $0.id == importSessionID.rawValue })
+        XCTAssertEqual(
+            try XCTUnwrap(model.importSourceSummaries.first { $0.sessionID == importSessionID }).assetCount,
+            2,
+            "the unbounded import refresh must prime the old row before exercising cache replacement"
+        )
+
+        try model.toggleWorkSessionStarred(id: refreshSessionID)
+
+        XCTAssertFalse(model.recentWork.contains { $0.id == importSessionID.rawValue })
+        XCTAssertFalse(model.starredWork.contains { $0.id == importSessionID.rawValue })
+        let refreshedSummary = try XCTUnwrap(model.importSourceSummaries.first { $0.sessionID == importSessionID })
+        XCTAssertEqual(refreshedSummary.assetCount, 2)
+        let row = try importRow(sessionID: importSessionID, in: model)
+        XCTAssertEqual(row.countText, "2")
+
+        try model.selectSidebarRow(row)
+
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set([first.id, second.id]))
+
+        let cullingSession = try model.startCullingImport(sessionID: importSessionID, title: "Evicted Import Cull")
+        let inputSetID = try XCTUnwrap(cullingSession.inputSetIDs.first)
+        XCTAssertEqual(
+            Set(assetIDs(in: try repository.assetSet(id: inputSetID))),
+            Set([first.id, second.id])
+        )
+    }
+
+    func testReloadUpdatesImportCountWhenPersistedMembershipLosesAnAsset() throws {
+        let first = makeAsset(id: "shrinking-import-first", path: "/Photos/Import/first.jpg", rating: 1)
+        let removed = makeAsset(id: "shrinking-import-removed", path: "/Photos/Import/removed.jpg", rating: 2)
+        let importSessionID = WorkSessionID(rawValue: "shrinking-import")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "shrinking-import-count",
+            assets: [first, removed]
+        ) { repository in
+            try self.saveCompletedImport(
+                sessionID: importSessionID,
+                assetIDs: [first.id, removed.id],
+                repository: repository
+            )
+        }
+        XCTAssertEqual(
+            try XCTUnwrap(model.importSourceSummaries.first { $0.sessionID == importSessionID }).assetCount,
+            2
+        )
+
+        // Deleting the catalog row leaves the manual output-set membership
+        // intact, while the work-session source can now select only `first`.
+        try repository.deleteAsset(id: removed.id)
+        try model.reload()
+
+        let refreshedSummary = try XCTUnwrap(model.importSourceSummaries.first { $0.sessionID == importSessionID })
+        XCTAssertEqual(refreshedSummary.assetCount, 1)
+        let row = try importRow(sessionID: importSessionID, in: model)
+        XCTAssertEqual(row.countText, "1")
+
+        try model.selectSidebarRow(row)
+
+        XCTAssertEqual(model.assets.map(\.id), [first.id])
+    }
+
     // Import-scoped counts are the smart source's own SetQuery ANDed with
     // `.importBatch(sessionID)` — the shape `importChildCounts(sessionID:)`
     // itself already uses for `likelyIssues`/`facesFound`. Never a third
@@ -183,6 +270,56 @@ final class ImportSourceScopingTests: XCTestCase {
         )
     }
 
+    private func makeCompletedCullingSession(id: String, createdAt: Date) -> WorkSession {
+        WorkSession(
+            id: WorkSessionID(rawValue: id),
+            kind: .culling,
+            intent: "Cull the shoot",
+            title: "Cull the shoot",
+            detail: "Culled the shoot",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+    }
+
+    private func saveCompletedImport(
+        sessionID: WorkSessionID,
+        assetIDs: [AssetID],
+        repository: CatalogRepository
+    ) throws {
+        let outputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-output-\(sessionID.rawValue)"),
+            name: "Imported photos",
+            assetIDs: assetIDs
+        )
+        try repository.upsert(outputSet)
+        try repository.save(makeImportSession(
+            id: sessionID.rawValue,
+            detail: "Imported \(assetIDs.count) photos from /Cards/\(sessionID.rawValue)",
+            createdAt: Date(timeIntervalSince1970: 100),
+            completedUnitCount: assetIDs.count,
+            totalUnitCount: assetIDs.count,
+            outputSetIDs: [outputSet.id]
+        ))
+    }
+
+    private func importRow(sessionID: WorkSessionID, in model: AppModel) throws -> SidebarRow {
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        return try XCTUnwrap(importsSection.rows.first { $0.target?.kind == .workSession(sessionID) })
+    }
+
+    private func assetIDs(in assetSet: AssetSet) -> [AssetID] {
+        switch assetSet.membership {
+        case .manual(let assetIDs), .snapshot(let assetIDs):
+            assetIDs
+        case .dynamic:
+            []
+        }
+    }
+
     private func makeAsset(id: String, path: String, rating: Int) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
@@ -196,7 +333,8 @@ final class ImportSourceScopingTests: XCTestCase {
 
     private func makeModelWithCatalogAssets(
         named name: String,
-        assets: [Asset]
+        assets: [Asset],
+        configureRepository: (CatalogRepository) throws -> Void = { _ in }
     ) throws -> (AppModel, CatalogRepository) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-scoping-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -205,6 +343,7 @@ final class ImportSourceScopingTests: XCTestCase {
         try database.migrate()
         let repository = CatalogRepository(database: database)
         try repository.upsert(assets)
+        try configureRepository(repository)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
