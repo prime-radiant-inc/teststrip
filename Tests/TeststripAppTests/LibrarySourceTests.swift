@@ -242,15 +242,35 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(model.selectedSource, .assetSet(saved.id, titled: "Keepers"))
     }
 
-    // `applyImportChild` is reachable only through `selectSource` today, so
-    // `applySource`'s blanket trailing write (`selectedSource = source`)
-    // masks whether the applier's own assignment is correct — this pins the
-    // observable contract regardless, ahead of the direct sidebar-row caller
-    // Task 6 adds.
+    // Import-child selection resolves the persisted import before it can claim
+    // that source identity. A singleton output is a real import scope but has
+    // no multi-frame Stacks membership.
     func testSelectingAnImportChildSourceUpdatesSelectedSourceToMatch() throws {
         let asset = makeAsset(id: "import-child-source", path: "/Photos/Inside/a.jpg")
-        let (model, _) = try makeModelWithCatalogAssets(named: "source-import-child", assets: [asset])
+        let (model, repository) = try makeModelWithCatalogAssets(named: "source-import-child", assets: [asset])
         let sessionID = WorkSessionID(rawValue: "import-1")
+        let outputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "import-1-output"),
+            name: "Imported photos",
+            assetIDs: [asset.id]
+        )
+        try repository.upsert(outputSet)
+        try repository.save(WorkSession(
+            id: sessionID,
+            kind: .ingest,
+            intent: "Import photos",
+            title: "Import photos",
+            detail: "Imported 1 photo from /Cards/CARD-A",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [outputSet.id],
+            completedUnitCount: 1,
+            totalUnitCount: 1,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        ))
+        XCTAssertEqual(try repository.assetSet(id: outputSet.id), outputSet)
+        XCTAssertEqual(try model.importChildCounts(sessionID: sessionID).stacks, 0)
 
         try model.selectSource(.importChild(session: sessionID, child: .stacks))
 
