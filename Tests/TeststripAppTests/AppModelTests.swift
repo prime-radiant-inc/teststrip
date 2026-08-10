@@ -17138,6 +17138,188 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testCoalescedWorkerImportProgressPersistsLatestUpdateOnlyWhenPublished() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-coalesced-progress-session")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let scheduler = ManualBackgroundWorkPublicationScheduler()
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: supervisor,
+            backgroundWorkPublicationInterval: 0.25,
+            backgroundWorkPublicationScheduler: scheduler
+        )
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(supervisor.queue.runningItems.first?.id)
+
+        // Starting a worker import stays immediately durable even while its
+        // visible queue row waits for the coalesced publication.
+        XCTAssertTrue(model.activeWorkKindRows.isEmpty)
+        XCTAssertEqual(scheduler.scheduledActions.count, 1)
+        let initialSession = try catalog.repository.session(id: itemID)
+        XCTAssertEqual(initialSession.status, .running)
+        XCTAssertEqual(initialSession.completedUnitCount, 0)
+        XCTAssertNil(initialSession.totalUnitCount)
+        XCTAssertEqual(initialSession.detail, "Importing from photos")
+
+        scheduler.fireScheduledActions()
+
+        let initialRow = try XCTUnwrap(model.activeWorkKindRows.first { $0.kind == .ingest })
+        XCTAssertEqual(initialRow.status, .running)
+        XCTAssertEqual(initialRow.completedUnitCount, 0)
+        XCTAssertNil(initialRow.totalUnitCount)
+        XCTAssertEqual(initialRow.detail, "Importing from photos")
+        XCTAssertTrue(scheduler.scheduledActions.isEmpty)
+
+        let firstDetail = "Scanning 100 of 160000 files"
+        let latestDetail = "Scanning 200 of 160000 files"
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 100,
+            totalUnitCount: 160_000,
+            detail: firstDetail,
+            catalogedAssetIDs: []
+        )))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 200,
+            totalUnitCount: 160_000,
+            detail: latestDetail,
+            catalogedAssetIDs: []
+        )))
+
+        // Wait for the transport's main-queue delivery to reach the
+        // supervisor's authoritative queue, not either coalesced consumer.
+        for _ in 0..<100 {
+            if supervisor.queue.item(id: itemID)?.detail == latestDetail {
+                break
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        let currentItem = try XCTUnwrap(supervisor.queue.item(id: itemID))
+        XCTAssertEqual(currentItem.status, .running)
+        XCTAssertEqual(currentItem.completedUnitCount, 200)
+        XCTAssertEqual(currentItem.totalUnitCount, 160_000)
+        XCTAssertEqual(currentItem.detail, latestDetail)
+        XCTAssertEqual(scheduler.scheduledActions.count, 1)
+
+        // Visible and durable progress must stay on the same prior snapshot
+        // until the coalesced publication fires.
+        let rowBeforeFlush = try XCTUnwrap(model.activeWorkKindRows.first { $0.kind == .ingest })
+        XCTAssertEqual(rowBeforeFlush.status, .running)
+        XCTAssertEqual(rowBeforeFlush.completedUnitCount, 0)
+        XCTAssertNil(rowBeforeFlush.totalUnitCount)
+        XCTAssertEqual(rowBeforeFlush.detail, "Importing from photos")
+
+        let sessionBeforeFlush = try catalog.repository.session(id: itemID)
+        XCTAssertEqual(sessionBeforeFlush.status, .running)
+        XCTAssertEqual(sessionBeforeFlush.completedUnitCount, 0)
+        XCTAssertNil(sessionBeforeFlush.totalUnitCount)
+        XCTAssertEqual(sessionBeforeFlush.detail, "Importing from photos")
+
+        scheduler.fireScheduledActions()
+
+        let publishedRow = try XCTUnwrap(model.activeWorkKindRows.first { $0.kind == .ingest })
+        XCTAssertEqual(publishedRow.status, .running)
+        XCTAssertEqual(publishedRow.completedUnitCount, 200)
+        XCTAssertEqual(publishedRow.totalUnitCount, 160_000)
+        XCTAssertEqual(publishedRow.detail, latestDetail)
+
+        let publishedSession = try catalog.repository.session(id: itemID)
+        XCTAssertEqual(publishedSession.status, .running)
+        XCTAssertEqual(publishedSession.completedUnitCount, 200)
+        XCTAssertEqual(publishedSession.totalUnitCount, 160_000)
+        XCTAssertEqual(publishedSession.detail, latestDetail)
+        XCTAssertTrue(scheduler.scheduledActions.isEmpty)
+    }
+
+    @MainActor
+    func testPendingCoalescedWorkerImportProgressDoesNotOverwriteCancelledSession() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-coalesced-cancel-session")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let scheduler = ManualBackgroundWorkPublicationScheduler()
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: supervisor,
+            backgroundWorkPublicationInterval: 0.25,
+            backgroundWorkPublicationScheduler: scheduler
+        )
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(supervisor.queue.runningItems.first?.id)
+        scheduler.fireScheduledActions()
+
+        let progressDetail = "Scanning 300 of 160000 files"
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 300,
+            totalUnitCount: 160_000,
+            detail: progressDetail,
+            catalogedAssetIDs: []
+        )))
+        for _ in 0..<100 {
+            if supervisor.queue.item(id: itemID)?.detail == progressDetail {
+                break
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertEqual(supervisor.queue.item(id: itemID)?.detail, progressDetail)
+        XCTAssertEqual(scheduler.scheduledActions.count, 1)
+
+        model.cancelImportWork()
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: itemID,
+            message: "imported 0 photos from photos",
+            importedAssetIDs: [],
+            newAssetCount: 0,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+
+        // The worker's natural terminal finalizes the soft cancellation and
+        // persists it before the already-pending progress publication runs.
+        for _ in 0..<100 {
+            let persistedStatus = try catalog.repository.session(id: itemID).status
+            if supervisor.queue.item(id: itemID)?.status == .cancelled,
+               persistedStatus == .cancelled {
+                break
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertEqual(supervisor.queue.item(id: itemID)?.status, .cancelled)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: itemID)?.status, .running)
+        XCTAssertEqual(scheduler.scheduledActions.count, 1)
+        let cancelledBeforeFlush = try catalog.repository.session(id: itemID)
+        XCTAssertEqual(cancelledBeforeFlush.status, .cancelled)
+        XCTAssertEqual(cancelledBeforeFlush.detail, "Cancelled import from photos")
+
+        scheduler.fireScheduledActions()
+
+        XCTAssertFalse(model.activeWorkKindRows.contains { $0.kind == .ingest })
+        let cancelledAfterFlush = try catalog.repository.session(id: itemID)
+        XCTAssertEqual(cancelledAfterFlush.status, .cancelled)
+        XCTAssertEqual(cancelledAfterFlush.detail, "Cancelled import from photos")
+        XCTAssertTrue(scheduler.scheduledActions.isEmpty)
+    }
+
+    @MainActor
     func testWorkerImportProgressRevealsCatalogedAsset() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-full-page-early-assets")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
