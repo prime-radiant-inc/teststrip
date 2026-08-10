@@ -7272,6 +7272,104 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testEvaluationCompletionRefreshesPeopleSnapshotOnceAndOnlyWhenPeopleIsVisible() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-evaluation-people-refresh-count")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let offPeople = makeAsset(
+            id: "evaluation-people-refresh-off",
+            path: "/Photos/evaluation-people-refresh-off.jpg",
+            rating: 0
+        )
+        let inPeople = makeAsset(
+            id: "evaluation-people-refresh-in",
+            path: "/Photos/evaluation-people-refresh-in.jpg",
+            rating: 0
+        )
+        try repository.upsert([offPeople, inPeople])
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(
+                applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)
+            ),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: offPeople.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: inPeople.id, level: .grid)))
+        let provenance = ProviderProvenance(
+            provider: "apple-vision",
+            model: "Vision",
+            version: "1",
+            settingsHash: "default"
+        )
+        var peopleSnapshotQueryCount = 0
+        database.rowQueryObserver = { sql in
+            if sql.contains("SELECT COUNT(DISTINCT asset_id) AS asset_count"),
+               sql.contains("FROM face_observations") {
+                peopleSnapshotQueryCount += 1
+            }
+        }
+
+        try model.requestEvaluation(assetID: offPeople.id, provider: "apple-vision")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: offPeople.id,
+                kind: .faceQuality,
+                value: .score(0.8),
+                confidence: 0.8,
+                provenance: provenance
+            )
+        ])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(offPeople.id.rawValue)-apple-vision"),
+            message: "evaluated \(offPeople.id.rawValue) with apple-vision"
+        )))
+
+        try await waitForEvaluationSignalGeneration(1, for: offPeople.id, in: model)
+        XCTAssertEqual(peopleSnapshotQueryCount, 0)
+        XCTAssertEqual(model.catalogEvaluationKindSummaries, [
+            CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 1)
+        ])
+
+        model.selectLens(.people)
+        model.refreshPeopleFaceSuggestions()
+        peopleSnapshotQueryCount = 0
+
+        try model.requestEvaluation(assetID: inPeople.id, provider: "apple-vision")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: inPeople.id,
+                kind: .faceQuality,
+                value: .score(0.9),
+                confidence: 0.9,
+                provenance: provenance
+            )
+        ])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(inPeople.id.rawValue)-apple-vision"),
+            message: "evaluated \(inPeople.id.rawValue) with apple-vision"
+        )))
+
+        try await waitForEvaluationSignalGeneration(1, for: inPeople.id, in: model)
+        XCTAssertEqual(peopleSnapshotQueryCount, 1)
+        let expectedSummaries = [CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 2)]
+        XCTAssertEqual(model.catalogEvaluationKindSummaries, expectedSummaries)
+        XCTAssertEqual(model.peopleEvaluationKindSummaries, expectedSummaries)
+    }
+
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 

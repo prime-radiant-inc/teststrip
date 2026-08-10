@@ -703,6 +703,93 @@ final class PeopleSourceScopingTests: XCTestCase {
         XCTAssertEqual(peoplePresentation(model).reviewStripStatusText, "0 queues")
     }
 
+    func testFailedPeopleReadPublishesAnEmptySnapshotForTheNewSource() throws {
+        let rootContainer = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-people-source-read-failure-\(UUID().uuidString)", isDirectory: true)
+        let unavailableRoot = rootContainer.appendingPathComponent("Unavailable", isDirectory: true)
+        let healthyRoot = rootContainer.appendingPathComponent("Healthy", isDirectory: true)
+        try FileManager.default.createDirectory(at: healthyRoot, withIntermediateDirectories: true)
+        var previousNamed = makeAsset(
+            id: "people-source-read-failure-named",
+            path: unavailableRoot.appendingPathComponent("ada.jpg").path
+        )
+        previousNamed.availability = .missing
+        var previousReview = makeAsset(
+            id: "people-source-read-failure-review",
+            path: unavailableRoot.appendingPathComponent("review.jpg").path
+        )
+        previousReview.availability = .missing
+        let current = makeAsset(
+            id: "people-source-read-failure-current",
+            path: healthyRoot.appendingPathComponent("current.jpg").path
+        )
+        let database = try CatalogDatabase.open(at: rootContainer.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert([previousNamed, previousReview, current])
+        try repository.recordSourceRoot(unavailableRoot)
+        try repository.recordSourceRoot(healthyRoot)
+        try repository.upsertPerson(id: "person-ada", name: "Ada")
+        try repository.assignAssets([previousNamed.id], toPersonID: "person-ada")
+        let firstReviewFace = faceObservation(asset: previousReview, embedding: [1, 0, 0])
+        var secondReviewFace = firstReviewFace
+        secondReviewFace.faceIndex = 1
+        try repository.replaceFaceObservations(
+            assetID: previousReview.id,
+            provenance: AppleVisionEvaluationProvider.faceProvenance,
+            with: [firstReviewFace, secondReviewFace]
+        )
+        try repository.recordEvaluationSignals(faceSignals(assetID: previousReview.id))
+        let previewCache = PreviewCache(root: rootContainer.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(
+                applicationSupportDirectory: rootContainer.appendingPathComponent("app-support", isDirectory: true)
+            ),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
+        model.selectLens(.people)
+
+        try model.selectSource(.folder(unavailableRoot.path))
+
+        var presentation = peoplePresentation(model)
+        XCTAssertEqual(model.peopleInCurrentSource.map(\.name), ["Ada"])
+        XCTAssertEqual(model.peopleFaceSuggestions.count, 1)
+        XCTAssertEqual(model.peopleFaceObservationAssetCount, 1)
+        XCTAssertEqual(model.peopleEvaluationKindSummaries, faceSignalSummaries(assetCount: 1))
+        XCTAssertTrue(model.peopleHasUnavailableSources)
+        XCTAssertEqual(presentation.reviewCards.map(\.filterKind), [.faceCount, .faceQuality])
+
+        try database.execute("DROP TABLE face_observations")
+        model.errorMessage = nil
+
+        try model.selectSource(.folder(healthyRoot.path))
+
+        XCTAssertEqual(model.selectedLens, .people)
+        XCTAssertEqual(model.selectedSource, .folder(healthyRoot.path))
+        XCTAssertEqual(model.assets.map(\.id), [current.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertEqual(model.errorMessage, "no such table: face_observations")
+        XCTAssertEqual(model.peopleInCurrentSource, [])
+        XCTAssertEqual(model.peopleFaceSuggestions, [])
+        XCTAssertEqual(model.peopleFaceObservationAssetCount, 0)
+        XCTAssertEqual(model.peopleEvaluationKindSummaries, [])
+        XCTAssertFalse(model.peopleHasUnavailableSources)
+
+        presentation = peoplePresentation(model)
+        XCTAssertEqual(presentation.namedPeople, [])
+        XCTAssertEqual(presentation.reviewCards, [])
+        XCTAssertEqual(presentation.photosWithFaceSignals, 0)
+        XCTAssertEqual(presentation.faceObservationAssetCount, 0)
+        XCTAssertFalse(presentation.hasUnavailableSources)
+        XCTAssertEqual(presentation.reviewStripStatusText, "0 queues")
+    }
+
     func testReconnectSourceRootRefreshesScopedPeopleOfflineStatusImmediately() throws {
         let rootContainer = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-people-source-reconnect-\(UUID().uuidString)", isDirectory: true)
