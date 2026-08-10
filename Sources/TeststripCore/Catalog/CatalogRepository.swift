@@ -3380,6 +3380,15 @@ public final class CatalogRepository {
             case .assetSet(let setID):
                 clauses.append(Self.assetSetMembershipClause())
                 bindings.append(contentsOf: [setID.rawValue, setID.rawValue])
+            case .assetIDs(let assetIDs):
+                guard !assetIDs.isEmpty else {
+                    clauses.append("0 = 1")
+                    continue
+                }
+                clauses.append(
+                    "assets.id IN (SELECT json_extract(value, '$.rawValue') FROM json_each(?))"
+                )
+                bindings.append(try encode(assetIDs))
             }
         }
 

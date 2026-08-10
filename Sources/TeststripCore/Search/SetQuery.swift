@@ -44,6 +44,8 @@ public struct SetQuery: Codable, Equatable, Sendable {
         /// `.snapshot`). A `.dynamic` set's membership is its own query and
         /// reaches SQL that way instead, so it matches nothing here.
         case assetSet(AssetSetID)
+        /// Membership in an explicit runtime scope that has no saved set.
+        case assetIDs([AssetID])
     }
 
     public var predicates: [Predicate]

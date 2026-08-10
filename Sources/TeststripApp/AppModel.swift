@@ -9825,6 +9825,13 @@ public final class AppModel {
     /// Grid, where the KEEP/CUT badges and the commit bar live.
     private func applyAutopilotSuggestionsScope() throws {
         try loadAutopilotSuggestionsScope(preferredSelection: nil)
+        if selectedView == .map {
+            try refreshPlaceData(
+                bounds: nil,
+                cellSize: Self.defaultPlaceClusterCellSize,
+                matching: SetQuery(predicates: [.assetIDs(autopilotGhostAssetIDs)])
+            )
+        }
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
     }
@@ -10957,6 +10964,13 @@ public final class AppModel {
         librarySortOption = option
         if selectedSource == .autopilotSuggestions {
             try loadAutopilotSuggestionsScope(preferredSelection: nil)
+            if selectedView == .map {
+                try refreshPlaceData(
+                    bounds: nil,
+                    cellSize: Self.defaultPlaceClusterCellSize,
+                    matching: SetQuery(predicates: [.assetIDs(autopilotGhostAssetIDs)])
+                )
+            }
             return
         }
         try loadCatalogPage(preferredSelection: nil)
@@ -11010,23 +11024,34 @@ public final class AppModel {
         bounds: GeoBounds? = nil,
         cellSize: Double = AppModel.defaultPlaceClusterCellSize
     ) throws {
+        try refreshPlaceData(bounds: bounds, cellSize: cellSize, matching: currentMapQuery())
+    }
+
+    private func refreshPlaceData(
+        bounds: GeoBounds?,
+        cellSize: Double,
+        matching query: SetQuery?
+    ) throws {
         guard let catalog else { return }
-        let query = currentMapQuery()
         catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize, matching: query)
         catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit, matching: query)
         geotaggedCoverage = try catalog.repository.geotaggedCoverage(matching: query)
     }
 
-    /// The Map lens is source-scoped like every other lens. A dynamic scope
-    /// already reaches SQL through `currentLibraryQuery()`; a static one — a
-    /// saved manual/snapshot set, or the Selection — lived only in
-    /// `selectedExplicitAssetIDs`, which `currentLibraryQuery()` cannot see,
-    /// so the Map silently showed every geotagged photo in the catalog for
-    /// those sources.
+    /// The Map lens is source-scoped like every other lens. Dynamic scopes
+    /// already reach SQL through `currentLibraryQuery()`. Saved static scopes
+    /// use their set membership, while derived explicit scopes such as AI
+    /// Suggestions carry their current IDs, including an empty scope.
     private func currentMapQuery() -> SetQuery? {
-        var predicates = currentLibraryQuery()?.predicates ?? []
-        if selectedExplicitAssetIDs != nil, let selectedAssetSetID {
-            predicates.append(.assetSet(selectedAssetSetID))
+        var predicates = selectedSource == .autopilotSuggestions
+            ? []
+            : currentLibraryQuery()?.predicates ?? []
+        if let selectedExplicitAssetIDs {
+            if let selectedAssetSetID {
+                predicates.append(.assetSet(selectedAssetSetID))
+            } else {
+                predicates.append(.assetIDs(selectedExplicitAssetIDs))
+            }
         }
         return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
     }
@@ -11391,6 +11416,9 @@ public final class AppModel {
             // No chip: `activeLibraryFilterRows` already renders the selected
             // set by name, with a live removable target. A second row here
             // would double-render the same scope (Jesse's ruling 2026-08-07).
+            nil
+        case .assetIDs:
+            // Runtime explicit membership is named by its selected source.
             nil
         }
     }
@@ -11956,6 +11984,8 @@ public final class AppModel {
         case .workSession(let id):
             "session:\(searchFieldValue(id))"
         case .assetSet:
+            nil
+        case .assetIDs:
             nil
         }
     }
