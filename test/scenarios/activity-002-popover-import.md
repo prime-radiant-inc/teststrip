@@ -263,7 +263,8 @@ The empty catalog makes every receipt count attributable to this card. The
     done
     test -n "$NEW_CULL_ID"
     test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_CULL_ROWID;")" -eq 1
-    script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Cull"
+    script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Loupe"
+    script/vm_scenario_run.sh ax find --label "Scope" --contains "✓ 0 · ✕ 0 · 1 left"
     ```
 
 ## Expected
