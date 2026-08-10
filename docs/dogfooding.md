@@ -10,29 +10,25 @@ For Jesse's first (and every subsequent) real-library session. One command to la
 
 Run from the repo root. This rebuilds `TeststripApp` and `TeststripWorker`, ad-hoc codesigns an unsigned dev bundle at `dist/Teststrip.app` (no sandbox entitlements), and opens it. With no flags it does **not** override the application-support directory or seed any sample/synthetic data, so it opens against your real catalog at `~/Library/Application Support/Teststrip`. Because it isn't sandboxed, the background worker is fully enabled (the sandboxed build disables worker-driven imports — don't switch builds mid-dogfood). This is the one command; every other flag (`--isolated`, `--sandboxed`, `--smoke`, `--sample-photos`, `--real-corpus`, `--build`, `--verify*`) is for development/testing, not daily use.
 
-## Workspaces
+## Sources and lenses
 
-The window is organized into two focused workspaces, switched with the
-toolbar Picker or **⌘1** (Cull) / **⌘2** (Library) — same shortcuts in the
-View menu, so the two never drift apart:
+The sidebar chooses **what photos** you are looking at: All Photos, an import,
+a smart collection, a static set, a folder, recent work, or the current
+selection. The toolbar chooses **how** you look at that source with one lens
+control: **⌘1** Cull, **⌘2** Grid, **⌘3** Loupe, **⌘4** Timeline, **⌘5** Map,
+and **⌘6** People. The View menu uses the same shortcuts. Every lens uses the
+same 1000pt minimum window width.
 
-- **Cull** — the loupe-first rapid-review flow: sidebar sources (including
-  Autopilot Proposals and stacks), the HUD, pick/reject/rate keys, `S` to
-  cycle scope, `Z`/`I`/`?`, and the end-of-set handoff. Minimum window width
-  800pt.
-- **Library** — grid/loupe/timeline/map/people browsing with the token query
-  field, result-count header, and sort/filter chrome. Minimum window width
-  1000pt.
+- **Cull** is the loupe-first rapid-review lens: HUD, pick/reject/rate keys,
+  `S` to cycle scope, `Z`/`I`/`?`, stacks, and the end-of-set handoff.
+- **Grid**, **Loupe**, **Timeline**, and **Map** are browse lenses. They retain
+  the token query field, filters, import, result/footer, Cull, Export, and More
+  controls.
+- **People** is a focused lens for the face-grouping queue and face-group
+  review surface. Like Cull, it omits browse chrome, but it still respects the
+  selected source.
 
-**People** is a Library sub-view (a peer of Grid | Loupe | Timeline | Map in
-the Library view toggle), not a top-level workspace: the face-grouping queue
-(arrow keys to move focus, Return to confirm/name, Esc to dismiss) and the
-face-group **review** surface (click a suggestion to look at every face large
-and zoomed, remove wrong ones, then name). It keeps its focused, non-browse
-chrome — no search field, filter tokens, import, or footer.
-
-**⌘I** opens the tabbed inspector (Describe/Metadata/AI) in every view —
-Library browse, People, and Cull.
+**⌘I** opens the stacked inspector (Info/Describe/AI/People) in every lens.
 
 ## Where things live
 
@@ -50,7 +46,11 @@ The database uses SQLite's default rollback-journal mode (no WAL), so copying th
 
 ## Importing a real subtree, in place
 
-Click the blue **Import** button in the top bar above the grid, or **Import Folder** in the window toolbar (both open the same native macOS folder picker). **Import Path** does the same thing from a typed path instead of a Finder dialog — only use it if you already trust the path string; for a first pass on a real tree, the folder picker is simpler.
+From Grid, Loupe, Timeline, or Map, open the toolbar's **Import ▾** menu and
+choose **Folder…** to use the native macOS folder picker, or **From Card…** for
+a memory card. **Import Path** is a development/automation control shown only
+when the app uses an isolated test catalog; it is not part of the real-library
+workflow.
 
 After you pick a folder, a confirmation sheet appears before anything happens. It scans and shows a photo-file count/size estimate, then lists the plan:
 
@@ -66,10 +66,22 @@ Click **Import N Photos** to proceed, or Cancel.
 
 ## During and after import
 
-- An orange progress banner appears at the top of the grid immediately, with a phase label ("Waiting" / "Cataloging" / "Building previews"), a cancel button, and a reassurance line — while queued it says "Queued safely; originals will not be modified."
-- The **Activity** icon lives in the toolbar (a bell, replaced by a spinner while work is running, with a red count badge when something needs attention — an XMP conflict, an offline source, a provider failure). Click it to open a popover listing import and preview/metadata background work with Queued/Running/Paused/Done/Failed status, per-item progress, and pause/resume/cancel controls; clicking a problem row jumps to Library with that asset selected.
+- The in-flight import leads the sidebar's **Imports** section with live
+  narration and a unit count. It is intentionally not selectable until the
+  import has produced a stable source.
+- The **Activity** icon lives in the toolbar: a bell becomes a spinner while
+  work is running, and a red badge counts problems such as XMP conflicts,
+  unavailable sources, and provider failures. Its Activity Center groups
+  active work by kind with status, aggregate progress, and the applicable
+  pause/resume/cancel controls. An XMP-conflict row opens that asset in Grid.
 - Micro and grid previews for imported photos render inline during import for immediate browsing; anything left over drains in the background afterward. On a large subtree this backlog can take a while to fully drain — see Known Rough Edges.
-- When import finishes, a completion panel reports the imported count (and how many were already-cataloged/matched), preview status, and offers next actions: Start culling, Review imported frames, Open imported set, Evaluate import (enabled once previews are cached), Cull stacks (if bursts were detected), plus face/keyword review prompts when applicable.
+- When import finishes, a thin top-right toast shows the imported count, any
+  skipped-file warning, and **Start culling**. It fades after about ten
+  seconds; the Activity Center keeps the import receipt and Start culling
+  action. The completed import becomes a selectable **Imports** row. Expand it
+  for nonzero Stacks, Skipped, Preview failed, Likely issues, and Faces found
+  children; its context menu carries Evaluate import, Cull stacks when
+  available, and Manual Compare.
 
 ## Offline / NAS volumes
 
@@ -79,13 +91,19 @@ Each original's availability is tracked as online/offline/missing/moved/stale. A
 
 1. **Support > Copy Diagnostics** (menu bar) copies a text report to the clipboard: catalog/preview-cache paths, worker status, loaded/total asset counts, pending background-work count, XMP pending/conflict counts, per-source-root status, and the last few work failures. The status bar confirms "Copied diagnostics."
 2. Take a normal macOS screenshot (Cmd+Shift+4 or Cmd+Shift+5) of what you were looking at.
-3. Note what you were doing right before, and whether the import banner or Activity panel showed anything unusual (stuck "Waiting," a Failed row, etc.). If it's tied to a specific photo or folder, note the path.
+3. Note what you were doing right before, and whether the completion toast,
+   Activity Center, or Imports row showed anything unusual (stuck work, a
+   warning child, a Failed row, etc.). If it's tied to a specific photo or
+   folder, note the path.
 
 ## Quitting and relaunching
 
 Quitting any time — including mid-import or while previews are still draining — is safe for the catalog. On relaunch:
 
-- Any import that was still queued/running/paused gets marked failed with "Import interrupted before completion" (visible in Work history); re-run Import Folder on the same folder to finish it. Already-cataloged files are matched by path and won't be duplicated — only what's missing gets added.
+- Any import that was still queued/running/paused gets recorded as failed with
+  "Import interrupted before completion"; run **Import ▾ > Folder…** on the
+  same folder to finish it. Already-cataloged files are matched by path and
+  won't be duplicated — only what's missing gets added.
 - Any pending preview work resumes automatically in the background (bounded, and it skips sources that are still offline) — you don't need to do anything to restart it.
 
 ## New since this runbook was written (2026-07-06 evening)
@@ -93,7 +111,7 @@ Quitting any time — including mid-import or while previews are still draining 
 - Imports offer **"Read imported frames"** (default on): evaluation runs automatically as previews complete, so verdicts, stack recommendations, and badges are live by the time you cull. Watch Activity if you want to see it work.
 - **Card imports organize into `YYYY/YYYY-MM-DD/` folders by default** (toggle off for flat copy) and can write a **second copy** to a backup destination; backup failures show per-file in the issue sheet without failing the import.
 - **Export** lives in the toolbar: selected/visible/current-scope, Full-res or Web 2048px, optional EXIF/IPTC carry (default on).
-- Culling now shows a **provisional Keep/Toss read** with inline rationale, a stack list rail, ✦ recommended-frame markers, face **Close-Ups** beside the loupe, and a **Potential Picks** review queue. All reads are display-only until you act. Thresholds were calibrated against this library's real signal distributions on 2026-07-06; if reads feel wrong, say so — they're one constant away.
+- Culling now shows a **provisional Keep/Toss read** with inline rationale, a stack list rail, ✦ recommended-frame markers, face **Close-Ups** beside the loupe, and an **AI Suggestions** smart collection. Tentative proposals apply in the catalog as AI-unconfirmed ghosts, but remain unconfirmed and do not reach XMP until you explicitly commit them. Thresholds were calibrated against this library's real signal distributions on 2026-07-06; if reads feel wrong, say so — they're one constant away.
 - **People** suggests automatic face groupings with a "needs a name" confirm band; nothing is written until you confirm.
 
 ## Known rough edges

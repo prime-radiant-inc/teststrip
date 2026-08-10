@@ -62,7 +62,7 @@ so it stays a standalone stop.
    `stack-4-noface.jpg` in that order, 1s apart, then a fifth asset at least
    an hour later.
 
-2. Switch to the Cull workspace (⌘1) and select `stack-1-face.jpg`. Wait for
+2. Switch to the Cull lens (⌘1) and select `stack-1-face.jpg`. Wait for
    the close-ups panel, then read the rail:
    ```bash
    script/vm_scenario_run.sh ax wait --role AXStaticText --contains "CLOSE-UPS"

@@ -10,7 +10,7 @@ concurrent lanes, each capped at one in-flight command
 the worker's dispatch cap are both raised past the lane count
 (`BackgroundWorkQueue(maxRunningCount: 8, ...)`,
 `WorkerSupervisor(..., maxDispatchedCommandCount: 8)`,
-`Sources/TeststripApp/AppCatalog.swift:126,131`) so lane concurrency is no
+`Sources/TeststripApp/AppCatalog.swift:127-131`) so lane concurrency is no
 longer gated by a shared slot pool. This card proves that concurrency is
 observable end to end: **two separate Activity Center bars advance at the
 same wall-clock time** ("Generate previews" and "Evaluate photos"), catalog
@@ -34,7 +34,7 @@ established in `worker-001-preview-lifecycle.md`), so this card imports the
 starts queued — large enough that preview generation and evaluation both
 take several seconds, giving a real window to sample both lanes advancing
 rather than needing sub-second timing precision. `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`
-(read by `LibraryGridView.swift:7797`) routes the card-import sheet through a
+(read by `LibraryGridView.swift:8320-8325`) routes the card-import sheet through a
 typed path field instead of a native file panel, so `script/submit_import_path.sh`
 can drive it headlessly (per `worker-001-preview-lifecycle.md`'s proven
 pattern).
@@ -69,7 +69,7 @@ find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_BEFORE"
    is the point: `script/submit_import_path.sh Teststrip "$IMPORT_DIR"`,
    leaving defaults (including "Evaluate after import" checked — evaluation
    is enabled by default, `importAutoEvaluationEnabled = true`,
-   `Sources/TeststripApp/AppModel.swift:2299`).
+   `Sources/TeststripApp/AppModel.swift:2408`).
 3. **Open the Activity popover promptly** (toolbar Activity button) and keep
    re-asserting frontmost on every poll (`ax_drive.sh wait-vended` each
    iteration — a backgrounded app parks its AX tree, per
@@ -84,7 +84,7 @@ find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_BEFORE"
    lanes under test here, since ingest is the fast up-front step before
    previews/evaluations begin.) Two simultaneously-rendered rows are only
    possible because `activeWorkKindRows`
-   (`Sources/TeststripApp/AppModel.swift:2783-2786`) is folding items from
+   (`Sources/TeststripApp/AppModel.swift:2907-2910`) is folding items from
    two lanes the worker is running **at the same time** — under the old
    single-lane worker, only one kind's items could ever be `.running` at
    once, so this popover would never have shown two active rows
@@ -109,9 +109,9 @@ find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_BEFORE"
 5. **Per-kind cancel — the sibling lane survives.** While both rows are
    *still* active (haven't fully drained — if they have, see Sharp edges),
    press cancel on the **"Evaluate photos"** row (`xmark.circle`, AXHelp
-   `"Cancel this work item"`, `Sources/TeststripApp/ActivityCenterView.swift:109-121`).
+   `"Cancel this work item"`, `Sources/TeststripApp/ActivityCenterView.swift:112-124`).
    This calls `model.cancelWork(kind: .recognition)`
-   (`Sources/TeststripApp/AppModel.swift:7847-7852`), which cancels only
+   (`Sources/TeststripApp/AppModel.swift:8947-8952`), which cancels only
    `.recognition`'s currently-active items one at a time via
    `WorkerSupervisor.cancel(id:)`
    (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211` — the
@@ -278,9 +278,9 @@ Authored 2026-07-13, source-cited against the
 semantics (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211`),
 the per-kind Activity projection
 (`Sources/TeststripApp/ActivityCenterPresentation.swift:72-139`,
-`Sources/TeststripApp/AppModel.swift:2783-2836`), and the auto-evaluation
+`Sources/TeststripApp/AppModel.swift:2903-2910`), and the auto-evaluation
 trigger that makes both lanes fire off a single import
-(`Sources/TeststripApp/AppModel.swift:8788-8802,9025-9043`). Cross-checked
+(`Sources/TeststripApp/AppModel.swift:10042-10056,10083-10096`). Cross-checked
 against this branch's own headless lane-overlap verifier
 (`script/verify_lane_overlap.sh`, `script/lane_overlap_verifier_metrics.sh`,
 `Sources/TeststripBench/LaneOverlapSmoke.swift`) for the "overlap" definition

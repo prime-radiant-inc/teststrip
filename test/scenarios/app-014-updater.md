@@ -5,7 +5,7 @@
 `Updater.shared.checkForUpdates()` → `SPUStandardUpdaterController`
 (`Sources/TeststripApp/Updater.swift`); automatic background checks start at
 init (`startingUpdater: true`, eagerly touched in `TeststripApplication.init`,
-`Sources/TeststripApp/main.swift:36`); the Info.plist carries `SUFeedURL`
+`Sources/TeststripApp/main.swift:28`); the Info.plist carries `SUFeedURL`
 (github latest appcast), `SUPublicEDKey`, `SUEnableAutomaticChecks`,
 `SUEnableInstallerLauncherService`, version 0.1.0, bundle id
 `com.teststrip.app` (`script/lib/app_bundle.sh:130-170`).

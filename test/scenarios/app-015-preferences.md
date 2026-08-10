@@ -5,9 +5,9 @@ pre-fills it. Inventory item 49: the Settings scene (⌘,) hosts
 `PreferencesView` with Creator/Copyright fields bound to
 `model.defaultCreator`/`defaultCopyright`
 (`Sources/TeststripApp/PreferencesView.swift`;
-`Sources/TeststripApp/main.swift:86-88`), persisted to defaults under
+`Sources/TeststripApp/main.swift:81-84`), persisted to defaults under
 `AppModel.defaultCreator`/`AppModel.defaultCopyright`
-(`AppModel.swift:2085-2091`) — pre-fill only, never auto-written to a photo.
+(`AppModel.swift:2424-2435`) — pre-fill only, never auto-written to a photo.
 
 ## Pre-state
 Run in the Tart VM (relaunch cycle + defaults inspection):

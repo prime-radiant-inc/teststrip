@@ -14,7 +14,7 @@ Source (re-verified against the working tree on this branch, not carried
 over from any older card):
 - **Rail placement**: leftmost in the loupe's middle `HStack`, shown only
   when `presentation.showsCullChrome` —
-  `Sources/TeststripApp/LibraryGridView.swift:3842-3845`
+  `Sources/TeststripApp/LibraryGridView.swift:3786-3789`
   (`cullingStackRail(presentation: stackPresentation)`).
 - **Rail view**: `cullingStackRail(presentation:)`,
   `LibraryGridView.swift:4399-4471` — title (`Label` + `rectangle.stack`
@@ -82,9 +82,9 @@ over from any older card):
   `LibraryGridView.swift:5523`, and thus independently AX-findable; the rail
   chip is not the same mechanism).
 - **Keyboard remap**, `CullingShortcut` — the live monitor's event-based
-  mapping (`Sources/TeststripApp/CullingKeyCaptureView.swift:149-161`) and
+  mapping (`Sources/TeststripApp/CullingKeyCaptureView.swift:153-165`) and
   the static key-based mapping used for the `?`/menu advertisement
-  (`Sources/TeststripApp/AppModel.swift:236-283`) agree:
+  (`Sources/TeststripApp/AppModel.swift:187-241`) agree:
   `upArrow`/`downArrow` → `.previousCandidateInStack`/`.nextCandidateInStack`
   (moves **within** the current stack); `leftArrow`/`rightArrow` →
   `.previousStack`/`.nextStack` (moves **across** stacks); `space` →

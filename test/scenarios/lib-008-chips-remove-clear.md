@@ -1,7 +1,7 @@
 # lib-008-chips-remove-clear: filter chips dedupe by identity, removal is per-property, and "clear all" only shows when a filter is active
 
 **What this covers**: `activeFilterChips`
-(`Sources/TeststripApp/LibraryGridView.swift:954-979`) renders two chip
+(`Sources/TeststripApp/LibraryGridView.swift:1180-1235`) renders two chip
 sources back to back — structured `LibraryQueryToken` chips (from
 `LibraryQueryToken.tokens(from: model)`) and legacy
 `ActiveLibraryFilterRow` chips (from `model.activeLibraryFilterRows`),
@@ -103,7 +103,7 @@ directly.
 
 ## Run status
 NOT RUN — GUI/AX driving was not attempted this session. Chip/dedup/removal
-logic confirmed by reading `Sources/TeststripApp/LibraryGridView.swift:947-1016`
+logic confirmed by reading `Sources/TeststripApp/LibraryGridView.swift:1173-1235`
 and `AppModel.swift:2732-2845` (`hasActiveLibraryFilters`,
 `activeLibraryFilterRows`, the `isPlainSearchFallback: true` site at line
 2758) in full, plus the `LibraryQueryTokenField.swift` summary of

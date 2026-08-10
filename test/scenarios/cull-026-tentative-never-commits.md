@@ -29,7 +29,7 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   from `cullingProgressSummary` → `cullingDecisionCounts()` →
   `cullingDecisionCount(flag:repository:)` (`:2795-2801`), which queries
   **`assetCount(ids:confirmedFlag:)`**
-  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:586-605`) — SQL
+  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:585-604`) — SQL
   `json_extract(metadata_json,'$.flag') = ? AND NOT EXISTS (SELECT 1 FROM
   json_each(metadata_json,'$.aiUnconfirmedFields') WHERE json_each.value =
   ?)` (the `confirmedFieldClauseSQL`, `CatalogRepository.swift:2947-2948`) —

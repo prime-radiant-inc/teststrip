@@ -33,11 +33,11 @@ JPEG rides along silently.
   `allAssets`/`assetIDs`/`assetCount` `:330-412`), so a bonded JPEG never
   appears as its own row anywhere the grid reads from —
   `AppModel`'s `catalogContents(repository:query:sort:)`
-  (`Sources/TeststripApp/AppModel.swift:13481-13494`), which calls
+  (`Sources/TeststripApp/AppModel.swift:13925-13938`), which calls
   `repository.allAssets(sort:)`, feeds `model.assets` (the Library grid's
   data source) with this same default.
 - **The badge**: `RawBadgeLabel.text(isRaw:hasBondedStill:)`
-  (`Sources/TeststripApp/LibraryGridView.swift:6703-6710`) returns
+  (`Sources/TeststripApp/LibraryGridView.swift:6798-6805`) returns
   `"RAW+JPEG"` only when `isRaw` and `hasBondedStill` are both true (a
   non-RAW can never carry the badge — bonding always makes the RAW the
   primary). Rendered as a small, muted caption *below* the tile's thumbnail
@@ -68,7 +68,7 @@ JPEG rides along silently.
   `relocateBondedSecondaries` (`:11613-11656`, itself calling
   `bondedSecondaryAssets` `:11602-11604`), which relocates each bonded
   secondary via the same `CatalogRepository.relocateOriginal`
-  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:2437-2454`, rewrites
+  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:2491-2508`, rewrites
   `original_path`) and records its own
   `relocation_manifest_entries` row (`CatalogMigrations.swift:193-206`) under
   the same session id.

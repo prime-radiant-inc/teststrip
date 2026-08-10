@@ -4,9 +4,9 @@
 bug report; the report must be real and complete. Inventory item 44:
 Support ▸ Copy Diagnostics writes `model.diagnosticsReportText` to
 `NSPasteboard.general` and sets the status "Copied diagnostics"
-(`SupportCommands.copyDiagnostics`, `Sources/TeststripApp/main.swift:498-518`;
+(`SupportCommands.copyDiagnostics`, `Sources/TeststripApp/main.swift:548-569`;
 report shape in `AppDiagnosticsReport.text`,
-`Sources/TeststripApp/AppModel.swift:1138-1179`).
+`Sources/TeststripApp/AppModel.swift:1203-1244`).
 
 ## Pre-state
 Run in the Tart VM — the assertion is `pbpaste` in the *app's* GUI session,

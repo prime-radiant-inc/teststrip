@@ -106,7 +106,7 @@ over from any older card):
   seed fixture induces a genuine render failure; see Sharp edges).
 - **Fixture reality**: `burst` (`seed-burst-catalog` →
   `SmokeCatalogSeeder` with `BurstFixtureLayout`'s capture offsets,
-  `Sources/TeststripBench/main.swift:424-437`,
+  `Sources/TeststripBench/main.swift:440-452`,
   `Sources/TeststripBench/SmokeCatalogSeeder.swift:33-54`) pre-renders
   **every** level including `.large` for every asset before the app ever
   launches (`renderedLevels`, `SmokeCatalogSeeder.swift:63`) — the same fact

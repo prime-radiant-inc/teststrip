@@ -1,6 +1,6 @@
 # lib-003: the structured `field:value` token grammar narrows the grid per its documented SQL semantics
 
-**What this covers**: the Library workspace's query token field recognizes a
+**What this covers**: the browse lenses' query token field recognizes a
 fixed set of `field:value` tokens (`camera:`, `lens:`, `keyword:`/`tag:`,
 `person:`, `folder:`/`path:`, `color:`/`colour:`/`label:`, `iso:`, `rating:`
 (+3 more aliases), `from:`/`after:`/`since:`, `before:`/`until:`, `date:`,
@@ -9,7 +9,7 @@ fixed set of `field:value` tokens (`camera:`, `lens:`, `keyword:`/`tag:`,
 `LibrarySearchIntent.fieldPredicates(from:)`
 (`Sources/TeststripApp/LibrarySearchIntent.swift:107-173`), compiled to SQL by
 `CatalogRepository.compileClauses(_:)`
-(`Sources/TeststripCore/Catalog/CatalogRepository.swift:2261-2555`), and
+(`Sources/TeststripCore/Catalog/CatalogRepository.swift:3080-3385`), and
 rendered as a chip via `LibraryQueryToken` (`Sources/TeststripApp/LibraryQueryTokenField.swift`).
 Unit coverage already proves the parse step
 (`Tests/TeststripAppTests/LibrarySearchIntentTests.swift`); this card is the

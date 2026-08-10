@@ -128,13 +128,13 @@ undo must restore the *exact* prior value, not a bare "0".
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Wiring confirmed
-statically: `Sources/TeststripApp/main.swift:248-263`
+statically: `Sources/TeststripApp/main.swift:241-256`
 (`MetadataHistoryCommands`, `CommandGroup(replacing: .undoRedo)`, ⌘Z/⇧⌘Z
 bindings gated on `canUndoMetadataChange`/`canRedoMetadataChange`),
-`Sources/TeststripApp/AppModel.swift:2378-2388` (`canUndoMetadataChange`,
-`canRedoMetadataChange`, `lastUndoableActionLabel`), `:6395-6418`
+`Sources/TeststripApp/AppModel.swift:2811-2821` (`canUndoMetadataChange`,
+`canRedoMetadataChange`, `lastUndoableActionLabel`), `:8012-8037`
 (`recordMetadataChangeGroup` clearing the redo stack on every new group,
-`undoMetadataChange`, `redoMetadataChange`), `:6443-6470`
+`undoMetadataChange`, `redoMetadataChange`), `:8060-8088`
 (`updateSelectedAssetsMetadata`, the `scopedLabel` "· N photos" suffix logic
 via `photoCountDescription`). Needs a human-present re-run. All SQL in this
 card was run headlessly against a seeded --smoke catalog on 2026-07-10

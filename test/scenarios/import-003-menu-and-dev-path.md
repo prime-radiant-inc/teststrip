@@ -1,14 +1,14 @@
 # import-003-menu-and-dev-path: File menu exposes Import Folder/Card/Path as distinct items, mirrored by the toolbar, both disabled mid-import
 
 **What this covers**: inventory items 3, 4. The File menu (`FileCommands` in
-`Sources/TeststripApp/main.swift:213-244`) exposes three distinct import
+`Sources/TeststripApp/main.swift:198-229`) exposes three distinct import
 entries — `"Import Folder…"`, `"Import From Card…"`, and a dev-gated
 `"Import Path…"` — plus `"Export…"`, each a separate `Button` with its own AX
 title (`AppMenuCoveragePresentation.importFolderActionID` /
 `importFromCardActionID` / `importPathActionID`,
-`Sources/TeststripApp/main.swift:121-124`). All three import items — and the
+`Sources/TeststripApp/main.swift:116-119`). All three import items — and the
 toolbar's mirrored `Import ▾` menu / `Import Path` button
-(`Sources/TeststripApp/LibraryGridView.swift:213-252`) — are `.disabled` while
+(`Sources/TeststripApp/LibraryGridView.swift:269-306`) — are `.disabled` while
 `model.isImporting` is true, so a running import can't be started twice from
 either surface.
 
@@ -42,7 +42,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    (`Import Path…` is expected to be present because the isolated launch
    always sets `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY`, which is the sole
    gate per `LibraryGridChromePolicy.shouldExposeImportPathControl`,
-   `Sources/TeststripApp/LibraryGridView.swift:7282-7285` — not a build
+   `Sources/TeststripApp/LibraryGridView.swift:8342-8345` — not a build
    config or a separate dev flag. A real (non-isolated) launch would hide it.)
 3. **Toolbar mirrors the same routes, idle state**: assert the toolbar
    `Import` menu button and (since this is an isolated launch) the `Import
@@ -97,7 +97,7 @@ Quit the launched instance.
 
 ## Sharp edges
 - `AppMenuCoveragePresentation.fileMenuActionIDs`
-  (`Sources/TeststripApp/main.swift:126`) only lists
+  (`Sources/TeststripApp/main.swift:121`) only lists
   `[importFolderActionID, importFromCardActionID, exportActionID]` — it
   omits `importPathActionID`. That's consistent with Import Path being a
   dev/automation-only entry not meant for the "real" coverage enumeration,
@@ -113,16 +113,16 @@ Quit the launched instance.
 - Step 5's fixture-size approach (40 tiny files) is a best-effort way to keep
   `isImporting` true long enough to observe — the actual duration depends on
   the app's flush/progress cadence (`eagerCatalogPersistenceLimit = 10`,
-  `Sources/TeststripCore/Ingest/IngestService.swift:38`). If a live run
+  `Sources/TeststripCore/Ingest/IngestService.swift:37`). If a live run
   finds 40 files complete too fast to observe the disabled window reliably,
   increase N rather than trying to synchronize on a race.
 
 ## Run status
 BLOCKED-CONSOLE — no host GUI/display in this environment; no AX steps were
 executed live. Source-confirmed the menu structure, exact AX titles, and
-`.disabled(isImporting)` wiring: `Sources/TeststripApp/main.swift:121-126,
-213-244` (File menu), `Sources/TeststripApp/LibraryGridView.swift:213-252`
-(toolbar), `Sources/TeststripApp/LibraryGridView.swift:7282-7285`
+`.disabled(isImporting)` wiring: `Sources/TeststripApp/main.swift:116-121,
+198-229` (File menu), `Sources/TeststripApp/LibraryGridView.swift:269-306`
+(toolbar), `Sources/TeststripApp/LibraryGridView.swift:8342-8345`
 (`shouldExposeImportPathControl` gate) — read 2026-07-10. No SQL in this card
 needed a live catalog beyond the generic `assets` count query, ground-truthed
 against a seeded `--smoke` catalog the same day (schema per

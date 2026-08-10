@@ -20,7 +20,7 @@ Source:
   `LensChromePolicy.showsInspector(model.selectedView)`
   (`Sources/TeststripApp/LibraryGridView.swift:8291-8293`: unconditionally
   `true` for every lens now, not gated to three workspaces).
-- `Sources/TeststripApp/AppModel.swift:4766-4768` — `toggleInspector()` is
+- `Sources/TeststripApp/AppModel.swift:4786-4788` — `toggleInspector()` is
   now a bare `isInspectorVisible.toggle()`; there is no more Cull-switches-
   to-Library special case (contrast with the pre-unification behavior
   `inspect-001-toggle-tabs.md` used to test, now reconciled).
@@ -45,14 +45,14 @@ Source:
   `.suggested` (from `peopleFaceSuggestions`) for the same face index,
   falling back to `.unnamed`; `displayLabel` (`"<name> ✓"` / `"guess:
   <name>"` / `"Unnamed"`) is shared verbatim by the loupe box labels.
-- `Sources/TeststripApp/AppModel.swift:3706-3751` — `nameFace(_:personID:)`
+- `Sources/TeststripApp/AppModel.swift:3900-3973` — `nameFace(_:personID:)`
   (assigns + clears any prior rejection for that pair), `nameFace(_:newPersonName:)`
   (mints a person via `upsertPerson` then `assignFaces`), `removeFacePerson`
   (`unassignFaces`), `rejectFaceSuggestion` (`recordRejectedFacePerson`) —
   every one calls `refreshPeopleFaceSuggestions()` inline, so the People
   rows and the suggestion pipeline agree immediately with no separate
   "re-scan" gesture needed for the reject leg below.
-- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1185-1219`
+- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1853-1985`
   (`assignFaces` — writes `person_faces` **and** a `person_assets` row for
   the whole asset, `:1208-1217`), `:1238-1254`
   (`recordRejectedFacePerson`/`clearRejectedFacePerson`), `:1269-1279`
@@ -74,9 +74,9 @@ Source:
 - `Sources/TeststripApp/LoupeZoomView.swift:271-282` — `faceBoxOverlay` is
   drawn only `if LensChromePolicy.showsInspector(model.selectedView), model.isInspectorVisible`,
   and only over `fittedImage` (`:249-264`), never the 1:1-zoomed view.
-- `Sources/TeststripApp/main.swift:4-23` — `AppWindowLayoutMetrics`;
-  `.cull`'s 800pt floor (`:15`) predates the inspector becoming reachable
-  from Cull at all (Task 5), which is exactly what step 25 below checks.
+- `Sources/TeststripApp/main.swift:5-13` — `AppWindowLayoutMetrics`; the
+  unified shell has one 1000pt minimum width for every lens, which is what
+  step 25 below checks with Cull and the inspector visible together.
 
 ## Pre-state
 ```bash
@@ -237,19 +237,18 @@ for the plain add-a-name leg.
     naming is catalog-only; it must never create or touch a sidecar or the
     original.
 
-### 7. 800pt Cull width holds with the inspector open
+### 7. The unified 1000pt floor holds with Cull and the inspector open
 25. With the inspector open (from step 2) and a photo selected, resize the
-    window to exactly 800pt wide
-    (`script/vm_scenario_run.sh key 'set size of window 1 of process "Teststrip" to {800, 820}'`
+    window to exactly 1000pt wide
+    (`script/vm_scenario_run.sh key 'set size of window 1 of process "Teststrip" to {1000, 820}'`
     — same technique as `app-002-window-floors.md`). Assert: the stack
     rail, the loupe image, the Close-Ups panel (if visible), and the
     inspector column are all simultaneously present in the AX tree, with
     no element's frame extending past the window's right edge and no two
     elements' frames overlapping. **Fails if** anything is clipped or
-    overlapped — `AppWindowLayoutMetrics.minimumWidth(.cull)` (800pt,
-    `main.swift:15`) was set before the inspector became reachable from
-    Cull (Task 5), so this floor has never actually had to fit all four
-    panes — [stack rail | loupe | close-ups | inspector] — at once.
+    overlapped — `AppWindowLayoutMetrics.minimumWidth` (1000pt,
+    `main.swift:9`) is the unified floor and must fit all four panes —
+    [stack rail | loupe | close-ups | inspector] — at once.
 
 ### 8. Box placement on a letterboxed non-square photo, and after resize
 26. Pick a photo whose pixel aspect ratio clearly differs from the loupe
@@ -301,9 +300,8 @@ for the plain add-a-name leg.
   product question for Jesse).
 - Step 24: byte-identical originals, no new/changed `.xmp`. **Fails if**
   either changes — naming a face is catalog-only.
-- Step 25: no clipping/overlap of the four panes at 800pt. **Fails if**
-  any element is cut off or overlapping — this is the first time this
-  floor has had to hold the inspector too.
+- Step 25: no clipping/overlap of the four panes at 1000pt. **Fails if**
+  any element is cut off or overlapping at the unified window floor.
 - Steps 26-27: box tracks the actual face in the letterboxed image, both
   at rest and after a resize. **Fails if** a box sits in the letterbox
   bars, is vertically flipped, or doesn't move when the window is resized.
@@ -355,7 +353,7 @@ for the plain add-a-name leg.
   detector** (`CoreImageFaceExpressionAnalyzer`, see
   `cull-006-zoom-and-face-zoom.md`'s Sharp edges) — the two never write to
   or read from the same store; don't cross-check counts between them.
-- The 800pt-floor and letterbox/resize legs are visual/geometric and
+- The 1000pt-floor and letterbox/resize legs are visual/geometric and
   mostly fall back to screenshot inspection (`capture_app_window.sh`)
   rather than a clean AX text assertion — the same limitation
   `cull-006-zoom-and-face-zoom.md` documents for the loupe's zoom state.

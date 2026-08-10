@@ -91,7 +91,7 @@ worth an assertion that clicking "Conflicts" after "Pending" actually clears
 
 ## Run status
 NOT RUN — GUI/AX driving was not attempted this session. Menu structure
-confirmed by reading `Sources/TeststripApp/LibraryGridView.swift:859-945`
+confirmed by reading `Sources/TeststripApp/LibraryGridView.swift:1084-1171`
 (`addFilterMenu`) in full, and `LibraryQueryTokenField.swift`'s documented
 `ratingOptions`/`flagOptions`/`colorOptions`/`sourceOptions`/`signalOptions`
 for the enum-driven submenus. SQL dry-run headlessly against a fresh

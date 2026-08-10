@@ -26,7 +26,7 @@ so every symbol below was re-grepped fresh, not carried over):
   in `MacKeyCode`, `:182-193` — left `123`, right `124`, down `125`, up
   `126`) and the character-based `init?(key:)` used by both that monitor's
   fallback branch and the `?`/menu advertisement
-  (`Sources/TeststripApp/AppModel.swift:240-294`). Both agree: `h`/`leftArrow`
+  (`Sources/TeststripApp/AppModel.swift:187-241`). Both agree: `h`/`leftArrow`
   → `.previousStack`; `l`/`rightArrow` → `.nextStack`; `j`/`downArrow` →
   `.nextCandidateInStack`; `k`/`upArrow` → `.previousCandidateInStack`
   (`AppModel.swift:191-239` for the `CullingShortcut` enum itself — note the
@@ -95,10 +95,10 @@ so every symbol below was re-grepped fresh, not carried over):
   and sets `lastCullingMetadataDecision` to an *informational* toast reading
   exactly `"Auto-advance on"` or `"Auto-advance off"` (no ✓/✕ symbol, no
   "⌘Z undoes" — `CullDecisionToastPresentation.init(feedback:)`,
-  `Sources/TeststripApp/CullFilmstripPresentation.swift:85-98`, the
+  `Sources/TeststripApp/CullFilmstripPresentation.swift:86-99`, the
   `isInformational` branch at `:86-93`). The toast renders as a bare
   SwiftUI `Text` with no accessibility override
-  (`Sources/TeststripApp/LibraryGridView.swift:4484-4494`,
+  (`Sources/TeststripApp/LibraryGridView.swift:4468-4478`,
   `decisionToast`), so its AXStaticText title/value is the literal string —
   but it is **transient**: `showDecisionToastThenFade()`
   (`:4463-4478`) shows it, sleeps 2 real seconds, then fades it out. There is

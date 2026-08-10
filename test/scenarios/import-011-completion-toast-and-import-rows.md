@@ -378,7 +378,7 @@ Steps themselves not re-verified live.
 
 **FAIL — two product defects; live VM run 2026-08-09**, `feat/unified-shell`
 @ `8f598239`, `script/vm_scenario_run.sh launch empty` in the `teststrip-e2e`
-Tart VM. **8 of 12 steps run**: Steps 1-6 and 10-12 run; **Steps 7, 8 and 9
+Tart VM. **9 of 12 steps run**: Steps 1-6 and 10-12 run; **Steps 7, 8 and 9
 NOT RUN — blocked by defect 1 below**, which makes the import row's children
 unreachable through the UI at all.
 

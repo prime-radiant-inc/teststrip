@@ -49,8 +49,8 @@ rm -f "$SRC.xmp"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Wiring confirmed:
-`Sources/TeststripApp/InspectorView.swift:462` (`case .describe: "Describe"`),
-`:1058-1094` (`suggestedKeywordChips`, `.help("Accept \(suggestion.keyword)")`,
+`Sources/TeststripApp/InspectorView.swift:487-492` (`case .describe: "Describe"`),
+`:1178-1193` (`suggestedKeywordChips`, `.help("Accept \(suggestion.keyword)")`,
 `model.acceptSuggestedKeywordForSelectedAsset`),
-`Sources/TeststripApp/main.swift:480-482` (⌘I `toggleInspector`). Needs a
+`Sources/TeststripApp/main.swift:593-595` (⌘I `toggleInspector`). Needs a
 human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

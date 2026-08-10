@@ -66,7 +66,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    appears — `ax_drive.sh find --role AXButton --help "Activity - 1 problem"`.
 8. Click the Activity button to open the popover; assert a conflict row is
    listed (`ax_drive.sh find --contains` the sidecar's basename).
-9. Click the conflict row. Assert the app lands in the Library workspace
+9. Click the conflict row. Assert the app lands in the Grid lens
    with `$SRC` selected (its grid cell shows selection AX state, or the
    inspector binds to it). See `activity-005-conflict-deep-link.md` for the
    full model-level breakdown of what this click does
@@ -83,7 +83,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - Step 7: badge shows count 1. **Fails if** the badge never appears — the
   sync scan isn't picking up the out-of-band edit, or the badge logic
   (`ActivityCenterPresentation.badge`) isn't wired to `xmpConflicts`.
-- Step 9: **Fails if** the click doesn't switch workspace/select the asset —
+- Step 9: **Fails if** the click doesn't select the Grid lens and asset —
   the popover row action isn't wired end to end.
 
 ## Cleanup
@@ -108,13 +108,13 @@ rm -f "$SRC.xmp"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. State text confirmed
-at `Sources/TeststripApp/LibraryGridView.swift:369-395`
+at `Sources/TeststripApp/LibraryGridView.swift:445-492`
 (`activityToolbarIcon`/`activityToolbarHelp`: `isWorking` → spinner + "Activity
 - working"; `.problems(count)` → badge + "Activity - N problem(s)"; else
 "Activity"). Conflict-badge/popover wiring confirmed at
-`Sources/TeststripApp/LibraryGridView.swift:390-395` (`activityToolbarHelp`),
-`Sources/TeststripApp/AppModel.swift:2481-2492` (`xmpConflicts` built from
-`metadataSyncConflictItems`), `Sources/TeststripApp/ActivityCenterView.swift:39-40`
+`Sources/TeststripApp/LibraryGridView.swift:487-492` (`activityToolbarHelp`),
+`Sources/TeststripApp/AppModel.swift:2946-2951` (`xmpConflicts` built from
+`metadataSyncConflictItems`), `Sources/TeststripApp/ActivityCenterView.swift:36-37`
 (conflicts section). Needs a human-present re-run. All SQL in this card was
 run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per
 Sources/TeststripCore/Catalog/CatalogMigrations.swift). This file merges the

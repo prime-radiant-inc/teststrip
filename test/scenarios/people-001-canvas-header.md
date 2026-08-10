@@ -1,13 +1,13 @@
 # people-001-canvas-header: People canvas three-panel layout and the header count
 
-**What this covers**: the People workspace's top-level canvas — the header
+**What this covers**: the People lens's top-level canvas — the header
 line "N people · M photos with face signals" and the three stacked panels it
 sits above (face-suggestion/review strip, ALL PEOPLE grid, and the per-person
 detail reachable by tapping a card) — render counts that match catalog ground
 truth. `N` is `namedPeople.count` (confirmed `people` rows); `M` is
 `photosWithFaceSignals`, which `PeoplePresentation.init` derives as
 `max(faceCountSignals, faceQualitySignals)` — the larger of the two
-per-evaluation-kind asset counts (`Sources/TeststripApp/PeopleView.swift:551-553`),
+per-evaluation-kind asset counts (`Sources/TeststripApp/PeopleView.swift:630-632`),
 **not** a sum and **not** a distinct-asset union across both kinds.
 
 ## Pre-state
@@ -86,7 +86,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. The `max(faceCount,
 faceQuality)` derivation is confirmed by static read of
-`Sources/TeststripApp/PeopleView.swift:551-556` (`PeoplePresentation.init`)
+`Sources/TeststripApp/PeopleView.swift:630-635` (`PeoplePresentation.init`)
 and `566-574` (`headerSummary`). Needs a human-present re-run. All SQL in this
 card was run headlessly against a seeded --faces catalog on 2026-07-10
 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

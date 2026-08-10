@@ -1,7 +1,7 @@
 # lib-006-query-field-and-tips: the query field's icons drive parse+submit, and the tips popover lists the token groups
 
 **What this covers**: the Library token query field (`queryTokenField`,
-`Sources/TeststripApp/LibraryGridView.swift:554-...`) has a leading
+`Sources/TeststripApp/LibraryGridView.swift:625-739`) has a leading
 "Add a filter" menu accessory (`addFilterMenu`, rendered as
 `DesignGlyph.filterMenu` = `line.3.horizontal.decrease`, per spec §2b —
 `sparkles` no longer doubles as the query icon and the old standalone
@@ -101,9 +101,9 @@ noting since every other row shows a literal token prefix.
 ## Run status
 NOT RUN — GUI/AX driving was not attempted this session (constraints
 forbade live GUI launches). Field/button/popover structure confirmed by
-reading `Sources/TeststripApp/LibraryGridView.swift:554-644` directly
-(`queryTokenField`, `submitQueryTokenField()` at 601-604, `searchTipsPopover`
-at 606-633, `Self.searchTokenTips` at 635-644 — read in full, count is 8).
+reading `Sources/TeststripApp/LibraryGridView.swift:625-739` directly
+(`queryTokenField`, `submitQueryTokenField()` at 686-695, `searchTipsPopover`
+at 697-728, `Self.searchTokenTips` at 730-739 — read in full, count is 8).
 SQL in Pre-state was dry-run headlessly against a fresh `--smoke` catalog on
 2026-07-10 via `script/build_and_run.sh --smoke`, reading
 `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` off the running process

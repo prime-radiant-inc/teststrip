@@ -3,11 +3,11 @@
 **What this covers**: the face-detection provider **replaces** prior face
 observations for a re-processed asset rather than appending duplicates
 (`CatalogRepository` DELETE-then-INSERT under the same
-provider/model/version/settings_hash, `Sources/TeststripCore/Catalog/CatalogRepository.swift:1001-1020`),
+provider/model/version/settings_hash, `Sources/TeststripCore/Catalog/CatalogRepository.swift:1354-1373`),
 and `FaceSuggestionBuilder` batches up to 2000 unassigned observations into
 face-group suggestions
-(`AppModel.maximumFaceSuggestionInputCount`, `Sources/TeststripApp/AppModel.swift:3251`,
-consumed at `AppModel.refreshPeopleFaceSuggestions`, `AppModel.swift:3253-3260`).
+(`AppModel.maximumFaceSuggestionInputCount`, `Sources/TeststripApp/AppModel.swift:3613`,
+consumed at `AppModel.refreshPeopleFaceSuggestions`, `AppModel.swift:3644-3652`).
 
 ## Pre-state
 ```bash

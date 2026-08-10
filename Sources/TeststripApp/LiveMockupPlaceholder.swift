@@ -40,14 +40,14 @@ public enum LiveMockupPlaceholders {
         id: "library.studio",
         title: "Studio library direction",
         intendedBehavior: "Represent the refined classic pro layout with catalog navigation, adaptive grid, inspector, and quiet agentic affordances.",
-        currentFallback: "Main Library route with real catalog/sidebar/grid/inspector behavior, selectable Recently Added import output, and ongoing mockup-parity passes."
+        currentFallback: "The Grid lens has real catalog/sidebar/grid/inspector behavior, selectable recent-import sources, and ongoing mockup-parity passes."
     )
 
     public static let copilotLibrary = LiveMockupPlaceholder(
         id: "library.copilot",
         title: "Copilot library direction",
         intendedBehavior: "Put plain-language search, agentic culling, and background catalog work at the center of the library experience.",
-        currentFallback: "The dedicated Copilot route is absorbed (Task 13): review queues moved to the sidebar's Smart Collections section, needs-eyes reasons and diagnostics to the Inspector's AI tab, and scope save/freeze actions stay in the Library toolbar; autonomous planning and actions are not built."
+        currentFallback: "The dedicated Copilot destination is absorbed (Task 13): review queues moved to the sidebar's Smart Collections section, needs-eyes reasons and diagnostics to the Inspector's AI tab, and scope save/freeze actions stay with the browse lenses; autonomous planning and actions are not built."
     )
 
     public static let timelineLibrary = LiveMockupPlaceholder(
@@ -68,7 +68,7 @@ public enum LiveMockupPlaceholders {
         id: "sidebar.people",
         title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Selectable People route with a faces-need-a-name band of automatic grouping suggestions over persisted face embeddings, one-tap confirm for matches to confirmed people, name-the-group confirmation for new clusters, per-group dismissal, Apple Vision scan action for cached previews in the current scope, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; suggestions stay provisional until confirmed, and split and face-box-level naming remain disabled."
+        currentFallback: "The selectable People lens has a faces-need-a-name band of automatic grouping suggestions over persisted face embeddings, one-tap confirm for matches to confirmed people, name-the-group confirmation for new clusters, per-group dismissal, Apple Vision scan action for cached previews in the current source, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; suggestions stay provisional until confirmed, and split and face-box-level naming remain disabled."
     )
 
     public static let peopleFaceActions = LiveMockupPlaceholder(
@@ -89,7 +89,7 @@ public enum LiveMockupPlaceholders {
         id: "places.map",
         title: "Places map",
         intendedBehavior: "Browse geotagged frames on a map with clusters, reverse-geocoded locations, and region drill-down.",
-        currentFallback: "Catalog-backed Places route: GPS coordinates read at import ride technical metadata, a MapKit map plots cluster bubbles sized by photo count from bounded SQL aggregation, a worker-side throttled CLGeocoder pipeline fills a shared place-name cache surfaced as TOP LOCATIONS, a coverage badge shows geotagged-on-import counts, and a bubble or top-location tap drills the grid through an indexed geo-bounds predicate. Coordinates-only browsing works offline; custom basemap styling, region search, and draw-a-region selection are later."
+        currentFallback: "Catalog-backed Map lens: GPS coordinates read at import ride technical metadata, a MapKit map plots cluster bubbles sized by photo count from bounded SQL aggregation, a worker-side throttled CLGeocoder pipeline fills a shared place-name cache surfaced as TOP LOCATIONS, a coverage badge shows geotagged-on-import counts, and a bubble or top-location tap selects a geo-bounds source in the Grid lens. Coordinates-only browsing works offline; custom basemap styling, region search, and draw-a-region selection are later."
     )
 
     public static let agenticSearch = LiveMockupPlaceholder(
@@ -241,7 +241,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Copilot",
             status: .partial,
             placeholder: .copilotLibrary,
-            currentImplementation: "Copilot route absorbed (Task 13) and further folded into the unified sources × lenses shell (⌘1–⌘6): review queues live in the sidebar's Smart Collections section, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions in the Library toolbar, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
+            currentImplementation: "The Copilot destination was absorbed (Task 13) and further folded into the unified sources × lenses shell (⌘1–⌘6): review queues live in the sidebar's Smart Collections section, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions stay with the browse lenses, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "1c",
@@ -304,14 +304,14 @@ public enum LiveMockupDesignSurfaces {
             title: "Places",
             status: .deferred,
             placeholder: .placesMap,
-            currentImplementation: "Out of scope for go-to-market; no map, clustering, or reverse-geocode route is exposed."
+            currentImplementation: "The Map lens exposes catalog-backed clustering, reverse-geocoded top locations, and geo-bounds drill-down; custom basemap styling, region search, and drawn-region selection remain deferred."
         ),
         LiveMockupDesignSurface(
             designID: "5c",
             title: "Search",
             status: .partial,
             placeholder: .agenticSearch,
-            currentImplementation: "Search route preserves catalog query/filter state, parsed chips, saved-set counts, results grid, matching work-history session rows, deterministic generated refinements, provider signal refinements, related filters, and suggested actions for existing save/freeze/review workflows; broader natural-language planning is not built."
+            currentImplementation: "Search sources preserve catalog query/filter state, parsed chips, saved-set counts, results in the selected browse lens, matching work-history session rows, deterministic generated refinements, provider signal refinements, related filters, and suggested actions for existing save/freeze/review workflows; broader natural-language planning is not built."
         ),
         LiveMockupDesignSurface(
             designID: "5d",

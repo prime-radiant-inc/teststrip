@@ -277,8 +277,8 @@ private struct MetadataHistoryCommands: Commands {
 // Edit ▸ Find ⌘F: the standard macOS Find placement (below Paste/Select,
 // same slot AppKit text views use for their own Find item), not a
 // CommandGroup(replacing: .textEditing) — that would blow away Cut/Copy/
-// Paste/Select All for every text field in the app. Focuses the Library
-// query field; from Cull/People it switches to Library first (see
+// Paste/Select All for every text field in the app. Focuses the browse-lens
+// query field; from Cull/People it switches to Grid first (see
 // AppModel.requestFocusSearch).
 private struct SearchCommands: Commands {
     var model: AppModel
@@ -351,7 +351,7 @@ private struct MetadataActionCommands: Commands {
     }
 }
 
-// The People workspace's scan trigger (Task 21): it leaves the canvas so
+// The People lens's scan trigger (Task 21): it leaves the canvas so
 // the queue can own the Return-confirm keystroke without a stray button
 // stealing focus. Progress reports through the Activity item like any
 // other evaluation pass (requestPeopleFaceScan reuses the same

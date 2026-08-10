@@ -39,7 +39,7 @@ card):
   → window `7..<13`; anchor=0 → `0..<6`; anchor=19 → `14..<20`.
 - **Rendering**, `runStrip`/`runStripStop`/`runStripStackThumb`/
   `runStripStandaloneThumb`/`runStripThumbnailFace`
-  (`Sources/TeststripApp/LibraryGridView.swift:4507-4708`). **Reconciled
+  (`Sources/TeststripApp/LibraryGridView.swift:4480-4681`). **Reconciled
   2026-07-17 (dogfood-r1 panel pass)**: a multi-frame stop no longer renders
   as a wide text pill (`label` + count + sparkle chip in a `Capsule`) — it
   now renders `runStripStackThumb`, a small **photo stack**: the lead
@@ -79,7 +79,7 @@ card):
   `cull-022-flow-grammar-walk.md`'s T7.5 citation) — so a stop click never
   disagrees with keyboard arrival.
 - **Triple counter**, `CullFilmstripPresentation.tripleCounterText`
-  (`Sources/TeststripApp/CullFilmstripPresentation.swift:59-76`):
+  (`Sources/TeststripApp/CullFilmstripPresentation.swift:60-77`):
   `"\(frameIndex+1) of \(totalFrames) · stack \(stackIndex+1) of
   \(stacks.count)"`, **plus** `" · frame \(withinStackIndex+1) of
   \(stackAssetIDs.count)"` **only when** the current stop has more than one
@@ -159,7 +159,7 @@ card):
 - **Fixture and seeding gap**: no seed command produces a tentative-AI flag
   (`cull-026`'s established finding). `autopilot_proposals` no longer
   exists as a table (`DROP TABLE IF EXISTS autopilot_proposals`, SP-D0,
-  `Sources/TeststripCore/Catalog/CatalogMigrations.swift:263`) — there is no
+  `Sources/TeststripCore/Catalog/CatalogMigrations.swift:255-267`) — there is no
   row left to seed at all. This card patches the local `burst` template's
   `metadata_json` directly (Pre-state below), mirroring `cull-023`'s/
   `cull-026`'s `aiUnconfirmedFields` template-patch technique, rather than

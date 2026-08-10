@@ -24,7 +24,7 @@ both:
 
 **Correction to the assumed premise**: P/X/0-5/U are *not* Cull-exclusive.
 `GridKeyCaptureView` (a second, always-mounted monitor,
-`Sources/TeststripApp/LibraryGridView.swift:194-202`) independently handles
+`Sources/TeststripApp/LibraryGridView.swift:228-236`) independently handles
 pick/reject/clear-flag/rating for every grid-shaped mode, and
 `GridKeyCommand.isAllowed(in:)` (`Sources/TeststripApp/GridKeyCaptureView.swift:97-113`)
 allows `.pick`/`.reject`/`.rating` in **both** `.grid` (the Grid lens's plain

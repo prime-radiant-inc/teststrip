@@ -9,11 +9,11 @@ to Library before showing the panel (Cull had no inspector column at all).
 Both are gone. The inspector is now **one continuous vertical scroll** of
 four **stacked** sections — Info, Describe, AI, and a new **People**
 section — all simultaneously present in a plain `VStack`
-(`Sources/TeststripApp/InspectorView.swift:557`, not lazy, so nothing here
+(`Sources/TeststripApp/InspectorView.swift:577-607`, not lazy, so nothing here
 depends on scroll position for AX presence). ⌥⌘1-3
-(`Sources/TeststripApp/main.swift:590-611`, `InspectorCommands`) now
+(`Sources/TeststripApp/main.swift:586-607`, `InspectorCommands`) now
 **scroll** the `ScrollViewReader` to a section's anchor
-(`InspectorView.swift:586-590`) rather than switching a picker-bound
+(`InspectorView.swift:611-615`) rather than switching a picker-bound
 selection; there is no more "selected tab" state to query. And
 `LensChromePolicy.showsInspector` (renamed from `WorkspaceChromePolicy` by
 the later unified-shell push; same unconditional `true`,
@@ -31,7 +31,7 @@ inspector's own entry/exit chrome and section-scroll mechanism.
 **What this covers**: the inspector's entry/exit chrome — ⌘I toggling the
 panel in every lens including Cull (no more auto-switch-to-Library),
 ⌥⌘1-3 scrolling to the Info/Describe/AI sections (`InspectorTab.keyEquivalent`,
-`InspectorView.swift:470-476`: "1"/"2"/"3"), the
+`InspectorView.swift:480-500`: "1"/"2"/"3"), the
 `InspectorTabPresentation.elementsByTab` mapping still correctly assigning
 every element to exactly one section (an anti-orphan/anti-duplicate
 concern, now about *content ownership* rather than *tab exclusivity* since
@@ -71,10 +71,10 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
    section headers are present as plain `AXStaticText` — "Info",
    "Describe", "AI", "People" (`ax_drive.sh find --role AXStaticText
    --label "<title>"` for each) — **simultaneously**, without needing to
-   scroll first (the `VStack` at `InspectorView.swift:557` is not lazy).
+   scroll first (the `VStack` at `InspectorView.swift:582-607` is not lazy).
 7. **Content ownership, not tab exclusivity.** With one asset selected,
    assert elements from *all three* `InspectorTabPresentation.elementsByTab`
-   groups (`InspectorView.swift:513-544`) are present in the AX tree at
+   groups (`InspectorView.swift:538-569`) are present in the AX tree at
    once: Info's read-only rating/flag/label summary (`.ratingDisplay`) and
    (if present) EXIF rows; Describe's edit controls (`.ratingEditButtons`,
    `.flagEditButtons`, `.labelEditButtons`, keywords field); AI's verdict
@@ -149,7 +149,7 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
   comparison is the honest limit, not a shortcut; don't invent an AX
   property that doesn't exist.
 - **People has no ⌥⌘-shortcut and no `InspectorTab` case**
-  (`InspectorView.swift:455-459`: only `.info`/`.describe`/`.ai`) — it's
+  (`InspectorView.swift:480-483`: only `.info`/`.describe`/`.ai`) — it's
   reachable only by scrolling or by ⌘I landing wherever the scroll
   currently sits. Don't expect an ⌥⌘4 for it.
 - This card intentionally stays shallow on the People section itself (just
@@ -171,7 +171,7 @@ human-present/VM execution per `test/scenarios/README.md`.
 **Reconciled 2026-08-09 (Task 13, unified-shell scenario-card sweep)**:
 ⌥⌘1/⌥⌘2/⌥⌘3 themselves are unchanged by the unified-shell push —
 `InspectorCommands`/`InspectorTab.keyEquivalent` (`main.swift:586-607`,
-`InspectorView.swift:470-476`) still bind them to the Info/Describe/AI
+`InspectorView.swift:480-500`) still bind them to the Info/Describe/AI
 scroll-to-section actions this card's 2026-07-13 revision already
 documents. What changed is what now sits directly *above* them: ⌘1-⌘3 were
 the deleted `Workspace` shortcuts (Cull/Library/People) and are now three of

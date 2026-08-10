@@ -23,10 +23,10 @@ display-only/nothing-persisted behavior are unchanged.
 **Source (re-verified 2026-08-01, SP-B per-face report cards citation
 sweep; gate citation re-verified 2026-08-09, unified-shell sweep — see Run
 status)**: `cullFacesReadsPanel` at
-`Sources/TeststripApp/LibraryGridView.swift:4116-4135` (an `HStack` of
+`Sources/TeststripApp/LibraryGridView.swift:4002-4021` (an `HStack` of
 `readsCard` + `closeUpsRail`), gated into the loupe body only `if
 presentation.showsCullChrome && model.showsCullFacesPanel` at `:3796`;
-`closeUpsRail` at `:4137-4190`; per-tile rendering (`closeUpCropCell`,
+`closeUpsRail` at `:4023-4075`; per-tile rendering (`closeUpCropCell`,
 `closeUpChips`) at `:4200-4231`; `refreshCloseUps(for:)` at `:4321-4366`.
 Each tile's composed accessibility value now comes from
 `FaceReportRollUpPresentation.tileAccessibilityValue`

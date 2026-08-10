@@ -8,7 +8,7 @@ rewrite: the popover's dedicated `importSection` is gone — import now folds
 in as an ordinary `.ingest` `ActivityKindRow` titled "Import photos"
 (`ActivityKindRow.title(for:)`, `Sources/TeststripApp/ActivityCenterPresentation.swift:87`),
 rendered by the same `kindRowsSection`/`kindRow` every other work kind uses
-(`Sources/TeststripApp/ActivityCenterView.swift:64-128`). `ImportProgressRow`
+(`Sources/TeststripApp/ActivityCenterView.swift:67-131`). `ImportProgressRow`
 (`Sources/TeststripApp/ActivityCenterPresentation.swift:5-30`) still exists
 and is still constructed onto `ActivityCenterPresentation.importProgress`
 (`Sources/TeststripApp/ActivityCenterPresentation.swift:155,169`), but grep
@@ -99,13 +99,13 @@ level.
    kind row renders for the import — titled exactly **"Import photos"**
    (`ActivityKindRow.title(for:)` `.ingest` case,
    `Sources/TeststripApp/ActivityCenterPresentation.swift:87`) — under the
-   "Activity" header (`kindRowsSection`, `Sources/TeststripApp/ActivityCenterView.swift:64-73`).
+   "Activity" header (`kindRowsSection`, `Sources/TeststripApp/ActivityCenterView.swift:67-76`).
    The row shows a `ProgressView` (determinate if the activity has a
    `totalUnitCount`, else indeterminate — `kindRow`,
-   `Sources/TeststripApp/ActivityCenterView.swift:78-84`) and a status label
-   from `label(for:)` (`Sources/TeststripApp/ActivityCenterView.swift:130-139`).
+   `Sources/TeststripApp/ActivityCenterView.swift:81-87`) and a status label
+   from `label(for:)` (`Sources/TeststripApp/ActivityCenterView.swift:133-142`).
    Assert the visible status text is exactly **"Running"** while the import
-   runs (`.running` → `"Running"`, line 133) — **not** `"Importing"`. That
+   runs (`.running` → `"Running"`, line 136) — **not** `"Importing"`. That
    `"Importing"` string is `ImportProgressRow.phaseLabel`'s
    (`Sources/TeststripApp/ActivityCenterPresentation.swift:20-29`), which per
    the note above no longer feeds this popover; conflating the two would be
@@ -113,14 +113,14 @@ level.
 4. Assert the cancel button is present: an `xmark.circle` icon button, AXHelp
    exactly **"Cancel import"** — the `.ingest`-specific branch of the shared
    cancel control (`row.kind == .ingest ? "Cancel import" : "Cancel this work
-   item"`, `Sources/TeststripApp/ActivityCenterView.swift:109-121`, ternary at
-   line 120). `ax_drive.sh find --role AXButton --help "Cancel import"`.
+   item"`, `Sources/TeststripApp/ActivityCenterView.swift:112-124`, ternary at
+   line 123). `ax_drive.sh find --role AXButton --help "Cancel import"`.
 5. Click cancel (`ax_drive.sh press --role AXButton --help "Cancel import"`);
    the `.ingest` branch calls `model.cancelImportWork()`
-   (`Sources/TeststripApp/ActivityCenterView.swift:111-113` →
-   `Sources/TeststripApp/AppModel.swift:7862-7879`). Assert the row's status
+   (`Sources/TeststripApp/ActivityCenterView.swift:114-116` →
+   `Sources/TeststripApp/AppModel.swift:8966-8983`). Assert the row's status
    label transitions to **"Cancelled"** (`label(for:)`'s `.cancelled` branch,
-   line 137) and, on ground truth, the import's `work_sessions` row lands in
+   line 140) and, on ground truth, the import's `work_sessions` row lands in
    `status='cancelled'`:
    ```bash
    sqlite3 "$DB" "SELECT status FROM work_sessions WHERE kind='ingest' ORDER BY created_at DESC LIMIT 1;"
@@ -130,7 +130,7 @@ level.
 6. Re-launch (or use a fresh import) with a fixture that produces
    `skippedSourceFileCount > 0` and/or `previewFailures` — the two inputs to
    `importCompletionWarningText`
-   (`Sources/TeststripApp/AppModel.swift:12093-12108`). Wait for completion.
+   (`Sources/TeststripApp/AppModel.swift:13542-13557`). Wait for completion.
 7. **Ground-truth what actually got recorded**:
    ```bash
    sqlite3 "$DB" "SELECT status, detail, failure_count FROM work_sessions WHERE kind='ingest' ORDER BY created_at DESC LIMIT 1;"
@@ -142,15 +142,15 @@ level.
    open the Activity popover and look for a *distinct* error row/indicator on
    the "Import photos" kind row. Per source, a completed-with-errors import is
    recorded with `status: .completed`
-   (`recordCompletedImportActivity`, `Sources/TeststripApp/AppModel.swift:12160-12191`)
+   (`recordCompletedImportActivity`, `Sources/TeststripApp/AppModel.swift:13608-13638`)
    — the same status as a clean import — with the warning folded into the
    **same row's detail text** as a parenthetical suffix (e.g. "Imported 6
    photos (2 files skipped)", `importCompletionDetail`,
-   `Sources/TeststripApp/AppModel.swift:12237-12249`). `kindRow`
-   (`Sources/TeststripApp/ActivityCenterView.swift:75-128`) renders that
-   detail as a 2-line-truncated caption (`row.detail`, line 123-126) with no
+   `Sources/TeststripApp/AppModel.swift:13685-13699`). `kindRow`
+   (`Sources/TeststripApp/ActivityCenterView.swift:78-131`) renders that
+   detail as a 2-line-truncated caption (`row.detail`, lines 126-129) with no
    distinct styling, icon, or section for the error condition —
-   `color(for:)` (`Sources/TeststripApp/ActivityCenterView.swift:141-150`)
+   `color(for:)` (`Sources/TeststripApp/ActivityCenterView.swift:144-153`)
    only distinguishes `.failed`/`.cancelled` (red) from `.completed` (green);
    a completed-with-warnings row reads green, identical to a clean import,
    differing only in caption text a user must read closely. This is now
@@ -251,7 +251,7 @@ Quit the launched instance.
   uniformly regardless of the underlying items' `failureCount`/`issues`, and
   `WorkSessionIssue` (`Sources/TeststripCore/Work/WorkSession.swift:36-40`,
   populated by `workSessionIssues(for:)` at
-  `Sources/TeststripApp/AppModel.swift:12251-12259`) is never read anywhere in
+  `Sources/TeststripApp/AppModel.swift:13702-13710`) is never read anywhere in
   either file — grep confirms zero references to `.issues`/`failureCount` in
   both. If the live run confirms no distinct row/indicator exists, this is
   the bug worth flagging to Jesse: partial-failure imports currently look
@@ -267,7 +267,7 @@ Quit the launched instance.
   card once confirmed.
 - `importError` (the red text row, `Sources/TeststripApp/ActivityCenterView.swift:17-21`)
   is a *different*, harder-failure signal — set only by `failImportActivity`
-  (`Sources/TeststripApp/AppModel.swift:12261-12276`) when the import throws
+  (`Sources/TeststripApp/AppModel.swift:13712-13727`) when the import throws
   outright (e.g. the source folder vanished mid-import), not by a
   partial/soft failure. Don't conflate the two: this card's Part B is about
   the soft-failure (`.completed` with warnings) case, which is the one with

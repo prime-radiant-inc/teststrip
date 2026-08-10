@@ -1,7 +1,7 @@
 # lib-016-grid-badges: thumbnail chrome — selection borders, metadata overlay, availability, batch/autopilot badges, preview status
 
 **What this covers**: every piece of chrome `AssetGridCell` draws over a
-thumbnail (`Sources/TeststripApp/LibraryGridView.swift:8644-8790`) — selection
+thumbnail (`Sources/TeststripApp/LibraryGridView.swift:9134-9300`) — selection
 border width/color, the bottom-left metadata overlay (flag/rating/color
 label/keyword count), the top-right source-availability badge (4 non-online
 states), the top-left batch-selection checkmark and KEEP/CUT autopilot badge,
@@ -143,7 +143,7 @@ and selection borders are exercisable against `--smoke`'s pre-seeded ratings.
 ## Run status
 NOT RUN — no live GUI launch performed for this task (headless-only
 constraint). All chrome values verified by direct source read at
-`Sources/TeststripApp/LibraryGridView.swift:7107-7148, 8420-8475, 8630-8790,
+`Sources/TeststripApp/LibraryGridView.swift:8101-8142, 8420-8475, 8630-8790,
 3318-3329`. Needs a live AX session plus `capture_app_window.sh` visual
 inspection for Steps 3-4 (border widths aren't AX-queryable) and a
 human-present retry for the timing-dependent Step 6.

@@ -3055,9 +3055,9 @@ struct LibraryGridView: View {
 
     // Grid cell right-click context menu (persona-2 item 5): star ratings,
     // Pick/Reject/Unflag, and color labels were previously only reachable
-    // via keyboard shortcuts (0-5/p/x/u, gated to the Cull workspace) or the
+    // via keyboard shortcuts (0-5/p/x/u, gated to the Cull lens) or the
     // hidden Inspector (⌘I) — a mouse-only user had no path to them from the
-    // Library grid. Anchors the same way "Cull These" does: applies to the
+    // Grid lens. Anchors the same way "Cull These" does: applies to the
     // whole batch selection if the right-clicked cell is part of it,
     // otherwise selects just the clicked cell first. This is architecturally
     // independent of GridKeyCaptureView's key monitor (a SwiftUI .contextMenu
@@ -7515,10 +7515,9 @@ enum AssetActivationFocusPolicy {
 }
 
 private extension View {
-    // `openInLoupe` is which loupe a double-click lands in: Library-workspace
-    // callers (the grid, Timeline) pass `openAssetInLibraryLoupe`; the Cull
-    // workspace's Compare tile passes `openAssetInLoupe` to stay in the
-    // culling loupe.
+    // `openInLoupe` is which loupe a double-click lands in: Grid and Timeline
+    // callers pass `openAssetInLibraryLoupe`; the Cull lens's Compare tile
+    // passes `openAssetInLoupe` to stay in the culling loupe.
     func assetActivation(
         for asset: Asset,
         model: AppModel,

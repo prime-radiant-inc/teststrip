@@ -3,7 +3,7 @@
 **What this covers**: inventory items 4-10 — the People suggestion cards.
 Automatic face grouping surfaces two card kinds: one-tap `matchExisting`
 ("Is this X?") and `newPerson` ("Who is this?" → Name…) per
-`PeopleView.suggestionCards` (`Sources/TeststripApp/PeopleView.swift:636-660`).
+`PeopleView.suggestionCards` (`Sources/TeststripApp/PeopleView.swift:734-757`).
 Confirm/name now happen inside the **review surface** the card links into
 (clicking the card opens it — see people-021), not from a button on the card;
 that path still writes through `assignFaces` with an invalid-state guard, and

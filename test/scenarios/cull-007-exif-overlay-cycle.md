@@ -7,15 +7,15 @@ glance at camera/lens/ISO/aperture/shutter and, when I need more, pixel
 dimensions/GPS/capture date, without opening the inspector. Covers item 24.
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:406-417` — `ExifOverlayLevel` (`.off`,
+- `Sources/TeststripApp/AppModel.swift:431-442` — `ExifOverlayLevel` (`.off`,
   `.exposureLine`, `.full`), cycled by `.next()`.
-- `Sources/TeststripApp/AppModel.swift:5445-5446` — the `I` shortcut
-  (`CullingShortcut.cycleExifOverlay`, keyed at `:256`) calls
+- `Sources/TeststripApp/AppModel.swift:6654-6655` — the `I` shortcut
+  (`CullingShortcut.cycleExifOverlay`, keyed at `:231`) calls
   `exifOverlayLevel = exifOverlayLevel.next()`.
-- `Sources/TeststripApp/LibraryGridView.swift:4283-4291` — the loupe metadata
+- `Sources/TeststripApp/LibraryGridView.swift:5035-5043` — the loupe metadata
   strip renders `LoupeExifOverlayPresentation(technicalMetadata:level:).lines`
   as a stack of `Text` rows (each its own AX static text).
-- `Sources/TeststripApp/LibraryGridView.swift:8520-8562` —
+- `Sources/TeststripApp/LibraryGridView.swift:9000-9042` —
   `LoupeExifOverlayPresentation`: `.off` → `[]`; `.exposureLine` → one line
   from `LoupeExifSummaryPresentation` (camera make+model, lens, `"ISO N"`,
   aperture, shutter speed, focal length — joined with `" · "`,
@@ -31,7 +31,7 @@ ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APP
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
 `--smoke` frames have `technical_metadata_json` populated **directly by the
-seeder** (`Sources/TeststripBench/SmokeCatalogSeeder.swift:119-134`), not
+seeder** (`Sources/TeststripBench/SmokeCatalogSeeder.swift:133-158`), not
 synthesized at import — every smoke asset carries `cameraMake: "Teststrip"`,
 `cameraModel: "SmokeCam <1..3>"`, `lensModel: "<35|50|65|80>mm"`,
 `isoSpeed`, `pixelWidth: 1200`/`pixelHeight: 800`, and `capturedAt`. It does

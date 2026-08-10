@@ -1,6 +1,6 @@
 # people-005-queue-keyboard: arrow to a card, Return confirms — person_assets appears only after
 
-**What this covers**: inventory items 12-16, 27 — the People workspace's
+**What this covers**: inventory items 12-16, 27 — the People lens's
 unified suggestions+review queue keyboard model and its confirm-before-write
 invariant (Task 21): clamped `focusedIndex` with an accent border, ←→ wrap
 navigation, Return confirms only the focused card (nameable cards open the
@@ -36,7 +36,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    "Who is this?" cards on the first pass — a one-tap "Is this X?" card can
    only exist once a person has already been named, per
    `PeopleView.suggestionCards`/`isOneTapConfirm`
-   (`Sources/TeststripApp/PeopleView.swift:637-663`) — so don't assume one
+   (`Sources/TeststripApp/PeopleView.swift:734-760`) — so don't assume one
    kind is reachable; branch on what's actually focused):
    - **Name-routing card** ("Who is this?"): Return opens the naming sheet.
      Assert `person_assets` is *still* 0 here — opening the sheet is routing,

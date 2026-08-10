@@ -144,15 +144,15 @@ CREATE TABLE evaluation_failures (
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Wiring confirmed
-statically: `Sources/TeststripApp/InspectorView.swift:748-767`
+statically: `Sources/TeststripApp/InspectorView.swift:794-831`
 (`previewFailureStatus`, Retry → `model.retrySelectedPreviewGenerationFailures`),
-`:740-746,769-788` (`providerFailureAlert`/`providerFailureStatus`, Retry
+`:786-831` (`providerFailureAlert`/`providerFailureStatus`, Retry
 `<provider>` → `model.retrySelectedProviderFailure`),
 `:70-88` (`InspectorProviderFailurePresentation`),
-`Sources/TeststripApp/AppModel.swift:7250-7257`
+`Sources/TeststripApp/AppModel.swift:9042-9050`
 (`retrySelectedPreviewGenerationFailures`, re-enqueues via `requestPreview`
-with `.front` placement), `:7596-7601` (`retrySelectedProviderFailure`,
-re-enqueues via `requestEvaluation`), `Sources/TeststripCore/Catalog/CatalogRepository.swift:1522-1567`
+ with `.front` placement), `:9550-9555` (`retrySelectedProviderFailure`,
+re-enqueues via `requestEvaluation`), `Sources/TeststripCore/Catalog/CatalogRepository.swift:2270-2315`
 (`recordEvaluationFailure`, the failures table's insert/delete/query shape).
 Needs a human-present re-run. All SQL and schema in this card were run
 headlessly against a seeded --smoke catalog on 2026-07-10 (schema per

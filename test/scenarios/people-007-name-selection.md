@@ -7,7 +7,7 @@ writes `people`/`person_assets`. The button is disabled until
 `canConfirmSelectedPerson` is true; its candidate asset IDs are the batch
 selection if one exists, else the single `selectedAssetID`
 (`AppModel.selectedPeopleCandidateAssetIDs`,
-`Sources/TeststripApp/AppModel.swift:3183-3189`). Also covers "Dismiss face
+`Sources/TeststripApp/AppModel.swift:3516-3522`). Also covers "Dismiss face
 review," which removes assets from the review queues
 (`dismissed_face_assets`) without ever touching `people`/`person_assets`.
 
@@ -48,7 +48,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    (persona-6 defect):** assert the sheet subtitle reads "Groups the 1
    selected photo under a new named person." — the count must match the
    actual selection (`PeoplePresentation.nameSelectionSubtitle`), so a stale
-   cross-workspace selection is visible before the confirming click.
+   cross-lens selection is visible before the confirming click.
    **Fails if** the subtitle is the old countless "Groups the selected
    photos…" text.
 6. **Confirm-before-write on opening the sheet:** re-run step 4's queries —
@@ -133,7 +133,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Confirm-before-write
-wiring confirmed by static read of `Sources/TeststripApp/AppModel.swift:3175-3225`
+wiring confirmed by static read of `Sources/TeststripApp/AppModel.swift:3501-3568`
 (`canConfirmSelectedPerson`, `selectedPeopleCandidateAssetIDs`,
 `confirmSelectedAssetsAsPerson`) and `PeopleView.swift:261-291` (sheet).
 Needs a human-present re-run. All SQL in this card was run headlessly against

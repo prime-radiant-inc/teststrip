@@ -137,7 +137,7 @@ fresh grep, not carried over from any older card):
   gone) — each is now its own `SignalGlyphView` carrying
   `.accessibilityElement(children: .ignore)` plus an explicit
   `.accessibilityLabel(entry.accessibilityText)`
-  (`Sources/TeststripApp/SignalGlyphView.swift:31-32`, e.g. `"Focus 82%"`).
+  (`Sources/TeststripApp/SignalGlyphView.swift:33-34`, e.g. `"Focus 82%"`).
   Unlike the panel container, a SwiftUI `.accessibilityLabel` on a plain
   element *does* surface via `AXTitle`/`AXDescription`, which `ax find
   --contains` inspects directly — so `ax find --contains "Focus "`

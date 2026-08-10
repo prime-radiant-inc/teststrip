@@ -43,7 +43,7 @@ content to see a queued/building state at all.)
    (`ax_drive.sh wait --role AXStaticText --contains "<filename>"` after
    scrolling into view) and read its status badge's `AXHelp`/title. Per
    `AssetGridPreviewStatusPresentation.presentation`
-   (`Sources/TeststripApp/LibraryGridView.swift:7111-7146`) the badge title is
+   (`Sources/TeststripApp/LibraryGridView.swift:8105-8140`) the badge title is
    exactly one of:
    - `"Preview queued"` — a `preview_generation_queue` row exists, `level` in
      `{grid, micro}`, `attempt_count == 0`, no `last_error`.

@@ -85,7 +85,7 @@ extended, since step 4 above only checks visibility, not enabled-ness.
 ## Run status
 NOT RUN — GUI/AX driving was not attempted this session. Sort options and
 conditional-button logic confirmed by reading
-`Sources/TeststripApp/LibraryGridView.swift:695-718` and `843-852` and
+`Sources/TeststripApp/LibraryGridView.swift:876-899` and `843-852` and
 `7304-7368`, plus `AppModel.swift:2231-2245, 2643-2645` in full. SQL
 dry-run headlessly against a fresh `--smoke` catalog on 2026-07-10
 (`TOTAL=24`); the max-rating query in step 6 was not dry-run this session.

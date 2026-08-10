@@ -2,16 +2,16 @@
 
 **What this covers**: Jesse double-clicks the app and gets a working window
 every time. Inventory items 1-6: the single `WindowGroup` scene with
-`NavigationSplitView` + inspector + Settings (`Sources/TeststripApp/main.swift:23-88`);
+`NavigationSplitView` + inspector + Settings (`Sources/TeststripApp/main.swift:15-84`);
 a single sidebar (`SidebarView`) whose "Stacks · Auto-Grouped" section
 renders only while the Cull lens is selected
 (`model.selectedLens == .cull`, `SidebarView.swift:46-53`); forced dark
 mode (`.preferredColorScheme(.dark)`); `fatalError` on catalog open failure +
 eager `Updater.shared` start; the catalog path and its
 `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` override
-(`Sources/TeststripApp/AppCatalog.swift:30,61-70`); and the window title =
+(`Sources/TeststripApp/AppCatalog.swift:31-36,60-70`); and the window title =
 `catalogDisplayName` with the "Local Catalog" fallback
-(`AppModel.catalogDisplayName`, `Sources/TeststripApp/AppModel.swift:2372-2375`;
+(`AppModel.catalogDisplayName`, `Sources/TeststripApp/AppModel.swift:2806-2809`;
 `LibraryGridView.swift:122`).
 
 ## Pre-state

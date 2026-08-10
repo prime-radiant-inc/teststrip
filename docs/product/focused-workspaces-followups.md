@@ -1,17 +1,20 @@
-# Focused Workspaces — open decisions and known gaps
+# Focused Workspaces — historical decisions and remaining gaps
 
 Carried out of the 2026-07 focused-workspaces implementation
 (`docs/superpowers/specs/2026-07-09-focused-workspaces-design.md`). Each item
-is deliberately deferred, not forgotten — resolve during dogfooding.
+records that design's history or a still-relevant gap. The current UI has one
+sidebar of sources and six lenses, not separate workspaces.
 
 ## Product decisions awaiting dogfood judgment
 
-- **Two vs. three workspaces.** _Resolved 2026-07-14:_ People collapsed into
-  Library as a sub-view (peer of Grid | Loupe | Timeline | Map in the view
-  toggle), removing the top-level People workspace/⌘3. It keeps its focused,
-  non-browse chrome via the now view-aware `WorkspaceChromePolicy`. Workspaces
-  are now Cull (⌘1) and Library (⌘2). See
-  `docs/superpowers/specs/2026-07-14-people-library-view-and-face-review.md`.
+- **Two vs. three workspaces.** _Resolved 2026-07-14, then superseded by the
+  2026-08 unified shell:_ People first collapsed into Library as a sub-view.
+  The current UI instead has Cull, Grid, Loupe, Timeline, Map, and People as
+  six peer lenses (⌘1–⌘6) over the selected source. Cull and People retain
+  focused, non-browse chrome through `LensChromePolicy`; the other four are
+  browse lenses. See
+  `docs/superpowers/specs/2026-07-14-people-library-view-and-face-review.md`
+  for the historical intermediate design.
 - **Star concept triplication.** Three star-adjacent concepts coexist: the
   Starred collection (assets), Starred Work (sessions), and star-a-job in the
   Activity popover. Needs a naming/concept pass of its own.
@@ -22,8 +25,8 @@ is deliberately deferred, not forgotten — resolve during dogfooding.
   tonight") or worth the query work.
 - **Esc on a focused People review card is a no-op** (suggestion cards dismiss).
   Decide what Esc should mean there.
-- **Matched-work sidebar rows replace the starred-work rows** while a Library
-  query is active; clearing the query restores them. Defensible, possibly
+- **Matched-work sidebar rows replace the starred-work rows** while a catalog
+  search is active; clearing the search restores them. Defensible, possibly
   surprising.
 - **Cull end-of-set Export popover anchors to the toolbar button**, not the
   stage button that opened it. Cosmetic.

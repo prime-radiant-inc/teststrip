@@ -25,14 +25,14 @@ struct PlaceRowPresentation: Identifiable, Equatable {
 
 /// The tested presentation-model behind the Places map surface: cluster bubbles
 /// sized by count, the TOP LOCATIONS list, a "Geotagged on import" coverage
-/// badge, and a one-line summary. Pure value logic — the workspace view is a
-/// thin shell over this.
+/// badge, and a one-line summary. Pure value logic — the Map lens is a thin
+/// shell over this.
 struct PlacesPresentation: Equatable {
     var bubbles: [PlaceBubblePresentation]
     var topLocations: [PlaceRowPresentation]
     var coverageText: String
     var summaryText: String
-    /// True once any photo carries coordinates. When false the workspace shows
+    /// True once any photo carries coordinates. When false the Map lens shows
     /// an invitation instead of a world map — otherwise MapKit's own basemap
     /// place labels (oceans, latitude bands, cities) read as app content.
     var hasGeotaggedPhotos: Bool

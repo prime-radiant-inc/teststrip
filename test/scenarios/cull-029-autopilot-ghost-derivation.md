@@ -5,7 +5,7 @@ badges on the frames it proposed, rejects one directly, and confirms the
 badge — and the frame's eligibility for a future proposal — is gone for
 good. SP-D0 deleted the `autopilot_proposals` status table outright
 (`DROP TABLE IF EXISTS autopilot_proposals`,
-`Sources/TeststripCore/Catalog/CatalogMigrations.swift:263`, forward-only,
+`Sources/TeststripCore/Catalog/CatalogMigrations.swift:255-267`, forward-only,
 no back-out); the machine's flag opinion — the ✨ "ghost" — now lives
 nowhere but the unconfirmed AI flag already sitting in `metadata_json`.
 Every surface this card drives reads that one field, never a status row:
@@ -21,7 +21,7 @@ Every surface this card drives reads that one field, never a status row:
   (`json_extract(metadata_json,'$.flag') IS NOT NULL AND EXISTS (... WHERE
   json_each.value = 'flag')`), used for the review queue and sidebar count
   so neither silently shrinks to whatever the grid happens to have loaded.
-- `AppModel.beginAutopilotReview()` (`Sources/TeststripApp/AppModel.swift:9718`,
+- `AppModel.beginAutopilotReview()` (`Sources/TeststripApp/AppModel.swift:9773`,
   reconciled 2026-08-09) narrows the grid to exactly
   `autopilotGhostAssetIDs` (declared `:2154`, refreshed from
   `assetIDsWithAutopilotGhost()` by `refreshAutopilotGhostAssetIDs()`
@@ -62,7 +62,7 @@ Every surface this card drives reads that one field, never a status row:
   renders — a scope still carrying a ghost never reaches the completion
   stage. Unlike the pre-SP-D0 build this branch replaces,
   `cullCompletionStage`/`cullCompletionRunDetailText`
-  (`Sources/TeststripApp/LibraryGridView.swift:3958-4031`, verified
+  (`Sources/TeststripApp/LibraryGridView.swift:3871-3944`, verified
   2026-08-06) carry **no `sparkleAwaiting` field, no "awaiting review" text,
   and no `.reviewAISuggestions` action at all** — the whole ceremony
   `cull-025-run-strip-completion.md` documented is gone from the source, not
@@ -208,8 +208,8 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
    script/vm_scenario_run.sh shell 'latest=$(ls -dt /Users/admin/teststrip-vm/run/smoke-* | head -1); open -n /Users/admin/teststrip-vm/dist/Teststrip.app --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$latest"'
    script/vm_scenario_run.sh ax wait-vended Teststrip
    ```
-   A fresh launch's starting workspace isn't asserted by this card, so
-   select Library explicitly rather than assuming it: ⌘2
+   A fresh launch's starting lens isn't asserted by this card, so
+   select Grid explicitly rather than assuming it: ⌘2
    (`script/vm_scenario_run.sh key 'keystroke "2" using {command down}'`).
    Then, same as Step 3, scroll `$G1`'s tile into view by filename
    (`ax_drive.sh find --contains "$G1.jpg"` — the grid is lazily

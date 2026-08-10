@@ -2176,9 +2176,9 @@ public final class AppModel {
     // Opt-in natural-language Ask translator. nil (default) keeps the Ask on
     // the always-available deterministic parser with byte-identical behavior.
     public var autopilotQueryTranslator: (any AutopilotQueryTranslator)?
-    // Tracks which stack-cull sessions came from beginStackCullingFromLatestImportCompletion()
-    // and which import they scoped, so completion can offer to cull the
-    // import's unstacked singles afterward. In-memory only; not persisted.
+    // Tracks the import scoped by each stack-cull session, so completion can
+    // offer to cull that import's unstacked singles afterward. In-memory only;
+    // not persisted.
     private var stackCullingImportActivityIDBySessionID: [WorkSessionID: String] = [:]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
@@ -2502,7 +2502,7 @@ public final class AppModel {
     // only the browse lenses show (LensChromePolicy.showsExportButton) — not
     // Cull, not People. So bumping the token alone is a silent no-op while
     // Cull is frontmost — Maya's persona-1 finding ("File > Export does
-    // nothing in the Cull workspace"). Switch to the Grid lens first, so the
+    // nothing in the Cull lens"). Switch to the Grid lens first, so the
     // token-consuming onChange has somewhere to attach.
     public func requestExport() {
         if !LensChromePolicy.showsExportButton(selectedView) {
@@ -3074,7 +3074,7 @@ public final class AppModel {
 
     /// True when any catalog source root is unreachable — its recorded path
     /// no longer exists on this machine, or assets under it are offline.
-    /// The People workspace uses this to say "sources offline" instead of
+    /// The People lens uses this to say "sources offline" instead of
     /// advertising a scan that cannot enqueue any work.
     public var hasUnavailableSourceRoots: Bool {
         sourceRoots.contains { root in
@@ -4918,10 +4918,9 @@ public final class AppModel {
             predicates: [.workSession(id.rawValue)]
         )
         try reload()
-        // `applyWorkSession` is called directly (bypassing `applySource`)
-        // from `openLatestImportCompletion`, so it owns `selectedSource`
-        // itself rather than leaving it to whichever caller remembers to
-        // set it.
+        // A direct work-session application reloads that session's scope, so
+        // it must leave `selectedSource` coherent with the assets now loaded.
+        // `selectSource` also writes the same source after this returns.
         selectedSource = .workSession(id, titled: title)
         statusMessage = title
     }
@@ -5790,10 +5789,10 @@ public final class AppModel {
         if selectedAssetSetID == nil && activeWorkSessionFilterID == nil {
             // Pure filter scope: the cull overlays the live filtered `assets`
             // rather than snapshotting into a selected set, so the filters
-            // stay intact when navigating back to Library. A `session:`
-            // search token (e.g. from openLatestImportCompletion) is its own
-            // explicit re-scoping gesture, not a persisted filter scope —
-            // that path keeps applying the input snapshot below.
+            // stay intact when returning to a browse lens. A work-session
+            // search token is its own explicit re-scoping gesture, not a
+            // persisted filter scope — that source keeps applying the input
+            // snapshot below.
             selectedView = .loupe
         } else {
             try applyAssetSet(id: inputSetID)
@@ -5825,10 +5824,10 @@ public final class AppModel {
         return try catalog.repository.session(id: sessionID)
     }
 
-    /// Scopes a fresh culling session to whatever the Library has selected —
-    /// the multi-select batch if there is one, else the single loupe/grid
-    /// selection — and switches into the Cull workspace on it. Exposed as the
-    /// Library context-menu item "Cull These".
+    /// Scopes a fresh culling session to the current selection — the
+    /// multi-select batch if there is one, else the single loupe/grid
+    /// selection — and switches into the Cull lens on it. Exposed as the
+    /// browse-lens context-menu item "Cull These".
     @discardableResult
     public func cullCurrentSelection() throws -> WorkSession {
         let selectionIDs = selectedBatchAssetIDsInCatalogOrder.isEmpty
@@ -5884,8 +5883,8 @@ public final class AppModel {
         selectedView = .loupe
     }
 
-    // Enter/Space from the Library grid opens the plain-chrome Library loupe,
-    // not the culling loupe (which stays reachable only from the Cull workspace).
+    // Enter/Space from the Grid lens opens the plain-chrome Loupe lens, not
+    // the culling loupe (which stays reachable only from the Cull lens).
     public func openAssetInLibraryLoupe(_ assetID: AssetID) {
         select(assetID)
         selectedView = .libraryLoupe
@@ -11820,8 +11819,8 @@ public final class AppModel {
         try refreshProposedAssets()
     }
 
-    /// Every lens survives a relaunch except Cull: a mid-cull quit relaunches
-    /// on the same source in Grid, because the run itself is not resumed here.
+    /// Every persisted Cull selection restores the same source in Grid; all
+    /// other lenses restore unchanged. An active culling run is not resumed.
     private static func isRestorableLens(_ lens: LibraryLens) -> Bool {
         lens != .cull
     }

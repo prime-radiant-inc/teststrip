@@ -18,7 +18,7 @@ active `WorkSessionKind` — `ActivityCenterPresentation.kindRows:
 [ActivityKindRow]`, projected by `ActivityKindRow.rows(from:canPause:canResume:)`
 (`Sources/TeststripApp/ActivityCenterPresentation.swift:72-139`) and rendered
 by `kindRowsSection`/`kindRow`
-(`Sources/TeststripApp/ActivityCenterView.swift:64-128`) — **replacing** the
+(`Sources/TeststripApp/ActivityCenterView.swift:67-131`) — **replacing** the
 former per-ITEM `jobsSection`/`jobRow` this card used to test: the star/pin
 control, the cap-at-4-with-"+N more queued" line, and first-row-only
 pause/resume are all **gone** (`ActivityKindRow` carries no `starred` field,
@@ -27,15 +27,15 @@ queued"). What's still there, in a per-kind rather than per-item shape:
 - **Pause/resume are still queue-wide**, not scoped to a kind — despite
   being drawn on every kind row, `pauseWork(kind:)`/`resumeWork(kind:)` just
   delegate to `pauseBackgroundWork()`/`resumeBackgroundWork()`
-  (`Sources/TeststripApp/AppModel.swift:7854-7860` →
-  `7784-7808`), ignoring the `kind` parameter entirely. Because
+  (`Sources/TeststripApp/AppModel.swift:8953-8963`), ignoring the `kind`
+  parameter entirely. Because
   `canPause`/`canResume` are computed once and passed identically to every
   produced row (`ActivityCenterPresentation.swift:108-112, 134-135`), *every*
   visible kind row shows the same pause/resume affordance at the same
   time — there's no "first row only" concept anymore, because there's no
   concept of row order gating it to begin with.
 - **Cancel is genuinely kind-scoped** — `cancelWork(kind:)`
-  (`Sources/TeststripApp/AppModel.swift:7847-7852`) fans out over just that
+  (`Sources/TeststripApp/AppModel.swift:8947-8952`) fans out over just that
   kind's active items via `WorkerSupervisor.cancel(id:)` per item
   (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211`), which the
   supervisor's own comment documents as leaving "sibling lanes running"
@@ -62,7 +62,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    see Sharp edges.
 2. **One row per active kind, not per item**: with the popover open, count
    rows under the "Activity" header (`kindRowsSection`,
-   `Sources/TeststripApp/ActivityCenterView.swift:64-73`) by their title text
+   `Sources/TeststripApp/ActivityCenterView.swift:67-76`) by their title text
    (`ax_drive.sh find --role AXStaticText --label "<title>"` for each of the
    worker-dispatched kinds' titles — "Import photos", "Generate previews",
    "Evaluate photos", "Sync sidecars", "Check sources", "Find places",
@@ -80,7 +80,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    (`Sources/TeststripApp/ActivityCenterPresentation.swift:122-123`,
    `totals.count == items.count ? totals.reduce(0, +) : nil`), which renders
    a plain indeterminate `ProgressView()`
-   (`Sources/TeststripApp/ActivityCenterView.swift:78-84`). Confirm which
+   (`Sources/TeststripApp/ActivityCenterView.swift:81-87`). Confirm which
    case is live for at least one row by cross-checking
    `completedUnitCount`/`totalUnitCount` isn't rendered numerically anywhere
    in the row when indeterminate (there's no percentage text — only the
@@ -89,19 +89,19 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    with at least two kind rows visible (e.g. "Generate previews" and
    "Evaluate photos"), assert **both** show a pause button — `pause.circle`,
    AXHelp exactly `"Pause background work"`
-   (`Sources/TeststripApp/ActivityCenterView.swift:91-99`) — at the same
+   (`Sources/TeststripApp/ActivityCenterView.swift:94-102`) — at the same
    time; this is the same boolean (`canPauseBackgroundWork`,
-   `Sources/TeststripApp/AppModel.swift:2742-2745`) passed to every row, not
+   `Sources/TeststripApp/AppModel.swift:2866-2869`) passed to every row, not
    a first-row-only gate. Press pause on **either** row's button
    (`model.pauseWork(kind:)` → `pauseBackgroundWork()`,
-   `Sources/TeststripApp/AppModel.swift:7854-7856` → `7784-7795`). Assert:
+   `Sources/TeststripApp/AppModel.swift:8957-8959` → `8883-8894`). Assert:
    - the **other** visible row's control also flips from pause to resume
      (`play.circle`, AXHelp `"Resume background work"`,
-     `Sources/TeststripApp/ActivityCenterView.swift:100-108`) — proving one
+     `Sources/TeststripApp/ActivityCenterView.swift:103-111`) — proving one
      press paused the whole queue, not just the pressed row's kind.
    - the pause notice renders below the kind-rows section
      (`model.backgroundWorkPauseNotice`,
-     `Sources/TeststripApp/AppModel.swift:2751-2754`; rendered at
+     `Sources/TeststripApp/AppModel.swift:2875-2878`; rendered at
      `Sources/TeststripApp/ActivityCenterView.swift:25-29`) with the correct
      variant: exact text `"Queue paused"` if nothing was running the instant
      it was pressed, `"Queue paused after current task"` if a lane was
@@ -118,7 +118,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
      ```
 5. **Resume**: press either row's resume button
    (`model.resumeWork(kind:)` → `resumeBackgroundWork()`,
-   `Sources/TeststripApp/AppModel.swift:7858-7860` → `7797-7808`). Assert the
+   `Sources/TeststripApp/AppModel.swift:8962-8964` → `8896-8907`). Assert the
    pause notice disappears entirely (no notice text at all) and, if items
    remain queued, progress resumes across **all** active kinds, not only the
    one whose button was pressed.
@@ -126,10 +126,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    rows active, press cancel on **one** row only
    (`xmark.circle`, AXHelp `"Cancel this work item"` for a non-`.ingest` kind
    or `"Cancel import"` for `.ingest`,
-   `Sources/TeststripApp/ActivityCenterView.swift:109-121`). This calls
+   `Sources/TeststripApp/ActivityCenterView.swift:112-124`). This calls
    `model.cancelWork(kind:)` (or `cancelImportWork()` for `.ingest`), which
    cancels only that kind's currently-active items
-   (`Sources/TeststripApp/AppModel.swift:7847-7852`) via
+   (`Sources/TeststripApp/AppModel.swift:8947-8952`) via
    `WorkerSupervisor.cancel(id:)` per item — per-item cancel, leaving sibling
    lanes running by design (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211`).
    Assert:
@@ -151,10 +151,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    fully drain (poll per `activity-001-icon-states.md` step 2). Once drained,
    assert the idle-worker row appears:
    `ax_drive.sh find --role AXStaticText --contains "Worker idle"`
-   (`model.idleWorkerStatusText`, `Sources/TeststripApp/AppModel.swift:2764-2766`)
+   (`model.idleWorkerStatusText`, `Sources/TeststripApp/AppModel.swift:2888-2890`)
    with a co-located Stop button
    (`ax_drive.sh find --role AXButton --help "Stop idle worker"`,
-   `Sources/TeststripApp/ActivityCenterView.swift:154-168`). The row's
+   `Sources/TeststripApp/ActivityCenterView.swift:157-171`). The row's
    condition is `canStopIdleWorkerProcess` = `transport.isRunning &&
    dispatchedItemIDs.isEmpty && no queue item in an active status`
    (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:116-118`) — with
@@ -210,7 +210,7 @@ Quit the launched instance.
   only flips the queue-level `isPaused` flag; grep of `Sources/` for
   `= .paused` finds zero assignments anywhere, only defensive
   `.contains([...])` filter checks. So a kind row's status label
-  (`label(for:)`, `Sources/TeststripApp/ActivityCenterView.swift:130-139`)
+  (`label(for:)`, `Sources/TeststripApp/ActivityCenterView.swift:133-142`)
   keeps reading whatever it was before the pause ("Running" for the item
   that was mid-flight, "Queued" for backlog items) — the *only* visible
   paused indicator is the separate notice text below the kind-rows section.

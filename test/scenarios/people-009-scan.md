@@ -3,7 +3,7 @@
 **What this covers**: the People view's face-scan trigger lives only in
 the **People ▸ Scan for Faces** menu item (no canvas button — deliberately
 removed so the review queue owns the Return keystroke, per the comment at
-`Sources/TeststripApp/main.swift:335-339`); the menu item is disabled unless
+`Sources/TeststripApp/main.swift:354-358`); the menu item is disabled unless
 `canRequestPeopleFaceScan` (== `canRequestCurrentScopeAssetEvaluations`) is
 true; triggering it calls `requestCurrentScopeAssetEvaluations(providers:
 ["apple-vision"])`, and the resulting work is visible via the Activity
@@ -113,11 +113,11 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Menu-only placement
-confirmed by static read of `Sources/TeststripApp/main.swift:335-352`
+confirmed by static read of `Sources/TeststripApp/main.swift:359-382`
 (`PeopleCommands`); gating confirmed by
-`Sources/TeststripApp/AppModel.swift:2626-2637`
+`Sources/TeststripApp/AppModel.swift:3062-3073`
 (`canRequestCurrentScopeAssetEvaluations`, `canRequestPeopleFaceScan`); the
-apple-vision-only provider scoping confirmed by `AppModel.swift:7969-7971`
+apple-vision-only provider scoping confirmed by `AppModel.swift:10034-10036`
 (`requestPeopleFaceScan`). Needs a human-present re-run. All SQL in this card
 was run headlessly against a seeded --faces catalog on 2026-07-10 (schema per
 Sources/TeststripCore/Catalog/CatalogMigrations.swift).

@@ -18,7 +18,7 @@ render-gate no-op with an armed, auto-firing commit and shifted most of
 `cull-027-blaze-through-prefetch.md` for the card that exercises the new
 behavior live):
 - **The gesture**: `AppModel.promoteCurrentFrameAndRejectSiblings()`
-  (`Sources/TeststripApp/AppModel.swift:6387-6443`). Membership guard
+  (`Sources/TeststripApp/AppModel.swift:6332-6388`). Membership guard
   (`:6389-6390`): `selectedWorkStackAssetIDs` (a persisted stack) or
   `cullingStacks()` (the in-memory auto-grouped, multi-frame-only partition)
   must contain the selection, else it's the standalone no-op branch
@@ -84,7 +84,7 @@ behavior live):
   "(was ✕)" (out of this card's scope — the staged frame in every leg below
   is either confirmed-rejected or plain-undecided, never itself tentative).
   `rendersVerbatim: true` (`:6549`) means `CullDecisionToastPresentation`
-  (`Sources/TeststripApp/CullFilmstripPresentation.swift:82-107`) renders
+  (`Sources/TeststripApp/CullFilmstripPresentation.swift:83-108`) renders
   `decisionText` as-is with no extra symbol/wrap (`:86-93`); for the
   informational (no-write) branches above, `isInformational` alone triggers
   the same as-is rendering, also with no symbol and no "⌘Z undoes" appended.

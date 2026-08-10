@@ -1,20 +1,20 @@
 # lib-019-multiselect: click / ⌘-click / ⇧-click selection semantics and focus policy
 
 **What this covers**: the grid cell's click-activation logic
-(`assetActivation`, `Sources/TeststripApp/LibraryGridView.swift:6535-6587`) —
+(`assetActivation`, `Sources/TeststripApp/LibraryGridView.swift:7499-7571`) —
 plain click (primary selection), ⌘-click (toggle batch selection), ⇧-click
 (range-select from an anchor), the invariant that clicking for selection must
 **not** steal keyboard culling focus, the AX value exposed for selection
 state, the "Cull These" context-menu entry, and the toolbar cull fast-path
 button.
 
-Exact semantics, verified at `LibraryGridView.swift:6535-6587,
-6517-6533, 2894-2900+, 2320-2323`:
+Exact semantics, verified at `LibraryGridView.swift:7521-7571,
+7499-7515, 3049-3053, 3099-3112`:
 
 - **Plain click** (no modifiers) → `selectAsset(asset.id)`, i.e. sets
   `model.selectedAssetID` (single/primary selection). Per
   `AssetActivationFocusPolicy.shouldFocusCullingSurface(for:
-  .singleClickSelection)` → **`false`** (line 6527) — plain-click selection
+  .singleClickSelection)` → **`false`** (lines 7507-7512) — plain-click selection
   explicitly does **not** call `focusCullingSurface()`.
 - **⇧-click** → `model.selectBatchRange(to: asset.id)` (range-anchor
   selection). Also gated `.batchSelection` → **`false`** — shift-click also
@@ -22,15 +22,15 @@ Exact semantics, verified at `LibraryGridView.swift:6535-6587,
 - **⌘-click** → `model.toggleBatchSelection(asset.id)` (add/remove one
   asset from the batch set). Same `.batchSelection` → **`false`** gate.
 - **Double-click** (`TapGesture(count: 2)`, simultaneous gesture) →
-  `model.openAssetInLibraryLoupe(asset.id)` from the Library grid (the plain
-  loupe, not the Cull workspace's — `assetActivation`'s `openInLoupe`
-  parameter is which loupe a given caller opens; the Cull workspace's
+  `model.openAssetInLibraryLoupe(asset.id)` from the Grid lens (the plain
+  Loupe lens, not the Cull lens's loupe — `assetActivation`'s `openInLoupe`
+  parameter is which loupe a given caller opens; the Cull lens's
   Compare tile passes `openAssetInLoupe` instead), and *this* activation kind
-  (`.openInLoupe`) → **`true`** at line 6529 — double-click legitimately
+  (`.openInLoupe`) → **`true`** at line 7511 — double-click legitimately
   focuses the culling surface, since it's actually entering the
   loupe/culling view.
-- **VoiceOver/accessibility activation** (`.accessibilityAction`, line
-  6574-6579) → also calls `selectAsset`, and its kind `.accessibilitySelection`
+- **VoiceOver/accessibility activation** (`.accessibilityAction`, lines
+  7560-7565) → also calls `selectAsset`, and its kind `.accessibilitySelection`
   → **`true`** — accessibility-driven selection *does* focus the culling
   surface (differs from the mouse-click cases; presumably because an AX
   client has no separate "enter loupe" gesture available, so selection itself
@@ -38,7 +38,7 @@ Exact semantics, verified at `LibraryGridView.swift:6535-6587,
 - **The core invariant this card must falsify**: `AssetActivationFocusPolicy.
   shouldFocusCullingSurface` returns `false` for exactly
   `{singleClickSelection, batchSelection}` and `true` for exactly
-  `{openInLoupe, accessibilitySelection}` (`LibraryGridView.swift:6525-6532`).
+  `{openInLoupe, accessibilitySelection}` (`LibraryGridView.swift:7507-7513`).
   A plain click or ⌘/⇧-click for selection must never move keyboard focus off
   whatever currently owns it (e.g. the query token field, or a sheet) onto
   the culling key-capture view.

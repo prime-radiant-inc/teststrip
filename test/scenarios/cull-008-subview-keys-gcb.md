@@ -10,9 +10,9 @@ switch) and item 30 (grid Return/Space → loupe, G/Esc → back to grid),
 
 Source — **the G-key ambiguity is real but is two separate, non-conflicting
 key monitors, not one context-sensitive branch**:
-- `Sources/TeststripApp/AppModel.swift:5449-5456` — while the **culling
+- `Sources/TeststripApp/AppModel.swift:6659-6662` — while the **culling
   shortcut monitor** is active (loupe/culling context; `CullingShortcut.showCullGrid`,
-  keyed `"g"` at `AppModel.swift:258`), pressing `g` sets
+  keyed `"g"` at `AppModel.swift:233`), pressing `g` sets
   `selectedView = .cullGrid` — loupe → grid.
 - `Sources/TeststripApp/GridKeyCaptureView.swift:37-58` — while
   `GridKeyCaptureNSView.mode == .cullGrid` (the **grid key-capture view**,
@@ -47,15 +47,15 @@ key monitors, not one context-sensitive branch**:
   doing anything) really does prevent both from matching, since local
   monitors run in installation order and neither explicitly waits for the
   other to decline first. `g` is "go to grid" from everywhere else in the
-  Cull workspace and "go back to the loupe" from the grid itself — a real
+  Cull lens and "go back to the loupe" from the grid itself — a real
   toggle, not an unresolved ambiguity, but the multi-monitor mechanics are
   subtle enough to spot-check live.
 - `Sources/TeststripApp/GridKeyCaptureView.swift:74-77` — plain grid mode
   (not `.cullGrid`): Return/Space → `.openLoupe`; Escape → `.returnToGrid`.
-- `Sources/TeststripApp/AppModel.swift:5309-5334` (`applyGridKeyCommand`) —
+- `Sources/TeststripApp/AppModel.swift:6274-6305` (`applyGridKeyCommand`) —
   `.openLoupe` in `.cullGrid` selects the asset and sets `selectedView =
-  .loupe` (`:5321-5325`); in plain `.grid` it calls
-  `openAssetInLibraryLoupe` instead (`:5326-5328`, Library's separate loupe —
+  .loupe` (`:6301-6305`); in plain `.grid` it calls
+  `openAssetInLibraryLoupe` instead (`:6306-6307`, the separate Loupe lens —
   out of scope here, see `library-loupe-no-cull-chrome.md`).
 
 ## Pre-state

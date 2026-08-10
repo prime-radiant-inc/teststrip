@@ -5,7 +5,7 @@ decision keystroke (1-5 rate, 0 clear rating, 6/7/8/9/v color labels, `-`
 clear label, P/X/U pick/reject/clear-flag) to write immediately, auto-advance
 to the next photo, show a toast confirming what happened, and be individually
 undoable with ⌘Z — not batched with neighboring keystrokes. Covers:
-- Shortcut-to-key mapping: `Sources/TeststripApp/AppModel.swift:237-262`
+- Shortcut-to-key mapping: `Sources/TeststripApp/AppModel.swift:187-241`
   (`CullingShortcut.init(key:)` — `0`-`5` rate, `6`=red, `7`=yellow,
   `8`=green, `9`=blue, `v`=purple, `-`=clear label, `p`=pick, `x`=reject,
   `u`=clearFlag).
@@ -22,7 +22,7 @@ undoable with ⌘Z — not batched with neighboring keystrokes. Covers:
   (distinct from the multi-asset `setFlagForSelectedAssets`/stack-decision
   paths used elsewhere).
 - Toast text and decay: `CullDecisionToastPresentation.init`
-  (`Sources/TeststripApp/CullFilmstripPresentation.swift:42-58`) builds
+  (`Sources/TeststripApp/CullFilmstripPresentation.swift:83-99`) builds
   `"<symbol> <filename> <lowercased decision> — ⌘Z undoes"`; the view fades
   it after a 2s `Task.sleep` (`Sources/TeststripApp/
   LibraryGridView.swift:3887-3902`, `showDecisionToastThenFade`).

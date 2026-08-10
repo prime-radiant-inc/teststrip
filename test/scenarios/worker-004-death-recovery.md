@@ -7,7 +7,7 @@ that exited on its own (crash, OOM, OS reap) went undetected:
 item stayed stuck in the supervisor's dispatched set and, with a single
 dispatch slot, wedged every queued item at "queued" forever with no worker
 running. The fix (`WorkerSupervisor.handleWorkerTermination`,
-`Sources/TeststripCore/Worker/WorkerSupervisor.swift:311-333`) detects
+`Sources/TeststripCore/Worker/WorkerSupervisor.swift:323-344`) detects
 unexpected exit via a new `WorkerTransport.terminationHandler`
 (`Sources/TeststripCore/Worker/WorkerTransport.swift`), retries each in-flight
 item once on a fresh worker, and — if that item's worker dies a second time —
@@ -48,7 +48,7 @@ head -c 2048 /dev/urandom > "$POISON_DIR/corrupt.jpg"   # not a valid JPEG; dete
 2. **Identify the live worker PID precisely.** The worker binary is
    `TeststripWorker` (`Package.swift:12`, executable target), launched at
    `<App>.app/Contents/Helpers/TeststripWorker` per
-   `script/import_verifier_metrics.sh:53` and `Sources/TeststripApp/AppCatalog.swift:107`.
+   `script/import_verifier_metrics.sh:53` and `Sources/TeststripApp/AppCatalog.swift:127-131`.
    Match by exact process name, scoped to this isolated instance's args (the
    catalog path is a command-line argument, per
    `script/test_import_verifier_metrics.sh:18`):
@@ -98,7 +98,7 @@ head -c 2048 /dev/urandom > "$POISON_DIR/corrupt.jpg"   # not a valid JPEG; dete
    calls `repository.recordPreviewGenerationFailure` and rethrows — this
    does **not** crash the worker process). To exercise the *process-death*
    second-strike path in `handleWorkerTermination`
-   (`WorkerSupervisor.swift:311-333`, `terminationRetriedItemIDs`), the
+   (`WorkerSupervisor.swift:323-344`, `terminationRetriedItemIDs`), the
    poisoned item's worker must die twice in a row while it is the dispatched
    item:
    ```bash
@@ -117,7 +117,7 @@ head -c 2048 /dev/urandom > "$POISON_DIR/corrupt.jpg"   # not a valid JPEG; dete
    `status = 'failed'` (`WorkSessionStatus.failed`,
    `Sources/TeststripCore/Work/WorkSession.swift:27-33`) with a detail
    matching `workerExitedUnexpectedlyDetail`'s format — `"Worker exited
-   unexpectedly: <operation>"` (`WorkerSupervisor.swift:420-424`) — and the
+   unexpectedly: <operation>"` (`WorkerSupervisor.swift:425-428`) — and the
    queue must keep processing: confirm any *other* still-queued item (if
    present) continues to drain rather than the whole queue stalling behind
    the poisoned one.

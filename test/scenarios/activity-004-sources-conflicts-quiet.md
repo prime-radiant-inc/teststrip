@@ -125,6 +125,6 @@ seeded `--smoke` catalog on 2026-07-10 (schema per
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift`). Section
 structure/control wiring confirmed by source citation
 (`Sources/TeststripApp/ActivityCenterView.swift`,
-`Sources/TeststripApp/AppModel.swift:2489-2511`). Needs a human-present or
+`Sources/TeststripApp/AppModel.swift:2923-2945`). Needs a human-present or
 console-unlocked re-run to drive the AX steps, and confirmation of the exact
 `sourceAvailabilityDisplayName` strings.

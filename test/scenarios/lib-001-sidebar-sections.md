@@ -1,17 +1,17 @@
-# lib-001-sidebar-sections: Library sidebar sections render in fixed order with correct rows, badges, and disabled state
+# lib-001-sidebar-sections: the unified sidebar renders source sections in fixed order with correct rows, counts, and disclosure state
 
-**What this covers**: the Library workspace's `SidebarView` — the `Section`s
-render in the fixed order Collections / Saved Sets (only if any exist) /
-Folders (only if any exist); Collections is built from All Photographs +
-Recent Import + starred saved sets + Recent Work, in that order
-(`Sources/TeststripApp/AppModel.swift:11603-11634`); folder rows carry
-tree indent and an independently-tappable disclosure chevron distinct from
-row selection; a placeholder row renders disabled; and a matched-work query
-replaces the merged Recent+Starred Work rows with `work-matched-*` rows.
-
-Ground truth for the row model is `AppModel.defaultSidebarSections`
-(`AppModel.swift:11576-11645`) and `SidebarView.swift:17-30,142-186` for how
-each row/disclosure renders.
+**What this covers**: the one `SidebarView` shared by every lens. Its nonempty
+sections render in the fixed order Library / Imports / Smart Collections /
+Sets / Folders / Recent Work / Selection; Library always leads with All
+Photos, while the other sections appear only when they have rows
+(`Sources/TeststripApp/UnifiedSidebarPresentation.swift:89-103,127-245`).
+Imports owns ingest sessions, Smart Collections owns nonzero queues and saved
+dynamic searches, Sets owns static membership, Recent Work excludes imports,
+and Selection is transient and last. `AppModel.buildSidebarSections`
+(`AppModel.swift:1982-2005`) supplies that presentation, and `SidebarView`
+renders the returned sections unchanged (`SidebarView.swift:24-55`). Folder
+rows retain their independently tappable disclosure chevron and tree indent
+(`SidebarView.swift:237-288`).
 
 ## Pre-state
 ```bash
@@ -29,79 +29,67 @@ seeding import's own work-session record, not a separate seed:
 sqlite3 "$DB" "SELECT count(*) FROM asset_sets;"   # expect 1 ("Smoke Picks", starred)
 sqlite3 "$DB" "SELECT id, kind, status FROM work_sessions ORDER BY started_at DESC LIMIT 5;"
 ```
-The starred "Smoke Picks" set exercises the "starred saved sets in
-Collections" rendering directly (verified in run-lib-iter1: sidebar order
-"All Photographs" -> "Smoke Picks" -> "SmokeOriginals").
-Item 5 (matched-work rows) needs a plain-text
-Library query that matches a work-session title/detail; the seeding import's
-own session (kind `ingest`, title "Import photos") should match on a
-substring of its detail text.
+The starred "Smoke Picks" set exercises static-set rendering in **Sets**;
+starred static sets sort before unstarred ones. The seeding import belongs in
+**Imports**, never Recent Work. A matched-work check needs a non-ingest work
+session whose title/detail matches the query; if the fixture has only its
+ingest session, record that leg as fixture-blocked rather than expecting an
+import to appear in Recent Work.
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.
-2. `ax_drive.sh find --role AXStaticText --label "Collections"` — the first
-   `Section` header must exist, and appear above any "Saved Sets" or
-   "Folders" header in the AX tree (assert ordering via
+1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for the Grid lens.
+2. `ax_drive.sh find --role AXStaticText --label "Library"` — the first
+   `Section` header must exist, with "All Photos" as its first row, and appear
+   above every other section in the AX tree (assert ordering via
    `capture_app_window.sh` or by comparing y-position/traversal order — AX
    groups are traversed top-to-bottom).
-3. Within Collections, assert row order: "All Photographs" first
-   (`ax_drive.sh find --role AXButton --label "All Photographs"`), then (if
-   present) "Recent Import", then any starred-set rows, then Recent Work rows
-   (`work-recent-*`).
-4. `ax_drive.sh find --role AXStaticText --label "Folders"` — since `--smoke`
+3. If the seed import produced an output set, assert an "Imports" section
+   follows Library and contains its date/folder row and count. The ingest row
+   must not also appear in Recent Work. If more than three imports exist,
+   assert the newest three plus "All imports…".
+4. Assert nonzero built-in queues appear under "Smart Collections" and the
+   starred static "Smoke Picks" appears once under "Sets", not under Library
+   or Smart Collections. A zero-count queue must not render.
+5. `ax_drive.sh find --role AXStaticText --label "Folders"` — since `--smoke`
    seeds files under folder paths, a "Folders" section must exist below
-   Collections (and below Saved Sets if present).
-5. Pick a folder row that has children (`catalogFolders` from the seeded
+   the preceding populated sections.
+6. Pick a folder row that has children (`catalogFolders` from the seeded
    import — check `SELECT DISTINCT source_root_relative_dir FROM assets;`
    against `$DB` to find one with descendants). Assert it renders a disclosure
    chevron (`ax_drive.sh find --role AXButton --help "Expand <title>"`,
-   per `SidebarView.swift:184`) as a *separate* AX button from the row's own
+   per `SidebarView.swift:271-288`) as a *separate* AX button from the row's own
    selection button — pressing the chevron must not select the row, and
    pressing the row label must not toggle expansion.
-6. Press the chevron. Assert its `AXHelp` flips to `"Collapse <title>"` and
+7. Press the chevron. Assert its `AXHelp` flips to `"Collapse <title>"` and
    a child row appears one indent level deeper (`.padding(.leading, depth *
-   14)`, `SidebarView.swift:151`) — compare the child row's frame x-origin to
+   14)`, `SidebarView.swift:254`) — compare the child row's frame x-origin to
    the parent's and confirm it's offset by roughly 14pt.
-7. Type a plain-text Library query (⌘2, focus the query field, type a
-   substring of the seeding import's work-session detail text, e.g. part of
-   the folder name), press Return. Assert the Collections section's work rows
-   are now `work-matched-*` (their sidebar id prefix per
-   `AppModel.swift:11627-11631`) rather than `work-recent-*`/`work-starred-*`
-   — confirm via the row's accessibility value/detail text matching the
-   session, and that clearing the query restores `work-recent-*` rows.
-8. Assert a disabled/placeholder row (if any renders — e.g. an empty Recent
-   Import slot before any import has happened) is not AX-pressable: `disabled`
-   per `row.isSelectable` (`AppModel.swift:919-921`, `SidebarRowButton`
-   `.disabled(!row.isSelectable)` at `SidebarView.swift:165`). If `--smoke`'s
-   seeding import always produces a Recent Import row, this sub-check may be
-   unrunnable against this fixture — note that rather than fabricating one.
+8. If a non-ingest work session is available, type a matching query and assert
+   the Recent Work section shows the matched row instead of the ordinary
+   recent/starred merge; clearing the query restores the ordinary rows. If no
+   such session exists, record the fixture gap.
+9. Select one grid cell. Assert a "Selection" section appears last with count
+   1; add a second cell to the batch and assert the count becomes 2. Selecting
+   that row scopes to the current selection source.
 
 ## Expected
-- Step 2/4: Collections precedes Folders in traversal order, and (per code)
-  would precede Saved Sets too if any saved sets existed. **Fails if** any
-  section is missing or ordered differently than
-  Collections → Saved Sets → Folders.
-- Step 3: "All Photographs" is the first Collections row. **Fails if** any
-  other row (Recent Import, a starred set, Recent Work) sorts above it —
-  the code always prepends it first (`AppModel.swift:11604-11610`).
-- Step 5: the disclosure chevron is a distinct AX element from the row
+- Steps 2-5: populated sections follow Library → Imports → Smart Collections
+  → Sets → Folders → Recent Work, with Selection last when present. **Fails
+  if** a row appears in two sections, an ingest appears in Recent Work, or
+  "All Photos" is not the first Library row.
+- Step 6: the disclosure chevron is a distinct AX element from the row
   button, and neither tap target activates the other's action. **Fails if**
   clicking the chevron also calls `select(row)`, or clicking the row toggles
   expansion — this was the specific bug the sibling-button design in
-  `SidebarView.swift:134-141` was written to avoid.
-- Step 6: chevron `AXHelp` toggles Expand/Collapse and a child row renders
+  `SidebarView.swift:237-288` was written to avoid.
+- Step 7: chevron `AXHelp` toggles Expand/Collapse and a child row renders
   indented ~14pt deeper than its parent. **Fails if** the child doesn't
   appear, or renders at the same indent as its parent.
-- Step 7: work rows use the `work-matched-*` id prefix while a matching query
-  is active, and clearing the query restores `work-recent-*`/`work-starred-*`
-  rows. **Fails if** the merged Recent+Starred rows persist alongside the
-  matched rows (code replaces, not appends — `AppModel.swift:11617-11632`),
-  or if clearing the query leaves stale matched rows.
-- Step 8: a disabled row cannot be AX-pressed (its Button carries
-  `.disabled(true)`, so `ax_drive.sh press` against it should have no effect
-  on selection/navigation). **Fails if** a placeholder row is selectable, or
-  if the tri-state disabled visual (`opacity(0.62)`, secondary foreground —
-  `SidebarView.swift:405-406`) is absent while the row is in fact disabled.
+- Step 8: matched work replaces the ordinary Recent Work merge rather than
+  appending to it. **Fails if** both variants remain or clearing the query
+  leaves stale matched rows.
+- Step 9: Selection is transient, last, and its count tracks the batch.
+  **Fails if** it persists after selection clears or scopes to stale IDs.
 
 ## Cleanup
 ```bash
@@ -109,32 +97,21 @@ substring of its detail text.
 ```
 
 ## Sharp edges
-- `--smoke` seeds exactly one saved set, the starred "Smoke Picks"
-  (`SmokeCatalogSeeder`), which covers the starred-set-in-Collections
-  rendering. A NON-starred set still has no seed and must be created live
-  through the app if a card needs the plain "Saved Sets" section row.
-- **Possible duplicate-ID bug**: a starred saved set's row is rendered twice
-  when starred — once in the Collections section
-  (`AppModel.swift:11615-11616`, via `Self.sidebarRow(for: $0, ...)`) and
-  again in the Saved Sets section (`AppModel.swift:11636`) — and both calls
-  produce the *same* `SidebarRow.id` (`"asset-set-\(assetSet.id.rawValue)"`,
-  `AppModel.swift:11819`). SwiftUI `List`/`ForEach` normally assumes stable
-  identity is unique across the identified collection; two rows sharing an
-  id in the same `List` (even across different `Section`s) is a documented
-  footgun for selection/diffing behavior. This card doesn't have a fixture to
-  exercise it (no seeded saved sets — see gap above); flagging for whoever
-  picks up the Saved-Sets fixture to also check whether SwiftUI/AX visibly
-  misbehaves (e.g. `ax_drive.sh find --label` matching only the first
-  instance, or a context-menu action applying to the wrong instance) once a
-  starred set exists.
+- `--smoke`'s one starred static set covers the starred-first Sets ordering;
+  it does not cover an unstarred peer or a saved dynamic search under Smart
+  Collections. Create those live if their relative ordering needs proof.
+- The seeding import is intentionally excluded from Recent Work now that
+  Imports owns ingest history. A matched-work assertion therefore needs a
+  culling/export/relocation/collecting session, not the seed import.
 
 ## Run status
-NOT RUN — headless authoring only; needs a live AX run. No live GUI launch or
-`ax_drive.sh` invocation was performed for this card. Source line numbers
-above were read directly from `Sources/TeststripApp/SidebarView.swift` and
-`Sources/TeststripApp/AppModel.swift` on 2026-07-10; the `asset_sets` seed
-gap was confirmed by grepping `script/build_and_run.sh` for asset-set seeding
-(none found) rather than by running SQL against a live catalog.
+NOT RUN AGAINST THE UNIFIED-SIDEBAR CONTENT — headless reconciliation only;
+needs a live AX run. The section model was re-read at
+`UnifiedSidebarPresentation.swift:89-245`, its model
+wiring at `AppModel.swift:1982-2005`, and rendering/disclosures at
+`SidebarView.swift:24-55,237-288`. This supersedes the former body, which
+described the deleted Collections/Saved Sets composition and treated ingest
+history as Recent Work.
 
 ## Fix notes (persona-fixes-5, 2026-07-11)
 PENDING-VM: idle-catalog CPU runaway root-caused to the geocode dispatch

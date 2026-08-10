@@ -222,7 +222,7 @@ executed live, and the fixtures were not run through an actual import (only
 fold/conflict/corrupt-isolation wiring:
 `Sources/TeststripCore/Ingest/IngestService.swift:130-186`,
 `Sources/TeststripCore/Metadata/MetadataSyncPlanner.swift:13-48`,
-`Sources/TeststripCore/Catalog/CatalogRepository.swift:2026-2027` — read
+`Sources/TeststripCore/Catalog/CatalogRepository.swift:2840-2841` — read
 2026-07-10. The `metadata_sync_state` schema and the general
 `assets`/`metadata_json` query shape were ground-truthed headlessly against a
 seeded `--smoke` catalog the same day (schema per

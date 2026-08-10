@@ -26,11 +26,11 @@ exists at seed time — this card must first arm one, see Step 1).
 ### Part A — refresh is a worker batch job, triggered from two places
 1. `script/ax_drive.sh wait-vended Teststrip`. Both refresh entry points call
    the same `AppModel.refreshVisibleAssetAvailability()`
-   (`Sources/TeststripApp/AppModel.swift:8967-8980`):
+   (`Sources/TeststripApp/AppModel.swift:11035-11048`):
    - the grid toolbar's `arrow.clockwise` button, AXHelp `"Refresh source
-     status"` (`Sources/TeststripApp/LibraryGridView.swift:711-718`);
+     status"` (`Sources/TeststripApp/LibraryGridView.swift:892-899`);
    - the Activity popover's per-source-row `arrow.clockwise` button, AXHelp
-     `"Refresh source availability"` (`Sources/TeststripApp/ActivityCenterView.swift:244-251`),
+     `"Refresh source availability"` (`Sources/TeststripApp/ActivityCenterView.swift:191-198`),
      which only renders when a `SourceStatusRow.refreshActionID` is non-nil.
    Neither is automatic — there is no on-launch or filesystem-watch rescan
    (see `import-006-availability-badges.md`'s Sharp edges for the same
@@ -38,11 +38,11 @@ exists at seed time — this card must first arm one, see Step 1).
    to confirm presence.
 2. With a `workerSupervisor` configured (always true for a normally launched
    app), the refresh path batches by `volumeIdentifier`
-   (`sourceAvailabilityRefreshBatches`, `Sources/TeststripApp/AppModel.swift:9092-9112`)
+   (`sourceAvailabilityRefreshBatches`, `Sources/TeststripApp/AppModel.swift:11160-11181`)
    and enqueues `.sourceScan` work items running `.refreshAvailabilityBatch`
-   (`Sources/TeststripApp/AppModel.swift:9063-9089`) — confirmed as a genuine
+   (`Sources/TeststripApp/AppModel.swift:11131-11158`) — confirmed as a genuine
    out-of-process worker job, not an inline synchronous probe: the executor
-   lives in `Sources/TeststripCore/Worker/WorkerCommandExecutor.swift:284-303`
+   lives in `Sources/TeststripCore/Worker/WorkerCommandExecutor.swift:307-323`
    and runs under the worker process. Assert a `sourceScan` row appears:
    ```bash
    sqlite3 "$DB" "SELECT id, status FROM work_sessions WHERE kind='sourceScan' ORDER BY created_at DESC LIMIT 1;"
@@ -52,7 +52,7 @@ exists at seed time — this card must first arm one, see Step 1).
 3. Arm a bookmark-repair row: pick a source root and mark it needing repair.
    The reconnect sheet is driven from `reconnectActionID`, which is populated
    only for roots in `sourceRootBookmarkRepairPaths`
-   (`Sources/TeststripApp/AppModel.swift:2500-2510`). Simulate a broken
+   (`Sources/TeststripApp/AppModel.swift:2934-2944`). Simulate a broken
    bookmark by moving the originals to a sibling directory (the fixture the
    Reconnect flow is meant to repair):
    ```bash
@@ -62,13 +62,13 @@ exists at seed time — this card must first arm one, see Step 1).
 4. Open the Activity popover; assert a bookmark-repair row is structurally
    distinct from a plain availability-count row — **same `SourceStatusRow`
    type, but disjoint action fields**: a repair row has `reconnectActionID`
-   set and `refreshActionID` nil (`Sources/TeststripApp/AppModel.swift:2503-2509`,
+   set and `refreshActionID` nil (`Sources/TeststripApp/AppModel.swift:2937-2943`,
    icon `externaldrive.badge.exclamationmark`, AXHelp `"Reconnect
    <source name>"`), while a plain availability row has `refreshActionID` set
-   and `reconnectActionID` nil (`Sources/TeststripApp/AppModel.swift:2492-2498`,
+   and `reconnectActionID` nil (`Sources/TeststripApp/AppModel.swift:2926-2932`,
    icon `arrow.clockwise`, AXHelp `"Refresh source availability"`). Assert via
    AXHelp text and icon system-image name, not row position — both render in
-   the same `sourcesSection` list (`Sources/TeststripApp/ActivityCenterView.swift:228-265`).
+   the same `sourcesSection` list (`Sources/TeststripApp/ActivityCenterView.swift:175-239`).
 5. Click the reconnect (`externaldrive.badge.exclamationmark`) button; the
    `SourceReconnectSheet` opens with `Old root path` pre-filled
    (`Sources/TeststripApp/SourceReconnectSheet.swift:13-15`,
@@ -83,20 +83,20 @@ exists at seed time — this card must first arm one, see Step 1).
    `scannedAssetCount == 0` branch OR (since assets *do* exist under the old
    root) the `missingFileCount == scannedAssetCount` branch of
    `sourceReconnectFailureMessage`
-   (`Sources/TeststripApp/AppModel.swift:9008-9028`):
+   (`Sources/TeststripApp/AppModel.swift:11077-11097`):
    > "No files were reconnected from EmptyDecoy. 24 catalog photos were found
    > under SmokeOriginals, but the matching files were missing under the new
    > root."
-   (names are `url.lastPathComponent`, `Sources/TeststripApp/AppModel.swift:9031-9034`;
+   (names are `url.lastPathComponent`, `Sources/TeststripApp/AppModel.swift:11100-11103`;
    singular/plural branches exist for 1-asset catalogs — this card's 24-asset
    smoke seed exercises the plural wording).
 7. **Success case**: change `New mounted root path` to `$NEWROOT` (the real
    relocated directory from Step 3), click Reconnect.
 8. Assert on catalog ground truth — root path, `original_path`, availability,
    and bookmark all rewritten together
-   (`CatalogRepository.reconnectSourceRoot`, `Sources/TeststripCore/Catalog/CatalogRepository.swift:1635-1686`,
+   (`CatalogRepository.reconnectSourceRoot`, `Sources/TeststripCore/Catalog/CatalogRepository.swift:2433-2484`,
    plus `persistSecurityScopedBookmarkForSourceRoot` at
-   `Sources/TeststripApp/AppModel.swift:8996,11217-11225`):
+   `Sources/TeststripApp/AppModel.swift:11065,11217-11225`):
    ```bash
    sqlite3 "$DB" "SELECT original_path, availability FROM assets WHERE id='smoke-0';"
    sqlite3 "$DB" "SELECT path, security_scoped_bookmark_base64 IS NOT NULL FROM source_roots WHERE path LIKE '%SmokeOriginalsRelocated%';"
@@ -105,7 +105,7 @@ exists at seed time — this card must first arm one, see Step 1).
    `availability='online'`, and a non-null bookmark row for the new root.
 9. Assert preview generation was re-enqueued for the reconnected assets —
    `reconnectSourceRoot` calls `enqueuePendingPreviewGeneration()`
-   (`Sources/TeststripApp/AppModel.swift:9002`):
+   (`Sources/TeststripApp/AppModel.swift:11071`):
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM preview_generation_queue;"
    ```
@@ -147,7 +147,7 @@ Quit the launched instance.
   mid-session) is the only way to arm it. If the fixture doesn't arm a repair
   row, this is a real fixture gap to report, not a card to quietly rewrite.
 - The reconnect failure-message branches
-  (`Sources/TeststripApp/AppModel.swift:9015-9028`) have three distinct
+  (`Sources/TeststripApp/AppModel.swift:11084-11097`) have three distinct
   wordings depending on `scannedAssetCount`/`missingFileCount`/`fingerprintMismatchCount`
   — don't assume Step 6's exact branch without checking which one the live
   smoke fixture actually hits (24 assets under the old root, so

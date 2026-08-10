@@ -113,9 +113,9 @@ Quit the launched instance.
 
 ## Run status
 NOT RUN — no host GUI available in this session. All wiring in this card is
-confirmed by direct source citation (`Sources/TeststripApp/AppModel.swift:2531-2547`,
-`Sources/TeststripApp/ActivityCenterView.swift:315-321`,
-`Sources/TeststripApp/main.swift:524-536`), not by driving the UI or
+confirmed by direct source citation (`Sources/TeststripApp/AppModel.swift:2963-2980`,
+`Sources/TeststripApp/ActivityCenterView.swift:262-267`,
+`Sources/TeststripApp/main.swift:572-584`), not by driving the UI or
 querying a live catalog beyond the shared XMP-conflict-seeding technique
 already ground-truthed in `quiet-activity-badge.md`. Needs a human-present
 or console-unlocked re-run to drive the AX steps and confirm rendered

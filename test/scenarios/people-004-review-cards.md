@@ -5,7 +5,7 @@ review strip — "Unnamed faces" and "Face quality checks" — each carry a
 count matching catalog ground truth, route to the correct queue target when
 tapped, and are disabled with an explanatory `AXHelp` string when their
 backing count is zero (`PeoplePresentation.reviewCards`,
-`Sources/TeststripApp/PeopleView.swift:665-690`).
+`Sources/TeststripApp/PeopleView.swift:762-789`).
 
 ## Pre-state
 ```bash
@@ -91,7 +91,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Card gating and
-routing confirmed by static read of `Sources/TeststripApp/PeopleView.swift:665-690`
+routing confirmed by static read of `Sources/TeststripApp/PeopleView.swift:762-789`
 (`reviewCards`) and `:182-183`/`:496-503` (disabled state, tap handler,
 `selectSidebarTarget`). Needs a human-present re-run. All SQL in this card
 was run headlessly against a seeded --faces catalog on 2026-07-10 (schema per

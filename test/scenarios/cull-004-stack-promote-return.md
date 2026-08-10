@@ -35,9 +35,9 @@ Covers:
 - The rail's "Keep" button is the identical code path, not a parallel
   reimplementation: `CullingStackListView`'s `.keepSelectedAndRejectAlternates`
   action -> `keepSelectedStackFrame()` -> `model.promoteCurrentFrameAndRejectSiblings()`
-  (`Sources/TeststripApp/LibraryGridView.swift:4313-4318`, wired from the
-  action enum at `:4334-4345` and the rail presentation's button title/help
-  at `:5555-5556`, `"Keep frame N · cut M"` / `"Keep selected frame and
+  (`Sources/TeststripApp/LibraryGridView.swift:5065-5070`, wired from the
+  action enum at `:6575-6580` and the rail presentation's button title/help
+  at `:6475-6484`, `"Keep frame N · cut M"` / `"Keep selected frame and
   reject stack alternates"`).
 - Return's key binding: `CullingShortcut.init(event:)` maps the Return/keypad-
   Enter keycodes to `.promoteAndRejectSiblings`

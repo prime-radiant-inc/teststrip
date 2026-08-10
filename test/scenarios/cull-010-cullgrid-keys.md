@@ -13,15 +13,15 @@ Source:
   out-of-range move is a no-op (`target >= 0`/`target < count`, else stays
   put — not clamped to the nearest row, just refuses to move); Home → index
   0; End → index `count - 1`.
-- `Sources/TeststripApp/AppModel.swift:5290-5303` (`moveGridSelection`) —
+- `Sources/TeststripApp/AppModel.swift:6255-6268` (`moveGridSelection`) —
   operates over `CullScopeOrdering.filteredAssets(assets, scope: cullScope)`,
   i.e. the **scope-filtered** grid, not the full asset list — Home/End jump
   to the first/last tile *matching the active scope*, not the catalog's
   first/last asset.
-- `Sources/TeststripApp/AppModel.swift:5309-5334` (`applyGridKeyCommand`) —
+- `Sources/TeststripApp/AppModel.swift:6274-6305` (`applyGridKeyCommand`) —
   `.rating`/`.pick`/`.reject`/`.clearFlag` call
   `setRatingForSelectedAssets`/`setFlagForSelectedAssets`
-  (`AppModel.swift:5970-5990`), whose doc comment (`:5967-5969`) states:
+  (`AppModel.swift:7353-7372`), whose doc comment (`:7349-7352`) states:
   **"Batch rating/flag/color across the whole grid multi-selection when one
   is active, otherwise the single focused asset. One undo group covers every
   changed photo."** — confirmed by `updateSelectedAssetsMetadata`
@@ -29,11 +29,11 @@ Source:
   set when non-empty) and records one `MetadataChange` group for the whole
   batch. `.openLoupe` (Return/Space) opens the loupe on the single focused
   tile (`selectedAssetID`), independent of any batch selection.
-- `Sources/TeststripApp/LibraryGridView.swift:6542-6564`
+- `Sources/TeststripApp/LibraryGridView.swift:7521-7566`
   (`assetActivation`) — the actual multi-select gesture: **shift-click**
   calls `model.selectBatchRange(to:)` (contiguous range from the last
-  anchor, `AppModel.swift:3910-3919`); **command-click** calls
-  `model.toggleBatchSelection(_:)` (`:3906-3908`, individual add/remove).
+  anchor, `AppModel.swift:4608-4617`); **command-click** calls
+  `model.toggleBatchSelection(_:)` (`:4604-4606`, individual add/remove).
   There is no keyboard-only multi-select gesture in `GridKeyCaptureView`
   itself — batch selection is mouse-driven (with a modifier key), navigated
   focus (arrows/Home/End) is keyboard-driven, and they're independent state
@@ -52,7 +52,7 @@ than a scope-filtered subset — simpler to reason about ground truth.
 
 ## Steps
 1. ⌘1 Cull, press `G` from the loupe (or land in `.cullGrid` however the
-   workspace opens) to reach the grid subview.
+   lens opens) to reach the grid subview.
 2. Press the right arrow several times; assert focus advances one tile per
    press. AX signal: `selectedAssetID` isn't itself exposed as text, so
    cross-check via the loupe — press Return after a few right-arrows,
