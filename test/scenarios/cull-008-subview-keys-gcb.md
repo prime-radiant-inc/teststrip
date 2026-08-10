@@ -10,7 +10,7 @@ switch) and item 30 (grid Return/Space → loupe, G/Esc → back to grid),
 
 Source — **the G-key ambiguity is real but is two separate, non-conflicting
 key monitors, not one context-sensitive branch**:
-- `Sources/TeststripApp/AppModel.swift:6659-6662` — while the **culling
+- `Sources/TeststripApp/AppModel.swift:6615-6621, 6703-6714, 4790-4792` — while the **culling
   shortcut monitor** is active (loupe/culling context; `CullingShortcut.showCullGrid`,
   keyed `"g"` at `AppModel.swift:233`), pressing `g` sets
   `selectedView = .cullGrid` — loupe → grid.
@@ -26,14 +26,14 @@ key monitors, not one context-sensitive branch**:
   `CullingKeyCaptureGate.isActive(lens:selectedView:)`
   (`Sources/TeststripApp/CullingKeyCaptureView.swift:12-14`) returns
   `lens == .cull && selectedView != .cullGrid`, and
-  `LibraryGridView.swift:180-202` wires exactly one `CullingKeyCaptureView`
+  `LibraryGridView.swift:212-236` wires exactly one `CullingKeyCaptureView`
   (gated by `isActive`) and one always-installed `GridKeyCaptureView` (whose
   own `.cullSubViewSwitch` branch only matches when `mode == .cullGrid`,
   `GridKeyCaptureView.swift:222`) as sibling overlays on the same surface.
   The two `g` bindings are therefore mutually exclusive by construction:
   `CullingKeyCaptureNSView`'s local key monitor stays installed while its
   `NSView` is in the window, but `handleLocalKeyDown` guards on `isActive`
-  first (`CullingKeyCaptureView.swift:74`) and returns the event unhandled
+  first (`CullingKeyCaptureView.swift:75-84`) and returns the event unhandled
   when false — so while `.cullGrid` is showing, `CullingKeyCaptureView`'s `g`
   binding is a no-op at the handler level, and only `GridKeyCaptureView`'s
   `g` (which has no such gate, but only matches when `mode == .cullGrid`,
@@ -52,10 +52,10 @@ key monitors, not one context-sensitive branch**:
   subtle enough to spot-check live.
 - `Sources/TeststripApp/GridKeyCaptureView.swift:74-77` — plain grid mode
   (not `.cullGrid`): Return/Space → `.openLoupe`; Escape → `.returnToGrid`.
-- `Sources/TeststripApp/AppModel.swift:6274-6305` (`applyGridKeyCommand`) —
+- `Sources/TeststripApp/AppModel.swift:6309-6353` (`applyGridKeyCommand`) —
   `.openLoupe` in `.cullGrid` selects the asset and sets `selectedView =
-  .loupe` (`:6301-6305`); in plain `.grid` it calls
-  `openAssetInLibraryLoupe` instead (`:6306-6307`, the separate Loupe lens —
+  .loupe` (`:6340-6347`); in plain `.grid` it calls
+  `openAssetInLibraryLoupe` instead (`:6348-6353`, the separate Loupe lens —
   out of scope here, see `library-loupe-no-cull-chrome.md`).
 
 ## Pre-state

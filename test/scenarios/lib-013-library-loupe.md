@@ -8,7 +8,7 @@ Cull lens's own `.loupe` sub-mode. `LoupePresentation(mode:)`
 == .loupe` — true only for the Cull lens's route, false for
 `.libraryLoupe`. Unlike the old two-workspace model, the Loupe lens **is**
 session-restorable: it is one of the five non-Cull `LibraryLens` cases, and
-`isRestorableLens` (`AppModel.swift:11770-11772`) is `lens != .cull` — the
+`isRestorableLens` (`AppModel.swift:11899-11901`) is `lens != .cull` — the
 Loupe lens survives a quit/relaunch like Grid/Timeline/Map/People do.
 
 ## Pre-state

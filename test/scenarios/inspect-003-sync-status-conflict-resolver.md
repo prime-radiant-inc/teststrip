@@ -86,14 +86,16 @@ repeat this force-a-conflict setup before its own resolution step.
    fingerprint (not just the sidecar): set a color label via the UI
    (Describe tab, e.g. click the "Red" label swatch). This mutates the
    catalog after the sidecar was already hand-edited, so both sides now
-   differ from `last_synced_fingerprint` — the actual trigger for `conflict`
-   is the catalog write's `applyMetadataSnapshot` path detecting the sidecar
-   changed out from under it (verify against
-   `CatalogRepository.swift` conflict-marking call, e.g. around
-   `try metadataSyncItem(...)`/`markMetadataSynced` callers — confirm exact
-   trigger condition by reading `Sources/TeststripCore/Catalog/CatalogRepository.swift:2787-2841`
-   at run time; the mechanism is fingerprint-mismatch detection on sidecar
-   write, not a special "external edit" flag).
+   differ from `last_synced_fingerprint` — the catalog write's
+   `applyMetadataSnapshot` path queues a metadata sync
+   (`Sources/TeststripApp/AppModel.swift:8504-8544`);
+   `WorkerCommandExecutor.syncMetadata` invokes the fingerprint-mismatch
+   planner (`Sources/TeststripCore/Worker/WorkerCommandExecutor.swift:443-558`,
+   `Sources/TeststripCore/Metadata/MetadataSyncPlanner.swift:13-67`) and records
+   the result through `CatalogRepository.recordMetadataSyncConflict`
+   (`Sources/TeststripCore/Catalog/CatalogRepository.swift:2842-2843`). The
+   mechanism is fingerprint-mismatch detection on sidecar write, not a special
+   "external edit" flag.
 4. Switch to Info. Assert the sync status line reads "XMP conflict" (red,
    `InspectorMetadataSyncStatus.init` conflict branch,
    `InspectorView.swift:355-383`), and the field diff shows exactly the rows
@@ -113,17 +115,17 @@ repeat this force-a-conflict setup before its own resolution step.
    `model.resolveSelectedMetadataConflictByMergingMissingSidecarFields`).
 6. Assert: since **rating is non-zero on the catalog side (5)**, the merge
    keeps the catalog's rating (catalog wins on non-missing fields —
-   `metadataByMergingMissingSidecarFields`, `AppModel.swift:8410-8437`, only
+   `metadataByMergingMissingSidecarFields`, `AppModel.swift:8455-8482`, only
    overwrites a field when the *catalog* side is the zero/nil/empty
    "missing" sentinel). Confirm: `metadata_json` still shows `"rating":5`,
    and the rewritten sidecar now also carries `xmp:Rating="5"` (merge writes
-   a merged sidecar, `AppModel.swift:8588-8635`). Assert
+   a merged sidecar, `AppModel.swift:8633-8688`). Assert
    `metadata_sync_state` no longer has a `conflict` row for `$SRC`.
 
 ### B2 — Use Catalog
 5. (Fresh conflict per the shared steps above.) Click "Use Catalog"
    (`model.resolveSelectedMetadataConflictUsingCatalog`,
-   `AppModel.swift:7941-7946`).
+   `AppModel.swift:7986-7991`).
 6. Assert the catalog's rating (5) is unchanged and the sidecar is
    overwritten to match: `xmp:Rating="5"` on disk after the click, replacing
    the hand-edited `"2"`. Assert `metadata_sync_state` conflict row cleared.
@@ -131,13 +133,13 @@ repeat this force-a-conflict setup before its own resolution step.
 ### B3 — Use XMP
 5. (Fresh conflict per the shared steps above.) Click "Use XMP"
    (`model.resolveSelectedMetadataConflictUsingSidecar`,
-   `AppModel.swift:7948-7953`, `resolveMetadataConflictUsingSidecar`,
-   `AppModel.swift:8551-8586`).
+   `AppModel.swift:7993-7998`, `resolveMetadataConflictUsingSidecar`,
+   `AppModel.swift:8596-8630`).
 6. Assert the catalog's rating is overwritten to the sidecar's hand-edited
    value (`2`): `sqlite3 "$DB" "SELECT metadata_json ..."` shows `"rating":2`.
    Assert this is undoable: `⌘Z` reverts the rating back to 5 in the catalog
    (per `recordMetadataChangeGroup(label: "Resolved XMP conflict", ...)`,
-   `AppModel.swift:8576-8582` — only recorded `if originalAsset.metadata !=
+   `AppModel.swift:8621-8627` — only recorded `if originalAsset.metadata !=
    sidecarMetadata`, i.e. only when the resolution actually changed
    something).
 
@@ -189,8 +191,10 @@ chmod 755 "$(dirname "$SRC")" 2>/dev/null || true
 - The exact fingerprint-mismatch mechanism that flips a `metadata_sync_state`
   row from absent/pending to `conflict` was not verified live (blocked
   console) — step B's "forcing a real conflict" recipe (hand-edit sidecar,
-  then make an unrelated catalog write) is inferred from
-  `CatalogRepository.swift:1973-2027` and needs confirmation on first live
+  then make an unrelated catalog write) is inferred from the queued sync,
+  planner, and result-recording path (`AppModel.swift:8504-8544`,
+  `WorkerCommandExecutor.swift:443-558`, `MetadataSyncPlanner.swift:13-67`,
+  `CatalogRepository.swift:2842-2843`) and needs confirmation on first live
   run; if it doesn't trigger, dump `metadata_sync_state` after each sub-step
   to find where the status actually flips, and correct this card rather than
   quietly declaring success.

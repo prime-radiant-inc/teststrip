@@ -29,7 +29,7 @@ fresh grep, not carried over from any older card):
 - **Reads panel gating**, `CullReadsCardPresentation.presentation(for:)`
   (`Sources/TeststripApp/CullReadsCardPresentation.swift:74-110`): three
   states, all keyed off `CullingStackRecommendation.normalizedQualityRead`'s
-  `kindCount` (`LibraryGridView.swift:6758-6764`), which counts every
+  `kindCount` (`LibraryGridView.swift:6671-6676`), which counts every
   rankable kind with a scored component — all seven, whole-photo and
   face-specific alike, no special-casing by kind. **Zero rankable kinds**
   (the function returns `nil`) is the only "no read at all" state:
@@ -47,10 +47,10 @@ fresh grep, not carried over from any older card):
   verdict (`CullingAssistPresentation.verdict`, unchanged) plus every
   scored kind's glyph: `wholePhotoGlyphEntries` (`:64-66`) split 2+2 across
   two lines by the view (`readsCard`'s two `signalGlyphLine` calls over
-  `.prefix(2)`/`.dropFirst(2)`, `LibraryGridView.swift:4244-4245` — a
+  `.prefix(2)`/`.dropFirst(2)`, `LibraryGridView.swift:4157-4158` — a
   2026-07-29 width-truncation fix, since the panel is too narrow for all
   four whole-photo words on one line), then `faceGlyphEntries` (`:68-70`)
-  on a further line when present (`LibraryGridView.swift:4246`) —
+  on a further line when present (`LibraryGridView.swift:4159`) —
   `earlyReadCaveat` nil. The doc comment
   (`CullReadsCardPresentation.swift:3-19`) documents exactly these three
   states; the 2+2
@@ -83,7 +83,7 @@ fresh grep, not carried over from any older card):
 
   This remains a genuinely different gate than the rail's own ✦
   recommendation (`CullingStackRecommendation.rankedCandidates` via
-  `CullingQualityScore.qualityScore`, `LibraryGridView.swift:6597-6613` and
+  `CullingQualityScore.qualityScore`, `LibraryGridView.swift:6625-6645` and
   `Sources/TeststripCore/Evaluation/CullingQualityScore.swift:35-44`), which
   only needs **1** rankable kind of *any* type (`guard !scoreByKind.isEmpty`)
   — the same floor this card's PARTIAL read now shares. The two surfaces no
@@ -95,13 +95,13 @@ fresh grep, not carried over from any older card):
   for the exact current assertion. Assert whichever state this run's
   fixture actually produces — don't force it.
 - **AX surface for the Reads panel**, `cullFacesReadsPanel`
-  (`LibraryGridView.swift:4085-4104`): the *whole* faces+reads right panel
+  (`LibraryGridView.swift:4002-4020`): the *whole* faces+reads right panel
   (the Reads card on the left, the Close-Ups rail of face crops on the
   right — reconciled 2026-07-17 from the old top/bottom stacked layout) is
   one `.accessibilityElement(children: .contain)` block carrying an explicit
   `.accessibilityLabel("Reads")` and a three-way fallback
   `.accessibilityValue(readsPresentation.emptyState ?? readsPresentation
-  .verdictText ?? readsPresentation.earlyReadCaveat ?? "")` (`:4098-4103`)
+  .verdictText ?? readsPresentation.earlyReadCaveat ?? "")` (`:4013-4020`)
   — extended from the old two-way `emptyState ?? verdictText ?? ""` by
   fix/cull-followups Task 2 (2026-07-28) so the *source-level* value doesn't
   collapse to `""` for a PARTIAL read — set directly from the presentation
@@ -127,8 +127,8 @@ fresh grep, not carried over from any older card):
   bridging quirk specific to a plain `.accessibilityElement(children:
   .contain)` view, not a universal one. Because `.contain` (not `.combine`)
   is used, the inner `Text` for whichever branch is active — `emptyState`
-  (`LibraryGridView.swift:4198-4201`, the `readsCard` empty-state branch),
-  or the caveat (`:4213-4217`) — is independently AX-findable as its own
+  (`LibraryGridView.swift:4137-4140`, the `readsCard` empty-state branch),
+  or the caveat (`:4152-4155`) — is independently AX-findable as its own
   element, same as before; **treat the bare `ax find --contains "..."`
   match against that inner `Text` as authoritative, not the container-label
   match**, which this run showed is structurally dead as a test technique
@@ -152,26 +152,26 @@ fresh grep, not carried over from any older card):
   `AXValue`, which `ax_drive.sh`'s combined `--label`-plus-`--contains`
   check relies on.
 - **Rail tie suppression**, `CullingStackRailPresentation.init`
-  (`LibraryGridView.swift:6451-6587`): computes `tiedLeaderIDs` via
-  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6522-6525`,
-  defined at `:6772-6789` — leaders are every candidate whose
+  (`LibraryGridView.swift:6364-6500`): computes `tiedLeaderIDs` via
+  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6435-6438`,
+  defined at `:6685-6701` — leaders are every candidate whose
   `normalizedQualityRead` is within `tooCloseToCallMargin = 0.03` of the top
-  read, `:6770`, `nil` when fewer than 2 candidates qualify, `:6788`). "A
+  read, `:6683`, `nil` when fewer than 2 candidates qualify, `:6701`). "A
   tie can't defend a single winner, so the ✦ is suppressed entirely rather
-  than arbitrarily picking one tied leader to crown" (`:6526-6527`) —
+  than arbitrarily picking one tied leader to crown" (`:6439-6440`) —
   `recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil`
-  (`:6528`), so under a tie **no** rail chip's `isRecommended` is `true`
+  (`:6441`), so under a tie **no** rail chip's `isRecommended` is `true`
   and **no** chip's accessibility value contains `"Recommended"`
-  (`stackChipAccessibilityValue`, `:5020`: `isSelected ? "Selected" :
+  (`stackChipAccessibilityValue`, `:4929-4938`: `isSelected ? "Selected" :
   (isRecommended ? "Recommended" : "Not selected")`). The banner:
   `tooCloseBanner = tiedLeaderIDs.map { "too close to call — <frame
-  labels·joined by ·>" }` (`:6542-6547`), rendered as an orange
+  labels·joined by ·>" }` (`:6455-6460`), rendered as an orange
   `Text(tooCloseBanner)` directly under the rail's title/position text
-  (`:4812-4817`) only when non-nil. The "Keep recommended N" secondary
+  (`:4725-4730`) only when non-nil. The "Keep recommended N" secondary
   action is suppressed the same way: the guard `tiedLeaderIDs == nil, let
   recommendation = rankedCandidates.first else { return nil }` inside
-  `Self.rankedAction` (`:6641`; call site passing `tiedLeaderIDs` at
-  `:6573-6578`) — corrected from this card's stale `:6322-6326` citation,
+  `Self.rankedAction` (`:6554`; call site passing `tiedLeaderIDs` at
+  `:6486-6491`) — corrected from this card's stale `:6322-6326` citation,
   which had drifted onto unrelated `stackScope`-resolution code — leaving
   only "Keep selected", "Keep top 2" (if 3+ frames), and "Keep all" — a tie
   removes the machine's naming of a winner from every surface it would
@@ -196,20 +196,20 @@ script/vm_scenario_run.sh ax wait-vended
 
 ## Steps
 1. `ax wait-vended`; ⌘1 for Cull. **Do not press `S`.** A fresh `burst`
-   launch's `cullScope` already defaults to `.all` (`AppModel.swift:2189`,
+   launch's `cullScope` already defaults to `.all` (`AppModel.swift:2061`,
    the same finding `cull-021` established and confirmed live again this
    run) — the "Cull filter" chip only renders when
    `CullHUDPresentation.showsScopeChip` is true (`scope != .all`,
    `Sources/TeststripApp/CullHUDPresentation.swift:44`; that gate moved out
    of `LibraryGridView.swift` and into its own presentation struct since
    this card's citation was last checked, gating the `cullHUDScopeChip` call
-   at `LibraryGridView.swift:4374-4375`), so its absence confirms scope
+   at `LibraryGridView.swift:4287-4288`), so its absence confirms scope
    without cycling. Pressing `S` on a fresh launch cycles *away* from "All
    frames" (confirmed live this run: one `S` press left the scope reading
    "Cull filter: Unrated," per `CullScope`'s cycle order,
-   `AppModel.swift:301,316-356`) — this card's prior wording had the cycle
+   `AppModel.swift:247-257`) — this card's prior wording had the cycle
    direction backwards. Harmless to this card's own assertions
-   (`requestVisibleAssetEvaluations`, `AppModel.swift:9463-9476`, iterates
+   (`requestVisibleAssetEvaluations`, `AppModel.swift:9611-9624`, iterates
    the loaded `assets` list directly, not the cull-scope-filtered queue, so
    Step 3's 18/18 evaluation coverage was unaffected when this run hit the
    mistake) but confusing and unnecessary — leave scope alone. Select a
@@ -236,7 +236,7 @@ script/vm_scenario_run.sh ax wait-vended
    about: `ax find --contains "too close to call"` must fail to match.
 3. **Trigger evaluation** so the rest of this card means something: Culling
    ▸ "Evaluate Visible" (⇧⌘E, `requestVisibleAssetEvaluations`,
-   `AppModel.swift:9463`) — wait for cached previews first if needed, then
+   `AppModel.swift:9611-9624`) — wait for cached previews first if needed, then
    poll (staying frontmost via `wait-vended` each poll, per
    `test/scenarios/README.md`'s idle-wedge caution):
    ```bash
@@ -252,7 +252,7 @@ script/vm_scenario_run.sh ax wait-vended
    `faceQuality`, `eyeSharpness`, `motionBlur`, `aesthetics`, `framing` —
    `CullingQualityScore.qualityComponent`, `CullingQualityScore.swift:9-31`)
    are present with a `.score` value — this count is exactly
-   `normalizedQualityRead`'s `kindCount` (`LibraryGridView.swift:6758-6764`).
+   `normalizedQualityRead`'s `kindCount` (`LibraryGridView.swift:6671-6676`).
    Branch on the count — three honest outcomes, not two. **Use the bare
    `ax find --contains "..."` form throughout this step, never `--label
    "Reads" --contains "..."`** — confirmed live this run that the combined
@@ -287,7 +287,7 @@ script/vm_scenario_run.sh ax wait-vended
      kind's word from the mapping above — **never** the bare `ax find
      --contains "<Word> "` form: for the `faceQuality` word ("Face"), the
      bare probe is not falsifiable — the close-ups rail's unconditional
-     `accessibilityLabel("Face close-ups")` (`LibraryGridView.swift:4161`)
+     `accessibilityLabel("Face close-ups")` (`LibraryGridView.swift:4074`)
      contains the same substring whenever the panel is up, matching
      regardless of whether the glyph itself rendered (see Sharp edges). If
      the lone kind is face-specific, that same glyph now also renders here
@@ -307,7 +307,7 @@ script/vm_scenario_run.sh ax wait-vended
      `"Keep"` or `"Toss"` (no "read" suffix, no percentage, no caveat text)
      matching the predicted verdict. Also assert its AXHelp is present and
      exact, so a regression can't silently drop the `.help(verdictHelp)`
-     modifier (`LibraryGridView.swift:4234-4235`): format the expected string yourself as
+     modifier (`LibraryGridView.swift:4147-4148`): format the expected string yourself as
      `"Composed read %.2f from %d signals"` from this same
      independently-computed `read.score`/`read.kindCount`, then run `ax
      find --help "Composed read <score> from <kindCount> signals"` —
@@ -344,7 +344,7 @@ script/vm_scenario_run.sh ax wait-vended
    All three branches: the glyph's own accessibility label carries the
    word and the percentage together (e.g. `"Focus 82%"`,
    `EvaluationSignalPresentation.percentage`, `LibraryGridView.swift:
-   6303-6306`) — there is no separate bare `"%"`-only probe anymore, that
+   6216-6219`) — there is no separate bare `"%"`-only probe anymore, that
    matched the old text-row layout, not `SignalGlyphView`'s combined
    label.
 5. **Tie honest branch.** Compute the stack's tie state independently:
@@ -354,8 +354,8 @@ script/vm_scenario_run.sh ax wait-vended
    apply `CullingQualityScore.qualityComponent`'s per-kind formula
    (`CullingQualityScore.swift:9-31`) to get each frame's
    confidence-weighted mean (`normalizedQualityRead`,
-   `LibraryGridView.swift:6758-6764`), and check whether 2+ frames land
-   within `0.03` of the top score (`tooCloseToCallMargin`, `:6770`).
+   `LibraryGridView.swift:6671-6676`), and check whether 2+ frames land
+   within `0.03` of the top score (`tooCloseToCallMargin`, `:6683`).
    **Branch on what's actually true**:
    - **If a genuine tie exists** (2+ frames within the margin): assert the
      rail shows the `"too close to call — <frame labels>"` banner (`ax find
@@ -466,7 +466,7 @@ script/vm_scenario_run.sh ax wait-vended
   `faceQuality` glyph — it always matches whenever the faces+reads panel is
   up, glyph rendered or not.** The close-ups rail carries its own
   unconditional `.accessibilityLabel("Face close-ups")`
-  (`LibraryGridView.swift:4161`), gated only on the same
+  (`LibraryGridView.swift:4074`), gated only on the same
   `showsCullChrome && showsCullFacesPanel` panel visibility this card's
   Reads-panel assertions already depend on — not on whether any face glyph
   actually rendered. `"Face close-ups"` contains the substring `"Face "`
@@ -510,12 +510,12 @@ script/vm_scenario_run.sh ax wait-vended
   not by searching for the glyph. See `cull-021-stack-rail-nav.md`'s Sharp
   edges for the full explanation and the contrast with the Compare survey's
   independently-findable `"✦ BEST"` badge (a different, unrelated
-  mechanism — `LibraryGridView.swift:5939`, `CompareSurveyPresentation`,
+  mechanism — `LibraryGridView.swift:5852`, `CompareSurveyPresentation`,
   out of scope for this card).
 - **The Compare survey has its own, separate tie mechanism** — tied
   contenders render a `"tied"` rank badge instead of `"#N"`
   (`CompareSurveyPresentation.rankBadges(for:)`, `LibraryGridView.swift:
-  5904-5917`) — this is a different surface (Compare's contenders-only
+  5817-5829`) — this is a different surface (Compare's contenders-only
   mode) from the rail's `tooCloseBanner` this card exercises, and is not
   driven here.
 

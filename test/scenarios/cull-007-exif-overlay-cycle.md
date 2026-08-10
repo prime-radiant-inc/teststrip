@@ -9,7 +9,7 @@ dimensions/GPS/capture date, without opening the inspector. Covers item 24.
 Source:
 - `Sources/TeststripApp/AppModel.swift:431-442` — `ExifOverlayLevel` (`.off`,
   `.exposureLine`, `.full`), cycled by `.next()`.
-- `Sources/TeststripApp/AppModel.swift:6654-6655` — the `I` shortcut
+- `Sources/TeststripApp/AppModel.swift:6698-6699` — the `I` shortcut
   (`CullingShortcut.cycleExifOverlay`, keyed at `:231`) calls
   `exifOverlayLevel = exifOverlayLevel.next()`.
 - `Sources/TeststripApp/LibraryGridView.swift:5035-5043` — the loupe metadata
@@ -19,7 +19,7 @@ Source:
   `LoupeExifOverlayPresentation`: `.off` → `[]`; `.exposureLine` → one line
   from `LoupeExifSummaryPresentation` (camera make+model, lens, `"ISO N"`,
   aperture, shutter speed, focal length — joined with `" · "`,
-  `:8479-8510`); `.full` → the exposure line **plus** `"<w> × <h>"` pixel
+  `:8958-8996`); `.full` → the exposure line **plus** `"<w> × <h>"` pixel
   dimensions, a `"<lat>, <lon>"` line if GPS is present, and a formatted
   capture-date line if present.
 
@@ -90,7 +90,7 @@ render for that asset, before driving the UI.
 ## Sharp edges
 - **No GPS line to assert against `--smoke`.** The smoke seeder never sets
   `latitude`/`longitude`, so this card cannot exercise the GPS-line branch of
-  `.full` (`LibraryGridView.swift:8536-8538`). If a GPS-line assertion is
+  `.full` (`LibraryGridView.swift:9011-9019`). If a GPS-line assertion is
   wanted, re-run against `--faces` or `--sample-photos` instead and confirm
   which seeded frames actually carry EXIF GPS tags (not guaranteed for the
   Wikimedia Commons portraits in `sample-data/photos/faces` — check
@@ -100,7 +100,7 @@ render for that asset, before driving the UI.
   assertion could false-positive. Verified against current source that no
   other `Text` view in the loupe metadata strip does.
 - The exact capture-date formatting (`DateStyle: .medium, TimeStyle: .short`,
-  `LibraryGridView.swift:8556-8560`) is locale-dependent; this card doesn't
+  `LibraryGridView.swift:9035-9039`) is locale-dependent; this card doesn't
   assert on the date line's exact text for that reason, only on the
   presence of the pixel-dimension line as the `.full`-only signal.
 

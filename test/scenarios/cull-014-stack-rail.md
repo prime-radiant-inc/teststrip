@@ -112,7 +112,7 @@ Source (re-verified against the working tree on this branch):
   one-thumb rail entry (dogfood fix), just none of that multi-frame chrome.
   `--smoke`'s 900-second seed spacing (`SmokeCatalogSeeder.swift:136`) is
   outside the default 2-second `model.burstIntervalSeconds` (a persisted
-  Settings preference, `AppModel.swift:2549`), so `--smoke` produces **no
+  Settings preference, `AppModel.swift:2447`), so `--smoke` produces **no
   auto-stacks and no persisted `work-stack-` sets** — this card uses the
   `burst` seed variant (`TeststripBench seed-burst-catalog`), whose capture
   times are 1s apart within each group, guaranteeing 4 multi-frame
@@ -162,7 +162,7 @@ script/vm_scenario_run.sh ax wait-vended
    one — i.e. it applied `keepSelectedAndRejectAlternates` semantics on the
    currently-focused asset. **A silent no-op is a hard failure** — the
    rail renders `model.selectedCullingStackScope`'s own resolved stack
-   (`AppModel.swift:7134-7156`), the same membership
+   (`AppModel.swift:7121-7143`), the same membership
    `promoteCurrentFrameAndRejectSiblings` writes, so a visible Keep button
    must always write. Also assert the frames written are exactly the
    rail's displayed membership — the button title's "cut M" count must
@@ -186,7 +186,7 @@ script/vm_scenario_run.sh ax wait-vended
    evaluation-signal read predicted, regardless of which frame was selected
    beforehand.
 6. Assert each stack member has its own thumbnail cell
-   (`presentation.items`, `LibraryGridView.swift:6531-6540`) with the `✦`
+   (`presentation.items`, `LibraryGridView.swift:6444-6453`) with the `✦`
    marker (via accessibility value, not a raw AX-findable glyph — see
    above) on exactly the recommended one, and — the reorg's actual change
    from a single red dot — **one mark per AI-read flaw** on any cell whose
@@ -195,12 +195,12 @@ script/vm_scenario_run.sh ax wait-vended
    script/ax_drive.sh find --role AXButton --label "Stack frame 1"
    ```
    (cell accessibility label is `"Stack frame \(label)"`,
-   `LibraryGridView.swift:4985`; value carries Selected/Recommended + each
-   flaw badge's text per `stackChipAccessibilityValue`, `:5016-5026`).
+   `LibraryGridView.swift:4898`; value carries Selected/Recommended + each
+   flaw badge's text per `stackChipAccessibilityValue`, `:4929-4938`).
    **Correction (verified live 2026-07-28): the flaw marks are NOT
    separate `AXStaticText` children.** The `Text(badge.text)` built by
-   `compareDecisionBadge(_:)` (`:4978-4980` calls `compareDecisionBadges`,
-   which renders each badge via `compareDecisionBadge` at `:6060`) lives
+   `compareDecisionBadge(_:)` (`:4891-4893` calls `compareDecisionBadges`,
+   which renders each badge via `compareDecisionBadge` at `:5980-5997`) lives
    inside the `cullStackRailCell` `Button`'s label closure, and SwiftUI
    collapses a `Button`'s label subtree into the single accessibility
    element carrying `.accessibilityLabel`/`.accessibilityValue` — exactly
@@ -263,7 +263,8 @@ script/vm_scenario_run.sh ax wait-vended
   fixture as constituted; report it as a confirmed fixture gap, not a
   forced pass.
 - **"Keep recommended N" is structurally unreachable with this fixture
-  regardless of the tie finding above.** `rankedAction` (`:6619-6659`)
+  regardless of the tie finding above.** `rankedAction`
+  (`LibraryGridView.swift:6532-6572`)
   checks `stackAssetIDs.count > 2 && topTwo.count >= 2` *before* it looks
   at `tiedLeaderIDs`, and returns `"Keep top 2"` whenever that holds. Every
   `burst` stack has 3 or 4 frames (never exactly 2), and every asset gets a

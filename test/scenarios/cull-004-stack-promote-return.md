@@ -23,14 +23,14 @@ pick. VM verification of this ruling is pending (VM busy this pass).
 
 Covers:
 - `promoteCurrentFrameAndRejectSiblings()` (`Sources/TeststripApp/
-  AppModel.swift:5351-5359`): guards on stack membership (persisted
+  AppModel.swift:6370-6426`): guards on stack membership (persisted
   `selectedWorkStackAssetIDs` *or* an in-memory `cullingStacks()` match) and,
   if neither holds, returns without doing anything — the no-op case.
-- `applyCullingStackDecision` (`:5376-5412`): the shared write path — loops
+- `applyCullingStackDecision` (`:6557-6606`): the shared write path — loops
   every asset in the stack, sets `pick` on the target and `reject` on every
   other member, batches all changes into one `MetadataChange` array, and
   records **one** undo group via `recordMetadataChangeGroup` (label `"Flag ·
-  N"` when more than one asset changed, `"Flag"` otherwise, `:5398-5399`) —
+  N"` when more than one asset changed, `"Flag"` otherwise, `:6584-6585`) —
   this is the atomicity the story hinges on.
 - The rail's "Keep" button is the identical code path, not a parallel
   reimplementation: `CullingStackListView`'s `.keepSelectedAndRejectAlternates`
@@ -41,20 +41,20 @@ Covers:
   reject stack alternates"`).
 - Return's key binding: `CullingShortcut.init(event:)` maps the Return/keypad-
   Enter keycodes to `.promoteAndRejectSiblings`
-  (`CullingKeyCaptureView.swift:159-160`), dispatched at
-  `AppModel.swift:5438-5440`.
+  (`CullingKeyCaptureView.swift:164-165`), dispatched at
+  `AppModel.swift:6691-6693`.
 
 ## Investigating whether `--smoke` can produce a persisted stack (`work-stack-`)
 
 Grepped the app source for every write site of an `asset_sets` row whose id
 is prefixed `work-stack-` and for every caller of `AssetStackBuilder`:
 
-- The only writer is `saveCullingStackInputSets` (`AppModel.swift:10614-
-  10636`), which upserts `AssetSet.manual(id: "work-stack-<session>-<n>",
+- The only writer is `saveCullingStackInputSets` (`AppModel.swift:13111-
+  13133`), which upserts `AssetSet.manual(id: "work-stack-<session>-<n>",
   ...)` for every **multi-frame** stack (`assetIDs.count > 1`) the builder
   finds over a specific import's output assets.
 - `saveCullingStackInputSets` is called from inside `beginStackCulling
-  (importSessionID:title:)` (`AppModel.swift:4992-5022`) — the post-import
+  (importSessionID:title:)` (`AppModel.swift:5022-5078`) — the post-import
   completion banner this investigation originally cited
   (`beginCullingFromLatestImportCompletion()`/
   `beginStackCullingFromLatestImportCompletion()`) was deleted by the
@@ -66,7 +66,7 @@ is prefixed `work-stack-` and for every caller of `AssetStackBuilder`:
   (`AssetStackBuilder`'s adjacency rule, unchanged from before this push).
 - `beginStackCulling(importSessionID:title:)` is wired to exactly one UI
   affordance today: the sidebar's per-import row context menu, whose
-  **"Cull stacks"** action (`AppModel.swift:5184-5187`) calls it with that
+  **"Cull stacks"** action (`AppModel.swift:5212-5217, 5249-5251`) calls it with that
   row's own session id. This *is* a reachable UI gesture — import something,
   right-click its sidebar row, click "Cull stacks" — but it only produces
   `work-stack-` sets when the import's own frames actually group into a
@@ -95,7 +95,7 @@ is prefixed `work-stack-` and for every caller of `AssetStackBuilder`:
   `--smoke`, `seed-sample-catalog`, `seed-real-corpus-catalog`) targets
   bursts specifically. `SmokeCatalogSeeder` (used by `--smoke`) assigns
   `capturedAt` 900s apart per asset (`Sources/TeststripBench/
-  SmokeCatalogSeeder.swift:105`) — also outside the 2s gap, and `--smoke`
+  SmokeCatalogSeeder.swift:136-137`) — also outside the 2s gap, and `--smoke`
   never runs an import through `beginStackCullingFromLatestImportCompletion`
   anyway (it seeds the catalog directly, bypassing `IngestService`).
 
@@ -139,12 +139,12 @@ its 900s spacing never stacks.)
    `script/ax_drive.sh find --role AXMenuItem --label Undo` reports disabled,
    or a subsequent ⌘Z has no effect on `$LONE`, that confirms nothing was
    recorded). This is a true no-op, not just "picks the lone frame with zero
-   siblings to reject": `private func cullingStacks()` (`AppModel.swift:5643-
-   5645`) filters `allCullingStacks(for:)` down to `{ $0.assetIDs.count > 1
+   siblings to reject": `private func cullingStacks()` (`AppModel.swift:7011-
+   7013`) filters `allCullingStacks(for:)` down to `{ $0.assetIDs.count > 1
    }` *before* `promoteCurrentFrameAndRejectSiblings`'s guard
-   (`:5352-5356`) checks membership, so a singleton never satisfies
+   (`:6371-6383`) checks membership, so a singleton never satisfies
    `cullingStacks().contains(where:...)`. Even if it somehow did,
-   `selectedCullingStackDecisionContext()` (`:5837-5839`) independently
+   `selectedCullingStackDecisionContext()` (`:7214-7217`) independently
    throws `"selected asset is not in a culling stack"` unless
    `stack.assetIDs.count > 1`. Both checks agree: lone frames are a hard
    no-op, confirmed by reading source (no live ambiguity to resolve).

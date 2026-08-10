@@ -9,15 +9,15 @@ undoable with ⌘Z — not batched with neighboring keystrokes. Covers:
   (`CullingShortcut.init(key:)` — `0`-`5` rate, `6`=red, `7`=yellow,
   `8`=green, `9`=blue, `v`=purple, `-`=clear label, `p`=pick, `x`=reject,
   `u`=clearFlag).
-- Dispatch + auto-advance: `applyCullingShortcut` (`:5414-5458`) routes each
-  through `applyCullingCommandAndAdvance` (`:5542-5552`), which snapshots
+- Dispatch + auto-advance: `applyCullingShortcut` (`:6615-6722`) routes each
+  through `applyCullingCommandAndAdvance` (`:6898-6928`), which snapshots
   `lastCullingMetadataDecision` from the *pre-change* asset, applies the
   change, and advances to the next asset only if the selection didn't already
   move (it doesn't, for rating/label/flag commands).
 - Per-keystroke writes and undo grouping: `setRatingForSelectedAsset`
-  (`:5921-5928`, label `"Rating"`), `setColorLabelForSelectedAsset`
-  (`:5961-5965`, label `"Color label"`), `setFlagForSelectedAsset`
-  (`:5930-5939`, label `"Flag"`) — each calls `updateSelectedAssetMetadata`
+  (`:7325-7337`, label `"Rating"`), `setColorLabelForSelectedAsset`
+  (`:7389-7393`, label `"Color label"`), `setFlagForSelectedAsset`
+  (`:7339-7367`, label `"Flag"`) — each calls `updateSelectedAssetMetadata`
   for a *single* asset, so each keystroke is its own one-asset undo group
   (distinct from the multi-asset `setFlagForSelectedAssets`/stack-decision
   paths used elsewhere).
@@ -25,9 +25,9 @@ undoable with ⌘Z — not batched with neighboring keystrokes. Covers:
   (`Sources/TeststripApp/CullFilmstripPresentation.swift:83-99`) builds
   `"<symbol> <filename> <lowercased decision> — ⌘Z undoes"`; the view fades
   it after a 2s `Task.sleep` (`Sources/TeststripApp/
-  LibraryGridView.swift:3887-3902`, `showDecisionToastThenFade`).
+  LibraryGridView.swift:4447-4462`, `showDecisionToastThenFade`).
   Decision text strings: `cullingMetadataDecisionText`
-  (`AppModel.swift:5569-5583`) — `"Rated N"`/`"Cleared rating"`,
+  (`AppModel.swift:6946-6960`) — `"Rated N"`/`"Cleared rating"`,
   `"<Color> label"`/`"Cleared label"`, `"Picked"`/`"Rejected"`/`"Cleared
   flag"`.
 

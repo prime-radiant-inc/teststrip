@@ -15,19 +15,20 @@ mock.
 
 Source (current working tree, `feat/machine-label-provenance`):
 - **Promotion** (auto-apply): `AppModel.promoteMetadataLabels(for:)`
-  (`Sources/TeststripApp/AppModel.swift:8249`, floor
-  `objectKeywordConfidenceFloor = 0.5` at `:8240` — an `.object` evaluation
+  (`Sources/TeststripApp/AppModel.swift:8294-8321`, floor
+  `objectKeywordConfidenceFloor = 0.5` at `:8285` — an `.object` evaluation
   signal at/above this confidence adds each label to `keywords` +
-  `aiUnconfirmedKeywords`) and `AppModel.promoteFaceMatches(for:)` (`:3777` —
+  `aiUnconfirmedKeywords`) and `AppModel.promoteFaceMatches(for:)` (`:3772-3795`,
+  with centroid provenance at `:3611-3617` —
   matches unassigned faces against **confirmed-only** (`origin='user'`)
   person centroids and inserts a face-level `origin='ai'` `person_faces` row,
   **never** a `person_assets` row). Both are wired into the post-evaluation
-  path by `promoteEvaluationResults(for:)` (`:10441`), called once per
+  path by `promoteEvaluationResults(for:)` (`:10492-10502`), called once per
   `(asset, provider)` evaluation completion — **not** by any UI
   navigation/refresh gesture (see Sharp edges).
-- **Confirm/remove**: `confirmAIKeyword`/`removeAIKeyword` (`:8283`/`:8298`),
-  `confirmAIField`/`removeAIField` (`:8313`/`:8333` — `.caption`/`.flag`/
-  `.rating`), `confirmAIFace`/`rejectFaceSuggestion` (`:3953`/`:3967`).
+- **Confirm/remove**: `confirmAIKeyword`/`removeAIKeyword` (`:8328`/`:8343`),
+  `confirmAIField`/`removeAIField` (`:8358`/`:8378` — `.caption`/`.flag`/
+  `.rating`), `confirmAIFace`/`rejectFaceSuggestion` (`:3948`/`:3962`).
   Confirming a keyword/caption/field writes the `.xmp` (via the existing
   `applyMetadataSnapshot` sidecar-sync path); confirming a face flips
   `person_faces.origin` to `user` and upserts `person_assets`, and writes
@@ -39,12 +40,12 @@ Source (current working tree, `feat/machine-label-provenance`):
   are dropped before anything reaches disk, regardless of which write path
   fires.
 - **Autopilot fold-in**: `AppModel.runAutopilotOnCurrentScope()`
-  (`AppModel.swift:9714`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
+  (`AppModel.swift:9759-9770`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
   `app-012-autopilot-evaluate-commands.md`) → `runAutopilot(scope:)` →
-  `applyTentativeAutopilotProposals(_:)` (`AppModel.swift:9654`) writes each
+  `applyTentativeAutopilotProposals(_:)` (`AppModel.swift:9699-9746`) writes each
   `.pick`/`.reject` proposal into `metadata.flag` **immediately**, marked
   `aiUnconfirmedFields = [.flag]`, unless the asset already carries a
-  **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:9670`) — this is the
+  **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:9715-9718`) — this is the
   headline behavior change from the pre-provenance model: the tentative
   write itself (the "ghost," `AutopilotGhost.kind(in:)`) lands in
   `metadata_json` immediately; SP-D0 later dropped the `autopilot_proposals`
@@ -52,8 +53,8 @@ Source (current working tree, `feat/machine-label-provenance`):
   the ghost sitting in the asset's own metadata is the whole record, and the
   catalog write never waited for a Commit in the first place.
 - **Tentative-flag exclusion (safety-critical)**: `rejectRelocationScope`
-  (`AppModel.swift:11973`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
-  (`AppModel.swift:11995`) before it can ever reach a `RejectRelocationPlan` — a tentative
+  (`AppModel.swift:12048-12091`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
+  (`AppModel.swift:12070-12072`) before it can ever reach a `RejectRelocationPlan` — a tentative
   AI reject can never be included in Move Rejects (folder) or Move Rejects to
   Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`/
   `confirmationText` (`Sources/TeststripApp/AppModel.swift:1448-1450`) reflect
@@ -160,7 +161,7 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    `--role AXMenuItem` usage for "Scan for Faces"). This calls
    `requestVisibleAssetEvaluations(providers: defaultEvaluationProviderNames)`
    = `["local-image-metrics", "apple-vision", "core-image-faces"]`
-   (`AppModel.swift:2612`) — **apple-vision is in this list**, so this
+   (`AppModel.swift:2607`) — **apple-vision is in this list**, so this
    one pass also produces `face_observations` (the same code path
    `People ▸ Scan for Faces` uses, per `people-009-scan.md`) and gives
    autopilot richer signals than a face-only scan would. Keep the app warm

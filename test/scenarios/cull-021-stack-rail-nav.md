@@ -42,20 +42,20 @@ over from any older card):
   weight; red stays reserved for the decision overlay's genuinely
   destructive `.rejected` state above. Tap dispatches
   `model.select(item.assetID)` (`:4836-4837`).
-- **`CullingStackRailPresentation`**, `LibraryGridView.swift:6288-6536`
+- **`CullingStackRailPresentation`**, `LibraryGridView.swift:6326-6573`
   (corrected 2026-07-28; see Run status for the general citation-drift
   note) — `Item.flawBadges` comes from
-  `CompareSurveyPresentation.flawBadges(for:)` (`:5828-5839`, corrected
+  `CompareSurveyPresentation.flawBadges(for:)` (`:5860-5877`, corrected
   2026-07-28; **exactly two** kinds exist today — `EYES CLOSED` when the
   highest-confidence `.eyesOpen` score is `<= 0.0`, `SOFT` when the highest-
   confidence `.focus` score is `<= 0.4` — there is **no third "duplicate"
   badge kind** in this codebase; don't assert one). `Item.isRecommended`
-  (`:6411`) is `assetID == recommendation?.assetID`, where `recommendation`
-  (`:6403`) is `tiedLeaderIDs == nil ? rankedCandidates.first : nil` —
+  (`:6449`) is `assetID == recommendation?.assetID`, where `recommendation`
+  (`:6441`) is `tiedLeaderIDs == nil ? rankedCandidates.first : nil` —
   **not** simply `rankedCandidates.first` (corrected 2026-07-28: the
   previous revision of this bullet omitted the tie suppression entirely,
   which reads as "always shows the top-ranked frame" and is wrong on a
-  too-close-to-call tie). `rankedCandidates` (`:6587-6603`) is driven by
+  too-close-to-call tie). `rankedCandidates` (`:6625-6645`) is driven by
   `CullingQualityScore.qualityScore`
   (`Sources/TeststripCore/Evaluation/CullingQualityScore.swift:9-44`, which
   scores off `.focus`/`.eyesOpen`/`.faceQuality`/`.eyeSharpness`/
@@ -69,7 +69,7 @@ over from any older card):
   the two can legitimately disagree on which frame gets attention (✦ shows
   none, landing still picks one).
 - **Accessibility surface** (the actual AX-drivable proxy for "✦" —
-  `stackChipAccessibilityValue`, `:4897-4901`, corrected 2026-07-28): each
+  `stackChipAccessibilityValue`, `:4929-4938`, corrected 2026-07-28): each
   cell is one `AXButton`
   labeled `"Stack frame \(label)"` (1-based index *within the stack*, not a
   global asset id) whose accessibility **value** is
@@ -79,7 +79,7 @@ over from any older card):
   independently exposed — assert "recommended" via the button's value
   string, not by searching for a literal `✦` glyph (contrast with the
   compare survey's `"✦ BEST"`, which **is** its own `Text` badge,
-  `LibraryGridView.swift:5523`, and thus independently AX-findable; the rail
+  `LibraryGridView.swift:5852`, and thus independently AX-findable; the rail
   chip is not the same mechanism).
 - **Keyboard remap**, `CullingShortcut` — the live monitor's event-based
   mapping (`Sources/TeststripApp/CullingKeyCaptureView.swift:153-165`) and
@@ -98,26 +98,26 @@ over from any older card):
   (`:94-96`); there is no special-cased Option-arrow branch anywhere in this
   file anymore (the old monitor-only mechanism cited by prior cards is
   gone).
-- **Dispatch**: `applyCullingShortcut`, `AppModel.swift:6538-6632` (stale
+- **Dispatch**: `applyCullingShortcut`, `AppModel.swift:6615-6722` (stale
   line numbers from an earlier verification pass corrected 2026-07-28 —
   ~700-800 lines were added to this file above this point since; see Run
   status) — `.previousCandidateInStack`/`.nextCandidateInStack` call
   `selectPreviousCandidateInStack()`/`selectNextCandidateInStack()`
-  (`:7073-7079`, → `moveSelectionWithinCurrentCullingStack(by:)`,
-  `:7081-7100`: moves within `selectedCullingStackScope.assetIDs`, **no
+  (`:7163-7169`, → `moveSelectionWithinCurrentCullingStack(by:)`,
+  `:7171-7190`: moves within `selectedCullingStackScope.assetIDs`, **no
   wrap** — a target index outside `stackAssetIDs.indices` is a no-op, guard
-  at `:7096-7098`). `.previousStack`/`.nextStack` call
+  at `:7185-7187`). `.previousStack`/`.nextStack` call
   `selectPreviousStackForCulling()`/`selectNextStackForCulling()`
-  (`:7055-7067`, preferring a persisted `work-stack-` session, else
-  `selectCullingStack(_:)`, `:7149-7191`), which lands on
-  `recommendedStackLandingAssetID(for:)` (`:7202-7205`:
+  (`:7145-7157`, preferring a persisted `work-stack-` session, else
+  `selectCullingStack(_:)`, `:7221-7281`), which lands on
+  `recommendedStackLandingAssetID(for:)` (`:7292-7295`:
   `recommendedCullingStackAssetID(in:) ?? stack.assetIDs.first`). **This is
   a three-way branch, not the two-way "winner-or-first" the previous
   revision of this card described** — reconciled 2026-07-28 after a live
   run landed on frame 2, not frame 1, of a stack whose top two reads were
   tied: `recommendedCullingStackAssetID` delegates to
   `CullingStackRecommendation.landingAssetID`
-  (`LibraryGridView.swift:6675-6683`), which returns (1) the clear ranked
+  (`LibraryGridView.swift:6713-6720`), which returns (1) the clear ranked
   winner when one exists, (2) **the first tied leader in capture order**
   (not necessarily frame 1) when `tiedLeaderIDs` is non-nil — a
   too-close-to-call tie still lands somewhere, just not on an arbitrarily
@@ -127,20 +127,20 @@ over from any older card):
   conflate with (3) because both are "no ✦ shown" states, but they land on
   different frames whenever the tied leaders don't happen to start at index
   0 — assert against `CullingStackRecommendation.tiedLeaderIDs`
-  (`LibraryGridView.swift:6647-6664`, margin `tooCloseToCallMargin = 0.03`
-  at `:6645`, computed from `normalizedQualityRead`'s confidence-weighted
-  **mean**, `:6633-6639` — a different metric from `rankedCandidates`'
-  summed `qualityScore` used for the ✦ chip itself, `:6587-6603`), not by
+  (`LibraryGridView.swift:6685-6701`, margin `tooCloseToCallMargin = 0.03`
+  at `:6683`, computed from `normalizedQualityRead`'s confidence-weighted
+  **mean**, `:6671-6676` — a different metric from `rankedCandidates`'
+  summed `qualityScore` used for the ✦ chip itself, `:6625-6645`), not by
   assuming "first tied leader" always equals "stack's first frame."
 - **`?` overlay scroll**: while `isKeyMapOverlayVisible`,
   `.previousCandidateInStack`/`.nextCandidateInStack` (↑/↓) are intercepted
-  first and scroll the overlay instead (`AppModel.swift:6543-6558`,
+  first and scroll the overlay instead (`AppModel.swift:6633-6648`,
   `scrollKeyMapOverlay(.up)`/`.down`) — not exercised by this card (see
   `cull-009-keymap-overlay.md`), noted here only so a driver doesn't confuse
   ↑/↓'s dual role if the overlay happens to be open.
 - **Fixture**: `burst` seed variant (`TeststripBench seed-burst-catalog`,
   `Sources/TeststripBench/SmokeCatalogSeeder.swift:33-54`,
-  `main.swift:424-444`) — 4 auto-groupable stacks (3/4/3/4 frames, capture
+  `Sources/TeststripBench/main.swift:440-452`) — 4 auto-groupable stacks (3/4/3/4 frames, capture
   times 1s apart, inside `AssetStackBuilder`'s 2s gap) plus 4 singles, same
   fixture `cull-004-stack-promote-return.md`/`cull-014-stack-rail.md` use.
 
@@ -182,7 +182,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
 4. **Trigger evaluation** so the recommendation/badge legs mean something:
    Culling ▸ "Evaluate Visible" (⇧⌘E) evaluates every loaded asset with a
    cached preview (`requestVisibleAssetEvaluations`,
-   `AppModel.swift:8420-8433`) — wait for previews first if needed
+   `AppModel.swift:9611-9624`) — wait for previews first if needed
    (`worker-001-preview-lifecycle.md`'s pattern), then poll:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT count(DISTINCT asset_id) FROM evaluation_signals;"
@@ -226,7 +226,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
 8. **↓ at the last frame is a no-op**: repeat `Down` until on the stack's
    last frame, then press `Down` once more. Assert the selection does not
    move (`moveSelectionWithinCurrentCullingStack`'s target-index guard,
-   `AppModel.swift:7096-7098` — no wrap to frame 1, no crossing into the
+   `AppModel.swift:7185-7187` — no wrap to frame 1, no crossing into the
    next stack).
 9. **↑ mirrors ↓**: press `Up` from the last frame; assert it steps back one
    frame at a time, also stopping (no wrap) at frame 1.
@@ -250,7 +250,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
     its accessibility value and the main loupe stage now shows that same
     asset (filename/preview changes to match) — `model.select(_:)` only
     changes selection (`LibraryGridView.swift:4475`,
-    `AppModel.swift:4786-4790`, corrected 2026-07-28); assert it did **not**
+    `AppModel.swift:4572-4576, 4622-4655`, corrected 2026-07-28); assert it did **not**
     write any *new* flag/rating/keyword/caption value (the clicked frame's
     decision overlay stays absent/undecided) — see step 13's caveat below
     for why "did a sidecar appear" is not, by itself, a usable proxy for
@@ -260,8 +260,8 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
     files appearing from pure arrow-key/click navigation with zero pick/
     reject/rating gestures — traced to source, not a guess): every
     `selectAssetID(_:)` call unconditionally enqueues a metadata-sync check
-    for the newly-selected asset (`AppModel.swift:4836-4864`, trigger at
-    `:4860`), and `MetadataSyncPlanner.decision`
+    for the newly-selected asset (`AppModel.swift:4622-4655`, trigger at
+    `:4651-4653`), and `MetadataSyncPlanner.decision`
     (`Sources/TeststripCore/Metadata/MetadataSyncPlanner.swift:20-26`)
     writes an `.xmp` for any asset whose `confirmedProjection` already has a
     non-nil rating/flag/keyword/caption/colorLabel — gated purely on
@@ -394,7 +394,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
   exposure at all** — unlike `✦` (which is at least readable through the
   cell button's accessibility *value*, see the Accessibility surface bullet
   above), `cullStackRailDecisionOverlay`'s `Image(systemName:)` glyphs
-  (`LibraryGridView.swift:4873-4886`) carry no `.accessibilityLabel` of
+  (`LibraryGridView.swift:4905-4922`) carry no `.accessibilityLabel` of
   their own and `stackChipAccessibilityValue` doesn't encode decision state
   either (only Selected/Recommended/flaw-badge text) — confirmed live: `ax
   find --role AXImage --contains "flag"` (and `"xmark"`) matches nothing.
@@ -403,8 +403,8 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
   back) — there is no AX-textual shortcut for this leg.
 - **Return's post-promote advance is unconditional, not gated by "Toggle
   Auto-Advance (a)".** `promoteCurrentFrameAndRejectSiblings` →
-  `applyCullingStackDecision` (`AppModel.swift:6480-6529`) always calls
-  `selectAssetID` on the next stop after committing (`:6516-6528`) — this is
+  `applyCullingStackDecision` (`AppModel.swift:6557-6606`) always calls
+  `selectAssetID` on the next stop after committing (`:6593-6605`) — this is
   a separate code path from `applyCullingCommandAndAdvance` (which the `a`
   toggle actually governs, for plain P/X/rating commands). Confirmed live:
   toggling auto-advance off with `a` had no effect on where Return landed

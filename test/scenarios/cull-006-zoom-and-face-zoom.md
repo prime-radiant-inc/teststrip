@@ -10,14 +10,14 @@ detections the Close-Ups panel shows, so the two features never disagree
 about "what counts as a face").
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:6805-6808` — `toggleLoupeZoom()`, the
+- `Sources/TeststripApp/AppModel.swift:6850-6853` — `toggleLoupeZoom()`, the
   `z` shortcut (`CullingShortcut.toggleZoom`, keyed at `:230`).
-- `Sources/TeststripApp/AppModel.swift:6830-6851` — `zoomToNearestFaceOrCycleFace()`,
+- `Sources/TeststripApp/AppModel.swift:6879-6896` — `zoomToNearestFaceOrCycleFace()`,
   the `Z` (shift-z, exact-case) shortcut (`CullingShortcut.zoomToNearestFace`,
   keyed at `:199-202`): first press zooms to the face nearest the current
   focus (or center); a repeated press while still face-zoomed cycles to the
   next face, wrapping (`LoupeFaceZoomTargeting.wrappedIndex`, `:419-422`);
-  falls back to a plain centered 1:1 zoom if no faces were detected (`:6834-6838`).
+  falls back to a plain centered 1:1 zoom if no faces were detected (`:6880-6883`).
 - `Sources/TeststripApp/LibraryGridView.swift:4200-4252` (`refreshCloseUps`) —
   **verified same-detections claim**: this is the single call site that both
   populates the Close-Ups panel crops (`closeUpCrops`) and calls
@@ -48,7 +48,7 @@ multi-face frame, and any single-portrait frame (e.g.
    Return to open loupe).
 2. Press `z`. There is **no AX signal in the plain loupe** that reflects
    `model.loupeZoomFocus` (see Sharp edges) — the on-screen legend text
-   `"Z 1:1"` (`LibraryGridView.swift:5313`) is static and does not change
+   `"Z 1:1"` (`LibraryGridView.swift:6249`) is static and does not change
    with zoom state. Fall back to a screenshot comparison:
    `script/capture_app_window.sh` before and after the press, and visually
    confirm the frame now renders cropped/magnified rather than fit-to-pane.
@@ -96,7 +96,7 @@ multi-face frame, and any single-portrait frame (e.g.
   drives only pixel-level rendering in the standard loupe view; there is no
   accessibility label/value that mirrors it there. The only place the app
   exposes this state as text is the **A/B compare pane's header button**
-  (`LibraryGridView.swift:5859-5865`), whose label reads `"Zoom 1:1"` when
+  (`LibraryGridView.swift:6862-6868`), whose label reads `"Zoom 1:1"` when
   unzoomed and `"Fit"` when zoomed — and it reads the *same* shared
   `model.loupeZoomFocus`. A more rigorous re-run of this card could press `z`
   in the loupe, then press `B` to switch to A/B compare, and assert that

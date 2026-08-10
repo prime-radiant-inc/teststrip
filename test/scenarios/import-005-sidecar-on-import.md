@@ -2,21 +2,21 @@
 
 **What this covers**: inventory item 8. Three sub-scenarios, each its own
 Steps/Expected pair, all driven from the same ingest code path
-(`Sources/TeststripCore/Ingest/IngestService.swift:130-186`):
+(`Sources/TeststripCore/Ingest/IngestService.swift:130-198`):
 (a) an asset imported next to a **valid pre-existing `.xmp`** sidecar folds
 the sidecar's metadata into the catalog
 (`MetadataSyncPlanner.decision` → `.importSidecar`, folded at
-`IngestService.swift:158-164`); (b) a **second import of the same content**
+`IngestService.swift:160-175`); (b) a **second import of the same content**
 whose sidecar now disagrees with catalog metadata that changed in between
 produces a `metadata_sync_state` row with `status='conflict'`
-(`MetadataSyncPlanner.swift:42-47`, recorded via
-`repository.recordMetadataSyncConflict`, `IngestService.swift:227-233`) —
+(`MetadataSyncPlanner.swift:48-66`, recorded via
+`repository.recordMetadataSyncConflict`, `IngestService.swift:243-249`) —
 **not currently reachable through user gestures alone** (see the (b) rewrite
 below and the Sharp edges note); this card instead exercises the two
 behaviors a re-import of already-cataloged content actually produces under
 new-only ON (default) vs OFF; (c) an **unparsable/corrupt sidecar** flags only
 that one asset as a conflict
-(`IngestService.swift:173-186`: the catch block routes an unparsable sidecar
+(`IngestService.swift:183-198`: the catch block routes an unparsable sidecar
 into `sidecarConflicts` rather than rethrowing) while the rest of the batch
 still imports successfully.
 
@@ -138,7 +138,7 @@ gated by the **import-new-only** toggle:
 - (a) Step 3: `metadata_json` shows `rating=5`, the keyword `sunset`, no
   reject/pick mismatch — the sidecar's values, not the smoke-seed defaults.
   `metadata_sync_state.status` is **not** `'conflict'` (a fresh import always
-  folds unconditionally per `MetadataSyncPlanner.swift:24-25` — there is no
+  folds unconditionally per `MetadataSyncPlanner.swift:29-31` — there is no
   `metadata_sync_state` row with status `'conflict'` for this asset). **Fails
   if** the catalog metadata is empty/default (the fold never happened) or a
   conflict was recorded for a first-time import.
@@ -181,7 +181,7 @@ Quit the launched instance.
 ## Sharp edges
 - **Sub-scenario (b) cannot be produced on a first-time import**, and — per a
   2026-07-10 live run — **not through a same-content re-import either.**
-  `MetadataSyncPlanner.decision` (`MetadataSyncPlanner.swift:24-25`) always
+  `MetadataSyncPlanner.decision` (`MetadataSyncPlanner.swift:29-31`) always
   returns `.importSidecar` unconditionally when `lastSynced == nil`, true for
   every brand-new asset. The conflict branch instead needs
   `(localChanged, sidecarChanged) = (true, true)` on a re-import. But every
@@ -201,7 +201,7 @@ Quit the launched instance.
   (`Sources/TeststripCore/Catalog/CatalogMigrations.swift`) — conflicts are
   rows in the general-purpose `metadata_sync_state` table
   (`CatalogMigrations.swift:29-38`) with `status = 'conflict'`
-  (`CatalogRepository.swift:1973-1981, 2026-2027`), the same table used for
+  (`CatalogRepository.swift:2842-2843,3597-3625,3656-3672`), the same table used for
   the ordinary background sync scan. A card or driver assuming a
   purpose-built conflicts table would query the wrong thing.
 - The `xmllint --noout` check on the fixtures in Pre-state is a cheap,

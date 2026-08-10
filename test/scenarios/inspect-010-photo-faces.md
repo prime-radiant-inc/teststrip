@@ -20,7 +20,7 @@ Source:
   `LensChromePolicy.showsInspector(model.selectedView)`
   (`Sources/TeststripApp/LibraryGridView.swift:8291-8293`: unconditionally
   `true` for every lens now, not gated to three workspaces).
-- `Sources/TeststripApp/AppModel.swift:4786-4788` — `toggleInspector()` is
+- `Sources/TeststripApp/AppModel.swift:4795-4799` — `toggleInspector()` is
   now a bare `isInspectorVisible.toggle()`; there is no more Cull-switches-
   to-Library special case (contrast with the pre-unification behavior
   `inspect-001-toggle-tabs.md` used to test, now reconciled).
@@ -45,14 +45,14 @@ Source:
   `.suggested` (from `peopleFaceSuggestions`) for the same face index,
   falling back to `.unnamed`; `displayLabel` (`"<name> ✓"` / `"guess:
   <name>"` / `"Unnamed"`) is shared verbatim by the loupe box labels.
-- `Sources/TeststripApp/AppModel.swift:3900-3973` — `nameFace(_:personID:)`
+- `Sources/TeststripApp/AppModel.swift:3898-3969` — `nameFace(_:personID:)`
   (assigns + clears any prior rejection for that pair), `nameFace(_:newPersonName:)`
   (mints a person via `upsertPerson` then `assignFaces`), `removeFacePerson`
   (`unassignFaces`), `rejectFaceSuggestion` (`recordRejectedFacePerson`) —
   every one calls `refreshPeopleFaceSuggestions()` inline, so the People
   rows and the suggestion pipeline agree immediately with no separate
   "re-scan" gesture needed for the reject leg below.
-- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1185-1219`
+- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1855-1893`
   (`assignFaces` — writes `person_faces` **and** a `person_assets` row for
   the whole asset, `:1208-1217`), `:1238-1254`
   (`recordRejectedFacePerson`/`clearRejectedFacePerson`), `:1269-1279`
@@ -122,7 +122,7 @@ for the plain add-a-name leg.
    `model.openAssetInLoupe(asset.id)` at `:7082-7087`, inside the
    `assetActivation` view modifier `:7076-7113`) to open it. Assert the
    lens is now Cull (a Cull-only control, e.g. the stack rail, is
-   present) — `openAssetInLoupe` (`AppModel.swift:5827-5830`) lands on
+   present) — `openAssetInLoupe` (`AppModel.swift:5916-5919`) lands on
    `selectedView == .loupe`, whose `.lens` is `.cull`
    (`LibraryViewMode.lens`, `LibraryLens.swift:74-88`).
 2. Press ⌘I. Assert the inspector column appears **without leaving Cull**
@@ -200,7 +200,7 @@ for the plain add-a-name leg.
     `peopleFaceSuggestions` state. Assert the row still reads "Unnamed",
     not "guess: John Glenn" — `rejectedPairs` filters this exact (asset,
     face, person) tuple out of `FaceMatchSuggestion.faceIDs`
-    (`AppModel.swift:3776-3786`).
+    (`AppModel.swift:3787-3793`).
 
 ### 5. Remove a confirmed name
 20. Return to `commons-glenn-official.jpg` (its face is still confirmed
@@ -341,7 +341,7 @@ for the plain add-a-name leg.
   scoped rewrite and live run too.
 - **Do not test confirmed + suggested on the same photo.** Confirming any
   face on a photo (`nameFace` → `assignFaces`) inserts a `person_assets`
-  row for the **whole asset** (`CatalogRepository.swift:1208-1217`), and
+  row for the **whole asset** (`CatalogRepository.swift:1878-1886`), and
   `unassignedFaceObservations` excludes any face whose asset has a
   `person_assets` row (`:1136-1139`) — not just the confirmed face index.
   So once one face on a photo is confirmed, every other face on that same
@@ -358,7 +358,7 @@ for the plain add-a-name leg.
   one.
 - **`refreshPeopleFaceSuggestions()` is synchronous and automatic** — every
   `nameFace`/`removeFacePerson`/`rejectFaceSuggestion` call already
-  recomputes suggestions inline (`AppModel.swift:3706-3751`, each ends by
+  recomputes suggestions inline (`AppModel.swift:3898-3969`, each ends by
   calling it). There's no separate "re-run suggestions" gesture to drive;
   "re-running suggestions" in step 19 means re-reading the already-
   refreshed state, not triggering a new scan.

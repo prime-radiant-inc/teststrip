@@ -56,7 +56,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    ```
 6. **Person-card tap navigation.** Tap "Beta Person"'s card (not the merge
    menu — the card body). Assert the app switches to the Library grid scoped
-   to `person:Beta Person` (`showPersonPhotos`, `AppModel.swift:3331-3337`,
+   to `person:Beta Person` (`showPersonPhotos`, `AppModel.swift:4004-4012`,
    which sets `librarySearchText` to a `.person(name)` predicate and
    `selectedView = .grid`). Cross-check the grid's visible asset IDs against
    `SELECT asset_id FROM person_assets WHERE person_id=(SELECT id FROM people WHERE name='Beta Person');`.
@@ -107,7 +107,7 @@ no console access):
   `CREATE TABLE ... (id TEXT PRIMARY KEY, name TEXT NOT NULL, ...)` with only
   a **non-unique** index `idx_people_name ON people(name COLLATE NOCASE)` — no
   `UNIQUE` constraint on `name`, case-insensitive or otherwise.
-- `confirmSelectedAssetsAsPerson` (`AppModel.swift:3202-3225`) always mints a
+- `confirmSelectedAssetsAsPerson` (`AppModel.swift:3539-3564`) always mints a
   fresh `id: "person-\(UUID().uuidString)"` unless the caller overrides it
   (the sheet never does), and calls `catalog.repository.upsertPerson(id:name:)`
   — an upsert **keyed on `id`**, not `name`. Two separate confirm gestures

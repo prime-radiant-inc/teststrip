@@ -6,8 +6,8 @@ observations for a re-processed asset rather than appending duplicates
 provider/model/version/settings_hash, `Sources/TeststripCore/Catalog/CatalogRepository.swift:1354-1373`),
 and `FaceSuggestionBuilder` batches up to 2000 unassigned observations into
 face-group suggestions
-(`AppModel.maximumFaceSuggestionInputCount`, `Sources/TeststripApp/AppModel.swift:3613`,
-consumed at `AppModel.refreshPeopleFaceSuggestions`, `AppModel.swift:3644-3652`).
+(`AppModel.maximumFaceSuggestionInputCount`, `Sources/TeststripApp/AppModel.swift:3608`,
+consumed at `AppModel.refreshPeopleFaceSuggestions`, `AppModel.swift:3643-3647`).
 
 ## Pre-state
 ```bash
@@ -53,8 +53,8 @@ suggestions, by design.
    call site: `AppModel.refreshPeopleFaceSuggestions` passes `limit:
    Self.maximumFaceSuggestionInputCount` (2000) to
    `catalog.repository.unassignedFaceObservations(provenance:limit:)`
-   (`AppModel.swift:3253-3260`; repository query at
-   `CatalogRepository.swift:1074`). Confirm the SQL actually applies a LIMIT:
+   (`AppModel.swift:3643-3647`; repository query at
+   `CatalogRepository.swift:1461-1496`, with SQL/LIMIT at `:1514-1548`). Confirm the SQL actually applies a LIMIT:
    ```bash
    sqlite3 "$DB" "EXPLAIN QUERY PLAN SELECT * FROM face_observations LIMIT 2000;"
    ```
@@ -84,14 +84,14 @@ Quit the launched instance.
 ## Sharp edges
 - `CatalogRepository`'s replace is scoped to the same
   `(provider, model, version, settings_hash)` tuple
-  (`CatalogRepository.swift:1001-1010`) — re-processing with a *different*
+  (`CatalogRepository.swift:1315-1395`) — re-processing with a *different*
   model/version does not replace, it adds a second provenance's rows
   alongside the first (by design, so an old provider's rows can be
   invalidated separately). Don't mistake a provenance change for a dedup
   failure.
 - The DELETE also cascades to `person_faces`/`dismissed_faces` for the asset
   **only when the detected bounding boxes actually changed**
-  (`previousBoxes != newBoxes` guard, `CatalogRepository.swift:994-997`) — a
+  (`previousBoxes != newBoxes` guard, `CatalogRepository.swift:1340-1353`) — a
   byte-identical re-detect on an unmodified source image will *not* clear an
   existing person assignment or dismissal, which is correct but easy to
   misread as "replace didn't happen."

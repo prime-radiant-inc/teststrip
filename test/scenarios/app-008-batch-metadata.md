@@ -3,13 +3,14 @@
 **What this covers**: Jesse tags a whole shoot in one pass. Inventory item 30
 plus the sheet flow: Metadata ▸ Batch Metadata… (⌥⌘M) bumps
 `batchMetadataRequestToken` (`MetadataActionCommands`,
-`Sources/TeststripApp/main.swift:333-350`;
-`AppModel.requestBatchMetadataSheet`, `AppModel.swift:2463-2465`), disabled
+`Sources/TeststripApp/main.swift:335-354`;
+`AppModel.requestBatchMetadataSheet`, `AppModel.swift:2454-2460`), disabled
 while importing or with an empty catalog; the sheet's segmented scope picker
 (selected / visible / current scope via `BatchScopeMode`), the all-catalog
 confirmation gate when the scope is unfiltered, keyword suggestions, and the
 apply writing to the catalog + sidecars
-(`LibraryGridView.batchMetadataPopover`, `LibraryGridView.swift:1062+`).
+(`LibraryGridView.batchMetadataPopover`, `LibraryGridView.swift:1238-1345`,
+`LibraryGridView.swift:3128-3193`, and `LibraryGridView.swift:5345-5362`).
 
 ## Pre-state
 ```bash

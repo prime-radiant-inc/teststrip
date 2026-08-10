@@ -12,9 +12,9 @@ Source: `Sources/TeststripApp/AppModel.swift` (`activeWorkKindRows`
 `Sources/TeststripApp/ActivityCenterPresentation.swift` (`ActivityKindRow`
 `:70-138`, `ActivityCenterPresentation` `:142-190`),
 `Sources/TeststripApp/ActivityCenterView.swift` (active rows and cancel
-`:67-140`, receipts and actions `:272-318`),
+`:67-140`, receipts and actions `:272-322`),
 `Sources/TeststripApp/ImportCompletionToastPresentation.swift`
-(`ImportReceiptRow` `:87-135`), and
+(`ImportReceiptRow` `:90-135`), and
 `Sources/TeststripApp/LibraryGridView.swift` (Activity-button help
 `:445-492`, issue-review sheet `:1904-1963`, `ImportIssueReview`
 `:8801-8810`).

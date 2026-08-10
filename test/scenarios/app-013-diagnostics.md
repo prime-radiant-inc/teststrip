@@ -4,7 +4,7 @@
 bug report; the report must be real and complete. Inventory item 44:
 Support ▸ Copy Diagnostics writes `model.diagnosticsReportText` to
 `NSPasteboard.general` and sets the status "Copied diagnostics"
-(`SupportCommands.copyDiagnostics`, `Sources/TeststripApp/main.swift:548-569`;
+(`SupportCommands.copyDiagnostics`, `Sources/TeststripApp/main.swift:550-571`;
 report shape in `AppDiagnosticsReport.text`,
 `Sources/TeststripApp/AppModel.swift:1203-1244`).
 

@@ -116,7 +116,7 @@ This leaves `$JOHN_GLENN_ID` ("John Glenn") confirmed with a key face
    scope.** `requestCurrentScopeAssetEvaluations` (what "Evaluate Visible"/
    the People-scan action calls) scopes candidates through
    `currentLibraryQuery()`, and the `.person` predicate matches only
-   confirmed `person_assets` rows (`CatalogRepository.swift:2779-2793`) — the
+   confirmed `person_assets` rows (`CatalogRepository.swift:3130-3144`) — the
    asset just rejected in step 4 has neither a `person_assets` nor a
    `person_faces` row for John Glenn any more, so if the `person:"John
    Glenn"` filter were still active it would sit outside scope and never get

@@ -1,7 +1,7 @@
 # import-003-menu-and-dev-path: File menu exposes Import Folder/Card/Path as distinct items, mirrored by the toolbar, both disabled mid-import
 
 **What this covers**: inventory items 3, 4. The File menu (`FileCommands` in
-`Sources/TeststripApp/main.swift:198-229`) exposes three distinct import
+`Sources/TeststripApp/main.swift:202-231`) exposes three distinct import
 entries — `"Import Folder…"`, `"Import From Card…"`, and a dev-gated
 `"Import Path…"` — plus `"Export…"`, each a separate `Button` with its own AX
 title (`AppMenuCoveragePresentation.importFolderActionID` /

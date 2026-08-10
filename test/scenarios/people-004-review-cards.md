@@ -39,7 +39,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 5. `script/ax_drive.sh press --role AXButton --help "Review faces"` (or the
    card's button, matched by its `suggestedActionTitle` help text) — assert
    the app navigates via `model.selectSource(_:)` (`PeopleView.swift:560-566`,
-   `AppModel.swift:4744`) to the card's `target: LibrarySource?`
+   `AppModel.swift:4761-4764`) to the card's `target: LibrarySource?`
    (`PeopleView.swift:900`): "Unnamed faces" routes to
    `.smartCollection(.facesFound)` when `faceSignalKind == .faceCount`, else
    `.evaluationKind(faceSignalKind, titled:)`; "Face quality checks" routes
@@ -55,7 +55,8 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    assert the card is grayed (`isActionEnabled == false` → title uses
    `.secondary` foreground, no trailing arrow glyph) and its `AXHelp` reads
    "Face naming is not built yet" (the generic disabled string applied to
-   *all* review cards, per `PeopleView.swift:182-183` — not a per-card
+   *all* review cards, per `PeopleView.swift:200-208` (disabled/help) and
+   `PeopleView.swift:527-550` (title/arrow) — not a per-card
    message).
 
 ## Expected

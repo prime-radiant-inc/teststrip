@@ -3,7 +3,7 @@
 **What this covers**: Jesse jumps between sets/queues and expects
 browser-style back/forward. Inventory items 27-28: the Go menu's Back (⇧⌘[)
 and Forward (⇧⌘]) gated by `canNavigateBack`/`canNavigateForward`
-(`NavigationCommands`, `Sources/TeststripApp/main.swift:297-325`); history is
+(`NavigationCommands`, `Sources/TeststripApp/main.swift:299-333`); history is
 a pair of `LibrarySource` stacks (`navigationBackStack`/`navigationForwardStack`,
 `Sources/TeststripApp/AppModel.swift:2021-2022`), and a new navigation clears
 the forward stack.

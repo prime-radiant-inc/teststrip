@@ -39,7 +39,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    folder (as in `worker-001-preview-lifecycle.md`) to get an unevaluated one.
 3. **Trigger evaluation and watch dedup.** Import auto-triggers evaluation
    once the preview is cached (`scheduleImportAutoEvaluationIfEnabled`,
-   `Sources/TeststripApp/AppModel.swift:10042-10055`); for an asset already in
+   `Sources/TeststripApp/AppModel.swift:10092-10106`); for an asset already in
    the grid, force it via the Evaluate action (`ax_drive.sh press --role
    AXButton --help "Evaluate"` on the loupe/inspector, or the equivalent grid
    command) — confirm the actual control's AXHelp against the running UI
@@ -49,7 +49,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    came from Step 2's fixture folder) while the first evaluation is still
    in-flight (`work_sessions` row with `status IN ('queued','running')` for
    that asset). This exercises the dedup path directly: `requestEvaluation`
-   (`Sources/TeststripApp/AppModel.swift:9511-9542`) builds a
+   (`Sources/TeststripApp/AppModel.swift:9555-9586`) builds a
    `WorkSessionID(rawValue: "evaluation-\(assetID)-\(provider)")` and returns
    immediately without enqueuing a second work item if that ID already has
    an active-status entry in `currentBackgroundWorkQueue`.

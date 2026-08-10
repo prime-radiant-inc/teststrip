@@ -22,7 +22,7 @@ keymap, so I don't have to memorize it from documentation. Covers item 26
 (`?` toggles the overlay).
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:6656-6658` — `.showKeyMap` toggles
+- `Sources/TeststripApp/AppModel.swift:6700-6702` — `.showKeyMap` toggles
   `isKeyMapOverlayVisible` (`?`, keyed via the exact-case `.character("?")`
   match at `:203-204` in the static key-based mapping, and via the shifted
   `"/"` branch at `CullingKeyCaptureView.swift:145-147` in the live event
@@ -36,7 +36,7 @@ Source:
   grown since this card was first written and `KeyMapOverlayView` has moved
   from its previously-cited `8564-8615` to its current location below —
   don't trust old line citations without re-grepping first.
-- `Sources/TeststripApp/LibraryGridView.swift:9044-9106` — `KeyMapOverlayView`:
+- `Sources/TeststripApp/LibraryGridView.swift:9043-9104` — `KeyMapOverlayView`:
   heading `"Keyboard Shortcuts"` (`:9055`), a dismiss button (accessibility
   label `"Dismiss key map"`, `:9065`), and a `ScrollViewReader` wrapping
   `ForEach(CullingCommandMenuPresentation.sections)` (`:9068-9096`)
@@ -112,11 +112,11 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    visible, `applyCullingShortcut` intercepts `.previousCandidateInStack`/
    `.nextCandidateInStack` (↑/↓) and routes them to `scrollKeyMapOverlay`
    instead of moving the underlying selection
-   (`Sources/TeststripApp/AppModel.swift:6589-6600`; PgUp/PgDn
+   (`Sources/TeststripApp/AppModel.swift:6633-6648`; PgUp/PgDn
    (`.keyMapPageUp`/`.keyMapPageDown`) scroll the same way while the overlay
    is visible, by 3 sections per press instead of 1 —
    `KeyMapOverlayScrolling.nextIndex`, `:566-580` — but are a genuine no-op
-   outside overlay mode, `:5906-5907`; this step only drives ↑/↓, per the
+   outside overlay mode, `:6719-6720`; this step only drives ↑/↓, per the
    task). Record the current selected asset id, then press `Down`
    repeatedly (the section list has 7 sections, so up to 6 presses)
    until the last section's heading is visible:
@@ -170,14 +170,14 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   by design** (not a bug this card should report) — `CullingCommandMenuPresentation.sections`
   has no entries for `.showCullGrid`/`.showCompare`/`.showABCompare`. Don't
   confuse this with the section *titled* `"Compare"` that does exist
-  (`AppModel.swift:548-551`) — that section lists `,`/`.` for
+  (`AppModel.swift:550-553`) — that section lists `,`/`.` for
   `.keepAOverB`/`.keepBOverA` (A/B Compare's keyboard verdicts), a
   completely different pair of shortcuts from the `.showCompare` subview
   switch this bullet is about. If a future change is expected to add
   G/C/B, that's a product decision for Jesse, not something to assert
   against here.
 - The overlay's frame is fixed at `360×420` with a `ScrollView`
-  (`LibraryGridView.swift:9259-9292`); step 6 now gives a concrete,
+  (`LibraryGridView.swift:9043-9104`); step 6 now gives a concrete,
   keyboard-driven way to reach a late section (↓ to the last section,
   `"Compare"`) instead of hoping the default scroll position happens to
   show it — prefer that over guessing at mouse-scroll behavior in `ax_drive.sh`,

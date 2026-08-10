@@ -76,7 +76,7 @@ different, stricter condition,
 (line 7317-7319), which checks `model.canRetryPendingMetadataSyncInCurrentScope`
 — itself gated on `metadataSyncPendingFilter && catalog != nil &&
 workerSupervisor != nil` plus a non-empty retry-candidate scope
-(`AppModel.swift:2231-2240`). So the button can be **visible but disabled**
+(`AppModel.swift:2662-2674`). So the button can be **visible but disabled**
 whenever the pending filter is on but there's nothing retriable (e.g. no
 worker supervisor running, or zero pending-sync assets in the current
 scope) — worth a dedicated disabled-state assertion if this card is

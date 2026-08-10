@@ -20,8 +20,8 @@ SessionRestoreState.currentVersion` or `nil`).
 **Culling is never restored, and the rule is simpler than "mid-cull"
 suggests.** `applyRestoredSessionState` calls `selectLens(Self
 .isRestorableLens(state.lens) ? state.lens : .grid)`
-(`AppModel.swift:11746-11747`). `isRestorableLens` (`AppModel.swift:11768-
-11772`) is `lens != .cull` — **unconditional**. Its own doc comment reads
+(`AppModel.swift:11866`). `isRestorableLens` (`AppModel.swift:11897-
+11901`) is `lens != .cull` — **unconditional**. Its own doc comment reads
 "Every lens survives a relaunch except Cull: a mid-cull quit relaunches on
 the same source in Grid, because the run itself is not resumed here" — but
 the check itself does not look at whether a culling run was actually active;
@@ -40,14 +40,14 @@ successor is `ImportCompletionToastPresentation.toast(for:
 isCurrentSessionActivity:isImporting:)` (`ImportCompletionToastPresentation
 .swift:40-58`), which returns `nil` whenever `isCurrentSessionActivity` is
 `false` — and `AppModel.isCurrentSessionActivity(id:)`
-(`AppModel.swift:13750-13752`) is scoped to activities recorded in the
+(`AppModel.swift:13888-13894`) is scoped to activities recorded in the
 *current* process's lifetime, so a relaunch can never satisfy it for
 anything from the prior run. The persisted work session and its sidebar
 Imports row are unaffected by this and remain reachable.
 
 Item 26 (`autopilotEnabled`/`defaultCreator`/`defaultCopyright` persist
 under their own keys, separate from `SessionRestoreState`) is unchanged by
-this push (`AppModel.swift:2411-2430`, `:4483-4485`) and still worth a
+this push (`AppModel.swift:2411-2430`, `:4485-4488`) and still worth a
 spot-check.
 
 ## Pre-state

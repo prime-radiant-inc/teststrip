@@ -15,14 +15,14 @@ now transient Cull-lens sub-modes reached by g/c/b in-view key monitors, not
 switcher tags — `.libraryLoupe` is the Loupe lens's own route, distinct from
 `.loupe` (the Cull lens's loupe). Picking a lens calls
 `AppModel.selectLens(_:)`, which only ever writes `selectedView` — it never
-touches `selectedSource` (`AppModel.swift:4752-4754`).
+touches `selectedSource` (`AppModel.swift:4769-4772`).
 
 The `body` switch's priority order is unchanged from the prior revision of
 this card: `.people` first, then `.timeline`, then `.map`, then (if
 `model.assets.isEmpty`) an empty-state view *before* checking
 `.loupe`/`.libraryLoupe`, then `.compare`, `.abCompare`, and finally the
 default `assetGrid` branch for `.grid`/`.cullGrid`/anything else unmatched
-(`Sources/TeststripApp/LibraryGridView.swift:73-120` — line numbers are
+(`Sources/TeststripApp/LibraryGridView.swift:89-121` — line numbers are
 approximate; locate by the `switch model.selectedView` in `body`, not by
 these numbers, since this file churns).
 

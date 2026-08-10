@@ -54,7 +54,7 @@ CREATE TABLE evaluation_failures (
    `--smoke` mints a *new* isolated dir per README.md). Select `$SRC`, Info
    tab.
 4. Assert the "Preview retry pending" alert renders (`previewFailureStatus`,
-   `InspectorView.swift:748-767`) with the synthetic error text visible, and
+   `InspectorView.swift:794-813`) with the synthetic error text visible, and
    a "Retry" button.
 5. Click Retry (`ax_drive.sh press --role AXButton --label "Retry"` — Info
    tab has only one Retry button unless the sync-pending state is also
@@ -75,12 +75,12 @@ CREATE TABLE evaluation_failures (
    ```
 8. Relaunch; select `$SRC`; ⌥⌘3 for AI tab.
 9. Assert "Analysis retry needed" alert renders (`providerFailureAlert`,
-   `InspectorView.swift:740-746`) with "apple-vision failed: synthetic
+   `InspectorView.swift:787-792, 815-833`) with "apple-vision failed: synthetic
    provider error..." text and a **"Retry apple-vision"** button
    (`InspectorProviderFailurePresentation.actionLabel`,
-   `InspectorView.swift:85-87`).
+   `InspectorView.swift:110-112`).
 10. Click "Retry apple-vision" (`model.retrySelectedProviderFailure(provider:
-    "apple-vision")`, `AppModel.swift:7596-7602`, which calls
+    "apple-vision")`, `AppModel.swift:9595-9600`, which calls
     `requestEvaluation(assetID:provider:)` to re-enqueue the provider run).
 11. Assert on disk the `evaluation_failures` row for
     `('$ASSET_ID','apple-vision')` is gone (cleared on re-enqueue or on the
@@ -92,7 +92,7 @@ CREATE TABLE evaluation_failures (
 ## Expected
 - Step 4: preview-retry alert renders with the synthetic error text and an
   enabled Retry button (`canRetrySelectedPreviewGenerationFailures` true when
-  the original is available, `AppModel.swift:2424`). **Fails if** the alert
+  the original is available, `AppModel.swift:2853-2858`). **Fails if** the alert
   doesn't render for a real queued-failure row, or Retry is disabled with no
   reason.
 - Step 6: the `preview_generation_queue` row is mutated/cleared by the click

@@ -7,7 +7,7 @@ writes `people`/`person_assets`. The button is disabled until
 `canConfirmSelectedPerson` is true; its candidate asset IDs are the batch
 selection if one exists, else the single `selectedAssetID`
 (`AppModel.selectedPeopleCandidateAssetIDs`,
-`Sources/TeststripApp/AppModel.swift:3516-3522`). Also covers "Dismiss face
+`Sources/TeststripApp/AppModel.swift:3511-3517`). Also covers "Dismiss face
 review," which removes assets from the review queues
 (`dismissed_face_assets`) without ever touching `people`/`person_assets`.
 
@@ -69,7 +69,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    with a distinct name ("Test Person Two"); assert the resulting
    `person_assets` row count equals the batch size, not 1 — proving
    `selectedPeopleCandidateAssetIDs` preferred the batch over any stale single
-   selection (`AppModel.swift:3184-3188`: `selectedBatchAssetIDsInCatalogOrder`
+   selection (`AppModel.swift:3511-3516`: `selectedBatchAssetIDsInCatalogOrder`
    wins when non-empty).
 10. **Dismiss face review, no write.** Select a photo that still carries an
     unnamed/undismissed face signal (not one just confirmed above). Press
@@ -126,7 +126,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   not re-driven live here.
 - `dismissFaceAssets` (the model call behind "Dismiss face review") also
   deletes matching `person_assets`/`person_faces` rows for the dismissed
-  asset (`CatalogRepository.swift:904-917`) — so if step 10's selected photo
+  asset (`CatalogRepository.swift:1219-1232`) — so if step 10's selected photo
   happens to already be linked to a person, dismissing it will remove that
   link. Pick an asset with no prior person link for a clean negative
   assertion, or explicitly account for the deletion if not.

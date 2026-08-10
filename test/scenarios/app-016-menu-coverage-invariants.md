@@ -3,7 +3,7 @@
 **What this covers**: menus are Teststrip's system of record — every culling
 shortcut, lens, Cull sub-mode, inspector section, zoom, file, and
 move-rejects/updates action must have a menu item, pinned by
-`AppMenuCoveragePresentation` (`Sources/TeststripApp/main.swift:93-135`)
+`AppMenuCoveragePresentation` (`Sources/TeststripApp/main.swift:93-139`)
 against the underlying action-producing enums. Re-anchored on
 `AppMenuCoveragePresentation.lensActionIDs` (`:94`, `LibraryLens.allCases`'s
 six titles) and `.cullSubModeMenuModes` (`:99`, the four transient Cull

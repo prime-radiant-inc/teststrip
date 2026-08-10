@@ -10,7 +10,7 @@ concurrent lanes, each capped at one in-flight command
 the worker's dispatch cap are both raised past the lane count
 (`BackgroundWorkQueue(maxRunningCount: 8, ...)`,
 `WorkerSupervisor(..., maxDispatchedCommandCount: 8)`,
-`Sources/TeststripApp/AppCatalog.swift:127-131`) so lane concurrency is no
+`Sources/TeststripApp/AppCatalog.swift:145-151`) so lane concurrency is no
 longer gated by a shared slot pool. This card proves that concurrency is
 observable end to end: **two separate Activity Center bars advance at the
 same wall-clock time** ("Generate previews" and "Evaluate photos"), catalog
@@ -69,7 +69,7 @@ find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_BEFORE"
    is the point: `script/submit_import_path.sh Teststrip "$IMPORT_DIR"`,
    leaving defaults (including "Evaluate after import" checked — evaluation
    is enabled by default, `importAutoEvaluationEnabled = true`,
-   `Sources/TeststripApp/AppModel.swift:2408`).
+   `Sources/TeststripApp/AppModel.swift:2403`).
 3. **Open the Activity popover promptly** (toolbar Activity button) and keep
    re-asserting frontmost on every poll (`ax_drive.sh wait-vended` each
    iteration — a backgrounded app parks its AX tree, per
@@ -84,7 +84,7 @@ find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_BEFORE"
    lanes under test here, since ingest is the fast up-front step before
    previews/evaluations begin.) Two simultaneously-rendered rows are only
    possible because `activeWorkKindRows`
-   (`Sources/TeststripApp/AppModel.swift:2907-2910`) is folding items from
+   (`Sources/TeststripApp/AppModel.swift:2898-2905`) is folding items from
    two lanes the worker is running **at the same time** — under the old
    single-lane worker, only one kind's items could ever be `.running` at
    once, so this popover would never have shown two active rows
@@ -111,7 +111,7 @@ find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_BEFORE"
    press cancel on the **"Evaluate photos"** row (`xmark.circle`, AXHelp
    `"Cancel this work item"`, `Sources/TeststripApp/ActivityCenterView.swift:112-124`).
    This calls `model.cancelWork(kind: .recognition)`
-   (`Sources/TeststripApp/AppModel.swift:8947-8952`), which cancels only
+   (`Sources/TeststripApp/AppModel.swift:8991-8996`), which cancels only
    `.recognition`'s currently-active items one at a time via
    `WorkerSupervisor.cancel(id:)`
    (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211` — the

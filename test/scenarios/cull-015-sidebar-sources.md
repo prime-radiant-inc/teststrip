@@ -17,7 +17,7 @@ There is now **one sidebar, every lens**, built by `UnifiedSidebarPresentation
 queues.
 
 **Exact row set and predicates** (read from source, not guessed):
-`UnifiedSidebarPresentation.smartCollectionOrder` (`:104-107`) is a **fixed
+`UnifiedSidebarPresentation.smartCollectionOrder` (`:106-109`) is a **fixed
 10-item order** — `.picks`, `.potentialPicks`, `.likelyIssues`,
 `.needsEvaluation`, `.rejects`, `.fiveStars`, `.needsKeywords`,
 `.facesFound`, `.ocrFound`, `.providerFailures` — each mapped through
@@ -26,17 +26,18 @@ queues.
 string differs from the enum case name `needsEvaluation` — use the real
 string), "Rejects", "5 Stars", "Needs Keywords", "Faces Found", "OCR Found",
 "Analysis Failures" (the tenth and last of this fixed order). Building the
-section (`sections(...)`, `:178-194`):
+section (`sections(...)`, `:168-194`):
 - Each of the 10 is filtered by `smartCollectionCounts[collection] > 0`
-  (`:180`) — a `compactMap` returning `nil` for a zero/missing count, so a
+  (`:170`) — a `compactMap` returning `nil` for a zero/missing count, so a
   zero-count row is **omitted entirely**, never rendered `disabled`.
 - `AI Suggestions` (`LibrarySource.autopilotSuggestions`, title fixed at
   `"AI Suggestions"`, `LibrarySource.swift:89`) is appended **after** the 10,
-  present only while `autopilotGhostCount > 0` (`:189-196` — the parameter is
+  present only while `autopilotGhostCount > 0`
+  (`UnifiedSidebarPresentation.swift:179-186` — the parameter is
   `autopilotGhostAssetIDs.count`, passed in from `AppModel.swift:1993`).
   There is no zero-count disabled state for this row either.
 - Every **saved dynamic set** (`AssetSet.isDynamic`, i.e. a saved search)
-  joins the section last, one row per set (`:198-200` — "a saved dynamic
+  joins the section last, one row per set (`:188-192` — "a saved dynamic
   search IS a smart collection — that is exactly what the section header's
   '+ New from search…' produces").
 - The whole section (`UnifiedSidebarPresentation.smartCollectionsSectionTitle
@@ -46,12 +47,12 @@ section (`sections(...)`, `:178-194`):
   finds zero hits); the section simply does not render.
 
 **Activation.** Clicking a row calls `AppModel.selectSidebarRow(_:)`
-(`AppModel.swift:4695`) → `selectSource(_:)`/`applySource(_:)`
-(`:4744`,`:4824`), which switches on `LibrarySource.kind`:
+(`AppModel.swift:4698-4708`) → `selectSource(_:)`/`applySource(_:)`
+(`:4761-4764`,`:4855`), which switches on `LibrarySource.kind`:
 `.smartCollection(let collection)` → `applySmartCollection(collection)`
 (`:10961-10971` — installs the collection's `query.predicates` as detached
 filters and reloads); `.autopilotSuggestions` → `applyAutopilotSuggestionsScope()`
-(`:9727-...` — loads `assetIDsWithAutopilotGhost()` directly rather than via
+(`:9826-9844` — loads `assetIDsWithAutopilotGhost()` directly rather than via
 a `SetQuery`). `applySource` then re-resolves the active lens
 (`LensRules.resolvedLens`, `LibraryLens.swift:137-144`): selecting
 `Analysis Failures` while in the Cull lens forces a fallback to Grid, since
@@ -77,7 +78,7 @@ script/ax_drive.sh wait-vended Teststrip
    This is the negative-assertion pattern the invariant calls out — a
    `find` that must fail is the point, don't soften it into "don't check".
 2. For each of the 10 fixed-order rows, compute ground truth via
-   `SmartCollection.query`'s real predicates (`AppModel.swift:645-...` —
+   `SmartCollection.query`'s real predicates (`AppModel.swift:646-674` —
    read the actual `SetQuery` for each case before writing SQL; do not
    guess). For each row, assert the rendered count text matches the query
    result, titled per `.presentation.title` (not the enum case name —

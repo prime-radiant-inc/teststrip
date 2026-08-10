@@ -2,7 +2,7 @@
 
 **What this covers**: Jesse drives evaluation and autopilot from the Culling
 menu; the commands must be honest about why they can't run. Inventory items
-39-40, 42 (`CullingCommands`, `Sources/TeststripApp/main.swift:406-530`):
+39-40, 42 (`CullingCommands`, `Sources/TeststripApp/main.swift:408-532`):
 **Run Autopilot** (no key equivalent) needs evaluated photos in view, else it
 sets the status "Autopilot: no evaluated photos in view to run on"
 (`AppModel.runAutopilotOnCurrentScope`); **Evaluate Photo / Evaluate Visible

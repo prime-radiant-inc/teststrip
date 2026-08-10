@@ -103,7 +103,7 @@ Sources/` finds nothing. The banner's replacement,
 `ImportCompletionToastPresentation`, still carries a "Start culling" action
 (gated by `showsStartCulling`) but has no "review without culling" leg at
 all; that gesture now lives as "Manual Compare over the import" in the
-sidebar import row's context menu (`AppModel.swift:5184-5199`), a
+sidebar import row's context menu (`AppModel.swift:5223-5227`), a
 deliberately different, non-happy-path route this card does not drive. No
 prior `## Run status` section existed on this card to supersede — this is
 its first. Needs a fresh VM run.

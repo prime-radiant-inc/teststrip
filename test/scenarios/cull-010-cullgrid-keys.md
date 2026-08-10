@@ -13,27 +13,27 @@ Source:
   out-of-range move is a no-op (`target >= 0`/`target < count`, else stays
   put — not clamped to the nearest row, just refuses to move); Home → index
   0; End → index `count - 1`.
-- `Sources/TeststripApp/AppModel.swift:6255-6268` (`moveGridSelection`) —
+- `Sources/TeststripApp/AppModel.swift:6290-6303` (`moveGridSelection`) —
   operates over `CullScopeOrdering.filteredAssets(assets, scope: cullScope)`,
   i.e. the **scope-filtered** grid, not the full asset list — Home/End jump
   to the first/last tile *matching the active scope*, not the catalog's
   first/last asset.
-- `Sources/TeststripApp/AppModel.swift:6274-6305` (`applyGridKeyCommand`) —
+- `Sources/TeststripApp/AppModel.swift:6309-6353` (`applyGridKeyCommand`) —
   `.rating`/`.pick`/`.reject`/`.clearFlag` call
   `setRatingForSelectedAssets`/`setFlagForSelectedAssets`
-  (`AppModel.swift:7353-7372`), whose doc comment (`:7349-7352`) states:
+  (`AppModel.swift:7395-7431`), whose doc comment (`:7395-7397`) states:
   **"Batch rating/flag/color across the whole grid multi-selection when one
   is active, otherwise the single focused asset. One undo group covers every
   changed photo."** — confirmed by `updateSelectedAssetsMetadata`
-  (`:6443-6467`), which iterates `currentManualSelectionAssetIDs` (the batch
+  (`:8105-8134`), which iterates `currentManualSelectionAssetIDs` (the batch
   set when non-empty) and records one `MetadataChange` group for the whole
   batch. `.openLoupe` (Return/Space) opens the loupe on the single focused
   tile (`selectedAssetID`), independent of any batch selection.
 - `Sources/TeststripApp/LibraryGridView.swift:7521-7566`
   (`assetActivation`) — the actual multi-select gesture: **shift-click**
   calls `model.selectBatchRange(to:)` (contiguous range from the last
-  anchor, `AppModel.swift:4608-4617`); **command-click** calls
-  `model.toggleBatchSelection(_:)` (`:4604-4606`, individual add/remove).
+  anchor, `AppModel.swift:4605-4614`); **command-click** calls
+  `model.toggleBatchSelection(_:)` (`:4601-4603`, individual add/remove).
   There is no keyboard-only multi-select gesture in `GridKeyCaptureView`
   itself — batch selection is mouse-driven (with a modifier key), navigated
   focus (arrows/Home/End) is keyboard-driven, and they're independent state
@@ -86,7 +86,7 @@ than a scope-filtered subset — simpler to reason about ground truth.
    sqlite3 "$DB" "SELECT id, json_extract(metadata_json,'\$.rating') FROM assets WHERE id IN (<id1>,<id2>,<id3>);"
    ```
 7. Press ⌘Z once. Assert all three ratings revert together (one undo group
-   per the doc comment at `AppModel.swift:5967-5969`) — not one revert per
+   per the doc comment at `AppModel.swift:7395-7397`) — not one revert per
    ⌘Z.
 8. Click a single (non-batch-selected) tile, press Return. Assert the loupe
    opens on exactly that tile.

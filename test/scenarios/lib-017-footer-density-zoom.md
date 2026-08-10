@@ -33,7 +33,7 @@ Exact values, verified at `Sources/TeststripApp/LibraryGridLayout.swift:4-76`:
   visually via `capture_app_window.sh`, not AX (no direct AX exposure of
   spacing).
 - **⌘+/⌘- zoom shortcuts live only in `main.swift`'s `ZoomCommands`
-  (`Sources/TeststripApp/main.swift:609-625`), not inside `LibraryGridView`
+  (`Sources/TeststripApp/main.swift:611-627`), not inside `LibraryGridView`
   itself.** They're an app-menu `CommandGroup(after: .toolbar)` bound to
   `@AppStorage("LibraryGridView.thumbnailWidth")`, calling the same
   `LibraryGridLayout.zoomedThumbnailWidth` used by the in-grid slider — so the
@@ -41,8 +41,8 @@ Exact values, verified at `Sources/TeststripApp/LibraryGridLayout.swift:4-76`:
   menu commands are testable/drivable only through the app's Zoom menu, not
   by finding a control inside the grid view's own AX subtree.
 - `@AppStorage("LibraryGridView.thumbnailWidth")` default is
-  `LibraryGridLayout.defaultThumbnailWidth` = **140** (`main.swift:562`,
-  `LibraryGridView.swift:56`) — persists across relaunches via
+  `LibraryGridLayout.defaultThumbnailWidth` = **140** (`main.swift:612`,
+  `LibraryGridView.swift:60`) — persists across relaunches via
   `UserDefaults`, scoped to the isolated app-support dir for a `--smoke`
   session (not Jesse's real prefs).
 

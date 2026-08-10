@@ -35,7 +35,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
      Grid "regardless of the current lens.")
    - `selectedAssetID == $SRC`'s asset id.
    - Any active Library query/filter text field is empty
-     (`clearLibraryQueryFilters()`, `AppModel.swift:11630-11653`, zeroes
+     (`clearLibraryQueryFilters()`, `AppModel.swift:11747-11770`, zeroes
      every filter: search text, keyword/folder/camera/lens text, rating,
      flag, color label, ISO, date range, geo bounds, availability, saved
      evaluation-kind filters, and `metadataSyncConflictFilter` itself before
@@ -63,7 +63,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ### ⌘⇧0 — popover toggle only, not a deep-link shortcut
 5. With the Activity popover closed and no conflict selected, press `⌘⇧0`.
-   Confirmed by source (`main.swift:572-583`, `ActivityCommands`): the
+   Confirmed by source (`main.swift:574-585`, `ActivityCommands`): the
    shortcut is bound to `model.isActivityCenterPresented.toggle()` only — it
    does **not** call `revealConflicts`, does not switch lens/source, and does
    not clear or set any Library filter state. Assert:

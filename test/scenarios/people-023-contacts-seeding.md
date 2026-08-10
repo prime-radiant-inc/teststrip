@@ -136,7 +136,7 @@ script/vm_scenario_run.sh sql faces "SELECT count(*) FROM people WHERE id LIKE '
 
 Neil Armstrong was already confirmed as a real person in Step 2 (before the import), and his contact was imported in Step 3 with `person_id` already name-attached to that real person (not a latent `contact:<id>`). This leg now exercises the actual recall-boost mechanism: an AI-origin face match against the combined confirmed-face + contact-reference embedding pool.
 
-7. **Fire the trigger and verify the name-based recall boost.** `promoteFaceMatches` (`AppModel.swift:3716`, which merges `contact_reference_faces` embeddings into the confirmed-centroid pool at `:3726-3728`) only runs on a genuine evaluation-**completion** event — never from importing a contact or from confirming a different person (mirror `people-020` step 8 / `people-022` step 3's single-asset re-evaluation pattern). Baseline first:
+7. **Fire the trigger and verify the name-based recall boost.** `promoteFaceMatches` (`AppModel.swift:3772-3795`, which merges `contact_reference_faces` embeddings into the confirmed-centroid pool at `:3611-3617`) only runs on a genuine evaluation-**completion** event — never from importing a contact or from confirming a different person (mirror `people-020` step 8 / `people-022` step 3's single-asset re-evaluation pattern). Baseline first:
    ```bash
    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE person_id='$ARMSTRONG_PERSON_ID' AND origin='ai';"  # 0 — nothing has evaluated this asset against Armstrong's centroid yet
    ```

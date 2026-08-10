@@ -9,16 +9,18 @@ deduplicated against the structured tokens by
 `LibraryQueryToken.legacyRows(_:notCoveredBy:)` (identity = title AND
 `LibrarySource` target, per `LibraryQueryTokenField.swift:398-409`). One legacy chip kind
 carries a "Not a filter — matching file names and photo text" subtitle
-(`filterChip(isPlainSearchFallback:)`, lines 981-1016): it is set `true`
-exactly once, in `AppModel.swift:2758`, for the row titled
+(`ActiveLibraryFilterRow.subtitle`, `AppModel.swift:998-1002`), rendered by
+`filterChip(title:subtitle:remove:)` (`LibraryGridView.swift:1201-1235`): the
+backing `isPlainSearchFallback` is set `true` exactly once, in
+`AppModel.swift:3190-3195`, for the row titled
 `"Search: \(residualSearch)"` — i.e. whatever free text is left over after
 `LibrarySearchIntent.parse` strips out every structured token it recognizes.
 Removing a structured chip calls `LibraryQueryToken.remove(token, from:
 model)`, which (per `LibraryQueryTokenField.swift`) clears exactly that
 token's one backing property and leaves siblings untouched. The "Clear
 filters" (xmark-circle) button only renders when `hasActiveFilters` is true
-(`LibraryGridView.swift:720`, backed by `model.hasActiveLibraryFilters` at
-`AppModel.swift:2732-2734`, itself `selectedAssetSetID != nil ||
+(`LibraryGridView.swift:901-909`, backed by `model.hasActiveLibraryFilters` at
+`AppModel.swift:3161-3163`, itself `selectedAssetSetID != nil ||
 currentLibraryQuery() != nil`).
 
 ## Pre-state
@@ -86,13 +88,13 @@ Confirmed against a seeded `--smoke` catalog 2026-07-10: `TOTAL=24`,
 ```
 
 ## Sharp edges
-`hasActiveLibraryFilters` (`AppModel.swift:2732-2734`) is defined as
+`hasActiveLibraryFilters` (`AppModel.swift:3161-3163`) is defined as
 `selectedAssetSetID != nil || currentLibraryQuery() != nil` — it does
 **not** directly reference any of the 13 structured filter properties
 (`minimumRatingFilter`, `flagFilter`, etc.) or `librarySearchText`. Whether
 "Clear filters" appears is therefore contingent on `currentLibraryQuery()`
 returning non-nil whenever any structured filter or search text is set — a
-separate function (`AppModel.swift:9573`) not read in full for this card.
+separate function (`AppModel.swift:11668-11745`) not read in full for this card.
 If that function's notion of "active" ever drifts from what
 `activeFilterChips` actually renders (e.g. a filter chip shows but
 `currentLibraryQuery()` returns nil for it), the Clear button could

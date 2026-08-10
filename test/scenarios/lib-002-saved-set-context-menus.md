@@ -1,7 +1,7 @@
 # lib-002-saved-set-context-menus: sidebar row context menus expose the correct per-row-type actions and write on confirm
 
 **What this covers**: `SidebarView`'s per-row `.contextMenu` (built from
-`AppModel.sidebarContextActions(for:)`, `AppModel.swift:4338-4392`) — plain
+`AppModel.sidebarContextActions(for:)`, `AppModel.swift:5161-5233`) — plain
 rows (All Photographs, folders, review queues, etc.) get an empty menu; a
 saved-set row gets Rename/Duplicate/Freeze Snapshot (dynamic sets
 only)/Star/Delete; a work-session row gets Star/Remove-equivalent (the code
@@ -42,43 +42,43 @@ BLOCKED-TOOLING status.
 2. Right-click (or use the context-menu AX action on) a plain row with no
    actions, e.g. "All Photographs". Per
    `AppModel.sidebarContextActions(for:)`'s `default: return []`
-   (`AppModel.swift:4389-4390`), assert the menu has zero items —
-   `SidebarView.swift:189-197`'s `ForEach` over an empty array renders no
+   (`AppModel.swift:5230-5231`), assert the menu has zero items —
+   `SidebarView.swift:342-350`'s `ForEach` over an empty array renders no
    `Button`s, so a context-menu invocation should show nothing (or macOS may
    show no menu at all).
 3. Right-click the manual saved-set row. Assert the menu contains, in order:
    "Rename Set" (pencil), "Duplicate Set..." (plus.square.on.square),
    **no** "Freeze Snapshot..." (manual sets aren't dynamic —
-   `AppModel.swift:4357-4363` gates it on `case .dynamic`), "Star Set" (star,
+   `AppModel.swift:5180-5185` gates it on `case .dynamic`), "Star Set" (star,
    since unstarred by default), "Delete Set..." (trash) —
-   `AppModel.swift:4345-4376`.
+   `AppModel.swift:5168-5199`.
 4. Right-click the dynamic saved-set row. Assert the menu additionally
    contains "Freeze Snapshot..." (camera.aperture) between Duplicate and
    Star.
 5. Right-click a work-session row (e.g. "Recent Import", if seeded by the
    smoke import). Assert the menu contains exactly one item: "Star Work"
-   (or "Remove Star" if already starred) — `AppModel.swift:4382-4388`. There
+   (or "Remove Star" if already starred) — `AppModel.swift:5200-5229`. There
    is no separate "Remove" action; see Sharp edges.
 6. Click "Rename Set" on the manual set. Assert a sheet titled "Rename Set"
-   appears (`SidebarView.swift:438-456`, now built on `SheetScaffold`)
+   appears (`SidebarView.swift:586-604`, now built on `SheetScaffold`)
    pre-filled with the row's current title (`assetSetRenameText = row.title`,
-   `SidebarView.swift:202`). Clear the field entirely; assert the
-   "Rename Set" button is disabled (`isPrimaryEnabled`, `SidebarView.swift`).
+   `SidebarView.swift:353-356`). Clear the field entirely; assert the
+   "Rename Set" button is disabled (`isPrimaryEnabled`, `SidebarView.swift:592-599`).
    Type a new name and confirm; assert `asset_sets.name` updates in `$DB`
    and the sidebar row's title updates.
 7. Click "Duplicate Set..." on the manual set. Assert the sheet is titled
-   "Duplicate Set" with action "Duplicate Set" (`SidebarView.swift:41`), and
+   "Duplicate Set" with action "Duplicate Set" (`SidebarView.swift:65-74`), and
    the name field defaults to `"Copy of <original title>"`
-   (`SidebarView.swift:207`). Confirm; assert a **new** `asset_sets` row
+   (`SidebarView.swift:358-362`). Confirm; assert a **new** `asset_sets` row
    appears with that name and the same `membership` as the source
-   (`AppModel.swift:4494-4499`), and the new set becomes selected
-   (`saveAndSelect`, `AppModel.swift:4711-4723`).
+   (`AppModel.swift:5341-5356`), and the new set becomes selected
+   (`saveAndSelect`, `AppModel.swift:5676-5693`).
 8. Click "Freeze Snapshot..." on the dynamic set. Assert the sheet is titled
-   "Freeze Snapshot" with action "Freeze Snapshot" (`SidebarView.swift:51`),
+   "Freeze Snapshot" with action "Freeze Snapshot" (`SidebarView.swift:76-85`),
    and the name field defaults to `"<original title> Snapshot"`
-   (`SidebarView.swift:213`). Confirm; assert a new `asset_sets` row appears
+   (`SidebarView.swift:364-368`). Confirm; assert a new `asset_sets` row appears
    with `membership` of kind `snapshot` containing the asset IDs the dynamic
-   query matched *at freeze time* (`AppModel.swift:4508-...` resolves the
+   query matched *at freeze time* (`AppModel.swift:5360-5382` resolves the
    query to a fixed ID list) — cross-check against
    `SELECT count(*) FROM assets WHERE <the same query predicate>` at the time
    of freezing.
@@ -90,7 +90,7 @@ BLOCKED-TOOLING status.
     `confirmationDialog` titled "Delete Set?" appears with a "Delete Set"
     destructive button and a "Cancel" button, and message text containing
     the exact non-destructive copy from
-    `assetSetDeleteMessage` (`SidebarView.swift:115-119`):
+    `assetSetDeleteMessage` (`SidebarView.swift:223-227`):
     `"This removes \"<name>\" from Teststrip. Photos, originals, metadata,
     and XMP sidecars stay untouched. Work history that references this set
     may no longer reopen it."`
@@ -107,7 +107,7 @@ BLOCKED-TOOLING status.
 - Step 5: exactly one action on a work-session row, a star toggle, no
   distinct "Remove" action exists in the model despite the inventory item's
   "Star/Remove" phrasing — see Sharp edges. **Fails if** a second action
-  appears that this card's reading of `AppModel.swift:4377-4388` didn't
+  appears that this card's reading of `AppModel.swift:5200-5229` didn't
   anticipate (re-check the source if so — the code may have changed).
 - Step 6: blank name disables Rename; confirmed rename persists to
   `asset_sets.name`. **Fails if** the button is enabled while blank, or the
@@ -130,22 +130,22 @@ BLOCKED-TOOLING status.
 
 ## Tone tints (direct-actions cross-check)
 Cross-check row tone against `SidebarRowView.tint`
-(`SidebarView.swift:413-426`): `.neutral` → secondary/gray,
+(`SidebarView.swift:561-573`): `.neutral` → secondary/gray,
 `.accent` → orange, `.positive` → green, `.warning` → yellow,
 `.destructive` → red. Saved-set rows use `.accent` (orange) for dynamic sets
-and `.neutral` for manual/snapshot sets (`AppModel.swift:11823`,
+and `.neutral` for manual/snapshot sets (`UnifiedSidebarPresentation.swift:326-334`,
 `assetSet.isDynamic ? .accent : .neutral`); the Recent Import row is
-`.positive` (green, `AppModel.swift:11804`). Since AX doesn't expose SwiftUI
+`.positive` (green, `UnifiedSidebarPresentation.swift:265-270`). Since AX doesn't expose SwiftUI
 foreground color directly, verify tone via `capture_app_window.sh` screenshot
 color-sampling on the row's icon glyph rather than an AX attribute, or treat
 this sub-check as screenshot-evidence-only in the Run.
 
 Also confirm direct-call equivalence (useful when AX menu driving is flaky):
-`AppModel.performSidebarContextAction(_:)` (`AppModel.swift:4394-4409`) is a
+`AppModel.performSidebarContextAction(_:)` (`AppModel.swift:5235-5261`) is a
 `throws` dispatcher over `SidebarRowContextActionKind` — every menu action
 except Rename can be invoked directly through it (Rename is intentionally
 excluded, throwing `TeststripError.invalidState` per
-`AppModel.swift:4396-4397`, because it needs the sheet's new-name text, not
+`AppModel.swift:5237-5238`, because it needs the sheet's new-name text, not
 just the action). This is documentation, not a separate falsifiable step —
 a card driving the app can't call Swift methods directly; note it only if a
 future unit-level regression test wants the equivalent coverage.
@@ -159,7 +159,7 @@ future unit-level regression test wants the equivalent coverage.
 - **No "Remove" action for work sessions exists in the model** despite this
   card's assigned inventory item naming "work-session menu Star/Remove" —
   `AppModel.sidebarContextActions(for:)`'s `.workSession` case
-  (`AppModel.swift:4377-4388`) returns only a star-toggle action; there is no
+  (`AppModel.swift:5200-5229`) returns only a star-toggle action; there is no
   `SidebarRowContextActionKind` case for removing/unpinning a work session
   from the sidebar. Either the inventory description is stale, or a "Remove"
   action is missing from the implementation — flagging for Jesse to decide

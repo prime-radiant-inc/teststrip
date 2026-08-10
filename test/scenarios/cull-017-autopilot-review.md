@@ -3,13 +3,13 @@
 **What this covers**: as a photographer who just imported a shoot with
 Autopilot armed, I want machine-proposed keeps/cuts surfaced as provisional
 grid badges I can scan, then either commit them (selected subset or all) or
-dismiss/undo. `runAutopilot` (`AppModel.swift:9594`) plans in-memory
+dismiss/undo. `runAutopilot` (`AppModel.swift:9638-9686`) plans in-memory
 `AutopilotProposal`s (`AutopilotProposalPlanner`, never persisted — SP-D0
 dropped the `autopilot_proposals` status table outright,
 `DROP TABLE IF EXISTS autopilot_proposals`, forward-only, no back-out) and
 immediately applies each `.pick`/`.reject` straight into the asset's own
 `metadata_json.flag` (`applyTentativeAutopilotProposals`,
-`AppModel.swift:9655`), tagged `origin=ai` (`aiUnconfirmedFields` contains
+`AppModel.swift:9699-9746`), tagged `origin=ai` (`aiUnconfirmedFields` contains
 `flag`) — this AI-origin, unconfirmed flag **is** the "ghost"
 (`AutopilotGhost.kind(in:)`,
 `Sources/TeststripCore/Autopilot/AutopilotGhost.swift:15`), the single
@@ -17,7 +17,7 @@ source of truth for "the machine proposed a flag." There is no longer, and
 now can never again be, a persisted "proposal" row distinct from the ghost
 sitting in the asset's own metadata. The `AutopilotBannerView` Review/Undo
 all/Dismiss controls (item 52 — `LibraryGridView.swift:3556-3603`,
-`AppModel.swift:9760` `dismissAutopilotRunSummary`) → grid-cell KEEP/CUT
+`AppModel.swift:9804-9806` `dismissAutopilotRunSummary`) → grid-cell KEEP/CUT
 badges from `AutopilotBadgePresentation.badge(for:)` (item 53 —
 `LibraryGridView.swift:3518-3530`, wired via
 `autopilotDecision: AutopilotGhost.kind(in: asset.metadata)` on
@@ -25,9 +25,9 @@ badges from `AutopilotBadgePresentation.badge(for:)` (item 53 —
 `AssetGridCellAccessibilityValue.value(...)` at `:7576`) → the review
 toolbar's Commit selected / Commit all / Dismiss selected controls,
 `commitAutopilotProposals(assetIDs:)`
-(`AppModel.swift:9808`) being the gesture that *confirms* the ghost (clears
+(`AppModel.swift:9858-9889`) being the gesture that *confirms* the ghost (clears
 `aiUnconfirmedFields`, writes the sidecar) rather than first-writing
-anything, and `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9854`)
+anything, and `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9904-9922`)
 being the gesture that *removes* it (records `removed_ai_labels`, the same
 recorded-removal mechanism a direct `U` uses). The load-bearing assertion is
 the **auto-apply-with-provenance** invariant: a run's keep/cut proposals
@@ -44,7 +44,7 @@ duplicate.)
 
 ## Pre-state
 - **This card drives the post-import armed-Autopilot path, not the on-demand
-  gesture.** `runAutopilot` (`AppModel.swift:9594`) has two entry points: an
+  gesture.** `runAutopilot` (`AppModel.swift:9638-9686`) has two entry points: an
   on-demand one via Culling ▸ Run Autopilot (`runAutopilotOnCurrentScope()`,
   scope `.visible` — driven by `app-012-autopilot-evaluate-commands.md`), and
   the post-import armed run this card exercises (`runArmedImportAutopilot`,
@@ -130,15 +130,15 @@ duplicate.)
    ghosts themselves) untouched, so the sidebar's "AI Suggestions" row
    (`LibrarySource.autopilotSuggestions`, `LibrarySource.swift:48,89`) stays
    present and clickable — pressing it drives `selectSidebarRow(_:)`
-   (`AppModel.swift:4701`) → `selectSource(_:)` (`AppModel.swift:4764`) →
+   (`AppModel.swift:4698-4708`) → `selectSource(_:)` (`AppModel.swift:4761-4764`) →
    `applySource`'s `.autopilotSuggestions` case →
-   `applyAutopilotSuggestionsScope()` (`AppModel.swift:9782`), which sets
+   `applyAutopilotSuggestionsScope()` (`AppModel.swift:9826-9844`), which sets
    `isAutopilotReviewActive = true` and narrows the grid to the ghost-
    carrying assets without touching the lens — a banner Dismiss is **not**
    a one-way door to Review; it is simply one of three independent entry
    points into that review state (the standalone banner's own "Review"
    button and `cullCompletionStage`'s folded banner both instead call
-   `beginAutopilotReview()`, `AppModel.swift:9773`, which additionally
+   `beginAutopilotReview()`, `AppModel.swift:9817-9820`, which additionally
    switches to the Grid lens; neither is re-driven here). ⌘1 for Cull,
    then click the sidebar row: `script/ax_drive.sh press --contains
    "AI Suggestions"`; then `script/ax_drive.sh wait --role
@@ -206,7 +206,7 @@ duplicate.)
   the run's tentative writes and any confirmed commits). Quote `GEN0`, the
   post-step-8 sum, `GEN1`, and the final sum side by side.
 - **Dismiss (review toolbar), documented but not driven live by this card**:
-  `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9854`) records
+  `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9904-9922`) records
   `removed_ai_labels` for each dismissed ghost's flag value and writes no
   sidecar — the same recorded-removal mechanism a direct `U` on a tentative
   flag uses (source-verified; this card never presses "Dismiss selected"
@@ -244,12 +244,12 @@ Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
 - **Resolved (step 6): Review stays reachable after the banner's Dismiss.**
   There are three independent paths into review state — the standalone
   banner's Review button and `cullCompletionStage`'s folded banner both
-  call `beginAutopilotReview()` (`AppModel.swift:9773`, which additionally
+  call `beginAutopilotReview()` (`AppModel.swift:9817-9820`, which additionally
   switches to the Grid lens); the sidebar's "AI Suggestions" row
   (`LibrarySource.autopilotSuggestions`, `LibrarySource.swift:48,89`) is
   the third, reaching the same review state via `selectSidebarRow(_:)` →
   `selectSource(_:)` → `applyAutopilotSuggestionsScope()`
-  (`AppModel.swift:4701,4764,9782`) without touching the lens. Dismissing
+  (`AppModel.swift:4698-4708,4761-4764,9826-9844`) without touching the lens. Dismissing
   the banner only clears `model.autopilotRunSummary`
   (`dismissAutopilotRunSummary`) — it never touches `autopilotGhostAssetIDs`
   or any ghost, so the sidebar row (present whenever `autopilotGhostCount >

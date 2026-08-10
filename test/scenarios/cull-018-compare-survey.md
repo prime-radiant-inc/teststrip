@@ -5,54 +5,54 @@ near-duplicate frames side by side with rank/flaw badges and focus metrics so
 that I can keep the best frame — via the guided group action or by dropping
 into manual culling. Covers inventory items 55-62:
 
-- Item 55 — `CompareSurveyPresentation` (`LibraryGridView.swift:4699-4820`):
+- Item 55 — `CompareSurveyPresentation` (`LibraryGridView.swift:5513-5907`):
   `primaryAsset`, `alternateAssets`, `framePositionText` ("Frame N of M"),
   `groupCountText` ("N frames"), `groupKindText` ("Compare set" /
   "Candidate stack"), `recommendationText`, `recommendedAssetID`,
   `comparativeVerdictText`.
-- Item 56 — `contendersOnly` (init param `:4724`; `isContendersOnly =
-  contendersOnly && isContendersModeAvailable` at `:4765`). UI toggle button
-  in `compareHeader` (`:6133-6142`), title "Top 3 contenders" / "Full set"
-  (`:4808-4810`), help "Narrows the compare grid to the top 3 ranked
-  contenders" / "Shows the full compare set again" (`:4812-4816`);
+- Item 56 — `contendersOnly` (init param `:5539`; `isContendersOnly =
+  contendersOnly && isContendersModeAvailable` at `:5581`). UI toggle button
+  in `compareHeader` (`:7153-7162`), title "Top 3 contenders" / "Full set"
+  (`:5653-5655`), help "Narrows the compare grid to the top 3 ranked
+  contenders" / "Shows the full compare set again" (`:5657-5660`);
   `static let contenderCount = 3`.
-- Item 57 — "Evaluate Compare" button (`:6143-6152`, help "Runs evaluation
+- Item 57 — "Evaluate Compare" button (`:7163-7172`, help "Runs evaluation
   for compare frames with cached previews"), gated by
-  `model.canRequestCompareAssetEvaluations` (`AppModel.swift:2639-2641`) =
+  `model.canRequestCompareAssetEvaluations` (`AppModel.swift:3080-3082`) =
   worker alive AND at least one compare asset has a cached preview — NOT an
   N-selected-frames gate.
 - Item 58 — tile chrome: `CompareSurveyActionPresentation`
-  (`LibraryGridView.swift:5044-5073`), `CompareDecisionBadge` (`:5075-5092`;
+  (`LibraryGridView.swift:5909-5938`), `CompareDecisionBadge` (`:5940-5961`;
   texts include "PRIMARY", "PICKED", "REJECTED", "N STAR", "✦ BEST", "#N",
-  "EYES CLOSED", "SOFT"), `CompareFocusMetric` (`:5094-5110`; unevaluated
+  "EYES CLOSED", "SOFT"), `CompareFocusMetric` (`:6030-6046`; unevaluated
   tiles show title "No read yet", value "Evaluate").
-- Item 59 — keep-primary group action button (`:6368-6375`). Its title is
-  DYNAMIC ("Keep primary" or "Keep primary · reject N", `:4869-4872`) —
+- Item 59 — keep-primary group action button (`:7350-7357`). Its title is
+  DYNAMIC ("Keep primary" or "Keep primary · reject N", `:5713-5731`) —
   match by help: "Marks the current compare primary as Pick and the visible
   alternates as Reject". Calls
-  `model.keepComparePrimaryAndRejectAlternates()` (`AppModel.swift:4989`).
-- Item 60 — "Choose manually" button (`:6384-6391`, fixed title, help "Open
+  `model.keepComparePrimaryAndRejectAlternates()` (`AppModel.swift:5972-5981`).
+- Item 60 — "Choose manually" button (`:7366-7373`, fixed title, help "Open
   this compare set in stack-aware manual culling") →
-  `model.beginManualCullingFromCompareSet()` (`AppModel.swift:4245`), which
+  `model.beginManualCullingFromCompareSet()` (`AppModel.swift:5082-5127`), which
   creates a manual-culling `WorkSession` and switches to loupe.
 - Item 61 — `focusCullingSurface()` is called before the model write in
   every compare action handler (`applyCompareGroupChoice`
-  `LibraryGridView.swift:6431-6438`, and the same pattern at `:6455-6504`).
+  `LibraryGridView.swift:7413-7420`, and the same pattern at `:7437-7485`).
   It only bumps a focus-request counter for the key-capture view — UI focus
   management, not a write gate.
 - Item 62 — reject-refill: `CompareRefillOrdering.afterReject`
-  (`AppModel.swift:348-363`), invoked from `setFlagForSelectedAsset` via
-  `refillCompareSetAfterReject` (`AppModel.swift:5930-5959`) only when
+  (`AppModel.swift:354-372`), invoked from `setFlagForSelectedAsset` via
+  `refillCompareSetAfterReject` (`AppModel.swift:7339-7387`) only when
   `selectedView == .compare`; refill pool = undecided members of the
   candidate stack.
 - Plus the previously flagged **compare-monitor ambiguity**, resolved by
   source read — see Steps 8-9 and Sharp edges.
 
 **Data-source note (drives Pre-state)**: `CompareView` does NOT consume a
-multi-select. It calls `model.compareAssets()` (`LibraryGridView.swift:6048`
-→ `AppModel.swift:4945-4961`), resolving in priority order: persisted work
+multi-select. It calls `model.compareAssets()` (`LibraryGridView.swift:7068`
+→ `AppModel.swift:5928-5944`), resolving in priority order: persisted work
 stack anchored on the selection → internal `compareAssetIDs` (auto-built on
-entering `.compare`, `AppModel.swift:5222-5244`) → visual-similarity
+entering `.compare`, `AppModel.swift:6228-6235`) → visual-similarity
 candidate stack → plain window of neighbors around the selection. With
 `--smoke` (no persisted stacks), selecting one tile and pressing the Compare
 mode key is sufficient — the set self-populates from stack/window fallbacks.
@@ -76,7 +76,7 @@ sqlite3 "$DB" "SELECT id, original_path FROM assets WHERE json_extract(metadata_
    the subview to Compare (toolbar mode button, or the grid's compare key —
    check the View menu's "Compare" item for the binding; the A/B sibling is
    bare `b`, Compare is its neighbor in `LibraryTopBarModeItem`s near
-   `LibraryGridView.swift:4477`).
+   `LibraryGridView.swift:5179-5229`).
 2. **Assert the survey header (item 55).**
    `script/ax_drive.sh wait --contains "frames"` (the `groupCountText`);
    `ax_drive.sh find --contains "Frame "` (framePositionText "Frame N of M");
@@ -99,8 +99,8 @@ sqlite3 "$DB" "SELECT id, original_path FROM assets WHERE json_extract(metadata_
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM evaluation_signals WHERE asset_id IN (<compare-set-ids>);"
    ```
-   After signals land, expect rank badges ("#1"…"#3", `:4962-4966`) and/or
-   "✦ BEST" (`:4989`), and real metric lanes replacing "No read yet". Keep
+   After signals land, expect rank badges ("#1"…"#3", `:5817-5829`) and/or
+   "✦ BEST" (`:5852`), and real metric lanes replacing "No read yet". Keep
    the app frontmost during the wait (idle-wedge; re-run `wait-vended` per
    poll).
 5. **Contenders toggle (item 56).** This step REQUIRES step 4's evaluation
@@ -123,7 +123,7 @@ sqlite3 "$DB" "SELECT id, original_path FROM assets WHERE json_extract(metadata_
    (a) that asset now reads `reject` in `metadata_json`; (b) the rejected
    tile leaves the survey; (c) if an undecided stack sibling exists outside
    the visible set, exactly one new tile appends
-   (`CompareRefillOrdering.afterReject`, `AppModel.swift:348-363`) — if the
+   (`CompareRefillOrdering.afterReject`, `AppModel.swift:354-372`) — if the
    candidate pool is exhausted the set just shrinks; record which happened.
    ```bash
    sqlite3 "$DB" "SELECT json_extract(metadata_json,'\$.flag') FROM assets WHERE id='<rejected-id>';"
@@ -147,11 +147,11 @@ sqlite3 "$DB" "SELECT id, original_path FROM assets WHERE json_extract(metadata_
    `lens == .cull && selectedView != .cullGrid`). So `P` fires
    grid-cull pick semantics on `selectedAssetID` via
    `applyCullingShortcut(.pick)` → `applyCullingCommandAndAdvance`
-   (`AppModel.swift:5414-5458`). Assert the selected asset's flag becomes
+   (`AppModel.swift:6898-6928`). Assert the selected asset's flag becomes
    `pick` in the catalog. ⌘Z to revert.
 9. **PROBE — Return in Compare.** Press Return. Finding from source: Return
    maps to `.promoteAndRejectSiblings` →
-   `promoteCurrentFrameAndRejectSiblings()` (`AppModel.swift:5351-5359`),
+   `promoteCurrentFrameAndRejectSiblings()` (`AppModel.swift:6370-6426`),
    which is a DIFFERENT write path from the item-59 button and **silently
    no-ops** unless the selected asset is in a persisted work stack or a
    `cullingStacks()` entry. In `--smoke` (no persisted stacks) the expected
@@ -213,7 +213,7 @@ Quit the app instance you launched.
 ## Sharp edges
 - **Compare-monitor ambiguity — RESOLVED by source read, pending live
   confirmation.** Two overlay key monitors coexist
-  (`LibraryGridView.swift:179-202`). In `.compare`, `GridKeyCaptureView` is
+  (`LibraryGridView.swift:212-236`). In `.compare`, `GridKeyCaptureView` is
   gated off but `CullingKeyCaptureView` is active, so P/X apply grid-cull
   pick/reject to the selected survey tile (X additionally triggers the
   item-62 refill), while Return runs `promoteCurrentFrameAndRejectSiblings`
@@ -246,7 +246,7 @@ Quit the app instance you launched.
 - `focusCullingSurface()` before writes (item 61) is focus plumbing, not a
   data gate; the card verifies compare actions still work after the call
   (i.e. writes land), not any observable ordering — the ordering claim is
-  source-verified only (`LibraryGridView.swift:6431-6504`).
+  source-verified only (`LibraryGridView.swift:7413-7485`).
 
 ## Run status
 UNRUN — needs human-present execution per test/scenarios/README.md. All

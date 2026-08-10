@@ -74,7 +74,7 @@ user on a bare "0 keepers".
    ⌘I **does** open the inspector in place, without leaving Cull —
    `showsInspector` is unconditionally `true` and `AppModel.toggleInspector()`
    is a bare `isInspectorVisible.toggle()` with no lens-switching side
-   effect (`AppModel.swift:4766-4768`). Press ⌘6 (People): assert the browse
+   effect (`AppModel.swift:4795-4799`). Press ⌘6 (People): assert the browse
    chrome (search field, Import ▾, Export, footer) is absent
    (`showsBrowseChrome(.people) == false`) and ⌘I opens the inspector here
    too.

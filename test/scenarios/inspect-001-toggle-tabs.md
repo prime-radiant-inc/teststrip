@@ -11,14 +11,14 @@ four **stacked** sections — Info, Describe, AI, and a new **People**
 section — all simultaneously present in a plain `VStack`
 (`Sources/TeststripApp/InspectorView.swift:577-607`, not lazy, so nothing here
 depends on scroll position for AX presence). ⌥⌘1-3
-(`Sources/TeststripApp/main.swift:586-607`, `InspectorCommands`) now
+(`Sources/TeststripApp/main.swift:588-607`, `InspectorCommands`) now
 **scroll** the `ScrollViewReader` to a section's anchor
 (`InspectorView.swift:611-615`) rather than switching a picker-bound
 selection; there is no more "selected tab" state to query. And
 `LensChromePolicy.showsInspector` (renamed from `WorkspaceChromePolicy` by
 the later unified-shell push; same unconditional `true`,
 `LibraryGridView.swift:8291-8293`) — Cull now shows the inspector directly,
-so `toggleInspector()` (`AppModel.swift:4766-4768`) is a bare
+so `toggleInspector()` (`AppModel.swift:4795-4799`) is a bare
 `isInspectorVisible.toggle()` with no lens-switching side effect at all. This revision rewrites the tab-switching steps into section-scroll
 steps, drops the segmented-Picker- and Cull-tab-select-without-visibility-
 specific assertions (items 7-9 and 12 of the prior draft), and keeps the
@@ -52,7 +52,7 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
    46-55` — ⌘1 Cull/⌘2 Grid/⌘3 Loupe/⌘4 Timeline/⌘5 Map/⌘6 People). **Do not
    assume Cull is already active on a fresh launch**: `AppModel.load(catalog:...)`
    constructs the model with `selectedView: .grid` unconditionally
-   (`AppModel.swift:4431`), and `restoreSessionStateIfAvailable()` only
+   (`AppModel.swift:4433-4436`), and `restoreSessionStateIfAvailable()` only
    changes that if a prior session's `SessionRestoreState` exists — on a
    genuinely fresh `--smoke`/`--isolated` launch (no saved state), the
    lens actually active at first paint is **Grid**, not Cull. Press ⌘1
@@ -98,7 +98,7 @@ SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
    including Cull.** Press ⌘I to close the inspector, then ⌘1 to
    return to Cull. With the inspector hidden and in Cull, press ⌥⌘2.
    Assert the inspector becomes visible (still in Cull) and scrolled to
-   Describe — `scrollInspector(to:)` (`AppModel.swift:4773-4779`) sets
+   Describe — `scrollInspector(to:)` (`AppModel.swift:4801-4810`) sets
    `isInspectorVisible = true` whenever `LensChromePolicy.showsInspector`
    allows it, which is now every lens. This is the direct replacement
    for the prior draft's item 12 ("tab-select-without-visibility in Cull"),

@@ -29,7 +29,7 @@ so every symbol below was re-grepped fresh, not carried over):
   (`Sources/TeststripApp/AppModel.swift:187-241`). Both agree: `h`/`leftArrow`
   → `.previousStack`; `l`/`rightArrow` → `.nextStack`; `j`/`downArrow` →
   `.nextCandidateInStack`; `k`/`upArrow` → `.previousCandidateInStack`
-  (`AppModel.swift:191-239` for the `CullingShortcut` enum itself — note the
+  (`AppModel.swift:122-242` for the `CullingShortcut` enum itself — note the
   vim-style aliases are h/l for the *arrow* pair, j/k for the *arrow* pair,
   not a literal remap of vim's own left/right-vs-up/down convention, since
   h/l here mirror the arrow-key stack-crossing role and j/k mirror the
@@ -40,20 +40,20 @@ so every symbol below was re-grepped fresh, not carried over):
   .cullGrid` (`:12-14`) — i.e. the Cull lens's loupe/compare/A-B views,
   not the grid.
 - **Within-stack step**, `AppModel.selectNextCandidateInStack()` /
-  `selectPreviousCandidateInStack()` (`AppModel.swift:7073-7079`) →
-  `moveSelectionWithinCurrentCullingStack(by:)` (`:7081-7100`): when the
+  `selectPreviousCandidateInStack()` (`AppModel.swift:7163-7169`) →
+  `moveSelectionWithinCurrentCullingStack(by:)` (`:7171-7190`): when the
   selection has a real multi-frame stack (`selectedCullingStackScope` is
   non-nil, which requires membership in a stack with `assetIDs.count > 1` —
-  `cullingStacks()` filters to `.count > 1`, `:6921-6923`), this steps one
+  `cullingStacks()` filters to `.count > 1`, `:7011-7013`), this steps one
   frame at a time within `stackAssetIDs`, no wrap, stopping dead at either
-  end (`:7095-7099`). **When the selection has no such stack** (a standalone
+  end (`:7185-7187`). **When the selection has no such stack** (a standalone
   frame — `selectedCullingStackScope` is `nil`, or its `assetIDs` don't
-  contain the selection), the guard at `:7082-7084` fails and it falls back
+  contain the selection), the guard at `:7172-7174` fails and it falls back
   to `selectNextAssetForCulling()`/`selectPreviousAssetForCulling()` — plain
   stop-to-stop advance through the deck in `cullScope`-filtered catalog
-  order, the same helpers `Space`/`.nextPhoto` use (`:6872-6885` and
-  `:7220-7233` respectively — no longer adjacent; the T7.5 stack-navigation
-  machinery below now sits between them) — per the comment at `:7085-7087`:
+  order, the same helpers `Space`/`.nextPhoto` use (`:6962-6975` and
+  `:7310-7323` respectively — no longer adjacent; the T7.5 stack-navigation
+  machinery below now sits between them) — per the comment at `:7175-7177`:
   "fall back to stop-to-stop advance through the deck rather than going
   dead." This fallback is unit-tested directly:
   `Tests/TeststripAppTests/CullStackNavigationTests.swift:38-76`
@@ -63,26 +63,26 @@ so every symbol below was re-grepped fresh, not carried over):
   AssetStackBuilder.swift:14`) and asserts `.nextCandidateInStack`/
   `.previousCandidateInStack` still move the selection between them.
 - **Across-stop jump**, `selectNextStackForCulling()`/
-  `selectPreviousStackForCulling()` (`AppModel.swift:7055-7067`): tries a
+  `selectPreviousStackForCulling()` (`AppModel.swift:7145-7157`): tries a
   persisted `work-stack-` session first, else `selectCullingStack(_:)`
-  (`:7149-7191`), which — since T7.5 — builds `indexedStacks` from
-  `cullingStopSequence()` (`:6945-6947`: `allCullingStacks(for: assets)`,
+  (`:7221-7281`), which — since T7.5 — builds `indexedStacks` from
+  `cullingStopSequence()` (`:7035-7037`: `allCullingStacks(for: assets)`,
   the **full** partition, every multi-frame stack *and* every standalone
   photo as its own stop), not the multi-frame-only `cullingStacks()` a
   prior revision of this card (and this line's own citation) assumed.
-  `guard !indexedStacks.isEmpty else { return }` (`:7158`) is now the true
+  `guard !indexedStacks.isEmpty else { return }` (`:7248`) is now the true
   empty-catalog guard, not an all-singles-batch guard — a batch with zero
   multi-frame stacks still produces one `indexedStack` per photo, so `H`/`L`
   walk it one stop at a time, stopping dead (no wrap) at either end, exactly
   mirroring `J`/`K`'s own fallback. When the target stop **is** a
   multi-frame stack, `selectCullingStack` lands on
-  `recommendedStackLandingAssetID(for:)` (`:7202-7205`:
+  `recommendedStackLandingAssetID(for:)` (`:7292-7295`:
   `guard cullLandOnRecommendedFrame else { return stack.assetIDs.first }`,
   then `recommendedCullingStackAssetID(in:) ?? stack.assetIDs.first`) — the
   ranked winner if evaluation produced one (or, under a too-close-to-call
   tie, the first tied leader in capture order), otherwise the stack's first
   frame; a standalone stop resolves to its one asset either way (the doc
-  comment at `:7193-7201` is explicit, and also names the
+  comment at `:7283-7291` is explicit, and also names the
   `cullLandOnRecommendedFrame` toggle — default `true`, Culling-menu-only,
   no keyboard shortcut — that this card never touches, so every landing
   below is the "land on recommended" branch, not its "land on frame 1
@@ -90,27 +90,27 @@ so every symbol below was re-grepped fresh, not carried over):
   for the full independent-ranking cross-check methodology; this card only
   needs to confirm the *landing rule* holds for whichever branch this run's
   evaluation state actually produces, not re-derive it.
-- **`A` auto-advance toggle**, `cullAutoAdvanceEnabled` (`AppModel.swift:2193`,
-  default `true`) / `toggleCullAutoAdvance()` (`:6692-6704`): flips the flag
+- **`A` auto-advance toggle**, `cullAutoAdvanceEnabled` (`AppModel.swift:2065`,
+  default `true`) / `toggleCullAutoAdvance()` (`:6782-6794`): flips the flag
   and sets `lastCullingMetadataDecision` to an *informational* toast reading
   exactly `"Auto-advance on"` or `"Auto-advance off"` (no ✓/✕ symbol, no
   "⌘Z undoes" — `CullDecisionToastPresentation.init(feedback:)`,
   `Sources/TeststripApp/CullFilmstripPresentation.swift:86-99`, the
   `isInformational` branch at `:86-93`). The toast renders as a bare
   SwiftUI `Text` with no accessibility override
-  (`Sources/TeststripApp/LibraryGridView.swift:4468-4478`,
+  (`Sources/TeststripApp/LibraryGridView.swift:4468-4477`,
   `decisionToast`), so its AXStaticText title/value is the literal string —
   but it is **transient**: `showDecisionToastThenFade()`
-  (`:4463-4478`) shows it, sleeps 2 real seconds, then fades it out. There is
+  (`:4447-4462`) shows it, sleeps 2 real seconds, then fades it out. There is
   no persistent AX-exposed indicator of `cullAutoAdvanceEnabled` elsewhere
   (grepped `main.swift` for a menu checkbox — none exists); the toast is the
   *only* direct AX read of the toggle, so it must be polled for immediately
   after pressing `A`, not after some other setup delay. Behaviorally, when
   the decision that follows has no stack context (`stackAssetIDs` is `nil`
   — the standalone-frame arm, the only one this card's `smoke` fixture ever
-  exercises), `applyCullingCommandAndAdvance` (`:6808-6838`) advances via
+  exercises), `applyCullingCommandAndAdvance` (`:6898-6928`) advances via
   `selectNextAssetForCulling()` only when `cullAutoAdvanceEnabled` is `true`
-  and the command didn't itself already move the selection (`:6816`) — this
+  and the command didn't itself already move the selection (`:6906`) — this
   is the behavioral cross-check this card uses to corroborate the toast.
   (The function also has a stack-context arm — hop to the next undecided
   sibling within the current stack, wrapping to the next stop's landing
@@ -157,7 +157,7 @@ either form should exercise the same code path.
    AXButton --contains "Stack frame 2"`). Do **not** rely on `"Stack frame
    1"` alone — `CullingStackRailPresentation` renders a one-cell rail entry
    labeled `"Stack frame 1"` for every selection, standalone or not
-   (`LibraryGridView.swift:6388-6392`'s doc comment: "A standalone
+   (`LibraryGridView.swift:6426-6430`'s doc comment: "A standalone
    (single-photo stop) still gets a rail entry... but none of the
    stack-only chrome"), so that check alone would pass on an all-singles
    batch too (see Step 7 and Sharp edges). If no multi-frame stack is ever
@@ -193,13 +193,13 @@ either form should exercise the same code path.
    steps 5-6's methodology (`evaluation_signals` for the stack's ids,
    `CullingStackRecommendation`'s formula) — if evaluation hasn't run yet on
    this fresh launch, trigger it first (Culling ▸ "Evaluate Visible", ⇧⌘E,
-   `AppModel.swift:9434`, `requestVisibleAssetEvaluations`) and wait for
+   `AppModel.swift:9611-9624`, `requestVisibleAssetEvaluations`) and wait for
    `evaluation_signals` to cover the stack. The landing frame and the
    `"Recommended"` chip are governed by two *different* rules that only
    coincide on a clear, untied winner (per `cull-021`'s own step-11 finding
    for this same fixture) — compute `tiedLeaderIDs` independently
    (`CullingStackRecommendation.tiedLeaderIDs`,
-   `LibraryGridView.swift:6647-6664`) before asserting either:
+   `LibraryGridView.swift:6685-6701`) before asserting either:
    - **Clear winner** (`tiedLeaderIDs` nil, a read exists): lands on
      `rankedCandidates.first`, and that frame's chip **does** show
      `"Recommended"`.
@@ -207,7 +207,7 @@ either form should exercise the same code path.
      `tiedLeaderIDs.first` (capture order) — a real, non-frame-1 landing in
      general — but **no** chip shows `"Recommended"` (`recommendation =
      tiedLeaderIDs == nil ? rankedCandidates.first : nil`,
-     `LibraryGridView.swift:6403` — a tie can't defend a single winner, so
+     `LibraryGridView.swift:6441` — a tie can't defend a single winner, so
      the marker is suppressed even though a landing frame was still picked).
    - **Zero rankable signals** (no `evaluation_signals` cover the stack at
      all): lands on the stack's first frame (capture order), also with no
@@ -229,7 +229,7 @@ either form should exercise the same code path.
    fails to match) — the smoke fixture has zero multi-frame stacks by
    construction. **Do not** assert bare `"Stack frame"` fails to match: a
    standalone stop still gets its own one-cell rail entry labeled `"Stack
-   frame 1"` (`LibraryGridView.swift:6388-6392`), so that check matches on
+   frame 1"` (`LibraryGridView.swift:6426-6430`), so that check matches on
    every launch, `smoke` included, and would make this step spuriously fail.
    Record the selected asset id and the catalog-order id sequence:
    `script/vm_scenario_run.sh sql smoke "SELECT id FROM assets ORDER BY rowid LIMIT 5;"`.
@@ -257,7 +257,7 @@ either form should exercise the same code path.
    no-wrap guard: advance to the last asset (`L` repeatedly), press `L`
    once more, and assert the selection does not move.
 10. **`A` toggle, observable via AX value.** Note `cullAutoAdvanceEnabled`
-    defaults to `true` (`AppModel.swift:2193`). Press `P` (pick) on an
+    defaults to `true` (`AppModel.swift:2065`). Press `P` (pick) on an
     unrated frame: with auto-advance on by default, assert the selection
     already advanced to the next frame (behavioral baseline). Press `A`
     (`keystroke "a"`) and *immediately* poll
@@ -347,7 +347,7 @@ before the next leg's launch.
   whether or not it belongs to a real multi-frame stack — only the
   stack-only chrome (title `"Stack N of M"` vs. `"Standalone"`, the
   `"Frame N of M"` positionText, the ✦ marker, keep/cut actions) is gated on
-  `!isStandalone` (`LibraryGridView.swift:6388-6392`'s doc comment: "A
+  `!isStandalone` (`LibraryGridView.swift:6426-6430`'s doc comment: "A
   standalone (single-photo stop) still gets a rail entry... but none of the
   stack-only chrome"). Confirmed live on both legs
   of this run: `smoke`'s first asset (`smoke-0`, no sibling within 2s of

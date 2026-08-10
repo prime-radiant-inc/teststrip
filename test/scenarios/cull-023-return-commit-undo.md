@@ -18,87 +18,87 @@ render-gate no-op with an armed, auto-firing commit and shifted most of
 `cull-027-blaze-through-prefetch.md` for the card that exercises the new
 behavior live):
 - **The gesture**: `AppModel.promoteCurrentFrameAndRejectSiblings()`
-  (`Sources/TeststripApp/AppModel.swift:6331-6387`). Membership guard
-  (`:6332-6334`): `selectedWorkStackAssetIDs` (a persisted stack) or
+  (`Sources/TeststripApp/AppModel.swift:6370-6426`). Membership guard
+  (`:6371-6373`): `selectedWorkStackAssetIDs` (a persisted stack) or
   `cullingStacks()` (the in-memory auto-grouped, multi-frame-only partition)
   must contain the selection, else it's the standalone no-op branch
-  (`:6339-6344`): sets `lastCullingMetadataDecision` to
-  `singleFrameStackFeedback(asset:)` (`:6493-6501`) — decisionText exactly
+  (`:6378-6382`): sets `lastCullingMetadataDecision` to
+  `singleFrameStackFeedback(asset:)` (`:6476-6484`) — decisionText exactly
   `"No stack to promote — P picks this frame"`, `isInformational: true` — and
   returns with **no metadata write** at all.
 - **The render gate now arms instead of just complaining** (SP-C,
-  `937db96b`/`11cdf360`; re-verified at `:6403-6413`): before computing
+  `937db96b`/`11cdf360`; re-verified at `:6386-6395`): before computing
   which siblings get protected, guards `previewURL(for:
   context.selectedAssetID, levels: [.large]) != nil`
-  (`previewURL(for:levels:)`, now `:14152-14161` — checks the on-disk
+  (`previewURL(for:levels:)`, now `:14118-14127` — checks the on-disk
   preview-cache file for that exact level, no fallback to a smaller cached
   level; logic unchanged, just moved). If the `.large` preview file doesn't
   exist yet, it no longer just complains and drops the gesture — it calls
-  `armStackCommit(stagedAssetID:asset:)` (`:6411`, function at
-  `:6445-6466`), which **arms** the commit (`armedStackCommitAssetID`,
-  `:2246`) and fires it automatically — no second Return needed — the
+  `armStackCommit(stagedAssetID:asset:)` (`:6394`, function at
+  `:6428-6449`), which **arms** the commit (`armedStackCommitAssetID`,
+  `:2149`) and fires it automatically — no second Return needed — the
   instant the staged frame's `.large` preview lands
-  (`fireArmedStackCommitIfReady`, `:6472-6491`, wired into the worker-
-  completion handler at `:10453-10458`). A repeat Return before then is
+  (`fireArmedStackCommitIfReady`, `:6455-6474`, wired into the worker-
+  completion handler at `:10327-10332`). A repeat Return before then is
   still a harmless no-op re-arm of the same asset
-  (`applyCullingShortcut`'s disarm guard, `:6632-6639`, only disarms for a
+  (`applyCullingShortcut`'s disarm guard, `:6622-6628`, only disarms for a
   *different* shortcut). The toast while armed reads exactly `"Rendering
   full preview… will keep when ready"` (`armedCommitFeedback`,
-  `:6503-6511`, `isInformational: true` — no metadata write yet). Any other
+  `:6486-6494`, `isInformational: true` — no metadata write yet). Any other
   input before it fires — an arrow key, another flag/rating shortcut, a
-  rail action — disarms it (`:4854-4860`, `:6103-6112`, `:6553-6572`,
-  `:7350-7423`), and the commit then never lands for that stack.
+  rail action — disarms it (`:4622-4628`, `:6082-6091`, `:6536-6555`,
+  `:7339-7344`, `:7408-7411`), and the commit then never lands for that stack.
   `cull-027-blaze-through-prefetch.md` exercises this live; see Sharp edges
   below for why this card's own fixture still can't reach the leg.
-- **Pick protection** (`:6414-6429`, Jesse's ruling 2026-07-11): every
+- **Pick protection** (`:6397-6424`, Jesse's ruling 2026-07-11): every
   sibling whose **raw** `metadata.flag == .pick` — regardless of AI/user
-  provenance, per the comment at `:6415-6417`: "Flag provenance isn't
+  provenance, per the comment at `:6397-6402`: "Flag provenance isn't
   recorded (autopilot commits write plain picks), so ALL picked siblings are
   protected" — is collected into `protectedPickedSiblings` and added to
   `pickedAssetIDs` alongside the staged frame. Every other sibling (raw flag
   `nil` or `.reject`, tentative or not) gets `.reject`.
-- **The write**, `applyCullingStackDecision` (`:6574-6623`): loops every
+- **The write**, `applyCullingStackDecision` (`:6557-6606`): loops every
   asset in the stack, sets `.pick`/`.reject` per the set above, and
   unconditionally does `metadata.aiUnconfirmedFields.remove(.flag)`
-  (`:6596`, comment at `:6592-6595`: "a stack decision is a direct user
+  (`:6579`, comment at `:6575-6578`: "a stack decision is a direct user
   gesture too: it confirms the flag even when the decided value matches a
   tentative AI one already there") — **but** the per-asset write is skipped
   entirely (`guard metadata != originalAsset.metadata else { continue }`,
-  `:6597`) when nothing actually changed, so a sibling that was *already* a
+  `:6580`) when nothing actually changed, so a sibling that was *already* a
   plain confirmed pick (no tentative marker, same value) produces **no
   write, no `MetadataChange`, no undo-group membership, no
   `catalog_generation` bump** for that asset — a real no-op, not just an
   unchanged read. All effective changes land in **one**
-  `MetadataChangeGroup` via `recordMetadataChangeGroup` (`:8068-8073`,
+  `MetadataChangeGroup` via `recordMetadataChangeGroup` (`:8057-8062`,
   label `"Flag"`/`"Flag · N photos"`).
-- **The toast text**, `promoteDecisionFeedback` (`:6523-6551`): components
+- **The toast text**, `promoteDecisionFeedback` (`:6506-6534`): components
   joined by `" · "` —
   `"Kept \(filename)\(wasRejected ? " (was ✕)" : "")"`, then
   `"rejected \(siblingCount)"` only if `siblingCount > 0` (`siblingCount =
   stack.count - 1 - protectedPickedSiblings.count`), then `"kept your pick
   of \(name)"` (exactly one protected sibling) or `"kept your picks of N
-  siblings"` (2+), then always `"⌘Z undoes"`. `wasRejected` (`:6435-6439`)
+  siblings"` (2+), then always `"⌘Z undoes"`. `wasRejected` (`:6418-6422`)
   is `originalAsset.metadata.confirmedProjection.flag == .reject` —
   **confirmed only**: a tentative AI reject on the staged frame itself would
   read `confirmedProjection.flag == nil`, so it would **not** trigger
   "(was ✕)" (out of this card's scope — the staged frame in every leg below
   is either confirmed-rejected or plain-undecided, never itself tentative).
-  `rendersVerbatim: true` (`:6549`) means `CullDecisionToastPresentation`
+  `rendersVerbatim: true` (`:6532`) means `CullDecisionToastPresentation`
   (`Sources/TeststripApp/CullFilmstripPresentation.swift:83-108`) renders
   `decisionText` as-is with no extra symbol/wrap (`:86-93`); for the
   informational (no-write) branches above, `isInformational` alone triggers
   the same as-is rendering, also with no symbol and no "⌘Z undoes" appended.
-  The toast `Text` (`LibraryGridView.swift:4513-4523`, `decisionToast`)
+  The toast `Text` (`LibraryGridView.swift:4468-4477`, `decisionToast`)
   carries no `.accessibilityLabel` override, so its AXStaticText title is
   the literal string — matching `cull-022-flow-grammar-walk.md`'s citation
   of the same pattern for the `A`-toggle toast. It **fades after 2 real
-  seconds** (`showDecisionToastThenFade`, `LibraryGridView.swift:4492-4507`,
+  seconds** (`showDecisionToastThenFade`, `LibraryGridView.swift:4447-4462`,
   `Task.sleep(for: .seconds(2))`) — poll immediately after the keypress.
-- **Sidecar writes**: `applyMetadataSnapshot` (`AppModel.swift:8510-8524`)
-  calls `syncMetadataSidecar(for:)` (`:8526-`ff.) for every asset in the
+- **Sidecar writes**: `applyMetadataSnapshot` (`AppModel.swift:8504-8518`)
+  calls `syncMetadataSidecar(for:)` (`:8520-8560`) for every asset in the
   change group. With a live worker supervisor (the real app), this
   **enqueues** the write (`recordMetadataSyncPending`,
-  `:8538-8550`) rather than writing synchronously — poll
+  `:8533-8544`) rather than writing synchronously — poll
   `metadata_sync_state.status` (the column is `status`, not `state`;
   `Sources/TeststripCore/Catalog/CatalogMigrations.swift:30-37`) until it's
   no longer `pending` before checking the `.xmp` file.
@@ -110,21 +110,21 @@ behavior live):
   bypassing `AppModel`/`syncMetadataSidecar` entirely, **no `.xmp` exists
   for any seeded asset until the app itself writes one** — this card's own
   first live step re-confirms that baseline rather than assuming it.
-- **Undo**, `undoMetadataChange()` (`:8075-8082`): pops the last
+- **Undo**, `undoMetadataChange()` (`:8064-8071`): pops the last
   `MetadataChangeGroup` and reapplies each change's `before` snapshot via
   `applyMetadataSnapshot` — for a change whose `before` included a tentative
   AI marker, undo restores `aiUnconfirmedFields` exactly as it was, not just
   the flag value. Undo is a plain LIFO stack (`metadataUndoStack`,
-  `:8068-8073`), so a single `⌘Z` after two independent Return commits pops
+  `:8057-8062`), so a single `⌘Z` after two independent Return commits pops
   only the most recent group, leaving the earlier commit's writes untouched
   — this card exercises two independent stack commits in one session and
   checks that isolation explicitly.
 - **Keys**: `Return`/keypad-Enter map to `.promoteAndRejectSiblings`
   (`CullingShortcut.init(event:)`, `Sources/TeststripApp/
   CullingKeyCaptureView.swift:164-165`; keycode 36,
-  `MacKeyCode.returnKey`, `:183`), dispatched at `AppModel.swift:6702-6704`.
+  `MacKeyCode.returnKey`, `:183`), dispatched at `AppModel.swift:6691-6693`.
   `Space` is `.nextPhoto` → `selectNextAssetForCulling()` — plain,
-  decision-free catalog-order advance (`:6973-6986`), used here only to
+  decision-free catalog-order advance (`:6962-6975`), used here only to
   navigate between legs; sent as `key code 49` (`MacKeyCode.space`, `:185`),
   the same keycode-based form as Return's `key code 36` rather than a
   quoted-string `keystroke " "`. Undo's `⌘Z` is sent as
@@ -195,7 +195,7 @@ baseline (zero tentative flags) should
    script/vm_scenario_run.sh shell "find '$SRC_DIR' -name '*.xmp' | wc -l"           # expect 0
    ```
    `ax wait-vended`; ⌘1 for Cull. **No `S` press needed**: `cullScope`
-   defaults to `.all` on every fresh `AppModel` (`AppModel.swift:2189`,
+   defaults to `.all` on every fresh `AppModel` (`AppModel.swift:2061`,
    `public private(set) var cullScope: CullScope = .all`) with no
    persistence across launches, so a freshly-launched instance is already
    scoped to "All frames" — pressing `S` here actually *cycles away* from
@@ -312,10 +312,10 @@ baseline (zero tentative flags) should
    --role AXStaticText --contains "Stack 1 of"` should fail to match.
    `titleText` is set to exactly `"Standalone"` for a single-asset stack
    scope, vs. `"Stack \(stackIndex) of \(stackCount)"` otherwise
-   (`LibraryGridView.swift:6437-6450`). Do **not** probe `ax find --role
+   (`LibraryGridView.swift:6461-6475`). Do **not** probe `ax find --role
    AXButton --contains "Stack frame"` — that matches the per-cell
    accessibility label (`.accessibilityLabel("Stack frame \(item.label)")`,
-   `LibraryGridView.swift:4880`), which renders for *every* rail stop
+   `LibraryGridView.swift:4898`), which renders for *every* rail stop
    including a standalone one (confirmed live: it matched "Stack frame 1"
    on `smoke-16`'s own one-cell rail) — this is the same "Stack frame"
    probe defect `cull-021`/`cull-022` already found and documented).
@@ -341,7 +341,8 @@ baseline (zero tentative flags) should
    (`SmokeCatalogSeeder.renderedLevels = [.micro, .grid, .medium, .large]`,
    `:63`), before the app ever launches — so `previewURL(for:levels:[.large])`
    is non-nil for every asset at Step 1, and the render-gate branch
-   (`:6410`) can never trigger against this card's fixture as launched.
+   (`AppModel.swift:6393-6397`) can never trigger against this card's fixture
+   as launched.
    `cull-027-blaze-through-prefetch.md` (SP-C) closes this gap without a
    new fixture generator: it deletes the specific `.large` file under test
    from the *live launched instance's* preview cache after seeding, which
