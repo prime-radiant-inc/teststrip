@@ -184,8 +184,12 @@ different catalog and invalidate restore assertions.
    script/vm_scenario_run.sh ax press --contains "Analysis Failures"
    script/vm_scenario_run.sh ax find --role AXButton --label "Cull" --help "Nothing here is cullable"
    ```
-8. Run a token search (`rating:5`), press the result-header **"Cull these"**
-   button (exact-case match — see the correction above:
+8. Reset Step 7's diagnostic source to the exact `All Photos` sidebar row
+   before entering a token search (`rating:5`). The `.allPhotos` source arm
+   calls `clearLibraryFilters()` (`AppModel.swift:4865-4867,11045-11054`),
+   removing the provider-failure predicate so the nonempty rating search can
+   enable the result-header **"Cull these"** button. Press that button with an
+   exact-case match (see the correction above:
    `script/vm_scenario_run.sh ax find --label "Cull these"` then
    `script/vm_scenario_run.sh ax press --label "Cull these"`, never
    `--contains`), and assert the scope line names the search
@@ -194,6 +198,8 @@ different catalog and invalidate restore assertions.
    `AppModel.swift:5911-5914`) and the catalog gained a `culling` work
    session:
    ```bash
+   script/vm_scenario_run.sh ax press --role AXButton --label "All Photos"
+   script/vm_scenario_run.sh ax find --label "Scope" --contains "All Photos"
    script/vm_scenario_run.sh ax type --role AXTextField --label "Search Catalog" --text "rating:5"
    script/vm_scenario_run.sh key 'key code 36'
    script/vm_scenario_run.sh ax find --role AXButton --label "Cull these"
@@ -333,11 +339,12 @@ different catalog and invalidate restore assertions.
 - Step 7: **fails if** the Cull segment is enabled while `Analysis Failures`
   is selected, if the AXHelp text doesn't read exactly `"Nothing here is
   cullable"`, or if the app doesn't fall back to Grid.
-- Step 8: **fails if** `find --label "Cull these"` matches the grid's "Cull
-  These" context-menu item instead (case mismatch would indicate the AX
-  driver's match is not case-sensitive — flag immediately, don't loosen the
-  card), if the scope line doesn't name the search, or if no `culling`
-  session row appears.
+- Step 8: **fails if** the Step 7 diagnostic source is not first reset to
+  `All Photos`, if `find --label "Cull these"` matches the grid's "Cull These"
+  context-menu item instead (case mismatch would indicate the AX driver's
+  match is not case-sensitive — flag immediately, don't loosen the card), if
+  the exact button remains disabled, if the scope line doesn't name the
+  search, or if no `culling` session row appears.
 - Step 9: **fails if** any cell in the five-non-Cull restore matrix fails, if
   any relaunch changes the source, or if a Cull-lens quit restores to anything
   other than Grid. Untested cells stay pending; two driven cells do not pass

@@ -246,11 +246,15 @@ reproducible).
    script/vm_scenario_run.sh ax find --contains "notes.txt"
    script/vm_scenario_run.sh ax find --contains "readme.md"
    ```
-   Dismiss the sheet, then assert the Cull lens disables while this child's
-   source is selected (`ImportChildKind.isDiagnostic == true` for
+   Press the sheet's exact `Done` button (`LibraryGridView.swift:1919-1922`)
+   and assert the sheet is gone before checking or continuing. Then assert
+   the Cull lens disables while this child's source is selected
+   (`ImportChildKind.isDiagnostic == true` for
    `.skippedFiles`, `LensRules.availability`'s diagnostic branch,
    `LibraryLens.swift:118-120`):
    ```bash
+   script/vm_scenario_run.sh ax press --role AXButton --label "Done"
+   ! script/vm_scenario_run.sh ax find --contains "2 Import Issues"
    script/vm_scenario_run.sh ax find --role AXButton --label "Cull" --help "Nothing here is cullable"
    ```
 
@@ -300,8 +304,11 @@ reproducible).
 12. First prove the discriminator is non-vacuous: CARD1 contributed exactly
     four catalog rows and CARD2 contributed exactly two CARD2-only rows. Then
     record the culling-session count, latest row ID, and latest session ID
-    **after Step 10** and before pressing `Cull these`. Cull the **older**
-    import (CARD1) from its sidebar row rather than the
+    **after Step 10** and before pressing `Cull these`. Step 10 entered the
+    Cull lens, which hides the query/result header; switch to Grid first so
+    the browse-only header is vended (`LensChromePolicy.showsFilterTokens`,
+    `LibraryGridView.swift:8276-8278`). Then cull the **older** import (CARD1)
+    from its sidebar row rather than the
     newest (CARD2): click CARD1's row to select it as the source
     (`selectSidebarRow`/`applySource`'s `.workSession` case,
     `AppModel.swift:4698-4708,4852-4917`; `applyWorkSession` sets
@@ -324,6 +331,8 @@ reproducible).
     BEFORE_CULL_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='culling';")
     BEFORE_LATEST_RUN_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='culling' ORDER BY rowid DESC LIMIT 1;")
     test -n "$BEFORE_LATEST_RUN_ID" # Step 10 already created a culling run
+    script/vm_scenario_run.sh key 'keystroke "2" using {command down}'
+    script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Grid"
     CARD1_ROW_TITLE=$(script/vm_scenario_run.sh ax find --role AXButton --contains "Imported 4 photos from card1 (2 files skipped)" | awk 'index($0,"Imported 4 photos from card1 (2 files skipped)") && $0 !~ /^(Expand|Collapse) / {print; exit}')
     test -n "$CARD1_ROW_TITLE"
     script/vm_scenario_run.sh ax press --role AXButton --label "$CARD1_ROW_TITLE"
@@ -380,8 +389,9 @@ reproducible).
   `ImportChildKind.title` verbatim.
 - Step 8: **fails if** a zero-count child renders at all (disabled or not).
 - Step 9: **fails if** clicking `⚠ Skipped files` opens an empty/generic
-  grid instead of the named issue-review sheet, or if the two skipped
-  filenames aren't both listed.
+  grid instead of the named issue-review sheet, if the two skipped filenames
+  aren't both listed, or if the exact sheet `Done` action does not close it
+  before the diagnostic-source assertion and subsequent steps.
 - Step 10: **fails if** the context menu does not contain exactly the current
   star toggle plus the three import verbs (four items total), offers any
   extras, or if pressing `Cull stacks` neither creates
@@ -390,7 +400,8 @@ reproducible).
   read the exact existing-only string, or if it shows a `Start culling`
   button it has no business showing.
 - Step 12: **fails if** the positive CARD2-only baseline is not exactly 2,
-  pressing `Cull these` does not create exactly one genuinely new run, the
+  Grid is not selected before targeting the browse-only `Cull these` button,
+  pressing that button does not create exactly one genuinely new run, the
   exact new run's input does not contain all 4 CARD1 members, its total input
   is not exactly 4, or it contains any CARD2-only asset. Those checks reject
   empty/subset/old-run mutants as well as accidental newest-import scoping.
