@@ -1914,6 +1914,37 @@ private struct PeopleSourceSnapshot {
     var hasUnavailableSources = false
 }
 
+/// A complete Map snapshot so one failed aggregate read cannot publish only
+/// part of the current source's place data.
+private struct CatalogPlaceProjection {
+    var clusters: [CatalogPlaceCluster]
+    var topLocations: [CatalogTopLocation]
+    var geotaggedCoverage: CatalogGeotaggedCoverage
+}
+
+/// Every fallible read needed to make a newly saved set the active source.
+/// Building this before the set write gives save-and-select a single commit
+/// point without a compensating repository rollback.
+private struct SavedAssetSetSelectionProjection {
+    var savedAssetSets: [AssetSet]
+    var assetSetCounts: [AssetSetID: Int]
+    var smartCollectionCounts: [SmartCollection: Int]
+    var workSessionScopeCounts: [WorkSessionID: Int]
+    var importSourceSummaries: [ImportSidebarSummary]
+    var completedImports: [AppWorkActivity]
+    var importChildCountsBySessionID: [String: ImportChildCounts]
+    var catalogFolders: [CatalogFolder]
+    var sourceRoots: [CatalogSourceRoot]
+    var assetIDsWithBondedSecondaries: Set<AssetID>
+    var autopilotGhostAssetIDs: [AssetID]
+    var assets: [Asset]
+    var totalAssetCount: Int
+    var batchSelectionScopeAssetIDs: Set<AssetID>
+    var proposedPhotos: [ProposedPersonPhoto]
+    var placeProjection: CatalogPlaceProjection?
+    var peopleSourceSnapshot: PeopleSourceSnapshot?
+}
+
 public enum MetadataSyncConflictSidecarMetadataState: Equatable {
     case none
     case readable(AssetMetadata)
@@ -3687,45 +3718,11 @@ public final class AppModel {
     public func refreshPeopleFaceSuggestions() {
         guard let catalog else { return }
         do {
-            let provenance = AppleVisionEvaluationProvider.faceProvenance
             let scopeAssetIDs = try peopleScopeAssetIDs()
-            let unassigned = try catalog.repository.unassignedFaceObservations(
-                provenance: provenance,
-                limit: Self.maximumFaceSuggestionInputCount,
-                assetIDs: scopeAssetIDs
-            )
-            let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
-            let suggestions = FaceSuggestionBuilder().suggestions(
-                unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
-                confirmedFacesByPerson: confirmedFacesByPerson
-            )
-            let observationsByFaceID = Dictionary(
-                uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
-            )
-            let personNamesByID = try unionedPersonNamesByID()
-            let rejectedPairs = try catalog.repository.rejectedFacePeople()
-            let faceSuggestions = Self.peopleFaceSuggestions(
-                from: suggestions,
-                observationsByFaceID: observationsByFaceID,
-                personNamesByID: personNamesByID,
-                rejectedPairs: rejectedPairs
-            )
-            let faceObservationAssetCount = try catalog.repository.faceObservationAssetCount(
-                provenance: provenance,
-                assetIDs: scopeAssetIDs
-            )
-            let namedPeople = try catalog.repository.people(assetIDs: scopeAssetIDs)
-            let evaluationKindSummaries = try catalog.repository.evaluationKindSummaries(assetIDs: scopeAssetIDs)
-            let hasUnavailableSources = try peopleScopeHasUnavailableSources(
+            peopleSourceSnapshot = try loadPeopleSourceSnapshot(
                 assetIDs: scopeAssetIDs,
+                sourceRoots: sourceRoots,
                 repository: catalog.repository
-            )
-            peopleSourceSnapshot = PeopleSourceSnapshot(
-                faceSuggestions: faceSuggestions,
-                faceObservationAssetCount: faceObservationAssetCount,
-                namedPeople: namedPeople,
-                evaluationKindSummaries: evaluationKindSummaries,
-                hasUnavailableSources: hasUnavailableSources
             )
         } catch {
             peopleSourceSnapshot = PeopleSourceSnapshot()
@@ -3733,11 +3730,63 @@ public final class AppModel {
         }
     }
 
+    private func loadPeopleSourceSnapshot(
+        assetIDs: [AssetID]?,
+        sourceRoots: [CatalogSourceRoot],
+        repository: CatalogRepository
+    ) throws -> PeopleSourceSnapshot {
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let unassigned = try repository.unassignedFaceObservations(
+            provenance: provenance,
+            limit: Self.maximumFaceSuggestionInputCount,
+            assetIDs: assetIDs
+        )
+        let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
+        let suggestions = FaceSuggestionBuilder().suggestions(
+            unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
+            confirmedFacesByPerson: confirmedFacesByPerson
+        )
+        let observationsByFaceID = Dictionary(
+            uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
+        )
+        let personNamesByID = try unionedPersonNamesByID()
+        let rejectedPairs = try repository.rejectedFacePeople()
+        let faceSuggestions = Self.peopleFaceSuggestions(
+            from: suggestions,
+            observationsByFaceID: observationsByFaceID,
+            personNamesByID: personNamesByID,
+            rejectedPairs: rejectedPairs
+        )
+        let faceObservationAssetCount = try repository.faceObservationAssetCount(
+            provenance: provenance,
+            assetIDs: assetIDs
+        )
+        let namedPeople = try repository.people(assetIDs: assetIDs)
+        let evaluationKindSummaries = try repository.evaluationKindSummaries(assetIDs: assetIDs)
+        let hasUnavailableSources = try peopleScopeHasUnavailableSources(
+            assetIDs: assetIDs,
+            sourceRoots: sourceRoots,
+            repository: repository
+        )
+        return PeopleSourceSnapshot(
+            faceSuggestions: faceSuggestions,
+            faceObservationAssetCount: faceObservationAssetCount,
+            namedPeople: namedPeople,
+            evaluationKindSummaries: evaluationKindSummaries,
+            hasUnavailableSources: hasUnavailableSources
+        )
+    }
+
     private func peopleScopeHasUnavailableSources(
         assetIDs: [AssetID]?,
+        sourceRoots: [CatalogSourceRoot],
         repository: CatalogRepository
     ) throws -> Bool {
-        guard let assetIDs else { return hasUnavailableSourceRoots }
+        guard let assetIDs else {
+            return sourceRoots.contains { root in
+                root.unavailableAssetCount > 0 || !FileManager.default.fileExists(atPath: root.path)
+            }
+        }
         guard !assetIDs.isEmpty else { return false }
         let scopedAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
         return scopedAssets.contains { asset in
@@ -5818,19 +5867,169 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        let projection = try savedAssetSetSelectionProjection(
+            assetSet: assetSet,
+            repository: catalog.repository
+        )
         try catalog.repository.upsert(assetSet)
-        savedAssetSets = try catalog.repository.assetSets()
-        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
+        publishSavedAssetSetSelection(projection, assetSet: assetSet)
+        return assetSet
+    }
+
+    private func savedAssetSetSelectionProjection(
+        assetSet: AssetSet,
+        repository: CatalogRepository
+    ) throws -> SavedAssetSetSelectionProjection {
+        var prospectiveSavedAssetSets = try repository.assetSets()
+        if let existingIndex = prospectiveSavedAssetSets.firstIndex(where: { $0.id == assetSet.id }) {
+            prospectiveSavedAssetSets[existingIndex] = assetSet
+        } else {
+            prospectiveSavedAssetSets.append(assetSet)
+        }
+
+        let loadedAssets: [Asset]
+        let totalAssetCount: Int
+        let mapQuery: SetQuery
+        let peopleScopeAssetIDs: [AssetID]?
+        let batchSelectionScopeAssetIDs: Set<AssetID>
+        let proposedPhotos: [ProposedPersonPhoto]
+        switch assetSet.membership {
+        case .manual(let ids), .snapshot(let ids):
+            loadedAssets = try repository.assets(ids: ids, flag: nil, limit: ids.count)
+            totalAssetCount = try repository.assetCount(ids: ids, flag: nil)
+            mapQuery = SetQuery(predicates: [.assetIDs(ids)])
+            peopleScopeAssetIDs = selectedView == .people ? loadedAssets.map(\.id) : nil
+            batchSelectionScopeAssetIDs = Set(ids)
+            proposedPhotos = []
+        case .dynamic(let query):
+            loadedAssets = try repository.allAssets(matching: query, sort: librarySortOption)
+            totalAssetCount = try repository.assetCount(matching: query)
+            mapQuery = query
+            peopleScopeAssetIDs = selectedView == .people
+                ? try repository.assetIDs(matching: query)
+                : nil
+            batchSelectionScopeAssetIDs = Set(try repository.assetIDs(
+                ids: selectedBatchAssetIDsInCatalogOrder,
+                matching: query
+            ))
+            proposedPhotos = try Self.proposedPhotos(matching: query, repository: repository)
+        }
+
+        let smartCollectionCounts = try Self.smartCollectionCounts(repository: repository)
+        let autopilotGhostAssetIDs = try repository.assetIDsWithAutopilotGhost(sort: librarySortOption)
+        let assetSetCounts = try Self.assetSetCounts(prospectiveSavedAssetSets, repository: repository)
+
+        var refreshedImportChildCounts = importChildCountsBySessionID
+        for sessionID in expandedImportSessionIDs {
+            refreshedImportChildCounts[sessionID] =
+                (try? importChildCounts(sessionID: WorkSessionID(rawValue: sessionID))) ?? ImportChildCounts()
+        }
+
+        let importSessions = try repository.workSessions(kind: .ingest, statuses: [.completed])
+        let retainedScopeCountIDs = Set(
+            (recentWork + starredWork + recentNonImportWork + starredNonImportWork)
+                .map { WorkSessionID(rawValue: $0.id) }
+        ).union(importSourceSummaries.map(\.sessionID))
+        var refreshedWorkSessionScopeCounts = workSessionScopeCounts.filter {
+            retainedScopeCountIDs.contains($0.key)
+        }
+        refreshedWorkSessionScopeCounts.merge(
+            try Self.importSourceAssetCounts(sessions: importSessions, repository: repository)
+        ) { _, refreshedCount in
+            refreshedCount
+        }
+        let completedImports = importSessions.map(AppWorkActivity.init)
+        let importSourceSummaries = importSessions.map { session in
+            ImportSidebarSummary(
+                sessionID: session.id,
+                createdAt: session.createdAt,
+                detail: session.detail,
+                assetCount: session.outputSetIDs.isEmpty
+                    ? session.totalUnitCount ?? session.completedUnitCount
+                    : refreshedWorkSessionScopeCounts[session.id] ?? 0,
+                issues: session.issues,
+                producedOutputSet: !session.outputSetIDs.isEmpty
+            )
+        }
+
+        let catalogFolders = try repository.folders()
+        let sourceRoots = try repository.sourceRoots()
+        let assetIDsWithBondedSecondaries = try repository.assetIDsWithBondedSecondaries()
+        let placeProjection = selectedView == .map
+            ? try Self.placeProjection(
+                bounds: nil,
+                cellSize: Self.defaultPlaceClusterCellSize,
+                matching: mapQuery,
+                repository: repository
+            )
+            : nil
+        let peopleSourceSnapshot = selectedView == .people
+            ? try loadPeopleSourceSnapshot(
+                assetIDs: peopleScopeAssetIDs,
+                sourceRoots: sourceRoots,
+                repository: repository
+            )
+            : nil
+
+        return SavedAssetSetSelectionProjection(
+            savedAssetSets: prospectiveSavedAssetSets,
+            assetSetCounts: assetSetCounts,
+            smartCollectionCounts: smartCollectionCounts,
+            workSessionScopeCounts: refreshedWorkSessionScopeCounts,
+            importSourceSummaries: importSourceSummaries,
+            completedImports: completedImports,
+            importChildCountsBySessionID: refreshedImportChildCounts,
+            catalogFolders: catalogFolders,
+            sourceRoots: sourceRoots,
+            assetIDsWithBondedSecondaries: assetIDsWithBondedSecondaries,
+            autopilotGhostAssetIDs: autopilotGhostAssetIDs,
+            assets: loadedAssets,
+            totalAssetCount: totalAssetCount,
+            batchSelectionScopeAssetIDs: batchSelectionScopeAssetIDs,
+            proposedPhotos: proposedPhotos,
+            placeProjection: placeProjection,
+            peopleSourceSnapshot: peopleSourceSnapshot
+        )
+    }
+
+    private func publishSavedAssetSetSelection(
+        _ projection: SavedAssetSetSelectionProjection,
+        assetSet: AssetSet
+    ) {
+        savedAssetSets = projection.savedAssetSets
+        assetSetCounts = projection.assetSetCounts
+        smartCollectionCounts = projection.smartCollectionCounts
+        workSessionScopeCounts = projection.workSessionScopeCounts
+        importSourceSummaries = projection.importSourceSummaries
+        completedImports = projection.completedImports
+        importChildCountsBySessionID = projection.importChildCountsBySessionID
+        catalogFolders = projection.catalogFolders
+        sourceRoots = projection.sourceRoots
+        assetIDsWithBondedSecondaries = projection.assetIDsWithBondedSecondaries
+        autopilotGhostAssetIDs = projection.autopilotGhostAssetIDs
+        isAutopilotReviewActive = false
+        proposedPhotos = projection.proposedPhotos
+        workHistorySearchResults = []
+        isWorkHistorySearchActive = false
         selectedAssetSetID = assetSet.id
         // Saving always selects what it just saved, but bypasses
         // `applyAssetSet` (it already has the `AssetSet` in hand), so it
         // owns `selectedSource` itself rather than leaving it stale.
         selectedSource = .assetSet(assetSet.id, titled: assetSet.name)
         clearLibraryQueryFilters()
+        replaceAssets(projection.assets)
+        totalAssetCount = projection.totalAssetCount
+        pruneBatchSelection(retaining: projection.batchSelectionScopeAssetIDs)
+        if let placeProjection = projection.placeProjection {
+            publishPlaceProjection(placeProjection)
+        }
+        if let peopleSourceSnapshot = projection.peopleSourceSnapshot {
+            self.peopleSourceSnapshot = peopleSourceSnapshot
+        }
+        refreshLatestImportPresentation()
         rebuildSidebarSections()
-        try reload()
         statusMessage = "Saved \(assetSet.name)"
-        return assetSet
+        persistSessionState()
     }
 
     public func openCullingSessionPicks() throws {
@@ -11055,17 +11254,28 @@ public final class AppModel {
     /// Picks/export/destructive ops.
     private func refreshProposedAssets() throws {
         guard let catalog,
-              selectedExplicitAssetIDs == nil,
-              let query = currentLibraryQuery(),
-              query.predicates.count == 1,
-              case .person(let name) = query.predicates[0] else {
+              selectedExplicitAssetIDs == nil else {
             proposedPhotos = []
             return
         }
-        let proposed = try catalog.repository.proposedPersonFaces(personName: name)
+        proposedPhotos = try Self.proposedPhotos(
+            matching: currentLibraryQuery(),
+            repository: catalog.repository
+        )
+    }
+
+    private static func proposedPhotos(
+        matching query: SetQuery?,
+        repository: CatalogRepository
+    ) throws -> [ProposedPersonPhoto] {
+        guard let query,
+              query.predicates.count == 1,
+              case .person(let name) = query.predicates[0] else {
+            return []
+        }
+        let proposed = try repository.proposedPersonFaces(personName: name)
         guard !proposed.isEmpty else {
-            proposedPhotos = []
-            return
+            return []
         }
         var order: [AssetID] = []
         var byAsset: [AssetID: [ProposedPersonFace]] = [:]
@@ -11073,9 +11283,9 @@ public final class AppModel {
             if byAsset[face.assetID] == nil { order.append(face.assetID) }
             byAsset[face.assetID, default: []].append(face)
         }
-        let assets = try catalog.repository.assets(ids: order, flag: nil, limit: order.count)
+        let assets = try repository.assets(ids: order, flag: nil, limit: order.count)
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        proposedPhotos = order.compactMap { id in
+        return order.compactMap { id in
             guard let asset = assetByID[id] else { return nil }
             return ProposedPersonPhoto(asset: asset, faces: byAsset[id] ?? [])
         }
@@ -11208,9 +11418,34 @@ public final class AppModel {
         matching query: SetQuery?
     ) throws {
         guard let catalog else { return }
-        catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize, matching: query)
-        catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit, matching: query)
-        geotaggedCoverage = try catalog.repository.geotaggedCoverage(matching: query)
+        publishPlaceProjection(try Self.placeProjection(
+            bounds: bounds,
+            cellSize: cellSize,
+            matching: query,
+            repository: catalog.repository
+        ))
+    }
+
+    private static func placeProjection(
+        bounds: GeoBounds?,
+        cellSize: Double,
+        matching query: SetQuery?,
+        repository: CatalogRepository
+    ) throws -> CatalogPlaceProjection {
+        let clusters = try repository.placeClusters(bounds: bounds, cellSize: cellSize, matching: query)
+        let topLocations = try repository.topLocations(limit: Self.topLocationsDisplayLimit, matching: query)
+        let geotaggedCoverage = try repository.geotaggedCoverage(matching: query)
+        return CatalogPlaceProjection(
+            clusters: clusters,
+            topLocations: topLocations,
+            geotaggedCoverage: geotaggedCoverage
+        )
+    }
+
+    private func publishPlaceProjection(_ projection: CatalogPlaceProjection) {
+        catalogPlaceClusters = projection.clusters
+        catalogTopLocations = projection.topLocations
+        geotaggedCoverage = projection.geotaggedCoverage
     }
 
     /// The Map lens is source-scoped like every other lens. Dynamic scopes
