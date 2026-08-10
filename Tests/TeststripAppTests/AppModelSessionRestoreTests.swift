@@ -344,9 +344,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
         let directory = try makeTemporaryDirectory(named: "restore-ghosts")
         let defaults = try makeIsolatedDefaults()
         let catalogA = try makeCatalog(directory: directory)
-        var ghostAsset = makeAsset(id: "ghost-1", filename: "ghost-1.dng")
-        ghostAsset.metadata.flag = .pick
-        ghostAsset.metadata.aiUnconfirmedFields = [.flag]
+        let ghostAsset = makeGhostAsset(id: "ghost-1", filename: "ghost-1.dng", flag: .pick)
         let plainAsset = makeAsset(id: "plain-1", filename: "plain-1.dng")
         try catalogA.repository.upsert([ghostAsset, plainAsset])
         let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
@@ -365,6 +363,126 @@ final class AppModelSessionRestoreTests: XCTestCase {
         // metadata_json and nothing else, so a relaunched model has no run
         // summary to render a banner from.
         XCTAssertNil(modelB.autopilotRunSummary)
+    }
+
+    func testRestoresMapAreaScopeAndSelection() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-map-area")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let firstInside = makeGeotaggedAsset(
+            id: "map-inside-a",
+            filename: "inside-a.dng",
+            latitude: 10,
+            longitude: 20
+        )
+        let secondInside = makeGeotaggedAsset(
+            id: "map-inside-b",
+            filename: "inside-b.dng",
+            latitude: 11,
+            longitude: 21
+        )
+        let outside = makeGeotaggedAsset(
+            id: "map-outside",
+            filename: "outside.dng",
+            latitude: 40,
+            longitude: 50
+        )
+        try catalogA.repository.upsert([firstInside, secondInside, outside])
+        let bounds = GeoBounds(
+            minLatitude: 9,
+            maxLatitude: 12,
+            minLongitude: 19,
+            maxLongitude: 22
+        )
+        let mapSource = LibrarySource.search(
+            SetQuery(predicates: [.withinGeoBounds(bounds)]),
+            titled: "Map area"
+        )
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectPlaceBounds(bounds)
+        modelA.select(secondInside.id)
+
+        XCTAssertEqual(modelA.selectedSource, mapSource)
+        XCTAssertEqual(modelA.assets.map(\.id), [firstInside.id, secondInside.id])
+        XCTAssertEqual(modelA.selectedAssetID, secondInside.id)
+        let persistedState = try XCTUnwrap(
+            SessionRestoreStore(defaults: defaults, catalogRoot: try makePaths(directory: directory).root).load()
+        )
+        XCTAssertEqual(persistedState.source, mapSource)
+        XCTAssertEqual(persistedState.selectedAssetID, secondInside.id)
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.selectedSource, mapSource)
+        XCTAssertEqual(modelB.assets.map(\.id), [firstInside.id, secondInside.id])
+        XCTAssertEqual(modelB.selectedAssetID, secondInside.id)
+    }
+
+    func testRestoresAISuggestionsScopeAndSelection() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-ai-suggestions")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let pickGhost = makeGhostAsset(id: "ghost-pick", filename: "pick.dng", flag: .pick)
+        let plainAsset = makeAsset(id: "plain", filename: "plain.dng")
+        let rejectGhost = makeGhostAsset(id: "ghost-reject", filename: "reject.dng", flag: .reject)
+        try catalogA.repository.upsert([pickGhost, plainAsset, rejectGhost])
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.autopilotSuggestions)
+        modelA.select(rejectGhost.id)
+
+        XCTAssertEqual(modelA.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(modelA.autopilotGhostAssetIDs, [pickGhost.id, rejectGhost.id])
+        XCTAssertEqual(modelA.assets.map(\.id), [pickGhost.id, rejectGhost.id])
+        XCTAssertEqual(modelA.selectedAssetID, rejectGhost.id)
+        let persistedState = try XCTUnwrap(
+            SessionRestoreStore(defaults: defaults, catalogRoot: try makePaths(directory: directory).root).load()
+        )
+        XCTAssertEqual(persistedState.source, .autopilotSuggestions)
+        XCTAssertEqual(persistedState.selectedAssetID, rejectGhost.id)
+        XCTAssertEqual(
+            try catalogA.repository.assetIDsWithAutopilotGhost(),
+            [pickGhost.id, rejectGhost.id]
+        )
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.selectedSource, .autopilotSuggestions)
+        XCTAssertEqual(modelB.autopilotGhostAssetIDs, [pickGhost.id, rejectGhost.id])
+        XCTAssertEqual(modelB.assets.map(\.id), [pickGhost.id, rejectGhost.id])
+        XCTAssertEqual(modelB.selectedAssetID, rejectGhost.id)
+    }
+
+    func testFallsBackToAllPhotosWhenRestoredAISuggestionsHaveNoGhosts() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-ai-suggestions-empty")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+        let firstGhost = makeGhostAsset(id: "former-ghost-a", filename: "a.dng", flag: .pick)
+        let plainAsset = makeAsset(id: "plain", filename: "plain.dng")
+        let secondGhost = makeGhostAsset(id: "former-ghost-b", filename: "b.dng", flag: .reject)
+        try catalogA.repository.upsert([firstGhost, plainAsset, secondGhost])
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        try modelA.selectSource(.autopilotSuggestions)
+        modelA.select(secondGhost.id)
+        for ghostID in [firstGhost.id, secondGhost.id] {
+            try catalogA.repository.updateMetadata(assetID: ghostID) { metadata in
+                metadata.flag = nil
+                metadata.aiUnconfirmedFields.remove(.flag)
+            }
+        }
+        XCTAssertEqual(try catalogA.repository.assetIDsWithAutopilotGhost(), [])
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.selectedSource, .allPhotos)
+        XCTAssertEqual(modelB.autopilotGhostAssetIDs, [])
+        XCTAssertEqual(modelB.assets.map(\.id), [firstGhost.id, plainAsset.id, secondGhost.id])
+        XCTAssertEqual(modelB.selectedAssetID, secondGhost.id)
     }
 
     func testSessionRestoreDisabledByDefaultDoesNotPersistOrRestore() throws {
@@ -536,14 +654,52 @@ final class AppModelSessionRestoreTests: XCTestCase {
         try repository.upsert(assets)
     }
 
-    private func makeAsset(id: String, filename: String, rating: Int = 0, flag: PickFlag? = nil) -> Asset {
+    private func makeGhostAsset(id: String, filename: String, flag: PickFlag) -> Asset {
+        var asset = makeAsset(id: id, filename: filename)
+        asset.metadata.flag = flag
+        asset.metadata.aiUnconfirmedFields = [.flag]
+        return asset
+    }
+
+    private func makeGeotaggedAsset(
+        id: String,
+        filename: String,
+        latitude: Double,
+        longitude: Double
+    ) -> Asset {
+        makeAsset(
+            id: id,
+            filename: filename,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 100,
+                pixelHeight: 100,
+                latitude: latitude,
+                longitude: longitude,
+                provenance: ProviderProvenance(
+                    provider: "ImageIO",
+                    model: "ImageIO",
+                    version: "1",
+                    settingsHash: "default"
+                )
+            )
+        )
+    }
+
+    private func makeAsset(
+        id: String,
+        filename: String,
+        rating: Int = 0,
+        flag: PickFlag? = nil,
+        technicalMetadata: AssetTechnicalMetadata? = nil
+    ) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
             originalURL: URL(fileURLWithPath: "/Photos/\(filename)"),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(id.count + 1), modificationDate: Date(timeIntervalSince1970: 0)),
             availability: .online,
-            metadata: AssetMetadata(rating: rating, flag: flag)
+            metadata: AssetMetadata(rating: rating, flag: flag),
+            technicalMetadata: technicalMetadata
         )
     }
 }
