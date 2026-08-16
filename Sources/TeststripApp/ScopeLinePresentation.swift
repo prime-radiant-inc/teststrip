@@ -81,7 +81,10 @@ public struct ScopeLinePresentation: Equatable, Sendable {
         if awaitingReviewCount > 0 {
             segments.append("✨ \(awaitingReviewCount) awaiting")
         }
-        segments.append("\(max(cullProgress.totalCount - cullProgress.reviewedCount, 0)) left")
+        if hiddenByLensCount > 0 {
+            segments.append("hidden \(hiddenByLensCount)")
+        }
+        segments.append("\(max(cullProgress.totalCount - hiddenByLensCount - cullProgress.reviewedCount, 0)) left")
         return segments.joined(separator: " · ")
     }
 }
