@@ -10,6 +10,7 @@ struct LibraryGridView: View {
     @State private var isSavingManualSet = false
     @State private var isSavingSnapshotSet = false
     @State private var isStartingCullingSession = false
+    @State private var isStartingCullRunSheet = false
     @State private var isReviewingBatchMetadata = false
     @State private var isShowingSourceReconnectSheet = false
     @State private var savedSearchName = ""
@@ -86,6 +87,9 @@ struct LibraryGridView: View {
         }
         .onChange(of: model.startCullRunRequestToken) { _, _ in
             showStartCullingPopover()
+        }
+        .sheet(isPresented: $isStartingCullRunSheet) {
+            cullingSessionPopover
         }
     }
 
@@ -1671,6 +1675,7 @@ struct LibraryGridView: View {
                 Spacer()
                 Button("Cancel") {
                     isStartingCullingSession = false
+                    isStartingCullRunSheet = false
                 }
                 Button("Start") {
                     beginCullingSession()
@@ -3058,6 +3063,7 @@ struct LibraryGridView: View {
         do {
             try model.beginCullingSession(named: cullingSessionName, intent: cullingSessionIntent)
             isStartingCullingSession = false
+            isStartingCullRunSheet = false
             focusCullingSurface()
         } catch {
             model.errorMessage = error.localizedDescription
@@ -3128,7 +3134,13 @@ struct LibraryGridView: View {
     private func showStartCullingPopover() {
         cullingSessionName = model.suggestedCullingSessionName
         cullingSessionIntent = ""
-        isStartingCullingSession = true
+        // The toolbar Cull button (with its .popover) only exists in browse
+        // mode. In Cull mode the popover has no anchor, so use a sheet.
+        if LensChromePolicy.showsCullButton(model.selectedView) {
+            isStartingCullingSession = true
+        } else {
+            isStartingCullRunSheet = true
+        }
     }
 
     // The sidebar's "⚠ Skipped files" import child (AppModel.selectSidebarRow)
