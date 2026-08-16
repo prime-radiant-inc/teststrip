@@ -2213,6 +2213,11 @@ public final class AppModel {
     // against a frame the user is no longer staging.
     public private(set) var armedStackCommitAssetID: AssetID?
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
+    // SP-D Task 3: unified completion presentation carrying session-level
+    // fields (sessionID, title, picksSetID, remainingSingleAssetIDs) alongside
+    // the run-summary counts. Populated when a formal session completes;
+    // nil for the ad-hoc path and when no session is active.
+    private(set) var cullCompletion: CullCompletionPresentation?
     public private(set) var rejectRelocationSummary: RejectRelocationSummary?
     public private(set) var isRelocatingRejects = false
     private var rejectRelocationAbortRequested = false
@@ -5234,6 +5239,7 @@ public final class AppModel {
     @discardableResult
     public func beginStackCulling(importSessionID: WorkSessionID, title: String) throws -> WorkSession {
         cullingSessionCompletion = nil
+        cullCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -5294,6 +5300,7 @@ public final class AppModel {
     @discardableResult
     public func beginManualCullingFromCompareSet() throws -> WorkSession {
         cullingSessionCompletion = nil
+        cullCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -6113,11 +6120,13 @@ public final class AppModel {
         // contact sheet, never the loupe the run just finished in.
         selectedView = .grid
         cullingSessionCompletion = nil
+        cullCompletion = nil
         statusMessage = "Viewing \(completion.title) Picks"
     }
 
     public func dismissCullingSessionCompletion() {
         cullingSessionCompletion = nil
+        cullCompletion = nil
     }
 
     /// The `.savePicksAsSet` completion action. With an active culling
@@ -6236,6 +6245,7 @@ public final class AppModel {
     @discardableResult
     public func beginCullingSession(named name: String, intent: String = "") throws -> WorkSession {
         cullingSessionCompletion = nil
+        cullCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -13388,18 +13398,32 @@ public final class AppModel {
     ) {
         if session.status == .completed, previousStatus != .completed {
             let picksSetID = Self.cullingOutputSetID(sessionID: session.id)
+            let resolvedPicksSetID = session.outputSetIDs.contains(picksSetID) ? picksSetID : nil
             cullingSessionCompletion = CullingSessionCompletionSummary(
                 sessionID: session.id,
                 title: session.title,
                 pickCount: decisionCounts.pick,
                 rejectCount: decisionCounts.reject,
-                picksSetID: session.outputSetIDs.contains(picksSetID) ? picksSetID : nil,
+                picksSetID: resolvedPicksSetID,
                 remainingSingleAssetIDs: remainingSingleAssetIDs
             )
+            // SP-D Task 3: populate the unified completion presentation with
+            // session-level fields alongside the run-summary counts.
+            var completion = CullCompletionPresentation.summary(
+                assets: assets,
+                viewedAssetIDs: cullRunTracker.viewedAssetIDs,
+                skippedAssetIDs: cullRunTracker.skippedAssetIDs
+            )
+            completion.sessionID = session.id
+            completion.title = session.title
+            completion.picksSetID = resolvedPicksSetID
+            completion.remainingSingleAssetIDs = remainingSingleAssetIDs
+            cullCompletion = completion
             return
         }
         if session.status != .completed, cullingSessionCompletion?.sessionID == session.id {
             cullingSessionCompletion = nil
+            cullCompletion = nil
         }
     }
 
