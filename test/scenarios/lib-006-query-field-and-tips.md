@@ -1,7 +1,7 @@
 # lib-006-query-field-and-tips: the query field's icons drive parse+submit, and the tips popover lists the token groups
 
 **What this covers**: the Library token query field (`queryTokenField`,
-`Sources/TeststripApp/LibraryGridView.swift:554-...`) has a leading
+`Sources/TeststripApp/LibraryGridView.swift:625-739`) has a leading
 "Add a filter" menu accessory (`addFilterMenu`, rendered as
 `DesignGlyph.filterMenu` = `line.3.horizontal.decrease`, per spec §2b —
 `sparkles` no longer doubles as the query icon and the old standalone
@@ -27,7 +27,7 @@ No seeding needed beyond `--smoke`. Confirmed against a seeded catalog
 2026-07-10: `TOTAL=24`, `PICKS=6`.
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.
+1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for the Grid lens.
 2. `ax_drive.sh find --role AXTextField --contains "Search photos, people, places, or rating:3 camera:… "`
    confirms the field exists (placeholder text). Also
    `ax_drive.sh find --role AXButton --help "Add a filter"` confirms the
@@ -69,16 +69,17 @@ No seeding needed beyond `--smoke`. Confirmed against a seeded catalog
   xmpPending, xmpConflict, needsKeywords, needsEvaluation, likelyIssues,
   providerFailures — all covered by the 8 grouped rows).
 
-7. **⌘F focus (persona-3 item 2).** From the Cull workspace, press ⌘F.
-   Assert the app switches to Library (⌘I-style route: `AppModel
-   .requestFocusSearch` calls `selectWorkspace(.library)` before bumping
-   `focusSearchRequestToken`) and the query text field gains keyboard
+7. **⌘F focus (persona-3 item 2).** From the Cull lens, press ⌘F.
+   Assert the app switches to the Grid lens (`AppModel
+   .requestFocusSearch` calls `selectLens(.grid)`, `AppModel.swift:2543-2548`,
+   only when the current lens doesn't already show the search field, before
+   bumping `focusSearchRequestToken`) and the query text field gains keyboard
    focus (`ax_drive.sh find --role AXTextField --contains "Search photos"`
    reports it as the focused element). Type immediately without clicking;
    assert the typed text lands in the field.
-8. **Cycle Filter gating.** In Library, open the Culling menu and confirm
+8. **Cycle Filter gating.** In the Grid lens, open the Culling menu and confirm
    "Cycle Filter (S)" is disabled/grayed (`CullingKeyCaptureGate.isActive`
-   requires workspace `.cull` and a non-grid sub-view — Library is neither,
+   requires lens `.cull` and a non-grid sub-view — Grid is neither,
    so the item is correctly inert there, not a bug). Switch to Cull ▸
    Loupe and confirm the same item is enabled and pressing `s` cycles the
    filter scope.
@@ -100,14 +101,29 @@ noting since every other row shows a literal token prefix.
 ## Run status
 NOT RUN — GUI/AX driving was not attempted this session (constraints
 forbade live GUI launches). Field/button/popover structure confirmed by
-reading `Sources/TeststripApp/LibraryGridView.swift:554-644` directly
-(`queryTokenField`, `submitQueryTokenField()` at 601-604, `searchTipsPopover`
-at 606-633, `Self.searchTokenTips` at 635-644 — read in full, count is 8).
+reading `Sources/TeststripApp/LibraryGridView.swift:625-739` directly
+(`queryTokenField`, `submitQueryTokenField()` at 686-695, `searchTipsPopover`
+at 697-728, `Self.searchTokenTips` at 730-739 — read in full, count is 8).
 SQL in Pre-state was dry-run headlessly against a fresh `--smoke` catalog on
 2026-07-10 via `script/build_and_run.sh --smoke`, reading
 `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` off the running process
 (`TOTAL=24`, `PICKS=6`); schema per
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift`.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: Step 1's
+⌘2 preamble ("Library") and Step 7-8's "Cull/Library workspace" language
+described the deleted `Workspace` enum. Fixed the ⌘2 preamble to "Grid
+lens," and rewrote Step 7's mechanism citation: `requestFocusSearch()` no
+longer calls a deleted `selectWorkspace(.library)` — it calls
+`selectLens(.grid)` (`AppModel.swift:2543-2548`), only when the current lens
+doesn't already show the search field. Step 8's `CullingKeyCaptureGate`
+citation was reworded from "workspace `.cull`" to "lens `.cull`" (the
+predicate itself is unchanged, `lens == .cull && selectedView !=
+.cullGrid`, `CullingKeyCaptureView.swift:12-14` — only the parameter name
+changed, per `cull-001-workspace-key-gating.md`'s Step 1-3 rewrite).
+Supersedes prior status: no prior run evidence exists to invalidate (still
+NOT RUN); the fix only affects what a future runner would read as ground
+truth.
 
 ## Fix notes (persona-fixes-5, 2026-07-11)
 PENDING-VM: search-field focus now releases on submit

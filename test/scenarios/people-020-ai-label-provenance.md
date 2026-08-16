@@ -13,21 +13,22 @@ counterpart to the unit suite (`Tests/TeststripAppTests/AppModelTests.swift`,
 assembled AppKit UI and asserts against the live catalog/filesystem, not a
 mock.
 
-Source (current working tree, `feat/machine-label-provenance`):
+Source (current working tree, `feat/unified-shell`):
 - **Promotion** (auto-apply): `AppModel.promoteMetadataLabels(for:)`
-  (`Sources/TeststripApp/AppModel.swift:7413`, floor
-  `objectKeywordConfidenceFloor = 0.5` at `:7404` — an `.object` evaluation
+  (`Sources/TeststripApp/AppModel.swift:8678-8705`, floor
+  `objectKeywordConfidenceFloor = 0.5` at `:8285` — an `.object` evaluation
   signal at/above this confidence adds each label to `keywords` +
-  `aiUnconfirmedKeywords`) and `AppModel.promoteFaceMatches(for:)` (`:3641` —
+  `aiUnconfirmedKeywords`) and `AppModel.promoteFaceMatches(for:)` (`:3772-3795`,
+  with centroid provenance at `:3611-3617` —
   matches unassigned faces against **confirmed-only** (`origin='user'`)
   person centroids and inserts a face-level `origin='ai'` `person_faces` row,
   **never** a `person_assets` row). Both are wired into the post-evaluation
-  path by `promoteEvaluationResults(for:)` (`:9643`), called once per
+  path by `promoteEvaluationResults(for:)` (`:10499-10509`), called once per
   `(asset, provider)` evaluation completion — **not** by any UI
   navigation/refresh gesture (see Sharp edges).
-- **Confirm/remove**: `confirmAIKeyword`/`removeAIKeyword` (`:7447`/`:7462`),
-  `confirmAIField`/`removeAIField` (`:7477`/`:7497` — `.caption`/`.flag`/
-  `.rating`), `confirmAIFace`/`rejectFaceSuggestion` (`:3795`/`:3809`).
+- **Confirm/remove**: `confirmAIKeyword`/`removeAIKeyword` (`:8328`/`:8343`),
+  `confirmAIField`/`removeAIField` (`:8358`/`:8378` — `.caption`/`.flag`/
+  `.rating`), `confirmAIFace`/`rejectFaceSuggestion` (`:3948`/`:3962`).
   Confirming a keyword/caption/field writes the `.xmp` (via the existing
   `applyMetadataSnapshot` sidecar-sync path); confirming a face flips
   `person_faces.origin` to `user` and upserts `person_assets`, and writes
@@ -39,12 +40,12 @@ Source (current working tree, `feat/machine-label-provenance`):
   are dropped before anything reaches disk, regardless of which write path
   fires.
 - **Autopilot fold-in**: `AppModel.runAutopilotOnCurrentScope()`
-  (`AppModel.swift:9772`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
+  (`AppModel.swift:10146-10158`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
   `app-012-autopilot-evaluate-commands.md`) → `runAutopilot(scope:)` →
-  `applyTentativeAutopilotProposals(_:)` (`AppModel.swift:9712`) writes each
+  `applyTentativeAutopilotProposals(_:)` (`AppModel.swift:10086-10133`) writes each
   `.pick`/`.reject` proposal into `metadata.flag` **immediately**, marked
   `aiUnconfirmedFields = [.flag]`, unless the asset already carries a
-  **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:9728`) — this is the
+  **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:10102-10105`) — this is the
   headline behavior change from the pre-provenance model: the tentative
   write itself (the "ghost," `AutopilotGhost.kind(in:)`) lands in
   `metadata_json` immediately; SP-D0 later dropped the `autopilot_proposals`
@@ -52,11 +53,12 @@ Source (current working tree, `feat/machine-label-provenance`):
   the ghost sitting in the asset's own metadata is the whole record, and the
   catalog write never waited for a Commit in the first place.
 - **Tentative-flag exclusion (safety-critical)**: `rejectRelocationScope`
-  (`AppModel.swift:12030`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
-  (`AppModel.swift:12052`) before it can ever reach a `RejectRelocationPlan` — a tentative
+  (`AppModel.swift:12561-12605`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
+  (`AppModel.swift:12583-12585`) before it can ever reach a `RejectRelocationPlan` — a tentative
   AI reject can never be included in Move Rejects (folder) or Move Rejects to
-  Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`/
-  `confirmationText` (`Sources/TeststripApp/AppModel.swift:1460-1466`) reflect
+  Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`
+  (`Sources/TeststripApp/AppModel.swift:1444`) and `confirmationText`
+  (`AppModel.swift:1448-1450`) reflect
   the same confirmed-only count, so the sheet's own button label ("Move N
   reject photo(s) to `<folder>`") is a live, AX-visible witness of the
   exclusion.
@@ -160,7 +162,7 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    `--role AXMenuItem` usage for "Scan for Faces"). This calls
    `requestVisibleAssetEvaluations(providers: defaultEvaluationProviderNames)`
    = `["local-image-metrics", "apple-vision", "core-image-faces"]`
-   (`AppModel.swift:2485-2486`) — **apple-vision is in this list**, so this
+   (`AppModel.swift:2683`) — **apple-vision is in this list**, so this
    one pass also produces `face_observations` (the same code path
    `People ▸ Scan for Faces` uses, per `people-009-scan.md`) and gives
    autopilot richer signals than a face-only scan would. Keep the app warm
@@ -248,8 +250,8 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    any other UI refresh (unlike the old in-memory `peopleFaceSuggestions`
    mechanism `inspect-010-photo-faces.md`'s step 15 relies on, which is a
    *different* code path still used only by the separate multi-asset People
-   workspace review UI). Select `commons-glenn-1962.jpg` (`$GLENN_1962_ID`,
-   captured in step 7; ⌘2 Library, click its thumbnail) then
+   lens review UI). Select `commons-glenn-1962.jpg` (`$GLENN_1962_ID`,
+   captured in step 7; ⌘2 Grid, click its thumbnail) then
    `ax press --role AXMenuItem --label "Evaluate Photo"` (single-asset;
    `requestEvaluation` has no "already evaluated" gate, only an "already
    *active*" one — a second call re-enqueues and re-completes it, re-firing
@@ -287,9 +289,9 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
 ### 4. A real (confirmed) reject as the control, before autopilot runs
 12. Pick a control asset not otherwise touched above — `commons-armstrong-eva-training.jpg`
     (if this happens to be the asset promoted a keyword in step 3, substitute
-    `commons-ride-sts7.jpg`). Select it (⌘2 Library, click its thumbnail),
+    `commons-ride-sts7.jpg`). Select it (⌘2 Grid, click its thumbnail),
     ⌘I, then `ax press --role AXButton --label "Reject"`
-    (`InspectorView.swift:991-999`, `model.setFlagForSelectedAssets(.reject)`
+    (`InspectorView.swift:992`, `model.setFlagForSelectedAssets(.reject)`
     — a direct user gesture, `origin` is never `ai` for this path). Assert:
     ```bash
     MANUAL_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-armstrong-eva-training.jpg';")
@@ -343,7 +345,7 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
     gate (disabled primary + standing hint while unchecked, per
     `app-010-move-rejects.md`'s step 4): the toggle's accessible label is
     `preflight.confirmationText` — the *same* string as the primary button
-    ("Move N reject photo(s) to `<folder>`", `LibraryGridView.swift:3380`),
+    ("Move N reject photo(s) to `<folder>`", `LibraryGridView.swift:3379`),
     so a `--contains "confirm"` filter matches nothing; it's the only
     checkbox in the sheet, so `ax find --role AXCheckBox` (bare, no label
     filter) is the reliable match. `ax press --role AXCheckBox` it, then

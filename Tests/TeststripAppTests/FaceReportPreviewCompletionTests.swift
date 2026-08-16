@@ -49,8 +49,8 @@ final class FaceReportPreviewCompletionTests: XCTestCase {
 
         // The view reads faceReportPreviewSource on every render, including
         // before any preview exists -- exactly what `currentFaceReport(for:)`
-        // (LibraryGridView.swift:4306-4312) and `faceReportSweepKey(for:)`
-        // (:4924-4932) do. This is the read that must not permanently poison
+        // (LibraryGridView.swift:4192-4198) and `faceReportSweepKey(for:)`
+        // (:4810-4818) do. This is the read that must not permanently poison
         // the memoized lookup.
         XCTAssertNil(model.faceReportPreviewSource(for: asset.id))
         let initialGeneration = model.previewCacheGeneration(for: asset.id)
@@ -195,7 +195,7 @@ final class FaceReportPreviewCompletionTests: XCTestCase {
     // configuration: requestVisibleCullPreview (not the lower-level
     // requestPreview) is exactly what LoupeContentKey's task calls, and it
     // requests BOTH .medium and .large (requestVisibleLoupeAssetPreview,
-    // AppModel.swift:9399-9418). Critically, AppCatalog.managedWorkerKindRunningLimits
+    // AppModel.swift:9389-9408). Critically, AppCatalog.managedWorkerKindRunningLimits
     // caps .previewGeneration at 1 concurrent item -- so unlike the generous-
     // concurrency tests above, .large stays QUEUED (not running) behind
     // .medium in the real app, and only starts once .medium's completion

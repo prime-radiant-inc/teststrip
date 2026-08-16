@@ -2,7 +2,7 @@
 
 **What this covers**: Jesse's one-button "show me the keepers". Inventory
 item 38: `Culling ▸ Find Best Shots` (⇧⌘B) is read-only and routes via
-`FindBestShotsRouter.plan` (`Sources/TeststripApp/AppModel.swift:793-821`):
+`FindBestShotsRouter.plan` (`Sources/TeststripApp/AppModel.swift:697-725`):
 (a) potential picks exist → Potential Picks queue; (b) none but
 committed picks exist → Picks queue; (c) nothing ranks and nothing left to
 evaluate → status message "These look too distinct to auto-rank — rate a few
@@ -19,7 +19,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 Keep the app warm during the evaluation wait (re-assert frontmost each poll).
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Library).
+1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Grid lens).
 2. **Read-only baseline.** Snapshot the catalog's user-visible metadata:
    ```bash
    sqlite3 "$DB" ".dump assets" | shasum > /tmp/before.sha
@@ -82,7 +82,7 @@ applied, deviating from the task brief.** The brief called for this card's
 three uses of "proposals" (Steps 4/5, Sharp edges) to become "ghosts", on
 the assumption they referred to autopilot's proposal mechanism. Source
 check: `ReviewQueue.potentialPicks` compiles to `SetQuery(predicates:
-[.likelyPick])` (`Sources/TeststripCore/Catalog/CatalogRepository.swift:3155-3175`)
+[.likelyPick])` (`Sources/TeststripCore/Catalog/CatalogRepository.swift:3274-3294`)
 — a quality-score threshold query (`json_extract(metadata_json,'$.flag')
 IS NULL AND EXISTS (... evaluation_signals ...)`) with no reference to
 `AutopilotProposal`, `autopilot_proposals`, or `AutopilotGhost` anywhere.
@@ -93,3 +93,14 @@ autopilot mechanism that does not exist in source. Left unchanged; flagging
 for Jesse rather than silently complying with an instruction the source
 doesn't support. Otherwise no `autopilot_proposals` table reference exists
 anywhere in this card. Needs a fresh VM run (unrelated to this review).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+preamble pressed ⌘2 for "Library" — the two-workspace `Workspace` enum's ⌘2;
+that enum is gone and ⌘2 now selects the Grid lens (`LibraryLens.
+keyEquivalent`, `LibraryLens.swift:44-51`). Retitled to "Grid lens." Preamble
+only; the assertions were not affected — `FindBestShotsRouter.plan` and the
+three outcomes it routes to don't care which lens was active before ⇧⌘B was
+pressed. Supersedes prior status: the 2026-08-06 review above covered
+terminology only and is still valid on its own terms, but neither it nor any
+earlier evidence was gathered against a build where ⌘2 meant anything other
+than the deleted Library workspace — needs a fresh VM run.

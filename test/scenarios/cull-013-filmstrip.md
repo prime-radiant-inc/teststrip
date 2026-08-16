@@ -34,8 +34,9 @@ filmstrip's stacks come from `model.allCullingStacks(for: scopedAssets)` —
 the in-memory `AssetStackBuilder` clustering by capture-time proximity
 (`model.burstIntervalSeconds`, a persisted Settings preference — default
 `AssetStackBuilder.defaultMaximumCaptureGap = 2` seconds,
-`AppModel.swift:2543`), the same builder that backs the auto-grouped rows in
-`CullSidebarView`. This is a
+`AppModel.swift:2523`), the same builder that backs the sidebar's
+"Stacks · Auto-Grouped" section (`SidebarView.swift:46-53`, Cull-lens-only).
+This is a
 **different mechanism** from the `work-stack-` `asset_sets` rows used by the
 Return-gesture card (`cull-pass-scope-and-undo.md`). **`--smoke`'s synthetic
 photos are seeded 900 seconds apart** (`SmokeCatalogSeeder.swift:105`), which
@@ -152,3 +153,38 @@ script/vm_scenario_run.sh ax wait-vended
 
 ## Run status
 UNRUN — needs human-present execution per test/scenarios/README.md
+
+**Reconciled 2026-08-09 (Task 13 review follow-up, unified-shell push)**:
+fixed one orphan citation — "the same builder that backs the auto-grouped
+rows in `CullSidebarView`" named a type deleted by this push. Corrected to
+"the sidebar's 'Stacks · Auto-Grouped' section" (`SidebarView.swift:46-53`,
+Cull-lens-only), the real successor, and fixed an adjacent drifted line
+citation (`AppModel.swift:2543` → `:2447` for `burstIntervalSeconds`) found
+while re-reading the same paragraph.
+**Found but explicitly NOT fixed — flagging per the "name it, don't silently
+fix" discipline**: while verifying the `CullSidebarView` citation, every
+other symbol this card's intro cites for the filmstrip itself
+(`cullingFilmstrip`, `filmstripTile`/`filmstripDecisionBar`'s claimed
+`:4109-4171` range, and `CullFilmstripPresentation`'s claimed `positionText`
+property and its exact "frame X/N · stack A/B" format) no longer exists.
+`LibraryGridView.swift`'s own comment at its "Task 6" doc block (immediately
+above `runStrip(isStackActive:)`, `:4480-4524`) says this flat filmstrip was
+**replaced** by a "run strip" of one stop per auto-grouped stack — a
+different, larger redesign than anything in the unified-shell push, and
+apparently predating it (`cull-025-run-strip-completion.md` already exists
+and covers the run strip's stops/windowing). `CullFilmstripPresentation`
+itself is still live but now exposes a single `tripleCounterText` property
+computed from a different format string ("N of T · stack S of Σ · frame F of
+M", `CullFilmstripPresentation.swift:6-78`) — not the `positionText`/
+`frameNumberOffset`/`totalFrameCount` stored-properties shape or the "frame
+X/N" wording this card's intro, Pre-state, and presumably its Steps describe
+throughout. This is a pre-existing staleness independent of unified-shell
+(like `app-003`/`app-005` in the original Task 13 sweep) that a full read of
+this card's Steps/Expected would very likely confirm runs much deeper than
+the two citations fixed above — it needs a dedicated rewrite against the
+current `runStrip`/`CullRunStripPresentation`/`CullFilmstripPresentation`
+code, not a citation-only patch, and is out of scope for this pass.
+**Supersedes prior status**: the LEDGER's "Verified"/"final-verify run PASS"
+status is itself inconsistent with this card's own UNRUN line above; neither
+is valid evidence now that the filmstrip UI they describe has been replaced.
+Needs a fresh VM run — after the run-strip rewrite, not before.

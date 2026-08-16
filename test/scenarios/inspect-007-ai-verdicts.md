@@ -126,7 +126,7 @@ and re-queried). Wiring confirmed statically:
 `Sources/TeststripApp/InspectorView.swift:128-281`
 (`InspectorEvaluationSignalRow`, `SignalVerdict`,
 `InspectorEvaluationSignalGroup`, group/verdict/provenance construction),
-`:624-633` (`aiTabBody`), `:1208-1261` (`evaluationSignals` view, the
+`:667-676` (`aiTabBody`), `:1333-1386` (`evaluationSignals` view, the
 DisclosureGroup). Needs a human-present re-run, including a real evaluation
 pass to populate `evaluation_signals` before the AX steps can be driven. All
 SQL in this card was run headlessly against a seeded --smoke catalog on

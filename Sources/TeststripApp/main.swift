@@ -3,20 +3,10 @@ import Contacts
 import SwiftUI
 
 struct AppWindowLayoutMetrics {
-    /// Per-workspace minimum window width (Task 22): the prior single global
-    /// 1520pt floor forced every workspace to pay for Library's chrome
-    /// (sidebar + inspector + footer). Library keeps the widest floor for its
-    /// search/filter-token/footer chrome; Cull is narrower since it lacks
-    /// those, but (Task 5) both workspaces can show the inspector column.
-    /// People rides the Library floor (it's a Library view). Sidebar/inspector
-    /// collapse before content squeezes below these.
-    static func minimumWidth(for workspace: Workspace) -> CGFloat {
-        switch workspace {
-        case .library: return 1_000
-        case .cull: return 800
-        }
-    }
-
+    /// One window, one floor. The per-workspace 1000/800 split went away with
+    /// the Cull|Library split — there is no longer a workspace paying for
+    /// another workspace's chrome.
+    static let minimumWidth: CGFloat = 1_000
     static let defaultWidth: CGFloat = 1_520
     static let minimumHeight: CGFloat = 720
     static let defaultHeight: CGFloat = 820
@@ -41,22 +31,18 @@ struct TeststripApplication: App {
     var body: some Scene {
         WindowGroup {
             NavigationSplitView {
-                if model.selectedWorkspace == .cull {
-                    CullSidebarView(model: model)
-                } else {
-                    SidebarView(model: model)
-                }
+                SidebarView(model: model)
             } detail: {
                 LibraryGridView(model: model)
             }
             .inspector(isPresented: Binding(
-                get: { model.isInspectorVisible && WorkspaceChromePolicy.showsInspector(model.selectedView) },
+                get: { model.isInspectorVisible && LensChromePolicy.showsInspector(model.selectedView) },
                 set: { model.isInspectorVisible = $0 }
             )) {
                 InspectorView(model: model)
             }
             .frame(
-                minWidth: AppWindowLayoutMetrics.minimumWidth(for: model.selectedWorkspace),
+                minWidth: AppWindowLayoutMetrics.minimumWidth,
                 minHeight: AppWindowLayoutMetrics.minimumHeight
             )
             .preferredColorScheme(.dark)
@@ -76,7 +62,7 @@ struct TeststripApplication: App {
             CommandGroup(replacing: .newItem) {}
             Group {
                 FileCommands(model: model)
-                WorkspaceCommands(model: model)
+                LensCommands(model: model)
                 MetadataHistoryCommands(model: model)
                 SearchCommands(model: model)
                 NavigationCommands(model: model)
@@ -98,22 +84,19 @@ struct TeststripApplication: App {
     }
 }
 
-/// Canonical menu action ids (Task 22): the workspace/sub-view/inspector-tab/
+/// Canonical menu action ids (Task 22): the lens/sub-mode/inspector-tab/
 /// zoom menu items below are built ad hoc as SwiftUI `Button`s rather than
 /// from a data-driven presentation type (as `CullingCommands` is), so this
 /// gives `MenuCoveragePresentationTests` something to enumerate against the
 /// underlying action-producing enums. Update alongside the Commands below
 /// whenever a menu item is added, renamed, or removed.
 enum AppMenuCoveragePresentation {
-    static let workspaceActionIDs: [String] = Workspace.allCases.map(\.title)
+    static let lensActionIDs: [String] = LibraryLens.allCases.map(\.title)
 
-    /// Sub-view switcher items (Task 10 Library / Task 18 Cull). People is now
-    /// a Library sub-view (peer of Grid/Loupe/Timeline/Map), so it joins the
-    /// Library group here alongside the sub-view toggle.
-    static let subViewMenuModes: [LibraryViewMode] = [
-        .loupe, .cullGrid, .compare, .abCompare,
-        .grid, .libraryLoupe, .timeline, .map, .people
-    ]
+    /// The Cull lens's transient sub-modes, which keep their own View-menu
+    /// items below the lens divider. They are reached by g/c/b in the loupe;
+    /// the menu items exist because menus are the system of record.
+    static let cullSubModeMenuModes: [LibraryViewMode] = [.loupe, .cullGrid, .compare, .abCompare]
 
     // Task 6: the inspector is a single stacked scroll, not tabs, so these
     // menu items scroll to a section rather than switch to it.
@@ -156,65 +139,58 @@ enum AppMenuCoveragePresentation {
 }
 
 extension LibraryViewMode {
-    /// Title shown in the View menu's sub-view switcher. Every mode has a
-    /// title now that People is a Library sub-view rather than a workspace.
-    var subViewMenuTitle: String? {
+    /// Title shown in the View menu's Cull sub-mode group. Nil for the five
+    /// routes that are a lens's default — those are reached by ⌘1–⌘6.
+    var cullSubModeMenuTitle: String? {
         switch self {
         case .loupe: return "Loupe"
-        case .cullGrid: return "Grid"
+        case .cullGrid: return "Cull Grid"
         case .compare: return "Compare"
         case .abCompare: return "A/B Compare"
-        case .grid: return "Library Grid"
-        case .libraryLoupe: return "Library Loupe"
-        case .timeline: return "Timeline"
-        case .map: return "Map"
-        case .people: return "People"
+        case .grid, .libraryLoupe, .timeline, .map, .people: return nil
         }
     }
 
-    // The cull sub-view keys (g/c/b) are owned solely by the in-view key
-    // monitors (CullingKeyCaptureView in loupe/compare/A-B,
-    // GridKeyCaptureView in the cull grid). Binding them here as bare menu
-    // key equivalents dispatched a second, mode-blind `selectedView = mode`
-    // ~150ms after the monitor's switch — from the cull grid, G flipped to
-    // loupe and the menu equivalent immediately flipped back to cullGrid,
-    // making G/Esc appear inert (run-cull-iter2 cull-008). Menus stay
-    // clickable; the ? key map documents the keys.
+    // The cull sub-mode keys (g/c/b) are owned solely by the in-view key
+    // monitors (CullingKeyCaptureView in loupe/compare/A-B, GridKeyCaptureView
+    // in the cull grid). Binding them here as bare menu key equivalents
+    // dispatched a second, mode-blind `selectedView = mode` ~150ms after the
+    // monitor's switch — from the cull grid, G flipped to loupe and the menu
+    // equivalent immediately flipped back to cullGrid, making G/Esc appear
+    // inert (run-cull-iter2 cull-008). Menus stay clickable; the ? key map
+    // documents the keys.
 }
 
-private struct WorkspaceCommands: Commands {
+private struct LensCommands: Commands {
     var model: AppModel
 
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            ForEach(Workspace.allCases, id: \.self) { workspace in
-                Button(workspace.title) {
-                    model.selectWorkspace(workspace)
+            ForEach(LibraryLens.allCases, id: \.self) { lens in
+                Button(lens.title) {
+                    model.selectLens(lens)
                 }
-                .keyboardShortcut(workspace.keyEquivalent, modifiers: [.command])
+                .keyboardShortcut(lens.keyEquivalent, modifiers: [.command])
+                .disabled(!model.lensAvailability(for: lens).isEnabled)
             }
 
             Divider()
 
-            // Menus stay the system of record even though the sub-view
-            // switchers (in-view key captures, header toggle) also reach
-            // these routes.
-            ForEach(AppMenuCoveragePresentation.subViewMenuModes, id: \.self) { mode in
-                subViewButton(for: mode)
+            // Menus stay the system of record even though the in-view key
+            // captures also reach these routes.
+            ForEach(AppMenuCoveragePresentation.cullSubModeMenuModes, id: \.self) { mode in
+                cullSubModeButton(for: mode)
             }
         }
     }
 
     @ViewBuilder
-    private func subViewButton(for mode: LibraryViewMode) -> some View {
-        // Divider between the cull and library sub-view groups (Tasks 18/10).
-        if mode == .grid {
-            Divider()
-        }
-        if let title = mode.subViewMenuTitle {
+    private func cullSubModeButton(for mode: LibraryViewMode) -> some View {
+        if let title = mode.cullSubModeMenuTitle {
             Button(title) {
-                model.selectedView = mode
+                model.selectCullSubMode(mode)
             }
+            .disabled(!model.lensAvailability(for: .cull).isEnabled)
         }
     }
 }
@@ -303,8 +279,8 @@ private struct MetadataHistoryCommands: Commands {
 // Edit ▸ Find ⌘F: the standard macOS Find placement (below Paste/Select,
 // same slot AppKit text views use for their own Find item), not a
 // CommandGroup(replacing: .textEditing) — that would blow away Cut/Copy/
-// Paste/Select All for every text field in the app. Focuses the Library
-// query field; from Cull/People it switches to Library first (see
+// Paste/Select All for every text field in the app. Focuses the browse-lens
+// query field; from Cull/People it switches to Grid first (see
 // AppModel.requestFocusSearch).
 private struct SearchCommands: Commands {
     var model: AppModel
@@ -377,7 +353,7 @@ private struct MetadataActionCommands: Commands {
     }
 }
 
-// The People workspace's scan trigger (Task 21): it leaves the canvas so
+// The People lens's scan trigger (Task 21): it leaves the canvas so
 // the queue can own the Return-confirm keystroke without a stray button
 // stealing focus. Progress reports through the Activity item like any
 // other evaluation pass (requestPeopleFaceScan reuses the same
@@ -492,11 +468,11 @@ private struct CullingCommands: Commands {
                     .keyboardShortcut(item.key.menuKeyboardShortcut)
                     // These bare (no-modifier) shortcuts mirror
                     // CullingKeyCaptureView's local key monitor, which
-                    // CullingKeyCaptureGate scopes to the Cull workspace's
-                    // loupe/compare/A-B sub-views only. SwiftUI menu
-                    // .keyboardShortcut bindings are workspace-blind, so
-                    // without this the menu (and its keyboard equivalent)
-                    // would leak flag/rating writes into e.g. Library Loupe.
+                    // CullingKeyCaptureGate scopes to the Cull lens's
+                    // loupe/compare/A-B sub-modes only. SwiftUI menu
+                    // .keyboardShortcut bindings are lens-blind, so without
+                    // this the menu (and its keyboard equivalent) would leak
+                    // flag/rating writes into e.g. the Loupe lens.
                     .disabled(!model.isCullingMenuShortcutActive)
                 }
                 if index < CullingCommandMenuPresentation.sections.count - 1 {

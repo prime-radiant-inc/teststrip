@@ -40,6 +40,12 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case metadataSyncConflict
         case importBatch(String)
         case workSession(String)
+        /// Membership in one saved set's STATIC membership (`.manual` /
+        /// `.snapshot`). A `.dynamic` set's membership is its own query and
+        /// reaches SQL that way instead, so it matches nothing here.
+        case assetSet(AssetSetID)
+        /// Membership in an explicit runtime scope that has no saved set.
+        case assetIDs([AssetID])
     }
 
     public var predicates: [Predicate]

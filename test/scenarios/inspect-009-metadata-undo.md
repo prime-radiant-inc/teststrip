@@ -3,7 +3,7 @@
 **What this covers**: the inspector's metadata edits go through a dedicated
 undo/redo stack (`metadataUndoStack`/`metadataRedoStack` on `AppModel`) that
 **replaces** AppKit's standard `.undoRedo` command group
-(`CommandGroup(replacing: .undoRedo)`, `main.swift:249`) rather than layering
+(`CommandGroup(replacing: .undoRedo)`, `main.swift:247`) rather than layering
 on top of it — so ⌘Z/⇧⌘Z for metadata edits is a distinct mechanism from any
 other undo surface in the app. Each change group carries a human-readable
 label (e.g. "Rating · 3 photos" for a 3-photo batch edit), and starting a new
@@ -37,27 +37,27 @@ undo must restore the *exact* prior value, not a bare "0".
    pending undo label short of the (disabled-by-default, but here we're
    asserting content not disabled-state) Edit menu item text — assert the
    menu's "Undo Metadata Change" item is enabled
-   (`model.canUndoMetadataChange`, `main.swift:255-256`). If the menu item
+   (`model.canUndoMetadataChange`, `main.swift:248-252`). If the menu item
    title itself is dynamic elsewhere in the app (some AppKit undo surfaces
    append the action name), check for a title containing "Rating · 3 photos"
    (`photoCountDescription`, scoped label built in
-   `updateSelectedAssetsMetadata`, `AppModel.swift:6467-6470`); if the menu
+   `updateSelectedAssetsMetadata`, `AppModel.swift:8514-8517`); if the menu
    title is static ("Undo Metadata Change" always, not dynamically suffixed
-   per `main.swift:252-256`'s hardcoded string), note that the label is
+   per `main.swift:248-252`'s hardcoded string), note that the label is
    consumed by `model.lastUndoableActionLabel`
-   (`AppModel.swift:2386-2388`) and/or `model.statusMessage` rather than the
+   (`AppModel.swift:2890-2892`) and/or `model.statusMessage` rather than the
    menu text — confirm which surface actually renders "Rating · 3 photos" to
    the user on the live run and correct this step's exact assertion target.
 4. Press ⌘Z. Assert all three assets revert to their pre-seeded ratings
    (`$RATING_A_BEFORE`/`$RATING_B_BEFORE`/`$RATING_C_BEFORE`, not a blanket
    0) — `undoMetadataChange` applies `change.before` per asset
-   (`AppModel.swift:6402-6409`), so a batch of 3 with mixed starting ratings
+   (`AppModel.swift:8448-8455`), so a batch of 3 with mixed starting ratings
    must restore each to its own prior value, not a shared one. Confirm
    `model.statusMessage` (if surfaced in the UI, e.g. a toast/status bar)
-   reads "Undid: Rating · 3 photos" (`AppModel.swift:6408`).
+   reads "Undid: Rating · 3 photos" (`AppModel.swift:8454`).
 5. Press ⇧⌘Z (Redo). Assert all three assets are back to rating 5. Confirm
    the redo status text if visible: "Redid: Rating · 3 photos"
-   (`AppModel.swift:6417`).
+   (`AppModel.swift:8463`).
 
 ### Redo clears on a new edit after undo
 6. Press ⌘Z again (undo the rating-5 batch, back to pre-seeded values).
@@ -65,9 +65,9 @@ undo must restore the *exact* prior value, not a bare "0".
    "Reject" flag (`ax_drive.sh press --role AXButton --help "Reject"`).
    Assert all three now show `"flag":"reject"`.
 8. Assert the Redo menu item ("Redo Metadata Change") is now **disabled**
-   (`model.canRedoMetadataChange` false, `main.swift:258-262`) —
+   (`model.canRedoMetadataChange` false, `main.swift:254-258`) —
    `recordMetadataChangeGroup` clears `metadataRedoStack` on every new
-   recorded group (`AppModel.swift:6395-6400`). **This is the point of the
+   recorded group (`AppModel.swift:8441-8446`). **This is the point of the
    step**: the rating-5 redo that was available after step 6 is gone once a
    new edit (the reject) was made.
 9. Press ⇧⌘Z anyway (should be a no-op given the disabled state, but confirm
@@ -75,14 +75,14 @@ undo must restore the *exact* prior value, not a bare "0".
    unchanged by the keypress (still `"flag":"reject"`, ratings still at
    their step-6 undone values) — `redoMetadataChange` guards on
    `metadataRedoStack.popLast()` returning nil and simply returns
-   (`AppModel.swift:6411-6412`).
+   (`AppModel.swift:8457-8458`).
 
 ### Single-asset label (no "· N photos" suffix)
 10. Deselect down to just `$SRC_A`. Set its color label to "Purple". Assert
     the recorded label is the bare `"Color label"` (no photo-count suffix,
     since `changes.count == 1` — `updateSelectedAssetsMetadata`'s
     `scopedLabel` ternary only appends `"· N photos"` when `changes.count >
-    1`, `AppModel.swift:6467-6470`). ⌘Z; assert `$SRC_A`'s label reverts.
+    1`, `AppModel.swift:8514-8517`). ⌘Z; assert `$SRC_A`'s label reverts.
 
 ## Expected
 - Step 2: all three assets rated 5. **Fails if** the batch rating missed any
@@ -113,14 +113,14 @@ undo must restore the *exact* prior value, not a bare "0".
   hardcoded strings "Undo Metadata Change"/"Redo Metadata Change", not
   dynamically built from `lastUndoableActionLabel`; the scoped label
   ("Rating · 3 photos") appears to live in `model.statusMessage`
-  (`AppModel.swift:6408,6417`) and `model.lastUndoableActionLabel`
-  (`:2386-2388`), whose UI surface (status bar? toast?) needs confirming
+  (`AppModel.swift:8454,8463`) and `model.lastUndoableActionLabel`
+  (`:2890-2892`), whose UI surface (status bar? toast?) needs confirming
   live — step 3/4/5's exact assertion target should be corrected against
   whatever surface actually renders it.
 - This card only exercises the batch (`...ForSelectedAssets`) family's undo
   labeling. The keyword/caption/creator/copyright (`...ForSelectedAsset`,
   singular) family also calls `recordMetadataChangeGroup` and shares the
-  same stack (`AppModel.swift:6420-6445` region), so a single caption edit
+  same stack (`AppModel.swift:8466-8487` region), so a single caption edit
   and a single rating edit interleave on one undo stack — not separately
   probed here, but worth confirming a mixed undo history (rating, then
   caption, then ⌘Z ⌘Z) unwinds in strict LIFO order across the two families
@@ -128,13 +128,13 @@ undo must restore the *exact* prior value, not a bare "0".
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Wiring confirmed
-statically: `Sources/TeststripApp/main.swift:248-263`
+statically: `Sources/TeststripApp/main.swift:241-256`
 (`MetadataHistoryCommands`, `CommandGroup(replacing: .undoRedo)`, ⌘Z/⇧⌘Z
 bindings gated on `canUndoMetadataChange`/`canRedoMetadataChange`),
-`Sources/TeststripApp/AppModel.swift:2378-2388` (`canUndoMetadataChange`,
-`canRedoMetadataChange`, `lastUndoableActionLabel`), `:6395-6418`
+`Sources/TeststripApp/AppModel.swift:2882-2892` (`canUndoMetadataChange`,
+`canRedoMetadataChange`, `lastUndoableActionLabel`), `:8441-8464`
 (`recordMetadataChangeGroup` clearing the redo stack on every new group,
-`undoMetadataChange`, `redoMetadataChange`), `:6443-6470`
+`undoMetadataChange`, `redoMetadataChange`), `:8489-8518`
 (`updateSelectedAssetsMetadata`, the `scopedLabel` "· N photos" suffix logic
 via `photoCountDescription`). Needs a human-present re-run. All SQL in this
 card was run headlessly against a seeded --smoke catalog on 2026-07-10

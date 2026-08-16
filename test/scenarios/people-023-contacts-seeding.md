@@ -62,7 +62,19 @@ script/vm_scenario_run.sh sql faces "SELECT count(*) FROM people WHERE id LIKE '
    ARMSTRONG_PERSON_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM people WHERE name='Neil Armstrong' AND id NOT LIKE 'contact:%';")
    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE person_id='$ARMSTRONG_PERSON_ID' AND origin='user';"  # 1 — commons-armstrong-eva-training.jpg's confirmed face
    ```
-   **Why this must happen first**: `ContactFaceSeeder.seed()` (`Sources/TeststripCore/People/ContactFaceSeeder.swift:47`) resolves a contact's `person_id` via `repository.personID(matchingName:)` — a one-time `SELECT id FROM people WHERE name = ?` snapshot taken *at import time* — falling back to a fresh `contact:<identifier>` if no same-named person exists yet. There is no later reconciliation: `upsertContactReferenceFace`'s `ON CONFLICT(contact_identifier)` only fires on a second `importFacesFromContacts()` call, and the seeder short-circuits any contact whose photo hash is unchanged (`summary.unchanged += 1; continue`, before the `personID(matchingName:)` lookup even runs) — so re-running the import after confirming Armstrong would **not** retroactively fix a wrong `contact:<id>` attachment. If Armstrong isn't already a real `people` row before Step 3's import runs, Leg 2 can never route to the right person.
+   **Why this must happen first**: `ContactFacePersister.persist(_:)`
+   (`Sources/TeststripCore/People/ContactFaceSeeder.swift:26-37`) resolves a
+   contact's `person_id` via `repository.personID(matchingName:)` — a one-time
+   `SELECT id FROM people WHERE name = ?` snapshot taken *at import time* —
+   falling back to a fresh `contact:<identifier>` if no same-named person
+   exists yet. There is no later reconciliation: `upsertContactReferenceFace`'s
+   `ON CONFLICT(contact_identifier)` only fires on a later
+   `importFacesFromContacts()` call, and `ContactFaceEmbedder.embed` skips any
+   contact whose photo hash is unchanged (`ContactFaceEmbedder.swift:60-70`)
+   before the persister's name lookup runs. Re-running the import after
+   confirming Armstrong therefore would **not** retroactively fix a wrong
+   `contact:<id>` attachment. If Armstrong isn't already a real `people` row
+   before Step 3's import runs, Leg 2 can never route to the right person.
 
 3. **Run the import**:
    ```bash
@@ -124,7 +136,7 @@ script/vm_scenario_run.sh sql faces "SELECT count(*) FROM people WHERE id LIKE '
 
 Neil Armstrong was already confirmed as a real person in Step 2 (before the import), and his contact was imported in Step 3 with `person_id` already name-attached to that real person (not a latent `contact:<id>`). This leg now exercises the actual recall-boost mechanism: an AI-origin face match against the combined confirmed-face + contact-reference embedding pool.
 
-7. **Fire the trigger and verify the name-based recall boost.** `promoteFaceMatches` (`AppModel.swift:3716`, which merges `contact_reference_faces` embeddings into the confirmed-centroid pool at `:3726-3728`) only runs on a genuine evaluation-**completion** event — never from importing a contact or from confirming a different person (mirror `people-020` step 8 / `people-022` step 3's single-asset re-evaluation pattern). Baseline first:
+7. **Fire the trigger and verify the name-based recall boost.** `promoteFaceMatches` (`AppModel.swift:3916-3940`, which merges `contact_reference_faces` embeddings into the confirmed-centroid pool at `:3611-3617`) only runs on a genuine evaluation-**completion** event — never from importing a contact or from confirming a different person (mirror `people-020` step 8 / `people-022` step 3's single-asset re-evaluation pattern). Baseline first:
    ```bash
    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE person_id='$ARMSTRONG_PERSON_ID' AND origin='ai';"  # 0 — nothing has evaluated this asset against Armstrong's centroid yet
    ```

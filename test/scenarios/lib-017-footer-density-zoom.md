@@ -1,7 +1,7 @@
 # lib-017-footer-density-zoom: footer counts, selection-clear, density presets, and zoom slider
 
 **What this covers**: the Library grid's footer bar (`footer`,
-`Sources/TeststripApp/LibraryGridView.swift:2469-2521`) — the library-count
+`Sources/TeststripApp/LibraryGridView.swift:2631-2661`) — the library-count
 and status text, the "N selected" batch label with its clear-selection
 button, the three density presets (Compact/Comfortable/Large), and the zoom
 slider's range/step. Companion unit coverage:
@@ -33,7 +33,7 @@ Exact values, verified at `Sources/TeststripApp/LibraryGridLayout.swift:4-76`:
   visually via `capture_app_window.sh`, not AX (no direct AX exposure of
   spacing).
 - **⌘+/⌘- zoom shortcuts live only in `main.swift`'s `ZoomCommands`
-  (`Sources/TeststripApp/main.swift:561-577`), not inside `LibraryGridView`
+  (`Sources/TeststripApp/main.swift:611-627`), not inside `LibraryGridView`
   itself.** They're an app-menu `CommandGroup(after: .toolbar)` bound to
   `@AppStorage("LibraryGridView.thumbnailWidth")`, calling the same
   `LibraryGridLayout.zoomedThumbnailWidth` used by the in-grid slider — so the
@@ -41,8 +41,8 @@ Exact values, verified at `Sources/TeststripApp/LibraryGridLayout.swift:4-76`:
   menu commands are testable/drivable only through the app's Zoom menu, not
   by finding a control inside the grid view's own AX subtree.
 - `@AppStorage("LibraryGridView.thumbnailWidth")` default is
-  `LibraryGridLayout.defaultThumbnailWidth` = **140** (`main.swift:562`,
-  `LibraryGridView.swift:56`) — persists across relaunches via
+  `LibraryGridLayout.defaultThumbnailWidth` = **140** (`main.swift:612`,
+  `LibraryGridView.swift:60`) — persists across relaunches via
   `UserDefaults`, scoped to the isolated app-support dir for a `--smoke`
   session (not Jesse's real prefs).
 
@@ -126,7 +126,7 @@ NOT RUN — no live GUI launch performed for this task (headless-only
 constraint). All layout constants verified by direct source read at
 `Sources/TeststripApp/LibraryGridLayout.swift:4-76`; footer chrome and
 ⌘+/⌘- menu-only location verified at
-`Sources/TeststripApp/LibraryGridView.swift:2469-2521` and
-`Sources/TeststripApp/main.swift:561-577`. Needs a live AX session for all
+`Sources/TeststripApp/LibraryGridView.swift:2631-2661` and
+`Sources/TeststripApp/main.swift:609-625`. Needs a live AX session for all
 Steps; Step 5's exact AX role/title for density-preset buttons needs live
 confirmation since it wasn't verified in this pass.

@@ -16,16 +16,7 @@ struct PeopleView: View {
     @State private var keyCaptureFocusRequest = 0
 
     private var presentation: PeoplePresentation {
-        PeoplePresentation(
-            totalAssetCount: model.totalAssetCount,
-            namedPeople: model.catalogPeople,
-            evaluationSummaries: model.catalogEvaluationKindSummaries,
-            canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
-            faceSuggestions: model.peopleFaceSuggestions,
-            faceObservationAssetCount: model.peopleFaceObservationAssetCount,
-            hasUnavailableSources: model.hasUnavailableSourceRoots,
-            keyFaces: model.personKeyFaces
-        )
+        PeoplePresentation(model: model)
     }
 
     // Folds suggestion cards and review cards into one keyboard-focusable
@@ -39,9 +30,8 @@ struct PeopleView: View {
         )
     }
 
-    // PeoplePresentation is a pure view of faceSuggestions with no catalog
-    // access; the contact reference photo needs `model`, so it's populated
-    // here at the view layer rather than threaded into PeoplePresentation.
+    // PeoplePresentation is value-only; contact reference lookup still needs
+    // the model, so it is populated here at the view layer.
     private var populatedSuggestionCards: [PeopleFaceSuggestionCard] {
         presentation.suggestionCards.map { card in
             var card = card
@@ -116,9 +106,9 @@ struct PeopleView: View {
         case .nameSuggestion(let suggestion):
             nameSuggestionQuery = ""
             namingSuggestion = suggestion
-        case .selectReview(let target):
+        case .selectReview(let kind):
             do {
-                try model.selectSidebarTarget(target)
+                try model.selectPeopleSignal(kind)
             } catch {
                 model.errorMessage = error.localizedDescription
             }
@@ -199,7 +189,7 @@ struct PeopleView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
                     ForEach(presentation.reviewCards) { card in
                         Button {
-                            selectPeopleReviewCard(card)
+                            applyConfirmAction(card.reviewAction)
                         } label: {
                             peopleReviewCard(card, isFocused: isQueueFocused(cardID: card.id))
                         }
@@ -455,7 +445,8 @@ struct PeopleView: View {
     }
 
     private func namedPersonCard(_ person: NamedPersonPresentation) -> some View {
-        HStack(spacing: 12) {
+        let mergeTargets = presentation.mergeTargets(for: person.id)
+        return HStack(spacing: 12) {
             if let keyFace = person.keyFace {
                 FaceCropAvatar(
                     previewURL: model.previewURL(for: keyFace.assetID, levels: [.grid, .medium, .micro]),
@@ -478,9 +469,9 @@ struct PeopleView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if presentation.namedPeople.count > 1 {
+            if !mergeTargets.isEmpty {
                 Menu {
-                    ForEach(presentation.namedPeople.filter { $0.id != person.id }) { target in
+                    ForEach(mergeTargets) { target in
                         Button("Merge into \(target.name)") {
                             mergePerson(person, into: target)
                         }
@@ -557,15 +548,6 @@ struct PeopleView: View {
         }
     }
 
-    private func selectPeopleReviewCard(_ card: PeopleReviewCard) {
-        guard let target = card.target else { return }
-        do {
-            try model.selectSidebarTarget(target)
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
     private func mergePerson(_ person: NamedPersonPresentation, into target: NamedPersonPresentation) {
         do {
             try model.mergePerson(sourceID: person.id, into: target.id)
@@ -601,22 +583,22 @@ struct ReviewingFaceGroup: Identifiable, Equatable {
 struct PeoplePresentation: Equatable {
     var totalAssetCount: Int
     var namedPeople: [NamedPersonPresentation]
+    var mergeCandidates: [NamedPersonPresentation]
     var photosWithFaceSignals: Int
     var photosWithDetectedFaces: Int
     var photosWithFaceQualitySignals: Int
     var scanAction: PeopleScanAction?
     var faceSuggestions: [PeopleFaceSuggestion]
     var faceObservationAssetCount: Int
-    /// True when any catalog source root is offline/unreachable — a face
-    /// scan requested now cannot enqueue work, so the status line must say
-    /// so instead of "Scan ready" (persona-6: the banner sat on "Scan
-    /// ready" forever while nothing could ever start).
+    /// True when a source intersecting this presentation's asset scope is
+    /// offline or unreachable, so a scan requested now cannot enqueue work.
     var hasUnavailableSources: Bool
     private var faceSignalKind: EvaluationKind?
 
     init(
         totalAssetCount: Int,
         namedPeople: [CatalogPerson] = [],
+        mergeCandidates: [CatalogPerson]? = nil,
         evaluationSummaries: [CatalogEvaluationKindSummary],
         canRequestCurrentScopeFaceScan: Bool = false,
         faceSuggestions: [PeopleFaceSuggestion] = [],
@@ -627,6 +609,9 @@ struct PeoplePresentation: Equatable {
         self.hasUnavailableSources = hasUnavailableSources
         self.totalAssetCount = totalAssetCount
         self.namedPeople = namedPeople.map { NamedPersonPresentation(person: $0, keyFace: keyFaces[$0.id]) }
+        self.mergeCandidates = (mergeCandidates ?? namedPeople).map {
+            NamedPersonPresentation(person: $0, keyFace: keyFaces[$0.id])
+        }
         let faceCountSignals = evaluationSummaries.first { $0.kind == .faceCount }?.assetCount ?? 0
         let faceQualitySignals = evaluationSummaries.first { $0.kind == .faceQuality }?.assetCount ?? 0
         self.photosWithFaceSignals = max(faceCountSignals, faceQualitySignals)
@@ -640,6 +625,24 @@ struct PeoplePresentation: Equatable {
         ) : nil
         self.faceSuggestions = faceSuggestions
         self.faceObservationAssetCount = faceObservationAssetCount
+    }
+
+    init(model: AppModel) {
+        self.init(
+            totalAssetCount: model.totalAssetCount,
+            namedPeople: model.peopleInCurrentSource,
+            mergeCandidates: model.catalogPeople,
+            evaluationSummaries: model.peopleEvaluationKindSummaries,
+            canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
+            faceSuggestions: model.peopleFaceSuggestions,
+            faceObservationAssetCount: model.peopleFaceObservationAssetCount,
+            hasUnavailableSources: model.peopleHasUnavailableSources,
+            keyFaces: model.personKeyFaces
+        )
+    }
+
+    func mergeTargets(for personID: String) -> [NamedPersonPresentation] {
+        mergeCandidates.filter { $0.id != personID }
     }
 
     /// "Name Selection" sheet subtitle: names how many photos the confirming
@@ -768,7 +771,6 @@ struct PeoplePresentation: Equatable {
                 countText: Self.photoCountDescription(photosWithDetectedFaces),
                 suggestedActionTitle: "Review faces",
                 filterKind: faceSignalKind,
-                target: faceSignalKind == .faceCount ? .reviewQueue(.facesFound) : .evaluationKind(faceSignalKind),
                 gradientColors: [.orange, .brown]
             ))
         }
@@ -779,7 +781,6 @@ struct PeoplePresentation: Equatable {
                 countText: Self.photoCountDescription(photosWithFaceQualitySignals),
                 suggestedActionTitle: "Review quality",
                 filterKind: .faceQuality,
-                target: .evaluationKind(.faceQuality),
                 gradientColors: [.orange, .yellow]
             ))
         }
@@ -895,11 +896,14 @@ struct PeopleReviewCard: Equatable, Identifiable {
     var countText: String
     var suggestedActionTitle: String
     var filterKind: EvaluationKind?
-    var target: SidebarRowTarget?
     var showsUnbuiltFaceActionLock = false
     var gradientColors: [Color]
 
+    var reviewAction: PeopleQueueConfirmAction {
+        filterKind.map(PeopleQueueConfirmAction.selectReview) ?? .none
+    }
+
     var isActionEnabled: Bool {
-        target != nil
+        filterKind != nil
     }
 }

@@ -1,6 +1,6 @@
 # lib-020-token-query-filter: typing a filter token narrows the grid to the matching catalog rows
 
-**What this covers**: the Library workspace's token query field — typing
+**What this covers**: the browse lenses' token query field — typing
 `rating:3` and pressing Return must narrow the grid to exactly the rows
 `SELECT count(*) ... WHERE rating>=3` returns (the app's advertised token
 grammar is "at least this rating", confirmed by both the search-tips help
@@ -50,7 +50,7 @@ EXPECTED=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadat
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Field/help text
-confirmed at `Sources/TeststripApp/LibraryGridView.swift:528-562`
+confirmed at `Sources/TeststripApp/LibraryGridView.swift:625-695`
 (`queryTokenField`, `.help("Search your library, or type filter tokens like
-rating:3, camera:, keyword:. ...")`) and `submitQueryTokenField()` at line
-575. Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).
+rating:3, camera:, keyword:. ...")`) and `submitQueryTokenField()` at lines
+686-695. Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

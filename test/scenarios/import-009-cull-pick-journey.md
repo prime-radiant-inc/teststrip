@@ -28,14 +28,26 @@ shows nothing), this card catches it where per-feature unit tests can't.
    under the sheet's "Options" disclosure, unopened). Press the primary
    button — labeled **"Import N Photos"** (N = the scanned count; match with
    `--contains "Import"` or use Return, bound to `.keyboardShortcut(.defaultAction)`).
-2. **Wait for import + evaluation to drain.** `waitFor` the completion panel
-   (an `AXStaticText` / button set including **"Start culling"** and
-   **"Review imported frames"**). Watch the Activity panel drain if needed.
+2. **Wait for import + evaluation to drain.** `waitFor` the completion toast
+   (an `AXStaticText` container labelled **"Import complete"** holding an
+   **"Start culling"** button — `ImportCompletionToastPresentation.toast`,
+   `Sources/TeststripApp/ImportCompletionToastPresentation.swift:40-58`; the
+   toast fades after ~10s, so drive this step promptly). There is no
+   "Review imported frames" affordance any more — the old post-import
+   banner that carried it was deleted along with the two-workspace shell;
+   its "review the import without culling" gesture is now "Manual Compare
+   over the import" in the sidebar import row's context menu (see
+   `import-011-completion-toast-and-import-rows.md` Step 10), not a
+   happy-path completion action. Watch the Activity panel drain if needed.
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM assets;"    # must be A0 + (frames imported)
    ```
-3. **Enter culling.** AX-press **"Start culling"** (or "Review imported
-   frames"). `waitFor` the culling surface.
+3. **Enter culling.** AX-press **"Start culling"** on the toast. `waitFor`
+   the culling surface. If the toast has already faded by the time this step
+   runs, the same action survives as the bell's "Recent Imports" receipt
+   (`ActivityCenterView.swift`'s `receiptsSection`) — open the Activity
+   popover and press its "Start culling" instead rather than treating a
+   faded toast as a dead end.
 4. **Assert the verdict strip reads.** Re-dump; find an `AXStaticText` matching
    exactly **"Keep"** or **"Toss"** on the selected frame — no "read" suffix,
    no percentage (a Mixed/indecisive read renders no verdict label at all).
@@ -81,3 +93,17 @@ Quit the launched instance.
   **"Keep "** prefix + a rank/frame token, not an exact string.
 - This card asserts the *flow*, not verdict correctness. Verdict-threshold
   sign-off is a separate concern (see the handoff's threshold thread).
+
+## Run status
+**Reconciled 2026-08-09 (Task 13, unified-shell scenario-card sweep)**:
+Steps 2-3 rewritten. The `:32-33` AX elements ("Start culling"/"Review
+imported frames") and the `:37` press both came from the post-import
+completion banner this push deleted — `grep -rn "Review imported frames"
+Sources/` finds nothing. The banner's replacement,
+`ImportCompletionToastPresentation`, still carries a "Start culling" action
+(gated by `showsStartCulling`) but has no "review without culling" leg at
+all; that gesture now lives as "Manual Compare over the import" in the
+sidebar import row's context menu (`AppModel.swift:5413-5417`), a
+deliberately different, non-happy-path route this card does not drive. No
+prior `## Run status` section existed on this card to supersede — this is
+its first. Needs a fresh VM run.

@@ -6,7 +6,7 @@ hard-asserted the overlay lists two `isMonitorOnly` rows, `"Previous Stack
 Option-arrow stack-nav alternate. That mechanism (and the `isMonitorOnly`
 flag itself) has been **deleted**, not merely relabeled: there is no
 Option-arrow branch left in the key-capture path
-(`Sources/TeststripApp/CullingKeyCaptureView.swift:128-129`, an Option-held
+(`Sources/TeststripApp/CullingKeyCaptureView.swift:132-133`, an Option-held
 arrow fails the `relevantModifiers.isEmpty` guard and is never decoded into
 any shortcut), and `CullingCommandMenuPresentation` has no `isMonitorOnly`
 case on any entry any more. The Navigation section now advertises four
@@ -16,41 +16,41 @@ Option modifier anywhere. This revision removes the old monitor-only
 assertions entirely, rewrites step 5 to the new advertised set, and adds
 step 6 for the overlay's new ↑/↓ scroll behavior.
 
-**What this covers**: as a new user of the Cull workspace, I want `?` to pop
+**What this covers**: as a new user of the Cull lens, I want `?` to pop
 up a complete keyboard cheat-sheet reflecting the actual, currently-live
 keymap, so I don't have to memorize it from documentation. Covers item 26
 (`?` toggles the overlay).
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:5887-5889` — `.showKeyMap` toggles
+- `Sources/TeststripApp/AppModel.swift:7084-7086` — `.showKeyMap` toggles
   `isKeyMapOverlayVisible` (`?`, keyed via the exact-case `.character("?")`
-  match at `:252-253` in the static key-based mapping, and via the shifted
-  `"/"` branch at `CullingKeyCaptureView.swift:141-143` in the live event
+  match at `:203-204` in the static key-based mapping, and via the shifted
+  `"/"` branch at `CullingKeyCaptureView.swift:145-147` in the live event
   monitor, so plain `?` fires it either way).
-- `Sources/TeststripApp/LibraryGridView.swift:221-229` — the overlay is shown
+- `Sources/TeststripApp/LibraryGridView.swift:237-245` — the overlay is shown
   `if model.isKeyMapOverlayVisible`, and `.onExitCommand` (Esc) also sets it
   false — so **Esc dismisses in addition to** a repeated `?` (the doc
-  comment at `LibraryGridView.swift:9236` says "Esc or a repeated `?`
+  comment at `LibraryGridView.swift:9045` says "Esc or a repeated `?`
   dismisses it"; a second `?` toggles `isKeyMapOverlayVisible` back to
   false, same boolean). **Line numbers re-verified this pass**: the file has
   grown since this card was first written and `KeyMapOverlayView` has moved
   from its previously-cited `8564-8615` to its current location below —
   don't trust old line citations without re-grepping first.
-- `Sources/TeststripApp/LibraryGridView.swift:9234-9296` — `KeyMapOverlayView`:
-  heading `"Keyboard Shortcuts"` (`:9246`), a dismiss button (accessibility
-  label `"Dismiss key map"`, `:9256`), and a `ScrollViewReader` wrapping
-  `ForEach(CullingCommandMenuPresentation.sections)` (`:9259-9287`)
-  rendering each section's uppercased title (`:9264`) and each item's
-  `title` + `key.displayText` as plain `Text` in an `HStack` (`:9268-9274`).
-  `scrollToSectionIndex` (`:9240`, bound to `model.keyMapOverlayScrollIndex`
-  at the call site, `LibraryGridView.swift:224`) drives
-  `proxy.scrollTo(...)` on change (`:9281-9286`) — this is what step 6
+- `Sources/TeststripApp/LibraryGridView.swift:9043-9104` — `KeyMapOverlayView`:
+  heading `"Keyboard Shortcuts"` (`:9055`), a dismiss button (accessibility
+  label `"Dismiss key map"`, `:9065`), and a `ScrollViewReader` wrapping
+  `ForEach(CullingCommandMenuPresentation.sections)` (`:9068-9096`)
+  rendering each section's uppercased title (`:9073`) and each item's
+  `title` + `key.displayText` as plain `Text` in an `HStack` (`:9077-9082`).
+  `scrollToSectionIndex` (`:9049`, bound to `model.keyMapOverlayScrollIndex`
+  at the call site, `LibraryGridView.swift:240`) drives
+  `proxy.scrollTo(...)` on change (`:9090-9095`) — this is what step 6
   below exercises.
-- `Sources/TeststripApp/AppModel.swift:509-517` —
+- `Sources/TeststripApp/AppModel.swift:504-512` —
   `CullingCommandMenuPresentation.sections`, the single source of truth for
   what the overlay lists. Real section titles: `"Navigation"`, `"Ratings"`,
   `"Color Labels"`, `"Flags"`, `"Loupe"`, `"Filter"`, `"Compare"`. The
-  **Navigation** section (`:511-516`) now lists exactly: `"Previous Frame in
+  **Navigation** section (`:507-511`) now lists exactly: `"Previous Frame in
   Stack"` (key `↑`), `"Next Frame in Stack"` (key `↓`), `"Previous Stack"`
   (key `←`), `"Next Stack"` (key `→`), `"Promote Frame & Reject Siblings"`
   (key `Return`) — five plain items, none flagged `isMonitorOnly` (the field
@@ -71,7 +71,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Steps
 1. ⌘1 for Cull; select a frame and open the loupe (Return). On this FIRST
-   entry to the Cull workspace in the session, assert the one-time
+   entry to the Cull lens in the session, assert the one-time
    discoverability hint appears via the decision toast:
    `script/ax_drive.sh find --contains "Press ? for keyboard shortcuts"`
    (within its 2s window). Leave Cull (⌘2) and return (⌘1): assert the hint
@@ -87,7 +87,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    script/ax_drive.sh find --role AXStaticText --contains "LOUPE"
    ```
    (section titles are rendered `.uppercased()` at
-   `LibraryGridView.swift:9264`, so match the uppercased form.)
+   `LibraryGridView.swift:9073`, so match the uppercased form.)
 4. Assert at least two real item rows render by title:
    ```bash
    script/ax_drive.sh find --role AXStaticText --contains "Promote Frame & Reject Siblings"
@@ -112,11 +112,11 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    visible, `applyCullingShortcut` intercepts `.previousCandidateInStack`/
    `.nextCandidateInStack` (↑/↓) and routes them to `scrollKeyMapOverlay`
    instead of moving the underlying selection
-   (`Sources/TeststripApp/AppModel.swift:5832-5843`; PgUp/PgDn
+   (`Sources/TeststripApp/AppModel.swift:7017-7033`; PgUp/PgDn
    (`.keyMapPageUp`/`.keyMapPageDown`) scroll the same way while the overlay
    is visible, by 3 sections per press instead of 1 —
-   `KeyMapOverlayScrolling.nextIndex`, `:566-580` — but are a genuine no-op
-   outside overlay mode, `:5906-5907`; this step only drives ↑/↓, per the
+   `KeyMapOverlayScrolling.nextIndex`, `:568-582` — but are a genuine no-op
+   outside overlay mode, `:7103-7104`; this step only drives ↑/↓, per the
    task). Record the current selected asset id, then press `Down`
    repeatedly (the section list has 7 sections, so up to 6 presses)
    until the last section's heading is visible:
@@ -170,20 +170,20 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   by design** (not a bug this card should report) — `CullingCommandMenuPresentation.sections`
   has no entries for `.showCullGrid`/`.showCompare`/`.showABCompare`. Don't
   confuse this with the section *titled* `"Compare"` that does exist
-  (`AppModel.swift:548-551`) — that section lists `,`/`.` for
+  (`AppModel.swift:550-553`) — that section lists `,`/`.` for
   `.keepAOverB`/`.keepBOverA` (A/B Compare's keyboard verdicts), a
   completely different pair of shortcuts from the `.showCompare` subview
   switch this bullet is about. If a future change is expected to add
   G/C/B, that's a product decision for Jesse, not something to assert
   against here.
 - The overlay's frame is fixed at `360×420` with a `ScrollView`
-  (`LibraryGridView.swift:9259-9292`); step 6 now gives a concrete,
+  (`LibraryGridView.swift:9043-9104`); step 6 now gives a concrete,
   keyboard-driven way to reach a late section (↓ to the last section,
   `"Compare"`) instead of hoping the default scroll position happens to
   show it — prefer that over guessing at mouse-scroll behavior in `ax_drive.sh`,
   which has no scroll-wheel verb.
 - This card only drives from the loupe (`CullingKeyCaptureGate.isActive`
-  requires `workspace == .cull && selectedView != .cullGrid` — see
+  requires `lens == .cull && selectedView != .cullGrid` — see
   `cull-008-subview-keys-gcb.md`); `?` is not wired while `.cullGrid` is
   showing (GridKeyCaptureView has no `?` binding), so don't try to trigger
   this overlay from the grid subview.
@@ -196,3 +196,15 @@ current working tree. The LEDGER's prior "Verified" status for this card
 covers the *old* overlay content (with the now-deleted Option-arrow rows)
 and must not be read as covering this revision; needs a fresh
 human-present/VM execution per `test/scenarios/README.md`.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Steps 1
+and 73/77's ⌘1/⌘2 presses are unchanged in effect (⌘1 selects the Cull lens;
+step 77's "Leave Cull (⌘2)" never named a destination, so no wording change
+was needed there either — ⌘2 now lands on the Grid lens instead of the old
+Library workspace, but the step doesn't care which lens it lands on, only
+that it isn't Cull). Preamble only; the one substantive fix this pass made
+was a stale symbol citation in Sharp edges (`workspace == .cull &&
+selectedView != .cullGrid` → `lens ==`, matching cull-001's rename),
+unrelated to the ⌘ preamble. Supersedes prior status: the 2026-07-13
+reconciliation and its NOT RUN status are otherwise unaffected — no
+assertion changed — but still need a fresh run per that note's own text.

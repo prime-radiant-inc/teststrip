@@ -446,14 +446,16 @@ public final class CatalogRepository {
     /// "Autopilot Proposals" count must not silently shrink to whatever the
     /// grid happens to have loaded. Display-facing, so bonded secondaries are
     /// excluded like the other id listings.
-    public func assetIDsWithAutopilotGhost() throws -> [AssetID] {
+    public func assetIDsWithAutopilotGhost(
+        sort: LibrarySortOption = .importOrder
+    ) throws -> [AssetID] {
         let ghostClauseSQL = """
         json_extract(metadata_json, '$.flag') IS NOT NULL
         AND EXISTS (SELECT 1 FROM json_each(metadata_json, '$.aiUnconfirmedFields') WHERE json_each.value = ?)
         """
         let whereSQL = Self.excludingSecondaries(" WHERE \(ghostClauseSQL)")
         let rows = try database.rows(
-            "SELECT id FROM assets\(whereSQL) ORDER BY rowid ASC",
+            "SELECT id FROM assets\(whereSQL) ORDER BY \(Self.orderSQL(for: sort))",
             bindings: [MetadataField.flag.rawValue]
         )
         return try rows.map(decodeAssetID)
@@ -1079,6 +1081,20 @@ public final class CatalogRepository {
         return count
     }
 
+    /// Prepares a value from one catalog snapshot, then writes the set as the
+    /// final operation in the same transaction. A separate worker connection
+    /// cannot interleave a catalog write between the preparation reads.
+    public func upsert<Result>(
+        _ assetSet: AssetSet,
+        afterPreparing prepare: (CatalogRepository) throws -> Result
+    ) throws -> Result {
+        try database.transaction {
+            let result = try prepare(self)
+            try upsert(assetSet)
+            return result
+        }
+    }
+
     public func upsert(_ assetSet: AssetSet) throws {
         let now = "\(Date().timeIntervalSince1970)"
         try database.execute(
@@ -1229,24 +1245,57 @@ public final class CatalogRepository {
         }
     }
 
+    /// Confirmed people. `assetIDs == nil` is catalog-wide (the People lens
+    /// over All Photos); a non-nil scope answers "who is in this shoot" — only
+    /// people with at least one asset in the scope, counted within it.
+    public func people(assetIDs: [AssetID]? = nil) throws -> [CatalogPerson] {
+        guard let assetIDs else {
+            return try decodePeople(try database.rows(Self.peopleSQL(scoped: false)))
+        }
+        guard !assetIDs.isEmpty else { return [] }
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
+        var countsByPerson: [String: Int] = [:]
+        var namesByPerson: [String: String] = [:]
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                Self.peopleSQL(scoped: true, placeholders: placeholders),
+                bindings: chunk.map(\.rawValue)
+            )
+            for person in try decodePeople(rows) {
+                namesByPerson[person.id] = person.name
+                countsByPerson[person.id, default: 0] += person.assetCount
+            }
+        }
+        return countsByPerson
+            .compactMap { id, count -> CatalogPerson? in
+                guard count > 0, let name = namesByPerson[id] else { return nil }
+                return CatalogPerson(id: id, name: name, assetCount: count)
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     // Load-bearing, not merely defensive: evaluation's AI path
     // (insertAIFace) doesn't write a person_assets row for a bonded
     // secondary, but a user confirming a secondary's own face suggestion
-    // (confirmFace) does — this guard is what keeps that confirmed
-    // secondary from inflating a person's count, matching the
+    // (confirmFace) does — the bonded_to_asset_id guard is what keeps that
+    // confirmed secondary from inflating a person's count, matching the
     // folder/timeline/place/coverage/source-root aggregates.
-    public func people() throws -> [CatalogPerson] {
-        let rows = try database.rows(
-            """
-            SELECT people.id, people.name, COUNT(assets.id) AS asset_count
-            FROM people
-            LEFT JOIN person_assets ON person_assets.person_id = people.id
-            LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
-            GROUP BY people.id, people.name
-            ORDER BY people.name COLLATE NOCASE ASC
-            """
-        )
-        return try rows.map { row in
+    private static func peopleSQL(scoped: Bool, placeholders: String = "") -> String {
+        let scopeClause = scoped ? " AND person_assets.asset_id IN (\(placeholders))" : ""
+        return """
+        SELECT people.id, people.name, COUNT(assets.id) AS asset_count
+        FROM people
+        LEFT JOIN person_assets ON person_assets.person_id = people.id\(scopeClause)
+        LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
+        GROUP BY people.id, people.name
+        ORDER BY people.name COLLATE NOCASE ASC
+        """
+    }
+
+    private func decodePeople(_ rows: [[String: String]]) throws -> [CatalogPerson] {
+        try rows.map { row in
             guard let id = row["id"], let name = row["name"], let countString = row["asset_count"], let assetCount = Int(countString) else {
                 throw CatalogError.sqlite("person row is missing required columns")
             }
@@ -1420,45 +1469,97 @@ public final class CatalogRepository {
     // the bonded_to_asset_id exclusion a RAW+JPEG pair's pixel-identical
     // face would surface twice; the primary's own observation already
     // covers the shot.
-    public func unassignedFaceObservations(provenance: ProviderProvenance, limit: Int) throws -> [CatalogFaceObservation] {
-        let rows = try database.rows(
-            """
-            SELECT asset_id, face_index, face_json, provenance_json
-            FROM face_observations
-            WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
-              AND NOT EXISTS (
-                  SELECT 1 FROM assets
-                  WHERE assets.id = face_observations.asset_id
-                    AND assets.bonded_to_asset_id IS NOT NULL
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM person_faces
-                  WHERE person_faces.asset_id = face_observations.asset_id
-                    AND person_faces.face_index = face_observations.face_index
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM person_assets
-                  WHERE person_assets.asset_id = face_observations.asset_id
-                    AND NOT EXISTS (
-                        SELECT 1 FROM person_faces
-                        WHERE person_faces.asset_id = face_observations.asset_id
-                    )
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM dismissed_faces
-                  WHERE dismissed_faces.asset_id = face_observations.asset_id
-                    AND dismissed_faces.face_index = face_observations.face_index
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM dismissed_face_assets
-                  WHERE dismissed_face_assets.asset_id = face_observations.asset_id
-              )
-            ORDER BY created_at DESC, asset_id ASC, face_index ASC
-            LIMIT ?
-            """,
-            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash, "\(limit)"]
-        )
-        return try rows.map(decodeFaceObservation)
+    //
+    // `assetIDs == nil` is catalog-wide (People × All Photos, the global
+    // grouping queue); a non-nil scope is the shoot the user is looking at.
+    public func unassignedFaceObservations(
+        provenance: ProviderProvenance,
+        limit: Int,
+        assetIDs: [AssetID]? = nil
+    ) throws -> [CatalogFaceObservation] {
+        let provenanceBindings = [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
+        guard let assetIDs else {
+            let rows = try database.rows(
+                Self.unassignedFaceObservationsSQL(scopeClause: ""),
+                bindings: provenanceBindings + ["\(limit)"]
+            )
+            return try rows.map(decodeFaceObservation)
+        }
+        guard !assetIDs.isEmpty, limit > 0 else { return [] }
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
+        // Each chunk's `LIMIT ?` only bounds that chunk's own newest rows, so
+        // above 500 scoped ids the chunks must be merged by `created_at`
+        // before truncating to `limit` — otherwise an earlier chunk that
+        // alone satisfies `limit` masks a later chunk's globally newer rows.
+        var ranked: [RankedFaceObservation] = []
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                Self.unassignedFaceObservationsSQL(scopeClause: "\n  AND face_observations.asset_id IN (\(placeholders))"),
+                bindings: provenanceBindings + chunk.map(\.rawValue) + ["\(limit)"]
+            )
+            ranked.append(contentsOf: try rows.map(decodeRankedFaceObservation))
+        }
+        ranked.sort { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            if lhs.observation.assetID != rhs.observation.assetID { return lhs.observation.assetID.rawValue < rhs.observation.assetID.rawValue }
+            return lhs.observation.faceIndex < rhs.observation.faceIndex
+        }
+        return ranked.prefix(limit).map(\.observation)
+    }
+
+    /// Pairs a decoded observation with its `created_at` purely to re-rank
+    /// `unassignedFaceObservations`'s chunked scope merge across the 500-id
+    /// chunk boundary; `CatalogFaceObservation` itself has no `created_at`
+    /// and every other caller of `decodeFaceObservation` has no use for it.
+    private struct RankedFaceObservation {
+        let observation: CatalogFaceObservation
+        let createdAt: Double
+    }
+
+    private func decodeRankedFaceObservation(_ row: [String: String]) throws -> RankedFaceObservation {
+        guard let createdAtValue = row["created_at"], let createdAt = Double(createdAtValue) else {
+            throw CatalogError.sqlite("face observation row is missing created_at")
+        }
+        return RankedFaceObservation(observation: try decodeFaceObservation(row), createdAt: createdAt)
+    }
+
+    private static func unassignedFaceObservationsSQL(scopeClause: String) -> String {
+        """
+        SELECT asset_id, face_index, face_json, provenance_json, created_at
+        FROM face_observations
+        WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?\(scopeClause)
+          AND NOT EXISTS (
+              SELECT 1 FROM assets
+              WHERE assets.id = face_observations.asset_id
+                AND assets.bonded_to_asset_id IS NOT NULL
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM person_faces
+              WHERE person_faces.asset_id = face_observations.asset_id
+                AND person_faces.face_index = face_observations.face_index
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM person_assets
+              WHERE person_assets.asset_id = face_observations.asset_id
+                AND NOT EXISTS (
+                    SELECT 1 FROM person_faces
+                    WHERE person_faces.asset_id = face_observations.asset_id
+                )
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM dismissed_faces
+              WHERE dismissed_faces.asset_id = face_observations.asset_id
+                AND dismissed_faces.face_index = face_observations.face_index
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM dismissed_face_assets
+              WHERE dismissed_face_assets.asset_id = face_observations.asset_id
+          )
+        ORDER BY created_at DESC, asset_id ASC, face_index ASC
+        LIMIT ?
+        """
     }
 
     /// The CONFIRMED (`person_faces.origin = 'user'`) face rows for a provenance
@@ -1687,16 +1788,42 @@ public final class CatalogRepository {
         }
     }
 
-    public func faceObservationAssetCount(provenance: ProviderProvenance) throws -> Int {
-        let rows = try database.rows(
-            """
-            SELECT COUNT(DISTINCT asset_id) AS asset_count
-            FROM face_observations
-            WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
-            """,
-            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
-        )
-        return rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
+    public func faceObservationAssetCount(
+        provenance: ProviderProvenance,
+        assetIDs: [AssetID]? = nil
+    ) throws -> Int {
+        let provenanceBindings = [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
+        guard let assetIDs else {
+            let rows = try database.rows(
+                """
+                SELECT COUNT(DISTINCT asset_id) AS asset_count
+                FROM face_observations
+                WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+                """,
+                bindings: provenanceBindings
+            )
+            return rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
+        }
+        guard !assetIDs.isEmpty else { return 0 }
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
+        // Deduping before chunking makes each chunk a disjoint set of asset
+        // ids, so per-chunk DISTINCT counts sum without double counting.
+        var count = 0
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                """
+                SELECT COUNT(DISTINCT asset_id) AS asset_count
+                FROM face_observations
+                WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+                  AND asset_id IN (\(placeholders))
+                """,
+                bindings: provenanceBindings + chunk.map(\.rawValue)
+            )
+            count += rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
+        }
+        return count
     }
 
     /// Guarded machine-proposed face-to-person link: an `origin='ai'` `person_faces`
@@ -2080,39 +2207,76 @@ public final class CatalogRepository {
     }
 
     public func workSessions(limit: Int, starredOnly: Bool = false) throws -> [WorkSession] {
+        try workSessions(limit: limit, starredOnly: starredOnly, excluding: nil)
+    }
+
+    public func workSessions(
+        limit: Int,
+        starredOnly: Bool = false,
+        excluding kind: WorkSessionKind
+    ) throws -> [WorkSession] {
+        try workSessions(limit: limit, starredOnly: starredOnly, excluding: Optional(kind))
+    }
+
+    private func workSessions(
+        limit: Int,
+        starredOnly: Bool,
+        excluding kind: WorkSessionKind?
+    ) throws -> [WorkSession] {
         guard limit > 0 else { return [] }
-        let rows: [[String: String]]
+        var predicates: [String] = []
+        var bindings: [String] = []
         if starredOnly {
-            rows = try database.rows(
-                "SELECT * FROM work_sessions WHERE starred = 1 ORDER BY updated_at DESC LIMIT ?",
-                bindings: ["\(limit)"]
-            )
-        } else {
-            rows = try database.rows(
-                "SELECT * FROM work_sessions ORDER BY updated_at DESC LIMIT ?",
-                bindings: ["\(limit)"]
-            )
+            predicates.append("starred = 1")
         }
+        if let kind {
+            predicates.append("kind != ?")
+            bindings.append(kind.rawValue)
+        }
+        let whereClause = predicates.isEmpty ? "" : " WHERE \(predicates.joined(separator: " AND "))"
+        let rows = try database.rows(
+            "SELECT * FROM work_sessions\(whereClause) ORDER BY updated_at DESC LIMIT ?",
+            bindings: bindings + ["\(limit)"]
+        )
         return try rows.map(decodeWorkSession)
     }
 
     public func workSessions(matching text: String, limit: Int) throws -> [WorkSession] {
+        try workSessions(matching: text, limit: limit, excluding: nil)
+    }
+
+    public func workSessions(
+        matching text: String,
+        limit: Int,
+        excluding kind: WorkSessionKind
+    ) throws -> [WorkSession] {
+        try workSessions(matching: text, limit: limit, excluding: Optional(kind))
+    }
+
+    private func workSessions(
+        matching text: String,
+        limit: Int,
+        excluding kind: WorkSessionKind?
+    ) throws -> [WorkSession] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, limit > 0 else { return [] }
         let pattern = Self.likePattern(containing: trimmed)
+        let kindPredicate = kind == nil ? "" : "kind != ? AND"
         let rows = try database.rows(
             """
             SELECT * FROM work_sessions
-            WHERE LOWER(id) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(kind) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(intent) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(title) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(detail) LIKE LOWER(?) ESCAPE '\\'
-               OR LOWER(status) LIKE LOWER(?) ESCAPE '\\'
+            WHERE \(kindPredicate) (
+                   LOWER(id) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(kind) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(intent) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(title) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(detail) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(status) LIKE LOWER(?) ESCAPE '\\'
+            )
             ORDER BY updated_at DESC
             LIMIT ?
             """,
-            bindings: Array(repeating: pattern, count: 6) + ["\(limit)"]
+            bindings: (kind.map { [$0.rawValue] } ?? []) + Array(repeating: pattern, count: 6) + ["\(limit)"]
         )
         return try rows.map(decodeWorkSession)
     }
@@ -2210,7 +2374,13 @@ public final class CatalogRepository {
         return try rows.map(decodeEvaluationFailure)
     }
 
-    public func evaluationKindSummaries() throws -> [CatalogEvaluationKindSummary] {
+    public func evaluationKindSummaries(assetIDs: [AssetID]? = nil) throws -> [CatalogEvaluationKindSummary] {
+        guard assetIDs?.isEmpty != true else { return [] }
+
+        let scopeClause = assetIDs == nil
+            ? ""
+            : "AND evaluation_signals.asset_id IN (SELECT json_extract(value, '$.rawValue') FROM json_each(?))"
+        let bindings = try assetIDs.map { [try encode($0)] } ?? []
         let rows = try database.rows(
             """
             SELECT kind, COUNT(DISTINCT asset_id) AS asset_count
@@ -2236,9 +2406,11 @@ public final class CatalogRepository {
                 WHERE assets.id = evaluation_signals.asset_id
                   AND assets.bonded_to_asset_id IS NOT NULL
             )
+            \(scopeClause)
             GROUP BY kind
             ORDER BY kind COLLATE NOCASE ASC
-            """
+            """,
+            bindings: bindings
         )
         return try rows.map { row in
             guard let kindRawValue = row["kind"],
@@ -2640,27 +2812,36 @@ public final class CatalogRepository {
         return count
     }
 
-    public func previewGenerationPendingAssetCount(assetIDs: [AssetID]) throws -> Int {
-        guard !assetIDs.isEmpty else { return 0 }
+    /// The assets in `assetIDs` whose preview generation recorded an error —
+    /// the identity twin of `previewGenerationFailureAssetCount(assetIDs:)`,
+    /// which the unified shell's "⚠ Preview failed" import child needs so it
+    /// can open those photos in Grid rather than just badge a number.
+    public func previewGenerationFailureAssetIDs(assetIDs: [AssetID]) throws -> [AssetID] {
+        guard !assetIDs.isEmpty else { return [] }
         var seenAssetIDs = Set<AssetID>()
         let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
-        var count = 0
+        var failedAssetIDs: [AssetID] = []
         for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
             let rows = try database.rows(
                 """
-                SELECT COUNT(DISTINCT asset_id) AS count
+                SELECT DISTINCT asset_id
                 FROM preview_generation_queue
                 WHERE asset_id IN (\(placeholders))
+                    AND attempt_count > 0
+                    AND COALESCE(last_error, '') != ''
+                ORDER BY asset_id ASC
                 """,
                 bindings: chunk.map(\.rawValue)
             )
-            guard let countString = rows.first?["count"], let chunkCount = Int(countString) else {
-                throw CatalogError.sqlite("preview generation pending count query returned no count")
+            for row in rows {
+                guard let id = row["asset_id"] else {
+                    throw CatalogError.sqlite("preview generation failure row is missing asset_id")
+                }
+                failedAssetIDs.append(AssetID(rawValue: id))
             }
-            count += chunkCount
         }
-        return count
+        return failedAssetIDs
     }
 
     public func metadataSyncConflictItems(limit: Int? = nil) throws -> [MetadataSyncItem] {
@@ -3255,6 +3436,18 @@ public final class CatalogRepository {
                     to: &clauses,
                     bindings: &bindings
                 )
+            case .assetSet(let setID):
+                clauses.append(Self.assetSetMembershipClause())
+                bindings.append(contentsOf: [setID.rawValue, setID.rawValue])
+            case .assetIDs(let assetIDs):
+                guard !assetIDs.isEmpty else {
+                    clauses.append("0 = 1")
+                    continue
+                }
+                clauses.append(
+                    "assets.id IN (SELECT json_extract(value, '$.rawValue') FROM json_each(?))"
+                )
+                bindings.append(try encode(assetIDs))
             }
         }
 
@@ -3334,6 +3527,22 @@ public final class CatalogRepository {
         JOIN json_each(asset_sets.membership_json, '\(membershipPath)') session_assets
         WHERE work_sessions.id = ?
         """
+    }
+
+    /// The static half of a saved set's membership, resolved the same way
+    /// `workSessionAssetMembershipSelector` resolves a work session's sets:
+    /// `json_each` on a membership path that doesn't exist (a `.dynamic` set)
+    /// yields zero rows, so a dynamic set simply matches nothing here.
+    private static func assetSetMembershipClause() -> String {
+        let selectors = ["$.manual._0", "$.snapshot._0"].map { membershipPath in
+            """
+            SELECT json_extract(set_assets.value, '$.rawValue')
+            FROM asset_sets
+            JOIN json_each(asset_sets.membership_json, '\(membershipPath)') set_assets
+            WHERE asset_sets.id = ?
+            """
+        }
+        return "assets.id IN (\n\(selectors.joined(separator: "\nUNION\n"))\n)"
     }
 
     private static func likePattern(containing text: String) -> String {

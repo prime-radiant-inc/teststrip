@@ -26,8 +26,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    sqlite3 "$DB" "SELECT person_id, count(*) FROM person_assets GROUP BY person_id;"
    ```
 2. **Person-card count text.** `script/ax_drive.sh wait-vended Teststrip`;
-   press ⌘2 Library, then AX-press the sub-view toggle segment **"People"**
-   (People is a Library view now, not ⌘3). For each named person card, read its count `AXStaticText`
+   press ⌘6 for the People lens (People is one of the six top-level
+   `LibraryLens` cases, reached via the toolbar lens switcher's "People"
+   segment or ⌘6 — not ⌘3, and not a Library sub-view toggle). For each
+   named person card, read its count `AXStaticText`
    and assert it equals `NamedPersonPresentation.countText`: "1 confirmed
    photo" for a single asset, "N confirmed photos" otherwise
    (`PeopleView.swift:777-779`).
@@ -54,7 +56,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    ```
 6. **Person-card tap navigation.** Tap "Beta Person"'s card (not the merge
    menu — the card body). Assert the app switches to the Library grid scoped
-   to `person:Beta Person` (`showPersonPhotos`, `AppModel.swift:3331-3337`,
+   to `person:Beta Person` (`showPersonPhotos`, `AppModel.swift:4148-4169`,
    which sets `librarySearchText` to a `.person(name)` predicate and
    `selectedView = .grid`). Cross-check the grid's visible asset IDs against
    `SELECT asset_id FROM person_assets WHERE person_id=(SELECT id FROM people WHERE name='Beta Person');`.
@@ -105,7 +107,7 @@ no console access):
   `CREATE TABLE ... (id TEXT PRIMARY KEY, name TEXT NOT NULL, ...)` with only
   a **non-unique** index `idx_people_name ON people(name COLLATE NOCASE)` — no
   `UNIQUE` constraint on `name`, case-insensitive or otherwise.
-- `confirmSelectedAssetsAsPerson` (`AppModel.swift:3202-3225`) always mints a
+- `confirmSelectedAssetsAsPerson` (`AppModel.swift:3623-3648`) always mints a
   fresh `id: "person-\(UUID().uuidString)"` unless the caller overrides it
   (the sheet never does), and calls `catalog.repository.upsertPerson(id:name:)`
   — an upsert **keyed on `id`**, not `name`. Two separate confirm gestures
@@ -127,7 +129,19 @@ no console access):
 BLOCKED-CONSOLE — locked console prevents any AX step, including the
 duplicate-name probe (step 7), whose outcome above is inferred from static
 code reading of `CatalogMigrations.swift:124-131` and
-`AppModel.swift:3202-3225`, not observed. `mergePerson`'s SQL confirmed by
+`AppModel.swift:3623-3648`, not observed. `mergePerson`'s SQL confirmed by
 read of `CatalogRepository.swift:878-902`. Needs a human-present re-run. All
 SQL in this card was run headlessly against a seeded --faces catalog on
 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: Step 2's
+preamble pressed ⌘2 then AX-pressed a "sub-view toggle segment" for People —
+describing an intermediate, pre-unified-shell era where People had already
+left the top-level ⌘3 workspace slot but was reached as a Library sub-view
+toggle rather than its own key. Under the unified shell People is one of
+the six top-level `LibraryLens` cases again, reached directly by ⌘6 or the
+toolbar lens switcher's "People" segment — there is no Library sub-view
+toggle any more (`LibraryLens.keyEquivalent`, `LibraryLens.swift:44-51`).
+Preamble only; the person-card count/merge-gating/navigation assertions
+don't depend on how People was reached. Supersedes prior status: no prior
+run evidence exists to invalidate (still BLOCKED-CONSOLE).

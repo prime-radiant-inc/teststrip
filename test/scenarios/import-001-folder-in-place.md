@@ -39,7 +39,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 2. Import `$FIXTURE` via the typed-path route (no native panel needed; the
    isolated launch always exposes it per
    `LibraryGridChromePolicy.shouldExposeImportPathControl`,
-   `Sources/TeststripApp/LibraryGridView.swift:7282-7284`, which is gated on
+   `Sources/TeststripApp/LibraryGridView.swift:8342-8344`, which is gated on
    `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` being set — true for every
    `build_and_run.sh --isolated/--smoke` launch):
    ```bash

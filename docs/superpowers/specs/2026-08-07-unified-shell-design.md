@@ -147,6 +147,12 @@ skipped files aren't even in the catalog; their "grid" is the issue list).
 Verbs with no set to show move to the import row's **context menu**:
 Evaluate import (run local reads), Manual Compare over the import.
 
+While an import's previews are still generating, the row shows **nothing**
+extra — no in-flight child, no inline count. Preview generation is
+background work the Activity Center already surfaces as a running queue;
+sidebar sources mean "sets of photos," not progress meters (Jesse
+2026-08-07).
+
 ### Import completion moment
 
 - On completion, a **toast** appears top-right: ✓ count, skipped-count

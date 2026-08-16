@@ -1,15 +1,20 @@
 import Foundation
 import TeststripCore
 
-// Library-browsing UI state persisted across relaunches: route, saved-set scope,
-// active search/filters, selection, and sort order. Deliberately excludes anything
-// culling-related (in-progress culling sessions already survive as work sessions
-// and are reopened explicitly via Recent Work, not auto-restored).
+// UI state persisted across relaunches: the selected source, the lens it was
+// seen through, the saved-set scope, active search/filters, selection, and sort
+// order. Every persisted Cull selection relaunches on the same source in Grid;
+// the active run itself is not resumed, though in-progress culling sessions
+// survive as work sessions.
 struct SessionRestoreState: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    // No back-compat: v1 persisted a `selectedView` route and no source at
+    // all. `load()` discards a mismatched version, so a v1 blob simply
+    // cold-starts the app.
+    static let currentVersion = 2
 
     var version: Int = SessionRestoreState.currentVersion
-    var selectedView: LibraryViewMode
+    var lens: LibraryLens
+    var source: LibrarySource
     var selectedAssetSetID: AssetSetID?
     var selectedAssetID: AssetID?
     var sortOption: LibrarySortOption
@@ -33,6 +38,11 @@ struct SessionRestoreState: Codable, Equatable, Sendable {
     var providerFailuresFilter: Bool
     var metadataSyncPendingFilter: Bool
     var metadataSyncConflictFilter: Bool
+    /// Predicates installed by a smart-collection selection. Without these a
+    /// relaunch drops the user out of the collection they were in, because a
+    /// smart collection is no longer expressible as the boolean filter
+    /// properties above.
+    var detachedFilterPredicates: [SetQuery.Predicate]
 }
 
 // Reads and writes SessionRestoreState via app preferences (the same mechanism

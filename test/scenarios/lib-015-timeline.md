@@ -6,11 +6,12 @@
 (`timelineMonthDayScrubber`), the day/month sections rendered in the scroll
 body, and the autoscroll-to-focus wiring
 (`TimelineContentScrollPolicy.focusedTargetID`, driven by
-`.onChange(of:)` at `LibraryGridView.swift:6789`). Clicking a year bar calls
+`.onChange(of:)` at `LibraryGridView.swift:7777-7778`). Clicking a year bar
+calls
 `AppModel.selectTimelineYear`, clicking a month calls `selectTimelineMonth`,
 clicking a day calls `selectTimelineDay` — each narrows
 `captureDateStartFilter`/`captureDateEndFilter` and reloads
-(`AppModel.swift:8860-8871`), which should scroll the body to the new focus
+(`AppModel.swift:11412-11437`), which should scroll the body to the new focus
 target without a manual scroll gesture.
 
 ## Pre-state
@@ -20,8 +21,8 @@ ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APP
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
 **`--smoke`'s 24 assets are NOT date-varied enough for a real multi-year year
-ribbon.** `Sources/TeststripBench/SmokeCatalogSeeder.swift:105` sets
-`capturedAt = Date(timeIntervalSince1970: 1_704_067_200 + index * 900)` —
+ribbon.** `Sources/TeststripBench/SmokeCatalogSeeder.swift:133-158` defaults
+`captureOffset` to `index * 900` and adds it to epoch `1_704_067_200` —
 all 24 assets land within a single ~6-hour window on 2024-01-01. This is
 enough to exercise one month/one day section and the scrubber, but the year
 ribbon will show a single year bar with a single tick — it cannot prove
@@ -67,7 +68,8 @@ seeds enough variety without checking.
 - Step 5: **Fails if** clicking a scrubber row changes the model's selection
   (`selectTimelineMonth`/`selectTimelineYear` do run) but the scroll body does
   not follow — i.e. the `onChange(of: focusedTargetID)` autoscroll wiring at
-  `LibraryGridView.swift:6789` is broken and the user has to scroll manually.
+  `LibraryGridView.swift:7777-7778` is broken and the user has to scroll
+  manually.
 - Step 6: **Fails if** the "Loaded" count doesn't drop to the selected day's
   count, meaning `selectTimelineDay` didn't apply the date-range filter.
 
@@ -78,7 +80,7 @@ seeds enough variety without checking.
 
 ## Sharp edges
 - The Timeline view is one of the surfaces gated behind
-  `.liveMockupPlaceholder(.timelineLibrary)` (`LibraryGridView.swift:6785`) —
+  `.liveMockupPlaceholder(.timelineLibrary)` (`LibraryGridView.swift:7773`) —
   if that placeholder is currently active for this build, the scenario as
   written can't be driven; check for a placeholder overlay before assuming a
   broken wiring.
@@ -86,10 +88,15 @@ seeds enough variety without checking.
   and People (`LibraryGridView.swift:4481`); this card only covers the
   Timeline-specific ribbon/scrubber/scroll behavior, not the chrome-suppression
   assertion (that belongs to a chrome-focused card).
+- **Excluded unified-shell journey debt (Task 14 fix round):** Steps 1-2 and
+  the Expected numbering intentionally retain the pre-Task-14 ⌘2 Library plus
+  sub-view journey. The current UI reaches `TimelineWorkspaceView` as the ⌘4
+  Timeline lens (`Sources/TeststripApp/LibraryGridView.swift:7745-7804`);
+  rewriting and live-driving that journey is separate scenario work.
 
 ## Run status
 NOT YET RUN — headless SQL/source verification only (`--smoke` seed spread
-confirmed against `SmokeCatalogSeeder.swift:105`: single-day, ~6-hour spread
-across 24 assets, 900s apart). No live AX drive performed this session
+confirmed against `SmokeCatalogSeeder.swift:133-158`: single-day, ~6-hour
+spread across 24 assets, 900s apart). No live AX drive performed this session
 (no-live-GUI constraint). Needs a human-present or VM re-run per
 `test/scenarios/README.md`'s Tart-VM section.

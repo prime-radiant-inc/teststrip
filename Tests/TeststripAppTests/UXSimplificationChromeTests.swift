@@ -14,7 +14,7 @@ final class UXSimplificationChromeTests: XCTestCase {
             canEvaluateScope: true,
             needsEvaluationCount: 3
         )
-        XCTAssertEqual(plan.route, .reviewQueue(.potentialPicks))
+        XCTAssertEqual(plan.route, .smartCollection(.potentialPicks))
         XCTAssertTrue(plan.shouldTriggerEvaluation)
     }
 
@@ -25,7 +25,7 @@ final class UXSimplificationChromeTests: XCTestCase {
             canEvaluateScope: false,
             needsEvaluationCount: 0
         )
-        XCTAssertEqual(plan.route, .reviewQueue(.potentialPicks))
+        XCTAssertEqual(plan.route, .smartCollection(.potentialPicks))
         XCTAssertFalse(plan.shouldTriggerEvaluation)
     }
 
@@ -36,7 +36,7 @@ final class UXSimplificationChromeTests: XCTestCase {
             canEvaluateScope: false,
             needsEvaluationCount: 0
         )
-        XCTAssertEqual(plan.route, .reviewQueue(.picks))
+        XCTAssertEqual(plan.route, .smartCollection(.picks))
     }
 
     func testFindBestShotsTriggersEvaluationAndRoutesToPotentialPicksOnAFreshScope() {
@@ -49,7 +49,7 @@ final class UXSimplificationChromeTests: XCTestCase {
             needsEvaluationCount: 24
         )
         XCTAssertTrue(plan.shouldTriggerEvaluation)
-        XCTAssertEqual(plan.route, .reviewQueue(.potentialPicks))
+        XCTAssertEqual(plan.route, .smartCollection(.potentialPicks))
     }
 
     func testFindBestShotsNeverShowsABareZeroWhenNothingCanRank() {
@@ -98,8 +98,8 @@ final class UXSimplificationChromeTests: XCTestCase {
 
     // MARK: De-jargon labels
 
-    func testReviewQueueRenamesNeedsEvaluationToNotAnalyzedYet() {
-        XCTAssertEqual(ReviewQueue.needsEvaluation.presentation.title, "Not analyzed yet")
+    func testSmartCollectionRenamesNeedsEvaluationToNotAnalyzedYet() {
+        XCTAssertEqual(SmartCollection.needsEvaluation.presentation.title, "Not analyzed yet")
     }
 
     // MARK: Import Path dev-control gating

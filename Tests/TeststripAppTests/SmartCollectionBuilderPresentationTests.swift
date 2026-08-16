@@ -60,14 +60,14 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
             proposedName: "Filtered",
             ruleChips: ["Pick", "XMP Pending"],
             activeFilterRows: [
-                ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+                ActiveLibraryFilterRow(title: "Pick", target: .smartCollection(.picks)),
                 ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending)
             ],
             matchCount: 12
         )
 
         XCTAssertEqual(presentation.ruleRows.map(\.target), [
-            .reviewQueue(.picks),
+            .smartCollection(.picks),
             .metadataSyncPending
         ])
     }
@@ -121,7 +121,7 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
             proposedName: "Filtered",
             ruleChips: ["Search: ceremony"],
             matchCount: 12,
-            reviewQueueCounts: [
+            smartCollectionCounts: [
                 .fiveStars: 5,
                 .picks: 4,
                 .facesFound: 2,
@@ -156,14 +156,14 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
             proposedName: "No Signals",
             ruleChips: [],
             matchCount: 12,
-            reviewQueueCounts: [:]
+            smartCollectionCounts: [:]
         ).suggestedTemplateRows, [])
 
         let presentation = SmartCollectionBuilderPresentation(
             proposedName: "Picked",
             ruleChips: ["Pick"],
             matchCount: 12,
-            reviewQueueCounts: [
+            smartCollectionCounts: [
                 .fiveStars: 5,
                 .picks: 4,
                 .facesFound: 1,
@@ -192,7 +192,7 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
             proposedName: "Provider Signals",
             ruleChips: ["Search: ceremony"],
             matchCount: 24,
-            reviewQueueCounts: [.needsKeywords: 6],
+            smartCollectionCounts: [.needsKeywords: 6],
             evaluationKindSummaries: [
                 CatalogEvaluationKindSummary(kind: .focus, assetCount: 8),
                 CatalogEvaluationKindSummary(kind: .object, assetCount: 9),

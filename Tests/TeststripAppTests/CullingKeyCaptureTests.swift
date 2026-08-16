@@ -208,17 +208,17 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(shortcuts, [])
     }
 
-    // C1: the culling monitor must be scoped to the Cull workspace's
-    // loupe/compare/A-B sub-views only — never People/Timeline/Map (hidden
+    // C1: the culling monitor must be scoped to the Cull lens's
+    // loupe/compare/A-B sub-modes only — never People/Timeline/Map (hidden
     // chrome hazard: Return would promote-and-reject-siblings, P/X/ratings
     // would write metadata, g/c/b would teleport the view), and never
     // .cullGrid (which owns GridKeyCaptureView instead).
-    func testCullingKeyCaptureGateInactiveOutsideCullWorkspace() {
-        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .people))
-        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .timeline))
-        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .map))
-        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .grid))
-        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .libraryLoupe))
+    func testCullingKeyCaptureGateInactiveOutsideTheCullLens() {
+        XCTAssertFalse(CullingKeyCaptureGate.isActive(lens: .people, selectedView: .people))
+        XCTAssertFalse(CullingKeyCaptureGate.isActive(lens: .timeline, selectedView: .timeline))
+        XCTAssertFalse(CullingKeyCaptureGate.isActive(lens: .map, selectedView: .map))
+        XCTAssertFalse(CullingKeyCaptureGate.isActive(lens: .grid, selectedView: .grid))
+        XCTAssertFalse(CullingKeyCaptureGate.isActive(lens: .loupe, selectedView: .libraryLoupe))
     }
 
     func testCullingShortcutMapsPageUpAndPageDownKeyEvents() throws {
@@ -258,11 +258,11 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(shortcuts, [])
     }
 
-    func testCullingKeyCaptureGateActiveInCullSubViewsExceptGrid() {
-        XCTAssertTrue(CullingKeyCaptureGate.isActive(workspace: .cull, selectedView: .loupe))
-        XCTAssertTrue(CullingKeyCaptureGate.isActive(workspace: .cull, selectedView: .compare))
-        XCTAssertTrue(CullingKeyCaptureGate.isActive(workspace: .cull, selectedView: .abCompare))
-        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .cull, selectedView: .cullGrid))
+    func testCullingKeyCaptureGateActiveInCullSubModesExceptTheCullGrid() {
+        XCTAssertTrue(CullingKeyCaptureGate.isActive(lens: .cull, selectedView: .loupe))
+        XCTAssertTrue(CullingKeyCaptureGate.isActive(lens: .cull, selectedView: .compare))
+        XCTAssertTrue(CullingKeyCaptureGate.isActive(lens: .cull, selectedView: .abCompare))
+        XCTAssertFalse(CullingKeyCaptureGate.isActive(lens: .cull, selectedView: .cullGrid))
     }
 
     private func makeKeyEvent(

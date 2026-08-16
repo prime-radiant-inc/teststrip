@@ -5,29 +5,29 @@ nearly identical frames head-to-head with synced zoom so that I can compare
 focus precisely and commit one keep/reject decision for the pair. Covers
 inventory items 63-68:
 
-- Item 63 — `ABComparePresentation` (`LibraryGridView.swift:5392-5454`:
+- Item 63 — `ABComparePresentation` (`LibraryGridView.swift:6262-6324`:
   `primaryAsset`/`contenderAsset`, `canCompare`, `positionText` = "Comparing
   X vs Y" / "Need two frames to compare") and `ABCompareView`
-  (`LibraryGridView.swift:5807-6037`: header → two panes → keep bar →
+  (`LibraryGridView.swift:6809-7057`: header → two panes → keep bar →
   filmstrip).
 - Item 64 — contender resolution order override → recommended → neighbor:
-  `ABComparePresentation.resolveContender`, `LibraryGridView.swift:5420-5442`
+  `ABComparePresentation.resolveContender`, `LibraryGridView.swift:6290-6312`
   (NOT in AppModel as an older digest claimed). Neighbor = next asset after
   the anchor, else the previous one; each tier is skipped if it would equal
   the primary's id.
 - Item 65 — filmstrip tile click sets pane B, anchor tile click clears the
-  override: `abFilmstripTile`, `LibraryGridView.swift:5983-6012`
+  override: `abFilmstripTile`, `LibraryGridView.swift:7003-7031`
   (`model.selectABContender(asset.id)` / `selectABContender(nil)`).
 - Item 66 — `AppModel.keepABFrame(keeping:over:)`,
-  `AppModel.swift:5010-5021`, delegating to `applyCompareFlags`
-  (`AppModel.swift:5099-5137`): kept frame → `flag = .pick`, rejected frame →
+  `AppModel.swift:6377-6388`, delegating to `applyCompareFlags`
+  (`AppModel.swift:6466-6510`): kept frame → `flag = .pick`, rejected frame →
   `flag = .reject`, both under one `recordMetadataChangeGroup` undo entry.
 - Item 67 — the <2-frames notice: `singleFrameNotice`,
-  `LibraryGridView.swift:5944-5953` ("Load at least two frames to compare
+  `LibraryGridView.swift:6950-6959` ("Load at least two frames to compare
   A/B"), shown whenever `presentation.canCompare` is false.
 - Item 68 — synced zoom: both panes render `LoupeZoomStageView` reading the
-  single shared `model.loupeZoomFocus` (`AppModel.swift:1830`,
-  `toggleLoupeZoom` at `:5494-5495`) — sync is structural (one source of
+  single shared `model.loupeZoomFocus` (`AppModel.swift:2083`,
+  `toggleLoupeZoom` at `:6850-6853`) — sync is structural (one source of
   truth), not mirrored state.
 
 ## Pre-state
@@ -50,14 +50,14 @@ BASELINE=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadat
    scroll it into view first per the README's virtualized-grid gotcha). Note
    its filename as `A_NAME` and its two SQL-order neighbors' filenames.
 2. **Switch to A/B view.** Press bare `b` (decoded at
-   `GridKeyCaptureView.swift:52` in the grid and `AppModel.swift:260`
-   globally; the toolbar "A/B" mode button at `LibraryGridView.swift:4477`
+   `GridKeyCaptureView.swift:52` in the grid and `AppModel.swift:235`
+   globally; the toolbar "A/B" mode button at `LibraryGridView.swift:5179-5229`
    and the View menu item "A/B Compare" are equivalent). NOT ⇧⌘B — that is
    "Find Best Shots".
 3. **Assert the two-pane layout and pane A's identity.**
    `script/ax_drive.sh wait --role AXStaticText --contains "Comparing"`;
    `script/ax_drive.sh find --contains "$A_NAME"` — pane A is the
-   currently-selected asset (`ABComparePresentation.init` at `:5398-5410`
+   currently-selected asset (`ABComparePresentation.init` at `:6268-6288`
    uses `model.selectedAssetID`, falling back to `assets.first`). Pane B is
    whatever `resolveContender` yields — with no override and (in `--smoke`,
    which has no persisted stacks/recommendations for the survey) likely the
@@ -91,7 +91,7 @@ BASELINE=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadat
    Expect exactly `pick` for A and `reject` for B, and the total flagged
    count = the step-6 value + 2 (both chosen frames were unflagged). Also
    assert one status message appeared: `ax_drive.sh find --contains "Kept"`
-   ("Kept <name>; rejected the alternate", `AppModel.swift:5020`).
+   ("Kept <name>; rejected the alternate", `AppModel.swift:6387`).
 8. **One-gesture undo check.** Press ⌘Z once and assert BOTH flags return to
    NULL (the pick and the reject were grouped into a single
    `recordMetadataChangeGroup` entry). Re-run the step-7 query. Then redo
@@ -159,10 +159,17 @@ Quit the app instance you launched.
   `model.assets` for the A/B surface; if the filter and the compare surface
   read different asset lists, find another way to a 1-asset scope (e.g. an
   `--isolated` launch plus a 1-photo import) and update this card.
-- Bare `b` vs ⇧⌘B confusion is a real trap (`main.swift:373` binds ⇧⌘B to
+- Bare `b` vs ⇧⌘B confusion is a real trap (`Sources/TeststripApp/main.swift:416` binds ⇧⌘B to
   Find Best Shots).
 
 ## Run status
 UNRUN — needs human-present execution per test/scenarios/README.md. All
 source claims (line numbers, labels, help strings, resolution order, write
 semantics) verified by source read on 2026-07-09; no SQL dry-run yet.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; the assertions were not affected — no other stale symbol
+found in this card. Supersedes prior status: no prior run evidence exists to
+invalidate (still UNRUN).

@@ -3,29 +3,31 @@
 **What this covers**: as a photographer who just imported a shoot with
 Autopilot armed, I want machine-proposed keeps/cuts surfaced as provisional
 grid badges I can scan, then either commit them (selected subset or all) or
-dismiss/undo. `runAutopilot` (`AppModel.swift:9651`) plans in-memory
+dismiss/undo. `runAutopilot` (`AppModel.swift:9638-9686`) plans in-memory
 `AutopilotProposal`s (`AutopilotProposalPlanner`, never persisted — SP-D0
 dropped the `autopilot_proposals` status table outright,
 `DROP TABLE IF EXISTS autopilot_proposals`, forward-only, no back-out) and
 immediately applies each `.pick`/`.reject` straight into the asset's own
 `metadata_json.flag` (`applyTentativeAutopilotProposals`,
-`AppModel.swift:9712`), tagged `origin=ai` (`aiUnconfirmedFields` contains
+`AppModel.swift:9699-9746`), tagged `origin=ai` (`aiUnconfirmedFields` contains
 `flag`) — this AI-origin, unconfirmed flag **is** the "ghost"
 (`AutopilotGhost.kind(in:)`,
 `Sources/TeststripCore/Autopilot/AutopilotGhost.swift:15`), the single
 source of truth for "the machine proposed a flag." There is no longer, and
 now can never again be, a persisted "proposal" row distinct from the ghost
 sitting in the asset's own metadata. The `AutopilotBannerView` Review/Undo
-all/Dismiss controls (item 52 — `LibraryGridView.swift:3643-3682`,
-`AppModel.swift:9817` `dismissAutopilotRunSummary`) → grid-cell KEEP/CUT
+all/Dismiss controls (item 52 — `LibraryGridView.swift:3556-3603`,
+`AppModel.swift:9804-9806` `dismissAutopilotRunSummary`) → grid-cell KEEP/CUT
 badges from `AutopilotBadgePresentation.badge(for:)` (item 53 —
-`LibraryGridView.swift:3605-3618`, wired via
+`LibraryGridView.swift:3518-3530`, wired via
 `autopilotDecision: AutopilotGhost.kind(in: asset.metadata)` on
-`AssetGridCell` at `:2370`/`:7663`/`:8120`) → the review toolbar's Commit
-selected / Commit all / Dismiss selected controls, `commitAutopilotProposals(assetIDs:)`
-(`AppModel.swift:9857`) being the gesture that *confirms* the ghost (clears
+`AssetGridCell` at `:2346`/`:8029` and in
+`AssetGridCellAccessibilityValue.value(...)` at `:7576`) → the review
+toolbar's Commit selected / Commit all / Dismiss selected controls,
+`commitAutopilotProposals(assetIDs:)`
+(`AppModel.swift:9865-9897`) being the gesture that *confirms* the ghost (clears
 `aiUnconfirmedFields`, writes the sidecar) rather than first-writing
-anything, and `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9903`)
+anything, and `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9911-9930`)
 being the gesture that *removes* it (records `removed_ai_labels`, the same
 recorded-removal mechanism a direct `U` uses). The load-bearing assertion is
 the **auto-apply-with-provenance** invariant: a run's keep/cut proposals
@@ -42,7 +44,7 @@ duplicate.)
 
 ## Pre-state
 - **This card drives the post-import armed-Autopilot path, not the on-demand
-  gesture.** `runAutopilot` (`AppModel.swift:9651`) has two entry points: an
+  gesture.** `runAutopilot` (`AppModel.swift:9638-9686`) has two entry points: an
   on-demand one via Culling ▸ Run Autopilot (`runAutopilotOnCurrentScope()`,
   scope `.visible` — driven by `app-012-autopilot-evaluate-commands.md`), and
   the post-import armed run this card exercises (`runArmedImportAutopilot`,
@@ -88,7 +90,7 @@ duplicate.)
    Also expect the banner: `script/ax_drive.sh wait --role AXStaticText
    --contains "Autopilot"`.
 4. **Assert ghosts exist, each landed as a *tentative, unconfirmed* write,
-   and the grid badges are provisional (items 52-53).** In Library workspace,
+   and the grid badges are provisional (items 52-53).** In the Grid lens,
    for each imported asset carrying a ghost, assert the grid cell shows a
    KEEP or CUT badge matching the ghost's own flag value
    (`ax_drive.sh find --contains "KEEP"` / `"CUT"` scoped near that tile —
@@ -125,16 +127,21 @@ duplicate.)
 6. **Review is reachable after Dismiss — the open question this card used to
    flag is resolved.** Dismissing the banner only clears
    `model.autopilotRunSummary`; it leaves `autopilotGhostAssetIDs` (and the
-   ghosts themselves) untouched, so the Cull sidebar's "Autopilot Proposals"
-   source stays present and clickable
-   (`cullSourcePresentation`/`CullSource.Target.autopilotProposals`,
-   `AppModel.swift:5858-5859` `activateCullSource` → `beginAutopilotReview()`)
-   — a banner Dismiss is **not** a one-way door to Review; it is simply one
-   of three independent entry points into `beginAutopilotReview()` (the
-   standalone banner's own "Review" button and `cullCompletionStage`'s
-   folded banner are the other two, neither re-driven here). ⌘1 for Cull,
+   ghosts themselves) untouched, so the sidebar's "AI Suggestions" row
+   (`LibrarySource.autopilotSuggestions`, `LibrarySource.swift:48,89`) stays
+   present and clickable — pressing it drives `selectSidebarRow(_:)`
+   (`AppModel.swift:4867-4877`) → `selectSource(_:)` (`AppModel.swift:4930-4933`) →
+   `applySource`'s `.autopilotSuggestions` case →
+   `applyAutopilotSuggestionsScope()` (`AppModel.swift:10213-10238`), which sets
+   `isAutopilotReviewActive = true` and narrows the grid to the ghost-
+   carrying assets without touching the lens — a banner Dismiss is **not**
+   a one-way door to Review; it is simply one of three independent entry
+   points into that review state (the standalone banner's own "Review"
+   button and `cullCompletionStage`'s folded banner both instead call
+   `beginAutopilotReview()`, `AppModel.swift:10204-10207`, which additionally
+   switches to the Grid lens; neither is re-driven here). ⌘1 for Cull,
    then click the sidebar row: `script/ax_drive.sh press --contains
-   "Autopilot Proposals"`; then `script/ax_drive.sh wait --role
+   "AI Suggestions"`; then `script/ax_drive.sh wait --role
    AXStaticText --contains "Reviewing"`.
 7. **Batch-select a subset (not all) of the ghost-carrying assets** in the
    grid (shift-click or ⌘-click per whatever the grid's multi-select gesture
@@ -180,7 +187,7 @@ duplicate.)
   catalog (the ghost count and the generation sum are unchanged from step 4)
   and the grid badges persist. **Fails if** Dismiss clears any ghost, writes
   any metadata, or also clears the grid badges.
-- Step 6: the "Autopilot Proposals" sidebar row is present and clickable
+- Step 6: the "AI Suggestions" sidebar row is present and clickable
   after Dismiss, and clicking it reaches "Reviewing N proposals" with N ≥ 1.
   **Fails if** the row is absent, disabled, or clicking it fails to open
   review — that would mean Dismiss really is a one-way door, contradicting
@@ -199,7 +206,7 @@ duplicate.)
   the run's tentative writes and any confirmed commits). Quote `GEN0`, the
   post-step-8 sum, `GEN1`, and the final sum side by side.
 - **Dismiss (review toolbar), documented but not driven live by this card**:
-  `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9903`) records
+  `dismissAutopilotProposals(assetIDs:)` (`AppModel.swift:9911-9930`) records
   `removed_ai_labels` for each dismissed ghost's flag value and writes no
   sidecar — the same recorded-removal mechanism a direct `U` on a tentative
   flag uses (source-verified; this card never presses "Dismiss selected"
@@ -235,17 +242,21 @@ Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
   0, confirm the import finished (`SELECT count(*) FROM assets` grew) and give
   evaluation time to drain before concluding failure.
 - **Resolved (step 6): Review stays reachable after the banner's Dismiss.**
-  `beginAutopilotReview()` has three independent entry points — the
-  standalone banner's Review button, `cullCompletionStage`'s folded banner,
-  and the Cull sidebar's "Autopilot Proposals" source
-  (`activateCullSource(.autopilotProposals)`, `AppModel.swift:5858-5859`).
-  Dismissing the banner only clears `model.autopilotRunSummary`
+  There are three independent paths into review state — the standalone
+  banner's Review button and `cullCompletionStage`'s folded banner both
+  call `beginAutopilotReview()` (`AppModel.swift:10204-10207`, which additionally
+  switches to the Grid lens); the sidebar's "AI Suggestions" row
+  (`LibrarySource.autopilotSuggestions`, `LibrarySource.swift:48,89`) is
+  the third, reaching the same review state via `selectSidebarRow(_:)` →
+  `selectSource(_:)` → `applyAutopilotSuggestionsScope()`
+  (`AppModel.swift:4867-4877,4930-4933,10213-10238`) without touching the lens. Dismissing
+  the banner only clears `model.autopilotRunSummary`
   (`dismissAutopilotRunSummary`) — it never touches `autopilotGhostAssetIDs`
-  or any ghost, so the sidebar row (present whenever
-  `!autopilotGhostAssetIDs.isEmpty`, `AppModel.swift:5885-5892`) survives
-  Dismiss and stays clickable. Items 52 (Dismiss) and 54 (Review→Commit) are
-  **not** mutually exclusive; one sequential import run (steps 1-11 as
-  ordered above) exercises both without a second import.
+  or any ghost, so the sidebar row (present whenever `autopilotGhostCount >
+  0`, `UnifiedSidebarPresentation.swift:179-187`) survives Dismiss and stays
+  clickable. Items 52 (Dismiss) and 54 (Review→Commit) are **not** mutually
+  exclusive; one sequential import run (steps 1-11 as ordered above)
+  exercises both without a second import.
 - "Commit N" / "Dismiss selected" in the review toolbar are both disabled
   when the batch selection is empty (`.disabled(selectedIDs.isEmpty)`) —
   don't forget to select before asserting those buttons are pressable.
@@ -293,3 +304,62 @@ pre-existing gap this reconciliation surfaced rather than closed.
 **Supersedes prior status**: the 2026-07-15 reconciliation above, and any
 run against it, predates the `autopilot_proposals` drop and the sidebar
 Review route — not valid evidence for this revision. Needs a fresh VM run.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Steps 1's
+and 135's ⌘1 presses are unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`). Found and fixed one substantive stale reference beyond the
+mechanical preamble: Step 4 said "In Library workspace" — the two-workspace
+`Workspace` enum's Library case, which no longer exists — corrected to "In
+the Grid lens" (this step doesn't press a key to get there; it just
+describes checking the grid cells, which render in the Grid lens after the
+import lands). Supersedes prior status: the 2026-08-06 ghost-derivation
+reconciliation above is unaffected — it never depended on workspace naming
+— but still needs a fresh VM run per its own text.
+
+**Reconciled 2026-08-09 (Task 13 review fix, second pass)**: the sweep above
+marked this whole card `Reconciled` while Step 6 was still stale — a task
+review caught it. Step 6 (its body, its Expected bullet, and the Sharp-edges
+"Resolved" note) cited three symbols that don't exist anywhere in `Sources/`
+(`cullSourcePresentation`, `CullSource.Target.autopilotProposals`,
+`activateCullSource`), a bogus line citation (`AppModel.swift:5858-5859` is
+unrelated code inside `compareGroupKind`), and drove
+`ax_drive.sh press --contains "Autopilot Proposals"` against a label the live
+UI has not rendered since before this push's base commit — the row is titled
+**"AI Suggestions"** (`LibrarySource.autopilotSuggestions`,
+`LibrarySource.swift:48,89`). Rewrote Step 6 and the Sharp-edges note to cite
+the real chain: the sidebar row presses through `selectSidebarRow(_:)`
+(`AppModel.swift:4867`) → `selectSource(_:)` (`AppModel.swift:4930`) →
+`applySource`'s `.autopilotSuggestions` case →
+`applyAutopilotSuggestionsScope()` (`AppModel.swift:10213`), a second,
+independent path into review state alongside `beginAutopilotReview()`
+(`AppModel.swift:10204`, the banner Review button's and
+`cullCompletionStage`'s path) — the sidebar route sets
+`isAutopilotReviewActive` without touching the lens, per
+`applyAutopilotSuggestionsScope()`'s own doc comment. `--contains "AI
+Suggestions"` replaces the dead AX label; kept as a `--contains` match per
+the house convention for pressing a sidebar row (`cull-015-sidebar-
+sources.md`'s Step 3, `import-011-completion-toast-and-import-rows.md`'s
+skipped-files row press), since the string is unique in the live UI
+(verified: `grep -rn "AI
+Suggestions" Sources/` has exactly one live title definition plus one doc
+comment; the only other live string containing it, "Review AI Suggestions",
+was itself deleted — confirmed absent by `cull-025`/`cull-029`'s own
+expect-not-found assertions). Also re-verified every other symbol/line
+citation in the card while at it, not just Step 6, per the same "citations
+drift 30-160 lines" hazard: found and fixed a second, independent problem —
+five more `AppModel.swift`/`LibraryGridView.swift` citations in the card's
+own opening paragraph and Pre-state bullet (`runAutopilot`,
+`applyTentativeAutopilotProposals`, `dismissAutopilotRunSummary`,
+`commitAutopilotProposals`, `dismissAutopilotProposals`, the
+`AutopilotBannerView`/`AutopilotBadgePresentation` line ranges, and the
+`AssetGridCell`/`AssetGridCellAccessibilityValue` wiring sites) were stale by
+87-112 lines, all corrected against current source. The symbols themselves
+were already correct; only the line numbers had drifted. Steps 1-5, 7-11,
+the remaining Sharp-edges bullets, and the two Run-status notes above are
+otherwise unaffected and left as written — this reconciliation touches only
+citations, not claims.
+**Supersedes prior status**: the "Task 13, unified-shell preamble sweep" note
+directly above marked the whole card reconciled without checking Step 6 —
+that clearance did not cover Step 6's dead symbols, wrong AX label, or the
+line-citation drift found here; this note is what actually clears them.
+Needs a fresh VM run.

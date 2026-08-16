@@ -2,7 +2,7 @@
 
 **What this covers**: Jesse drives evaluation and autopilot from the Culling
 menu; the commands must be honest about why they can't run. Inventory items
-39-40, 42 (`CullingCommands`, `Sources/TeststripApp/main.swift:432-556`):
+39-40, 42 (`CullingCommands`, `Sources/TeststripApp/main.swift:408-532`):
 **Run Autopilot** (no key equivalent) needs evaluated photos in view, else it
 sets the status "Autopilot: no evaluated photos in view to run on"
 (`AppModel.runAutopilotOnCurrentScope`); **Evaluate Photo / Evaluate Visible
@@ -92,10 +92,14 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - Step 3's "preview not yet cached" window is racy on a fast machine —
   it's fine to observe only the no-selection→selection transition and note
   the preview-window race as unobserved.
-- Status messages surface in the footer/status chrome, Library-only per
-  `WorkspaceChromePolicy.showsFooter` — run step 4 from a workspace where
-  the status is actually visible, or read `statusMessage` indirectly via a
-  screenshot of the footer in Library.
+- Status messages surface in the footer/status chrome, shown only in the
+  "browse" lenses — Grid, Loupe, Timeline, Map, not Cull or People — per
+  `LensChromePolicy.showsFooter`/`showsBrowseChrome`
+  (`LibraryGridView.swift:8264-8286`). A fresh launch already lands in the
+  Grid lens (`AppModel.load`, `selectedView: .grid`), so step 4 is fine as
+  written; if a prior step switched to Cull or People, switch back to a
+  browse lens before reading the status, or read `statusMessage` indirectly
+  via a screenshot of the footer.
 
 ## Run status
 **Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: `autopilot_proposals`
@@ -107,3 +111,16 @@ status: LEDGER records this card `Tested-Pass`/PASS, but that result was
 obtained against a build where `autopilot_proposals` still existed and Step
 6's query still worked — not valid evidence for this revision. Needs a
 fresh VM run.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell sweep)**: the Sharp edges
+note cited `WorkspaceChromePolicy.showsFooter`, gating the footer to the
+deleted "Library" workspace — renamed to `LensChromePolicy.showsFooter`
+(`LibraryGridView.swift:8284-8286`), which delegates to
+`showsBrowseChrome(_:)` (`:8264-8271`): footer chrome now shows across four
+lenses (Grid/Loupe/Timeline/Map), not one workspace, and is absent in Cull
+and People. Corrected the guidance accordingly (a fresh launch's default
+Grid lens already satisfies it). No step or assertion in this card
+referenced a workspace directly, so only this one citation changed.
+Supersedes prior status: the 2026-08-06 ghost-derivation reconciliation
+above is unaffected by this correction — it never depended on footer
+visibility — but still needs a fresh VM run per its own text.

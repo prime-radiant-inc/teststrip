@@ -2,8 +2,8 @@
 
 **What this covers**: Task 9 of the unified-single-view feature. Opening a
 photo now lands in the single-image Cull view, where the on-demand
-inspector — reachable from every workspace as of this branch
-(`WorkspaceChromePolicy.showsInspector` is unconditionally `true`) — renders
+inspector — reachable from every lens as of this branch
+(`LensChromePolicy.showsInspector` is unconditionally `true`) — renders
 as one continuous scroll of four stacked sections: Info, Describe, AI, and
 the new **People** section (`PhotoFacesSectionView`), one row per detected
 face with per-face naming controls. Every gesture is confirm-before-write:
@@ -16,11 +16,11 @@ isn't 1:1-zoomed. Rejecting a guess records a `rejected_face_people`
 negative so recognition stops re-proposing that person for that exact face.
 
 Source:
-- `Sources/TeststripApp/main.swift:52-57` — the inspector column, gated on
-  `WorkspaceChromePolicy.showsInspector(model.selectedWorkspace)`
-  (`Sources/TeststripApp/LibraryGridView.swift:7830-7834`: "all three
-  workspaces show the inspector").
-- `Sources/TeststripApp/AppModel.swift:4447-4451` — `toggleInspector()` is
+- `Sources/TeststripApp/main.swift:38-41` — the inspector column, gated on
+  `LensChromePolicy.showsInspector(model.selectedView)`
+  (`Sources/TeststripApp/LibraryGridView.swift:8291-8293`: unconditionally
+  `true` for every lens now, not gated to three workspaces).
+- `Sources/TeststripApp/AppModel.swift:4964-4968` — `toggleInspector()` is
   now a bare `isInspectorVisible.toggle()`; there is no more Cull-switches-
   to-Library special case (contrast with the pre-unification behavior
   `inspect-001-toggle-tabs.md` used to test, now reconciled).
@@ -45,14 +45,14 @@ Source:
   `.suggested` (from `peopleFaceSuggestions`) for the same face index,
   falling back to `.unnamed`; `displayLabel` (`"<name> ✓"` / `"guess:
   <name>"` / `"Unnamed"`) is shared verbatim by the loupe box labels.
-- `Sources/TeststripApp/AppModel.swift:3706-3751` — `nameFace(_:personID:)`
+- `Sources/TeststripApp/AppModel.swift:4042-4113` — `nameFace(_:personID:)`
   (assigns + clears any prior rejection for that pair), `nameFace(_:newPersonName:)`
   (mints a person via `upsertPerson` then `assignFaces`), `removeFacePerson`
   (`unassignFaces`), `rejectFaceSuggestion` (`recordRejectedFacePerson`) —
   every one calls `refreshPeopleFaceSuggestions()` inline, so the People
   rows and the suggestion pipeline agree immediately with no separate
   "re-scan" gesture needed for the reject leg below.
-- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1185-1219`
+- `Sources/TeststripCore/Catalog/CatalogRepository.swift:1855-1893`
   (`assignFaces` — writes `person_faces` **and** a `person_assets` row for
   the whole asset, `:1208-1217`), `:1238-1254`
   (`recordRejectedFacePerson`/`clearRejectedFacePerson`), `:1269-1279`
@@ -71,8 +71,8 @@ Source:
   bottom-left-origin → top-left-origin y-flip (`topLeftY = 1.0 - box.y -
   box.height`, `:35-38`, Vision's convention) — exactly what letterboxing
   and a resize should visually confirm.
-- `Sources/TeststripApp/LoupeZoomView.swift:266-284` — `faceBoxOverlay` is
-  drawn only `if WorkspaceChromePolicy.showsInspector(...), model.isInspectorVisible`,
+- `Sources/TeststripApp/LoupeZoomView.swift:271-282` — `faceBoxOverlay` is
+  drawn only `if LensChromePolicy.showsInspector(model.selectedView), model.isInspectorVisible`,
   and only over `fittedImage` (`:249-264`), never the 1:1-zoomed view.
 - `Sources/TeststripApp/main.swift:4-23` — `AppWindowLayoutMetrics`;
   `.cull`'s 800pt floor (`:15`) predates the inspector becoming reachable
@@ -116,14 +116,15 @@ for the plain add-a-name leg.
 ## Steps
 
 ### 1. Opening a photo lands in the single-image Cull view with the stacked inspector
-1. Press ⌘2 (Library), select `commons-glenn-official.jpg`'s grid cell, and
+1. Press ⌘2 (Grid lens), select `commons-glenn-official.jpg`'s grid cell, and
    double-click it (`.help("Double-click to open in Loupe")`,
    `LibraryGridView.swift:2424`; the double-click gesture itself calls
    `model.openAssetInLoupe(asset.id)` at `:7082-7087`, inside the
    `assetActivation` view modifier `:7076-7113`) to open it. Assert the
-   workspace is now Cull (a Cull-only control, e.g. the stack rail, is
-   present) — `openAssetInLoupe` (`AppModel.swift:5355-5358`) lands on
-   `selectedView == .loupe`, whose `.workspace` is `.cull`.
+   lens is now Cull (a Cull-only control, e.g. the stack rail, is
+   present) — `openAssetInLoupe` (`AppModel.swift:6300-6303`) lands on
+   `selectedView == .loupe`, whose `.lens` is `.cull`
+   (`LibraryViewMode.lens`, `LibraryLens.swift:74-88`).
 2. Press ⌘I. Assert the inspector column appears **without leaving Cull**
    — contrast the old special-case behavior `inspect-001-toggle-tabs.md`
    used to test, where ⌘I from Cull switched to Library first; that case
@@ -154,7 +155,7 @@ for the plain add-a-name leg.
    `SELECT count(*) FROM rejected_face_people;` both read 0.
 
 ### 3. Add a name to an unnamed face (new person)
-8. Navigate to `commons-aldrin-portrait.jpg` (⌘2 Library → select → open in
+8. Navigate to `commons-aldrin-portrait.jpg` (⌘2 Grid lens → select → open in
    loupe). Confirm its People row reads "Unnamed".
 9. Re-assert confirm-before-write:
    `SELECT count(*) FROM person_faces WHERE asset_id=$ALDRIN_ID;` reads 0
@@ -194,12 +195,12 @@ for the plain add-a-name leg.
     reads exactly 1; `person_faces` for this face is still 0 (a rejection
     is not a confirmation).
 19. **Re-running suggestions no longer proposes Glenn for this face**:
-    navigate away (⌘2 Library) and back to `commons-glenn-1962.jpg` —
+    navigate away (⌘2 Grid lens) and back to `commons-glenn-1962.jpg` —
     this forces `photoFacesPresentation` to recompute against the current
     `peopleFaceSuggestions` state. Assert the row still reads "Unnamed",
     not "guess: John Glenn" — `rejectedPairs` filters this exact (asset,
     face, person) tuple out of `FaceMatchSuggestion.faceIDs`
-    (`AppModel.swift:3776-3786`).
+    (`AppModel.swift:4231-4237`).
 
 ### 5. Remove a confirmed name
 20. Return to `commons-glenn-official.jpg` (its face is still confirmed
@@ -216,7 +217,7 @@ for the plain add-a-name leg.
     14 is never cleaned up by Remove). If so, this asset is permanently
     excluded from `unassignedFaceObservations` (`:1136-1139`) from this
     point on: any future unnamed face on this exact photo can never
-    receive a suggested match again, and the People-workspace person
+    receive a suggested match again, and the People lens's person
     card's asset count for "John Glenn" still includes this photo even
     though the inspector now shows no confirmed face on it. This is a real
     cross-surface inconsistency, not a scenario-authoring artifact —
@@ -269,7 +270,7 @@ for the plain add-a-name leg.
     left pointing at empty letterbox space.
 
 ## Expected
-- Step 2: inspector opens, workspace stays Cull. **Fails if** any workspace
+- Step 2: inspector opens, lens stays Cull. **Fails if** any lens
   switch happens (the old Library-switch special case resurfacing) or the
   panel doesn't appear.
 - Step 3: Info/Describe/AI/People headers all present without scrolling.
@@ -326,9 +327,21 @@ for the plain add-a-name leg.
   comment in the file — confirm the download actually succeeds before
   trusting a "no faces detected" result as a product finding rather than a
   fixture gap.
+- **Excluded unified-shell journey follow-ups:** Step 25 intentionally retains
+  its pre-Task-14 800pt action and pass/fail contract. The current unified
+  `AppWindowLayoutMetrics.minimumWidth` is 1000pt for every lens
+  (`Sources/TeststripApp/main.swift:5-13`), so no current symbol supports the
+  card's old 800pt rationale. Rewriting that journey to the 1000pt floor and
+  driving it live is separate scenario debt. The pre-Task-14 face-removal
+  assertion and its source anchors are also retained rather than freshened
+  misleadingly: current `unassignFaces` conditionally removes the
+  `person_assets` row after the last face is removed
+  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:1963-2000`), so
+  Step 22 and the old `:1269-1279`/`:1136-1139` rationale need a separately
+  scoped rewrite and live run too.
 - **Do not test confirmed + suggested on the same photo.** Confirming any
   face on a photo (`nameFace` → `assignFaces`) inserts a `person_assets`
-  row for the **whole asset** (`CatalogRepository.swift:1208-1217`), and
+  row for the **whole asset** (`CatalogRepository.swift:1878-1886`), and
   `unassignedFaceObservations` excludes any face whose asset has a
   `person_assets` row (`:1136-1139`) — not just the confirmed face index.
   So once one face on a photo is confirmed, every other face on that same
@@ -345,7 +358,7 @@ for the plain add-a-name leg.
   one.
 - **`refreshPeopleFaceSuggestions()` is synchronous and automatic** — every
   `nameFace`/`removeFacePerson`/`rejectFaceSuggestion` call already
-  recomputes suggestions inline (`AppModel.swift:3706-3751`, each ends by
+  recomputes suggestions inline (`AppModel.swift:4042-4113`, each ends by
   calling it). There's no separate "re-run suggestions" gesture to drive;
   "re-running suggestions" in step 19 means re-reading the already-
   refreshed state, not triggering a new scan.
@@ -366,3 +379,23 @@ branch) but never driven — the controller runs this live in the Tart VM per
 `test/scenarios/README.md`. Needs the AuraFace model actually present
 (`script/download_face_model.sh`, network-dependent — see Sharp edges)
 before any step past Pre-state can produce a face to name.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell sweep)**: this card predates
+the unified shell and every "workspace" reference in it described the
+deleted three-case `Workspace` enum — `WorkspaceChromePolicy` was renamed to
+`LensChromePolicy` (`LibraryGridView.swift:8291-8293`, still unconditionally
+`true`), `model.selectedWorkspace`/`LibraryViewMode.workspace` don't exist
+any more (`.lens`, `LibraryLens.swift:74-88`, is the replacement), and the
+inspector's gate moved from `main.swift:52-57` to its current
+`:38-41`. Fixed every citation and every live assertion (Source, Steps 1/8/
+19, Expected step 2) to the lens vocabulary; also corrected two drifted line
+citations found while re-verifying (`toggleInspector()`:
+`AppModel.swift:4447-4451` → `:4766-4768`; `openAssetInLoupe`:
+`AppModel.swift:5355-5358` → `:5827-5830`) and the ⌘2 preambles (Steps 1, 8,
+19) from "Library" to "Grid lens" (⌘2 now selects Grid, not the deleted
+Library workspace). None of this changes what the card's face-naming
+assertions actually test — the People section, confirm-before-write
+gestures, and box-tracking geometry are all lens-agnostic mechanisms; only
+the surrounding chrome/routing vocabulary was stale. Supersedes prior
+status: no prior run evidence exists to invalidate (still NOT RUN); the fix
+only affects what a future runner would read as ground truth.

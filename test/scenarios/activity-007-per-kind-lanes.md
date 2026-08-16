@@ -1,290 +1,408 @@
-# activity-007-per-kind-lanes: Preview and evaluation worker lanes run concurrently, each with its own Activity bar and cancel
+# activity-007-per-kind-lanes: preview and evaluation lanes overlap, publish separately, and cancel independently
 
-**What this covers**: the headline feature of the parallel-worker-lanes
-branch (`docs/superpowers/specs/2026-07-13-parallel-worker-lanes-design.md`)
-— preview generation (`.previewGeneration`) and AI evaluation (`.recognition`)
-used to share one FIFO worker lane and compete; they now run as independent
-concurrent lanes, each capped at one in-flight command
-(`managedWorkerKindRunningLimits`, `Sources/TeststripApp/AppCatalog.swift:35-43`
-— every worker-dispatched kind capped at 1) while the queue's global cap and
-the worker's dispatch cap are both raised past the lane count
-(`BackgroundWorkQueue(maxRunningCount: 8, ...)`,
-`WorkerSupervisor(..., maxDispatchedCommandCount: 8)`,
-`Sources/TeststripApp/AppCatalog.swift:126,131`) so lane concurrency is no
-longer gated by a shared slot pool. This card proves that concurrency is
-observable end to end: **two separate Activity Center bars advance at the
-same wall-clock time** ("Generate previews" and "Evaluate photos"), catalog
-ground truth lands for both (cached previews, `evaluation_signals` rows), the
-confirm-before-write invariant holds throughout, and per-kind cancel on one
-lane leaves the sibling lane running — the concurrent-lanes analogue of the
-old single-worker "cancel stops everything" behavior.
+**What this covers**: preview generation (`.previewGeneration`) and evaluation
+(`.recognition`) run in separate worker lanes. A controlled finite workload must
+produce one published `Generate previews` row and one published `Evaluate
+photos` row at the same time, with catalog output from both moving in the same
+observation window. A Cancel request for the published evaluation kind must
+leave preview generation running. No machine result may create a person
+assignment or sidecar without an explicit user confirmation.
+
+The Activity rows are coalesced view snapshots. Two visible rows alone prove
+grouping, not concurrent execution; the paired catalog deltas below are the
+execution proof. Conversely, catalog deltas alone do not prove that the view
+published both kinds; the exact row counts are required too.
+
+Source: `Sources/TeststripApp/AppCatalog.swift` (per-kind running limits and
+concurrent dispatch capacity),
+`Sources/TeststripApp/ActivityCenterPresentation.swift` (one aggregate row per
+kind and published-total rule), `Sources/TeststripApp/ActivityCenterView.swift`
+(bars and controls), `Sources/TeststripApp/AppModel.swift` (published kind rows,
+finite Evaluate Matches scheduling, and kind-scoped Cancel), and
+`Sources/TeststripCore/Worker/WorkerSupervisor.swift` (soft cancellation and
+sibling-lane preservation).
 
 ## Pre-state
-```bash
-ROOT_DIR="$(git rev-parse --show-toplevel)"
-IMPORT_DIR="$ROOT_DIR/sample-data/photos/jesse-pictures"   # 79 real JPEGs, no GPS/faces fixture needed
-TESTSTRIP_CARD_IMPORT_ROUTE=typed-path ./script/build_and_run.sh --smoke
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
-PREVIEWS="$ISOLATED/Teststrip/Previews"
-```
-`--smoke`'s 24 synthetic photos are pre-rendered (0 pending previews at idle,
-established in `worker-001-preview-lifecycle.md`), so this card imports the
-79-photo `jesse-pictures` fixture mid-session to get a batch that genuinely
-starts queued — large enough that preview generation and evaluation both
-take several seconds, giving a real window to sample both lanes advancing
-rather than needing sub-second timing precision. `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`
-(read by `LibraryGridView.swift:7797`) routes the card-import sheet through a
-typed path field instead of a native file panel, so `script/submit_import_path.sh`
-can drive it headlessly (per `worker-001-preview-lifecycle.md`'s proven
-pattern).
 
-Confirm idle baseline before importing:
+Run the assembled app only in Tart, and route every scripted action through the
+wrapper. The determinate-bar inspection and row-scoped Cancel below are
+explicit visible gestures inside Tart because the current AX driver cannot
+bind them; neither may be replaced by a host command. Import copies of the 130
+public `smokebig` originals into a fresh `empty` catalog. The pre-populated
+`smokebig` catalog has cached previews and is not a valid fixture for this card.
+
 ```bash
-sqlite3 "$DB" "SELECT count(*) FROM preview_generation_queue;"                              # expect 0
-sqlite3 "$DB" "SELECT count(*) FROM work_sessions WHERE status IN ('queued','running');"    # expect 0
-sqlite3 "$DB" "SELECT count(*) FROM people;"                                                # expect 0
-sqlite3 "$DB" "SELECT count(*) FROM person_assets;"                                         # expect 0
+script/vm_scenario_run.sh sync empty smokebig
+script/vm_scenario_run.sh launch empty
+script/vm_scenario_run.sh ax wait-vended Teststrip
+test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets;")" -eq 0
+test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")" -eq 0
+test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM evaluation_signals;")" -eq 0
+
+script/vm_scenario_run.sh shell '
+set -eu
+fixture="$HOME/teststrip-vm/fixtures/activity-007-smokebig"
+record="$HOME/teststrip-vm/fixtures/activity-007-smokebig.sha256"
+rm -rf "$fixture"
+rm -f "$record"
+mkdir -p "$fixture"
+set -- "$HOME"/teststrip-vm/isolated/smokebig/Teststrip/SmokeOriginals/*.jpg
+test "$#" -eq 130
+for source in "$@"; do
+    cp "$source" "$fixture/$(basename "$source")"
+done
+test "$(find "$fixture" -type f -name "*.jpg" | wc -l | tr -d " ")" -eq 130
+test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
+find "$fixture" -type f -name "*.jpg" -exec shasum {} \; | sort > "$record"
+test "$(wc -l < "$record" | tr -d " ")" -eq 130
+'
 ```
 
-**`jesse-pictures` ships with a pre-existing `.xmp` sidecar next to every
-JPEG** (`find "$IMPORT_DIR" -name "*.xmp" | wc -l` reads 79, one per photo,
-checked into the repo — confirmed 2026-07-13; this is the same fixture the
-`real-corpus-smoke` bench's `adjacent_sidecars`/`imported_sidecar_sync_items`
-metrics are built to exercise, `Sources/TeststripBench/RealCorpusSmoke.swift`).
-That means "no `.xmp` file exists" is **not** a valid confirm-before-write
-check for this fixture — sidecars are already there before this card ever
-launches the app. Snapshot their content instead, to diff against after the
-run:
-```bash
-XMP_BEFORE="$(mktemp)"
-find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_BEFORE"
-```
+The checksum record is outside the imported folder, so it cannot become a
+skipped import file. All filesystem generation and later comparison remain
+inside the VM wrapper.
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`. Confirm the idle-baseline
-   queries above before importing, so any activity observed afterward is
-   attributable to this card's import, not a stale prior run.
-2. **Import `$IMPORT_DIR`, don't wait for completion** — the concurrency race
-   is the point: `script/submit_import_path.sh Teststrip "$IMPORT_DIR"`,
-   leaving defaults (including "Evaluate after import" checked — evaluation
-   is enabled by default, `importAutoEvaluationEnabled = true`,
-   `Sources/TeststripApp/AppModel.swift:2299`).
-3. **Open the Activity popover promptly** (toolbar Activity button) and keep
-   re-asserting frontmost on every poll (`ax_drive.sh wait-vended` each
-   iteration — a backgrounded app parks its AX tree, per
-   `test/scenarios/README.md`'s idle-wedge warning). Within the import's
-   draining window, assert **two separate kind rows are visible at the same
-   time**:
-   - `"Generate previews"` (`.previewGeneration`,
-     `ActivityKindRow.title(for:)`, `Sources/TeststripApp/ActivityCenterPresentation.swift:88`)
-   - `"Evaluate photos"` (`.recognition`, same map, line 89)
-   (`"Import photos"` for `.ingest` may also be briefly visible while
-   cataloging finishes — that's fine and expected; it's not one of the two
-   lanes under test here, since ingest is the fast up-front step before
-   previews/evaluations begin.) Two simultaneously-rendered rows are only
-   possible because `activeWorkKindRows`
-   (`Sources/TeststripApp/AppModel.swift:2783-2786`) is folding items from
-   two lanes the worker is running **at the same time** — under the old
-   single-lane worker, only one kind's items could ever be `.running` at
-   once, so this popover would never have shown two active rows
-   simultaneously for more than an instant.
-4. **Prove both lanes actually advance, not just render.** Sample twice, a
-   few seconds apart, while both rows are still visible:
+
+### 1. Import without automatic evaluation and establish a durable preview load
+
+1. Record the ingest frontier. Drive the real Import Path sheets with wrapper
+   AX, turn the default-on automatic-read checkbox **off**, and start the exact
+   130-photo import:
+
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM preview_generation_queue;"   # sample 1 (pending previews)
-   sqlite3 "$DB" "SELECT count(*) FROM evaluation_signals;"          # sample 1
-   # wait ~3-5s, staying frontmost via ax_drive.sh wait-vended
-   sqlite3 "$DB" "SELECT count(*) FROM preview_generation_queue;"   # sample 2 — expect lower
-   sqlite3 "$DB" "SELECT count(*) FROM evaluation_signals;"          # sample 2 — expect higher
+   BEFORE_INGEST_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='ingest';")
+   script/vm_scenario_run.sh ax press --role AXButton --label "Import Path"
+   script/vm_scenario_run.sh ax wait --role AXTextField --label "Folder path"
+   script/vm_scenario_run.sh ax type --role AXTextField --label "Folder path" --text "/Users/admin/teststrip-vm/fixtures/activity-007-smokebig"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Review Import"
+   script/vm_scenario_run.sh ax wait --role AXCheckBox --label "Read imported frames automatically"
+   script/vm_scenario_run.sh ax press --role AXCheckBox --label "Read imported frames automatically"
+   script/vm_scenario_run.sh ax wait --role AXButton --label "Import 130 Photos"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Import 130 Photos"
    ```
-   Assert the pending-preview count **decreased** and the evaluation-signal
-   count **increased** between the two samples — both moving inside the same
-   window is the falsifiable core of "concurrent lanes," mirroring the
-   headless bench's own `overlap_observed` metric definition ("at least one
-   sample caught a `.previewGeneration` item and a `.recognition` item both
-   running... at once", `script/lane_overlap_verifier_metrics.sh`) but
-   observed live through the popover and catalog instead of the
-   `TeststripBench lane-overlap` harness (`script/verify_lane_overlap.sh`).
-5. **Per-kind cancel — the sibling lane survives.** While both rows are
-   *still* active (haven't fully drained — if they have, see Sharp edges),
-   press cancel on the **"Evaluate photos"** row (`xmark.circle`, AXHelp
-   `"Cancel this work item"`, `Sources/TeststripApp/ActivityCenterView.swift:109-121`).
-   This calls `model.cancelWork(kind: .recognition)`
-   (`Sources/TeststripApp/AppModel.swift:7847-7852`), which cancels only
-   `.recognition`'s currently-active items one at a time via
-   `WorkerSupervisor.cancel(id:)`
-   (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211` — the
-   comment at lines 198-201 documents this leaves the item's lane occupied
-   only until its natural terminal event, and never touches other lanes).
-   Assert:
-   - the "Evaluate photos" row disappears from the popover (or shows no
-     remaining active items) while "Generate previews" **remains** and its
-     pending count keeps dropping across two further samples a few seconds
-     apart.
-   - ground truth: `evaluation_signals`' row count goes flat (two samples,
-     unchanged) while `preview_generation_queue`'s pending count keeps
-     falling:
-     ```bash
-     sqlite3 "$DB" "SELECT kind, status FROM work_sessions WHERE kind='recognition' ORDER BY updated_at DESC LIMIT 5;"
-     sqlite3 "$DB" "SELECT kind, status FROM work_sessions WHERE kind='previewGeneration' ORDER BY updated_at DESC LIMIT 5;"
-     ```
-     the `recognition` rows read `cancelled`; the `previewGeneration` rows
-     still show `queued`/`running` activity.
-6. **Let preview generation finish draining** — poll
-   `SELECT count(*) FROM preview_generation_queue;` until it reads 0, staying
-   frontmost each poll.
-7. **Catalog ground truth for both lanes' output**, once settled:
+
+2. Bind the new ingest by `rowid` and wait for its persisted completion. Then
+   wait until at least 40 assets have a cached grid preview while real preview
+   backlog remains. Zero evaluation signals proves the toggle was off:
+
    ```bash
-   ls "$PREVIEWS" | wc -l                                                                    # cached preview dirs landed
-   sqlite3 "$DB" "SELECT count(DISTINCT asset_id) FROM evaluation_signals a
-     JOIN assets b ON b.id = a.asset_id WHERE b.original_path LIKE '%jesse-pictures%';"
+   attempt=0
+   INGEST_SESSION_ID=
+   while [ "$attempt" -lt 120 ]; do
+       INGEST_SESSION_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM work_sessions WHERE kind='ingest' AND rowid > $BEFORE_INGEST_ROWID AND status='completed' ORDER BY rowid LIMIT 1;")
+       test -n "$INGEST_SESSION_ID" && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test -n "$INGEST_SESSION_ID"
+   test "$(script/vm_scenario_run.sh sql empty "SELECT status FROM work_sessions WHERE id='$INGEST_SESSION_ID';")" = completed
+   test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets;")" -eq 130
+
+   attempt=0
+   while [ "$attempt" -lt 120 ]; do
+       CACHED_GRID_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets a WHERE NOT EXISTS (SELECT 1 FROM preview_generation_queue q WHERE q.asset_id=a.id AND q.level='grid');")
+       PENDING_PREVIEW_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+       test "$CACHED_GRID_COUNT" -ge 40 && test "$PENDING_PREVIEW_COUNT" -gt 0 && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$CACHED_GRID_COUNT" -ge 40
+   test "$PENDING_PREVIEW_COUNT" -gt 0
+   test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM evaluation_signals;")" -eq 0
    ```
-   Assert cached previews landed for (close to) all 79 imported assets, and
-   at least *some* `evaluation_signals` rows landed for the batch before
-   Step 5's cancel cut evaluation off partway through — don't assert full
-   79-asset evaluation coverage, since the cancel in Step 5 deliberately
-   truncates it.
-8. **Confirm-before-write, re-asserted for this batch**:
+
+   If all preview rows drain before this condition, the fixture did not sustain
+   the card and the run fails. Do not replace it with a launch race.
+
+### 2. Freeze the queue, add one finite evaluation batch, then publish both kinds
+
+3. Open the positive working control and pause the one visible Generate row.
+   Wait for exact `Queue paused`, not the transient `Queue paused after current
+   task`: the exact text proves all dispatched work reached a terminal and no
+   new command can dispatch while the queue stays frozen.
+
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM people;"          # expect 0
-   sqlite3 "$DB" "SELECT count(*) FROM person_assets;"   # expect 0
-   XMP_AFTER="$(mktemp)"
-   find "$IMPORT_DIR" -name "*.xmp" -exec shasum {} \; | sort > "$XMP_AFTER"
-   diff "$XMP_BEFORE" "$XMP_AFTER"                          # expect no diff
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Generate previews"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Pause background work"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Queue paused"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Resume background work"
+   script/vm_scenario_run.sh key 'key code 53'
    ```
-   `people`/`person_assets` (`Sources/TeststripCore/Catalog/CatalogMigrations.swift:124-129,133-138`)
-   must both read 0 despite the evaluation lane running face detection inside
-   `runEvaluation` (provider `core-image-faces`, per the spec's resolved
-   `.recognition`-label open item) — face detection writes evaluation
-   signals/face observations, never `people`/`person_assets`, which are only
-   written on an explicit naming gesture
-   (`people-confirm-writes-on-return.md`). The sidecar diff must be **empty**
-   — same file set, same hashes as the Pre-state snapshot: no new `.xmp`
-   appeared and none of the 79 pre-existing ones changed. No
-   rating/flag/keyword/caption/creator/copyright gesture was performed on any
-   asset in this card, so nothing should have touched a sidecar (non-destructive
-   invariant, `CLAUDE.md`) — see Sharp edges for why this is a hash-diff
-   rather than an existence check.
+
+4. While frozen, invoke the real `Evaluate Matches` menu action. It enqueues
+   one finite batch over at most 40 cached assets; automatic import evaluation
+   is off, so preview completions cannot append hidden recognition IDs after
+   the published row is bound.
+
+   ```bash
+   script/vm_scenario_run.sh ax press --role AXMenuItem --label "Evaluate Matches"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Evaluate photos"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
+   ```
+
+5. Capture all static text in one AX traversal and both generic control sets in
+   one traversal each. This avoids straddling two coalesced publications:
+
+   ```bash
+   ACTIVITY_TEXT=$(script/vm_scenario_run.sh ax find --role AXStaticText)
+   PREVIEW_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Generate previews" { count += 1 } END { print count + 0 }')
+   EVALUATION_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Evaluate photos" { count += 1 } END { print count + 0 }')
+   CONTROL_TEXT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Cancel this work item")
+   CANCEL_CONTROL_COUNT=$(printf '%s\n' "$CONTROL_TEXT" | awk 'NF { count += 1 } END { print count + 0 }')
+   RESUME_TEXT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Resume background work")
+   RESUME_CONTROL_COUNT=$(printf '%s\n' "$RESUME_TEXT" | awk 'NF { count += 1 } END { print count + 0 }')
+   test "$PREVIEW_ROW_COUNT" -eq 1
+   test "$EVALUATION_ROW_COUNT" -eq 1
+   test "$CANCEL_CONTROL_COUNT" -eq 2
+   test "$RESUME_CONTROL_COUNT" -eq 2
+   ```
+
+   Many underlying commands still produce exactly one published row per kind.
+   The visible snapshot—not private supervisor state—is the Cancel ID binding.
+
+6. Inspect both progress indicators in the VM. They must be determinate bars,
+   not spinners: every published preview/evaluation item has
+   `totalUnitCount == 1`. The general rule is all-or-nothing over the **published
+   items** in one kind: sum totals only when every item has one; one `nil` total
+   makes the aggregate indeterminate. There is no numeric fraction in the row.
+
+7. Resume from either row. Wait for the two Pause controls to replace Resume,
+   then capture one static-text snapshot with both kind titles and at least two
+   `Running` labels:
+
+   ```bash
+   script/vm_scenario_run.sh ax press --role AXButton --help "Resume background work"
+   script/vm_scenario_run.sh ax wait --role AXButton --help "Pause background work"
+   PAUSE_TEXT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Pause background work")
+   PAUSE_CONTROL_COUNT=$(printf '%s\n' "$PAUSE_TEXT" | awk 'NF { count += 1 } END { print count + 0 }')
+   ACTIVITY_TEXT=$(script/vm_scenario_run.sh ax find --role AXStaticText)
+   PREVIEW_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Generate previews" { count += 1 } END { print count + 0 }')
+   EVALUATION_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Evaluate photos" { count += 1 } END { print count + 0 }')
+   RUNNING_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Running" { count += 1 } END { print count + 0 }')
+   test "$PAUSE_CONTROL_COUNT" -eq 2
+   test "$PREVIEW_ROW_COUNT" -eq 1
+   test "$EVALUATION_ROW_COUNT" -eq 1
+   test "$RUNNING_ROW_COUNT" -ge 2
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused after current task"
+   ```
+
+   The returned Pause controls are the positive publication barrier for the
+   negative notice assertions.
+
+### 3. Both lanes advance inside the same published-row window
+
+8. Record paired baselines, then poll until pending previews fall and
+   provider-filtered evaluation coverage rises while one snapshot still
+   contains exactly one row of each kind:
+
+   ```bash
+   PENDING_BEFORE=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+   EVALUATED_ASSETS_BEFORE=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(DISTINCT asset_id) FROM evaluation_signals WHERE provider='local-image-metrics';")
+   test "$PENDING_BEFORE" -gt 1
+
+   attempt=0
+   while [ "$attempt" -lt 60 ]; do
+       PENDING_AFTER=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+       EVALUATED_ASSETS_AFTER=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(DISTINCT asset_id) FROM evaluation_signals WHERE provider='local-image-metrics';")
+       ACTIVITY_TEXT=$(script/vm_scenario_run.sh ax find --role AXStaticText)
+       PREVIEW_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Generate previews" { count += 1 } END { print count + 0 }')
+       EVALUATION_ROW_COUNT=$(printf '%s\n' "$ACTIVITY_TEXT" | awk '$0 == "Evaluate photos" { count += 1 } END { print count + 0 }')
+       test "$PENDING_AFTER" -lt "$PENDING_BEFORE" && test "$EVALUATED_ASSETS_AFTER" -gt "$EVALUATED_ASSETS_BEFORE" && test "$PREVIEW_ROW_COUNT" -eq 1 && test "$EVALUATION_ROW_COUNT" -eq 1 && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$PENDING_AFTER" -lt "$PENDING_BEFORE"
+   test "$EVALUATED_ASSETS_AFTER" -gt "$EVALUATED_ASSETS_BEFORE"
+   test "$PREVIEW_ROW_COUNT" -eq 1
+   test "$EVALUATION_ROW_COUNT" -eq 1
+   ```
+
+   The row counts come from one AXStaticText dump per sample. The paired deltas
+   are condition-based overlap evidence, not a host launch-window sample.
+
+### 4. Cancel the finite published evaluation kind; preview continues
+
+9. Capture one visible snapshot and catalog values at the action boundary.
+   Then use the Tart VM's visible UI to click the `xmark.circle` on the
+   **Evaluate photos** row. This is one explicit manual row-scoped gesture
+   inside the VM.
+
+   ```bash
+   ACTIVITY_TEXT_AT_CANCEL=$(script/vm_scenario_run.sh ax find --role AXStaticText)
+   PREVIEW_ROWS_AT_CANCEL=$(printf '%s\n' "$ACTIVITY_TEXT_AT_CANCEL" | awk '$0 == "Generate previews" { count += 1 } END { print count + 0 }')
+   EVALUATION_ROWS_AT_CANCEL=$(printf '%s\n' "$ACTIVITY_TEXT_AT_CANCEL" | awk '$0 == "Evaluate photos" { count += 1 } END { print count + 0 }')
+   CONTROL_TEXT_AT_CANCEL=$(script/vm_scenario_run.sh ax find --role AXButton --help "Cancel this work item")
+   CANCEL_CONTROLS_AT_CANCEL=$(printf '%s\n' "$CONTROL_TEXT_AT_CANCEL" | awk 'NF { count += 1 } END { print count + 0 }')
+   PENDING_AT_CANCEL=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+   EVALUATED_ASSETS_AT_CANCEL=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(DISTINCT asset_id) FROM evaluation_signals WHERE provider='local-image-metrics';")
+   test "$PREVIEW_ROWS_AT_CANCEL" -eq 1
+   test "$EVALUATION_ROWS_AT_CANCEL" -eq 1
+   test "$CANCEL_CONTROLS_AT_CANCEL" -eq 2
+   test "$PENDING_AT_CANCEL" -gt 0
+   test "$EVALUATED_ASSETS_AT_CANCEL" -gt 0
+   ```
+
+   **Do not** substitute
+   `script/vm_scenario_run.sh ax press --help "Cancel this work item"`.
+   `ax_drive.sh` can only press the first of two identically helped buttons and
+   cannot bind it to the adjacent title. First-match order is not evidence.
+
+   All recognition IDs were enqueued while frozen and published in the visible
+   Evaluate row. `cancelWork(kind:)` therefore requests that finite represented
+   set. Do not query `work_sessions` for preview/evaluation IDs; those queue
+   items are not persisted ingest sessions.
+
+10. A dispatched evaluation does not disappear at the request. It stays
+    running until its natural completed/failed terminal, finalizes as
+    `cancelled`, and retires on the next publication. Poll for the changed
+    positive control set—one generic Cancel control—plus decreasing preview
+    depth. Only then assert Evaluate is absent:
+
+    ```bash
+    attempt=0
+    while [ "$attempt" -lt 60 ]; do
+        CONTROL_TEXT=$(script/vm_scenario_run.sh ax find --role AXButton --help "Cancel this work item")
+        CANCEL_CONTROL_COUNT=$(printf '%s\n' "$CONTROL_TEXT" | awk 'NF { count += 1 } END { print count + 0 }')
+        PENDING_AFTER_CANCEL=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+        test "$CANCEL_CONTROL_COUNT" -eq 1 && test "$PENDING_AFTER_CANCEL" -lt "$PENDING_AT_CANCEL" && break
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    test "$CANCEL_CONTROL_COUNT" -eq 1
+    test "$PENDING_AFTER_CANCEL" -lt "$PENDING_AT_CANCEL"
+    script/vm_scenario_run.sh ax find --role AXStaticText --label "Generate previews"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Evaluate photos"
+    ```
+
+    The one remaining Cancel control now belongs unambiguously to Generate.
+    Preview depth falling proves the sibling lane continued while evaluation
+    cancellation waited for its natural terminal and next publication. The
+    dispatched evaluation may write one final signal before that terminal; do
+    not assert a flat signal count after the click.
+
+### 5. Final publication exposes idle worker and safe durable output
+
+11. Close the popover and poll the preview queue to zero. Then wait for exact
+    `Activity` to replace working, reopen it, and require the postpublication
+    idle row:
+
+    ```bash
+    script/vm_scenario_run.sh key 'key code 53'
+    attempt=0
+    while [ "$attempt" -lt 240 ]; do
+        PENDING_PREVIEW_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")
+        test "$PENDING_PREVIEW_COUNT" -eq 0 && break
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    test "$PENDING_PREVIEW_COUNT" -eq 0
+
+    attempt=0
+    while [ "$attempt" -lt 12 ]; do
+        script/vm_scenario_run.sh ax find --role AXButton --help "Activity" && break
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    test "$attempt" -lt 12
+    script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+    script/vm_scenario_run.sh ax wait --role AXStaticText --label "Worker idle"
+    script/vm_scenario_run.sh ax find --role AXButton --help "Stop idle worker"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Generate previews"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Evaluate photos"
+    ```
+
+12. Assert durable output and the confirm-before-write invariant:
+
+    ```bash
+    test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets;")" -eq 130
+    test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM preview_generation_queue;")" -eq 0
+    test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(DISTINCT asset_id) FROM evaluation_signals WHERE provider='local-image-metrics';")" -gt 0
+    test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM evaluation_failures;")" -eq 0
+    test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM people;")" -eq 0
+    test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM person_assets;")" -eq 0
+
+    script/vm_scenario_run.sh shell '
+    set -eu
+    fixture="$HOME/teststrip-vm/fixtures/activity-007-smokebig"
+    record="$HOME/teststrip-vm/fixtures/activity-007-smokebig.sha256"
+    after=$(mktemp)
+    find "$fixture" -type f -name "*.jpg" -exec shasum {} \; | sort > "$after"
+    diff "$record" "$after"
+    test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
+    rm -f "$after"
+    '
+    ```
 
 ## Expected
-- Step 3: **Fails if** only one kind row is ever visible at a time during the
-  import — that's the pre-rewrite single-lane behavior this feature replaced.
-- Step 4: **Fails if** either count is unchanged across the sampling window
-  while the other moves — that means the two rows are cosmetic, not backed
-  by genuinely concurrent execution.
-- Step 5: **Fails if** cancelling "Evaluate photos" also stops or visibly
-  slows "Generate previews" — a regression of the per-lane cancel semantics
-  (`WorkerSupervisor.cancel(id:)` scoping) this rewrite exists to ship.
-- Step 7: **Fails if** cached previews or `evaluation_signals` rows never
-  land for the imported batch at all.
-- Step 8: **Fails if** `people`/`person_assets` gain any row, or the
-  before/after sidecar hash diff is non-empty (a new `.xmp` appeared or an
-  existing one's content changed) — either is a confirm-before-write /
-  non-destructive violation.
+
+- Publication fails unless exactly one Generate row and one Evaluate row are
+  visible together, each determinate for this all-known-total snapshot.
+- Concurrency fails unless pending previews decrease and provider-filtered
+  evaluation coverage increases while one snapshot still contains both rows.
+- Cancel fails if it is automated by first-match order, if Evaluate is expected
+  to vanish before its natural terminal and next publication, if controls do
+  not change two-to-one, or if preview depth does not continue falling.
+- Idle fails unless exact `Activity` and `Worker idle` appear after preview
+  backlog reaches zero and both active rows retire.
+- Safety fails if no evaluation output lands, any evaluation failure or person
+  assignment appears, any sidecar appears, or an original checksum changes.
 
 ## Cleanup
+
 ```bash
-./script/reset_isolated_test_data.sh --delete
-rm -f "$XMP_BEFORE" "$XMP_AFTER"
+script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+script/vm_scenario_run.sh shell '
+rm -rf "$HOME/teststrip-vm/fixtures/activity-007-smokebig"
+rm -f "$HOME/teststrip-vm/fixtures/activity-007-smokebig.sha256"
+'
 ```
-Quit the launched instance. `$IMPORT_DIR` is a checked-in repo fixture —
-never delete it or its `.xmp` sidecars; only the isolated catalog/app-support
-dir and the two hash-snapshot temp files are throwaway.
+
+The fresh `empty` run is disposable. Do not delete or mutate the synced
+`isolated/smokebig` seed originals.
 
 ## Sharp edges
-- **Timing is the main risk to this card.** 79 real JPEGs give a wider
-  window than `--smoke`'s pre-rendered 24, but preview render + evaluation
-  speed depends on the machine; if Step 5's cancel is attempted after
-  evaluation has already fully drained, there's nothing left to cancel. If
-  that happens live, re-run from Step 2 with a still-larger folder (e.g. the
-  full `sample-data/photos/wordpress-photo-directory` + `loc-free-to-use`
-  combined, or repeat the import into a second empty `IMPORT_DIR` copy) and
-  drive Step 5 earlier in the window — don't weaken the assertion to pass on
-  an already-completed lane.
-- **The `.ingest` lane is not one of the two under test.** It's included in
-  the same concurrent-lanes machinery (`managedWorkerKindRunningLimits`
-  caps it at 1 alongside every other kind, `AppCatalog.swift:35-43`), but
-  its own "Import photos" bar isn't the point of this card —
-  `activity-002-popover-import.md` covers the `.ingest` row directly. Don't
-  conflate a lingering "Import photos" row with the two-lanes assertion in
-  Step 3.
-- **Providers may fall back to internal serialization without breaking this
-  card.** The design spec accepts that a not-concurrency-safe evaluation
-  provider (Vision / Core Image / Core ML) may run behind a per-lane
-  serialization guard while still overlapping *other* lanes
-  (`docs/superpowers/specs/2026-07-13-parallel-worker-lanes-design.md`,
-  "Provider-serial fallback is acceptable"). This card only asserts
-  preview-vs-evaluation overlap, which holds either way; it does not probe
-  which specific evaluation providers are internally serialized.
-- **`evaluation_signals` can gain more than one row per asset per
-  evaluation pass** (`PRIMARY KEY (asset_id, kind, provider, model, version,
-  settings_hash)`, `Sources/TeststripCore/Catalog/CatalogMigrations.swift:63-76`
-  — one row per signal kind/provider combination), so its row count is not a
-  1:1 proxy for "assets evaluated"; Step 7's `DISTINCT asset_id` query is the
-  one that counts assets, the plain `count(*)` samples in Step 4 are only
-  meant to show forward motion, not a specific number.
-- This card assumes folder-imported assets keep `original_path` pointing at
-  the source folder (non-destructive, catalog-first design — originals stay
-  in place), which is what makes the `original_path LIKE '%jesse-pictures%'`
-  scoping in Step 7 valid; if a future import path starts copying/relocating
-  originals on ingest, that query needs revisiting.
-- **Why Step 8 is a hash-diff, not an existence check**: `jesse-pictures`'s
-  79 pre-existing sidecars mean importing it may exercise sidecar-*adoption*
-  at import time (reading a pre-existing `.xmp`'s rating/label into the
-  catalog on first touch) — a real, separately-tracked product question
-  (`test/scenarios/LEDGER.md`'s `import-005-sidecar-on-import` row: "Priya:
-  pre-existing sidecar values ignored at import, lazily adopted on first
-  touch — product question for Jesse"). That's orthogonal to what this card
-  checks: adoption, if it happens, is a catalog-side read of metadata the
-  user already authored outside Teststrip, not a machine verdict written to
-  *disk* without a gesture. This card's invariant is narrower and disk-side —
-  no sidecar is created or mutated on disk by the concurrent preview/evaluation
-  lanes themselves — which the before/after hash diff proves either way,
-  without taking a position on the adoption question.
+
+- `ax_drive.sh` cannot associate the shared non-ingest Cancel AXHelp with a
+  sibling row title. The visible manual gesture is intentional and must be
+  reported as such in run evidence.
+- Automatic import reads must be off. Otherwise preview completions can enqueue
+  recognition IDs after the coalesced row was published, weakening its ID bind.
+- The determinate rule applies to items in the published kind snapshot, not
+  events waiting in the supervisor queue. A later nil-total item makes the next
+  published aggregate indeterminate.
+- A dispatched Cancel is soft. It does not interrupt the worker command, kill
+  the process, or free the lane until the worker's natural terminal.
+- `evaluation_signals` has multiple rows per asset/provider/signal kind. Use
+  provider-filtered `COUNT(DISTINCT asset_id)` for evaluation motion/coverage.
+- Synthetic smokebig JPEGs have no starting sidecars. That makes zero `.xmp`
+  files plus stable original checksums the direct confirm-before-write proof.
 
 ## Run status
-PARTIALLY RUN in the Tart VM 2026-07-13 (`vm_scenario_run.sh`, smoke launch +
-`submit_import_path.sh` typed-path import of the synced `faces` fixture, 11
-photos — `jesse-pictures` could not be synced: its RAW files fill the VM
-disk). Verified live, reproduced across two fresh-catalog imports:
-- **Both lanes execute on a real import** — the preview lane landed cached
-  previews for every imported asset (35 preview dirs = 24 smoke + 11 faces)
-  AND the evaluation lane landed 145 `evaluation_signals` across all 11
-  imported assets plus 11 `face_observations`. (Steps 4/7 output.)
-- **Confirm-before-write holds live** — `people` and `person_assets` both
-  read 0 after the import despite `runEvaluation`'s face detection executing.
-  (Step 8.)
-- **Not caught live: the two lanes in the same sampled instant** (Step 3/4's
-  simultaneous "both bars advancing"). An 11-photo batch drains its
-  preview+evaluation pipeline in ~1–2s, inside ssh-per-sample latency and
-  below the confirmation-sheet scan/ingest start delay; a wider fixture was
-  blocked by VM disk space. This transient overlap IS proven by this branch's
-  headless `lane-overlap` verifier (`script/verify_lane_overlap.sh`,
-  RED-tested by forcing `maxDispatchedCommandCount: 1`) which drives the real
-  worker binary + supervisor + catalog. Re-run with a larger synced fixture
-  (free VM disk first) to catch it live.
-- **Not run: per-kind cancel (Step 5)** — the 11-photo drain finishes before
-  the cancel can be issued; needs the wider fixture. Covered by unit tests
-  (`SupervisorPerItemCancelTests`).
-- Harness fix made during this run: `script/submit_import_path.sh` embedded
-  the Swift AX driver as a single-quoted `swift -e '...'` argument, and
-  recently-added comments contained apostrophes that closed the string
-  (parse error under any shell) — rephrased apostrophe-free.
 
-Authored 2026-07-13, source-cited against the
-`feat/parallel-worker-lanes` branch: lane-concurrency construction
-(`Sources/TeststripApp/AppCatalog.swift:35-43,125-132`), per-item cancel
-semantics (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211`),
-the per-kind Activity projection
-(`Sources/TeststripApp/ActivityCenterPresentation.swift:72-139`,
-`Sources/TeststripApp/AppModel.swift:2783-2836`), and the auto-evaluation
-trigger that makes both lanes fire off a single import
-(`Sources/TeststripApp/AppModel.swift:8788-8802,9025-9043`). Cross-checked
-against this branch's own headless lane-overlap verifier
-(`script/verify_lane_overlap.sh`, `script/lane_overlap_verifier_metrics.sh`,
-`Sources/TeststripBench/LaneOverlapSmoke.swift`) for the "overlap" definition
-used in Step 4, though that harness drives the worker binary directly rather
-than through the live AX-driven app — this card is the live-UI counterpart
-the spec's own testing section calls for ("E2E scenario card (VM)").
-Pending a live VM run per `test/scenarios/README.md`.
+**Spec'd — NOT RUN (2026-08-10).** This 130-original, fresh-`empty`,
+publication-barrier procedure has not been driven. It replaces the old host
+`jesse-pictures` dependency, fixed-delay sampling, direct host commands,
+automatic import evaluation, immediate-row-removal assumptions, and unsupported
+preview/evaluation `work_sessions` assertions.
+
+Historical dated partial evidence is preserved, not promoted:
+
+- **2026-07-13 Tart VM partial**: a fresh smoke launch plus typed-path import of
+  the synced 11-photo `faces` fixture produced 35 preview directories (24 smoke
+  + 11 imported), 145 `evaluation_signals` covering all 11 imported assets, 11
+  `face_observations`, and zero `people`/`person_assets` rows.
+- That run did **not** catch both Activity rows advancing in one sampled instant;
+  the 11-photo pipeline drained in roughly 1–2 seconds through SSH latency.
+- Per-kind Cancel was **not run**. The lane drained before the gesture.
+- `jesse-pictures` could not be synced because its RAW corpus filled the VM
+  disk. This rewrite uses the already-supported 130 synthetic JPEG originals
+  instead.
+- The same dated run found and fixed apostrophes that broke the single-quoted
+  Swift program in `submit_import_path.sh`; that harness repair remains valid.
+
+The headless lane-overlap verifier and unit tests remain supporting evidence for
+worker mechanics, not a substitute for this assembled Activity UI run.

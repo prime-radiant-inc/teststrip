@@ -400,45 +400,46 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         notCoveredBy tokens: [LibraryQueryToken]
     ) -> [ActiveLibraryFilterRow] {
         let tokenTitles = Set(tokens.map(\.display))
-        let tokenTargets = tokens.flatMap(sidebarTargets(for:))
+        let tokenSources = tokens.flatMap(librarySources(for:))
         return rows.filter { row in
             if tokenTitles.contains(row.title) { return false }
-            if let target = row.target, tokenTargets.contains(target) { return false }
+            if let target = row.target, tokenSources.contains(target) { return false }
             return true
         }
     }
 
-    /// Every `SidebarRowTarget` a legacy row for this token's filter could
-    /// carry (mirrors `AppModel.activeLibraryFilterRows`'s target choices).
-    private static func sidebarTargets(for token: LibraryQueryToken) -> [SidebarRowTarget] {
+    /// Every `LibrarySource` a legacy row for this token's filter could carry
+    /// (mirrors `AppModel.activeLibraryFilterRows`'s target choices).
+    private static func librarySources(for token: LibraryQueryToken) -> [LibrarySource] {
         switch (token.field, token.value) {
         case (.rating, .int(let rating)):
-            return rating == 5 ? [.reviewQueue(.fiveStars)] : []
+            return rating == 5 ? [.smartCollection(.fiveStars)] : []
         case (.flag, .flag(let flag)):
-            return [.reviewQueue(flag == .pick ? .picks : .rejects)]
+            return [.smartCollection(flag == .pick ? .picks : .rejects)]
         case (.source, .source(let source)):
             return [.sourceAvailability(source)]
         case (.signal, .signal(let kind)):
+            let evaluationSource = LibrarySource.evaluationKind(kind, titled: kind.filterChipLabel)
             switch kind {
             case .faceCount:
-                return [.evaluationKind(kind), .reviewQueue(.facesFound)]
+                return [evaluationSource, .smartCollection(.facesFound)]
             case .ocrText:
-                return [.evaluationKind(kind), .reviewQueue(.ocrFound)]
+                return [evaluationSource, .smartCollection(.ocrFound)]
             default:
-                return [.evaluationKind(kind)]
+                return [evaluationSource]
             }
         case (.xmpPending, _):
             return [.metadataSyncPending]
         case (.xmpConflict, _):
             return [.metadataSyncConflicts]
         case (.needsKeywords, _):
-            return [.reviewQueue(.needsKeywords)]
+            return [.smartCollection(.needsKeywords)]
         case (.needsEvaluation, _):
-            return [.reviewQueue(.needsEvaluation)]
+            return [.smartCollection(.needsEvaluation)]
         case (.likelyIssues, _):
-            return [.reviewQueue(.likelyIssues)]
+            return [.smartCollection(.likelyIssues)]
         case (.providerFailures, _):
-            return [.reviewQueue(.providerFailures)]
+            return [.smartCollection(.providerFailures)]
         default:
             return []
         }

@@ -39,7 +39,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    folder (as in `worker-001-preview-lifecycle.md`) to get an unevaluated one.
 3. **Trigger evaluation and watch dedup.** Import auto-triggers evaluation
    once the preview is cached (`scheduleImportAutoEvaluationIfEnabled`,
-   `Sources/TeststripApp/AppModel.swift:10112-10125`); for an asset already in
+   `Sources/TeststripApp/AppModel.swift:10486-10500`); for an asset already in
    the grid, force it via the Evaluate action (`ax_drive.sh press --role
    AXButton --help "Evaluate"` on the loupe/inspector, or the equivalent grid
    command) — confirm the actual control's AXHelp against the running UI
@@ -49,7 +49,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    came from Step 2's fixture folder) while the first evaluation is still
    in-flight (`work_sessions` row with `status IN ('queued','running')` for
    that asset). This exercises the dedup path directly: `requestEvaluation`
-   (`Sources/TeststripApp/AppModel.swift:9568-9599`) builds a
+   (`Sources/TeststripApp/AppModel.swift:9942-9973`) builds a
    `WorkSessionID(rawValue: "evaluation-\(assetID)-\(provider)")` and returns
    immediately without enqueuing a second work item if that ID already has
    an active-status entry in `currentBackgroundWorkQueue`.
@@ -64,7 +64,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    scope so a ghost is applied, then assert the grid cell's badge:
    `ax_drive.sh find --role AXStaticText --label "KEEP"` or `"CUT"` on the
    cell (`AutopilotBadgePresentation.badge(for:)`,
-   `Sources/TeststripApp/LibraryGridView.swift:3605-3618` — `.pick` →
+   `Sources/TeststripApp/LibraryGridView.swift:3518-3531` — `.pick` →
    `"KEEP"`, `.reject` → `"CUT"`, no ghost (confirmed flag, or a keyword,
    which was never part of the ghost type) → no badge). Cross-check against
    the catalog:

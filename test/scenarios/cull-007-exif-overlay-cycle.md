@@ -7,19 +7,19 @@ glance at camera/lens/ISO/aperture/shutter and, when I need more, pixel
 dimensions/GPS/capture date, without opening the inspector. Covers item 24.
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:406-417` — `ExifOverlayLevel` (`.off`,
+- `Sources/TeststripApp/AppModel.swift:431-442` — `ExifOverlayLevel` (`.off`,
   `.exposureLine`, `.full`), cycled by `.next()`.
-- `Sources/TeststripApp/AppModel.swift:5445-5446` — the `I` shortcut
-  (`CullingShortcut.cycleExifOverlay`, keyed at `:256`) calls
+- `Sources/TeststripApp/AppModel.swift:7082-7083` — the `I` shortcut
+  (`CullingShortcut.cycleExifOverlay`, keyed at `:231`) calls
   `exifOverlayLevel = exifOverlayLevel.next()`.
-- `Sources/TeststripApp/LibraryGridView.swift:4283-4291` — the loupe metadata
+- `Sources/TeststripApp/LibraryGridView.swift:5035-5043` — the loupe metadata
   strip renders `LoupeExifOverlayPresentation(technicalMetadata:level:).lines`
   as a stack of `Text` rows (each its own AX static text).
-- `Sources/TeststripApp/LibraryGridView.swift:8520-8562` —
+- `Sources/TeststripApp/LibraryGridView.swift:9000-9042` —
   `LoupeExifOverlayPresentation`: `.off` → `[]`; `.exposureLine` → one line
   from `LoupeExifSummaryPresentation` (camera make+model, lens, `"ISO N"`,
   aperture, shutter speed, focal length — joined with `" · "`,
-  `:8479-8510`); `.full` → the exposure line **plus** `"<w> × <h>"` pixel
+  `:8958-8996`); `.full` → the exposure line **plus** `"<w> × <h>"` pixel
   dimensions, a `"<lat>, <lon>"` line if GPS is present, and a formatted
   capture-date line if present.
 
@@ -31,7 +31,7 @@ ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APP
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
 `--smoke` frames have `technical_metadata_json` populated **directly by the
-seeder** (`Sources/TeststripBench/SmokeCatalogSeeder.swift:119-134`), not
+seeder** (`Sources/TeststripBench/SmokeCatalogSeeder.swift:133-158`), not
 synthesized at import — every smoke asset carries `cameraMake: "Teststrip"`,
 `cameraModel: "SmokeCam <1..3>"`, `lensModel: "<35|50|65|80>mm"`,
 `isoSpeed`, `pixelWidth: 1200`/`pixelHeight: 800`, and `capturedAt`. It does
@@ -90,7 +90,7 @@ render for that asset, before driving the UI.
 ## Sharp edges
 - **No GPS line to assert against `--smoke`.** The smoke seeder never sets
   `latitude`/`longitude`, so this card cannot exercise the GPS-line branch of
-  `.full` (`LibraryGridView.swift:8536-8538`). If a GPS-line assertion is
+  `.full` (`LibraryGridView.swift:9011-9019`). If a GPS-line assertion is
   wanted, re-run against `--faces` or `--sample-photos` instead and confirm
   which seeded frames actually carry EXIF GPS tags (not guaranteed for the
   Wikimedia Commons portraits in `sample-data/photos/faces` — check
@@ -100,9 +100,15 @@ render for that asset, before driving the UI.
   assertion could false-positive. Verified against current source that no
   other `Text` view in the loupe metadata strip does.
 - The exact capture-date formatting (`DateStyle: .medium, TimeStyle: .short`,
-  `LibraryGridView.swift:8556-8560`) is locale-dependent; this card doesn't
+  `LibraryGridView.swift:9035-9039`) is locale-dependent; this card doesn't
   assert on the date line's exact text for that reason, only on the
   presence of the pixel-dimension line as the `.full`-only signal.
 
 ## Run status
 UNRUN — needs human-present execution per test/scenarios/README.md.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; no other stale symbol found in this card. Supersedes prior
+status: no prior run evidence exists to invalidate (still UNRUN).

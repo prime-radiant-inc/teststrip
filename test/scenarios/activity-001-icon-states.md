@@ -1,123 +1,222 @@
-# activity-001-icon-states: toolbar Activity icon states (idle/working/problem) and popover-row-click navigation
+# activity-001-icon-states: toolbar Activity icon states (idle/working/problem) and conflict-row navigation
 
-**What this covers**: Task 5 debt called out in the Task 23 brief — the
-toolbar Activity item is silent at idle, spins while background work runs,
-and shows a red count badge only when something needs attention (XMP
-conflict, offline source, provider failure). The icon's three states must be
-visually and structurally distinct in the AX tree: idle (bell, no badge),
-working (spinner, no badge), and problem (badge with a count). This card
-also covers the popover row → navigate-to-asset path: clicking a conflict
-row in the popover must land in Library with that asset selected. (Merged
-from the former `activity-icon-states.md`, the narrow three-state sweep, and
-`quiet-activity-badge.md`, which drove the conflict-badge → popover →
-navigation path in detail — kept as one card since they're the same surface
-at two grains.)
+**What this covers**: the toolbar Activity item is quiet at idle, shows its
+working treatment while a published work snapshot is active, and shows a
+counted problem badge only for attention-worthy state. It also proves that a
+conflict row deep-links to the conflicted asset in the Grid lens.
+
+The toolbar reads `ActivityCenterPresentation`, not the worker supervisor's
+live queue. Background queue changes are published on the app's coalesced
+cadence, so each exact toolbar control below is a positive publication barrier.
+Catalog state may lead the view; never replace those barriers with a fixed
+delay.
+
+Source: `Sources/TeststripApp/LibraryGridView.swift` (`activityToolbarIcon`
+and `activityToolbarHelp`),
+`Sources/TeststripApp/ActivityCenterPresentation.swift` (working/problem
+projection), `Sources/TeststripApp/ActivityCenterView.swift` (conflict-row
+action), and `Sources/TeststripApp/AppModel.swift`
+(`activityCenterPresentation`, `revealConflicts(_:)`, and coalesced background
+work publication).
 
 ## Pre-state
+
+Run every launch, UI action, filesystem operation, and catalog query through
+the Tart wrapper. Import the 130 public `smokebig` originals into a fresh
+`empty` catalog; do not launch the already-populated `smokebig` catalog.
+
 ```bash
-./script/build_and_run.sh --smoke
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
+script/vm_scenario_run.sh sync empty smokebig
+script/vm_scenario_run.sh launch empty
+script/vm_scenario_run.sh ax wait-vended Teststrip
+test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets;")" -eq 0
+
+script/vm_scenario_run.sh shell '
+set -eu
+fixture="$HOME/teststrip-vm/fixtures/activity-001-smokebig"
+rm -rf "$fixture"
+mkdir -p "$fixture"
+set -- "$HOME"/teststrip-vm/isolated/smokebig/Teststrip/SmokeOriginals/*.jpg
+test "$#" -eq 130
+for source in "$@"; do
+    cp "$source" "$fixture/$(basename "$source")"
+done
+test "$(find "$fixture" -type f -name "*.jpg" | wc -l | tr -d " ")" -eq 130
+test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
+'
 ```
+
+The copied folder is card-owned, fits in the VM, contains real decodable JPEGs,
+and makes import/preview/evaluation work originate from an empty catalog. It
+replaces both the old pre-rendered-smoke launch window and the old host-only
+fixture paths.
 
 ## Steps
 
-### Three-state sweep
-1. `script/ax_drive.sh wait-vended Teststrip`. Immediately after `--smoke`
-   launch, import/preview work is likely still draining — assert **working**
-   state first: `ax_drive.sh find --role AXButton --help "Activity - working"`.
-2. Wait for the queues to drain — there is no `background_work` table; poll
-   the real queues (stay warm every poll):
-   ```bash
-   sqlite3 "$DB" "SELECT (SELECT count(*) FROM preview_generation_queue)
-                       + (SELECT count(*) FROM work_sessions WHERE status IN ('queued','running','paused'));"
-   ```
-   until it reads 0 (query verified against a seeded `--smoke` catalog
-   2026-07-10). Then assert **idle** state:
-   `ax_drive.sh find --role AXButton --help "Activity"` (exact match — not
-   "- working" or "- N problem(s)").
-3. Seed an offline source: pick an asset whose `original_path` is under a
-   fake `/Volumes/<name>/...` mount point that doesn't exist, or simulate by
-   unmounting a seeded volume if `--smoke` supports one; otherwise seed via
-   `UPDATE assets SET original_path = '/Volumes/NoSuchVolume/x.jpg' WHERE id = '<id>';`
-   (asset ids are TEXT, e.g. `'smoke-0'`; UPDATE syntax verified in a
-   rolled-back transaction against a seeded catalog 2026-07-10)
-   and trigger a source-availability rescan.
-4. Assert **problem** state: `ax_drive.sh find --role AXButton --help "Activity - 1 problem"`
-   (or "N problems" if more than one source/conflict already present).
+### 1. Idle is exact and unbadged
 
-### Popover row click navigates to the conflicted asset
-5. **Idle assertion, restated for this sub-flow**: with the queue drained
-   (step 2 already established this) and no problem yet seeded, the
-   toolbar Activity button's AXHelp is exactly `"Activity"` — no badge
-   element renders at all.
-6. **Seed an XMP conflict out-of-band** (per the sync tests' technique):
-   pick an asset with a rating already set (or set one via the inspector
-   first so a sidecar exists), then edit that sidecar's `xmp:Rating`
-   directly with a text edit (not through the app) to a different value
-   while the app is running, so the next metadata-sync scan sees catalog !=
-   sidecar:
+1. Before importing, prove the exact idle toolbar help and open that control:
+
    ```bash
-   SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1;")
-   # (rate 5 via inspector first if $SRC.xmp doesn't exist yet)
-   sed -i '' 's/Rating="5"/Rating="3"/' "$SRC.xmp"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "No active work"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Activity"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
+   script/vm_scenario_run.sh key 'key code 53'
    ```
-7. Trigger (or wait for) the next sync scan; assert the toolbar badge
-   appears — `ax_drive.sh find --role AXButton --help "Activity - 1 problem"`.
-8. Click the Activity button to open the popover; assert a conflict row is
-   listed (`ax_drive.sh find --contains` the sidecar's basename).
-9. Click the conflict row. Assert the app lands in the Library workspace
-   with `$SRC` selected (its grid cell shows selection AX state, or the
-   inspector binds to it). See `activity-005-conflict-deep-link.md` for the
-   full model-level breakdown of what this click does
-   (`AppModel.revealConflicts`) — this card only asserts the observable
-   render-level outcome.
+
+   Exact AXHelp matching makes this mutually exclusive with `Activity -
+   working` and `Activity - N problem(s)`. No count-zero badge is permitted.
+
+### 2. A real import reaches the published working state, then returns idle
+
+2. Submit the copied originals through the real typed-path import route and
+   wait for the positive working control. This is condition-driven; do not race
+   the app immediately after launch or invoke host `ax_drive.sh` directly.
+
+   ```bash
+   script/vm_scenario_run.sh shell '$HOME/teststrip-vm/script/submit_import_path.sh Teststrip $HOME/teststrip-vm/fixtures/activity-001-smokebig'
+   script/vm_scenario_run.sh ax wait --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Activity"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Import photos" \
+     || script/vm_scenario_run.sh ax find --role AXStaticText --label "Generate previews" \
+     || script/vm_scenario_run.sh ax find --role AXStaticText --label "Evaluate photos"
+   script/vm_scenario_run.sh key 'key code 53'
+   ```
+
+   The row assertion accepts whichever real phase owns the published snapshot;
+   it does not infer working state from a catalog counter.
+
+3. Wait for the exact idle control to replace the working control, then open
+   it and assert the worker's post-publication idle row:
+
+   ```bash
+   attempt=0
+   while [ "$attempt" -lt 12 ]; do
+       script/vm_scenario_run.sh ax find --role AXButton --help "Activity" && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$attempt" -lt 12
+   test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM assets;")" -eq 130
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax wait --role AXStaticText --label "Worker idle"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Stop idle worker"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Activity"
+   script/vm_scenario_run.sh key 'key code 53'
+   ```
+
+   `Activity` and `Worker idle` are the positive barriers before the negative
+   active-row assertion. A SQL count or a fixed sleep alone is not evidence that
+   the coalesced view has published its terminal snapshot.
+
+### 3. One problem badges once and its row deep-links to Grid
+
+4. Bind one imported asset and insert one card-owned presentation conflict.
+   Real sidecar divergence/detection belongs to
+   `activity-006-xmp-lifecycle.md`; this leg isolates badge arithmetic and the
+   row action without claiming to re-test the detector.
+
+   ```bash
+   TARGET_ID=$(script/vm_scenario_run.sh sql empty "SELECT id FROM assets WHERE original_path LIKE '%/smoke-0.jpg' LIMIT 1;")
+   test -n "$TARGET_ID"
+   test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM metadata_sync_state WHERE asset_id='$TARGET_ID';")" -eq 0
+   script/vm_scenario_run.sh sql empty "INSERT INTO metadata_sync_state (asset_id, sidecar_path, catalog_generation, last_synced_fingerprint, status, updated_at) SELECT id, '/Users/admin/teststrip-vm/fixtures/activity-001-conflict-target.xmp', catalog_generation, 'activity-001-presentation-only', 'conflict', CAST(strftime('%s','now') AS REAL) FROM assets WHERE id='$TARGET_ID';"
+   test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM metadata_sync_state WHERE asset_id='$TARGET_ID' AND status='conflict';")" -eq 1
+   ```
+
+5. Relaunch the same `empty` run so the out-of-band presentation row is loaded.
+   Calling `launch empty` here would discard the mutation.
+
+   ```bash
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh shell '
+   set -eu
+   attempt=0
+   while pgrep -x Teststrip >/dev/null 2>&1 && [ "$attempt" -lt 20 ]; do
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   ! pgrep -x Teststrip >/dev/null 2>&1
+   run=$(ls -dt "$HOME"/teststrip-vm/run/empty-* | head -1)
+   test -n "$run"
+   open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$run"
+   '
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   script/vm_scenario_run.sh ax wait --role AXButton --help "Activity - 1 problem"
+   ```
+
+6. Switch to People first so the deep-link's lens transition is falsifiable,
+   then open the positive one-problem control and press the uniquely named
+   conflict row:
+
+   ```bash
+   script/vm_scenario_run.sh key 'keystroke "6" using {command down}'
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - 1 problem"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
+   script/vm_scenario_run.sh ax press --role AXButton --label "activity-001-conflict-target"
+   script/vm_scenario_run.sh ax wait --role AXWindow --contains "Teststrip – Grid"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Remove XMP Conflicts filter"
+   script/vm_scenario_run.sh ax find --role AXButton --label "smoke-0.jpg" --contains "Selected"
+   ```
+
+   The unique presentation label avoids colliding with the grid cell's
+   `smoke-0.jpg` label. The resulting Grid window, active conflict-filter
+   control, and selected cell jointly prove the row action, rather than merely
+   proving that a button accepted a press.
 
 ## Expected
-- Steps 1-4: each state's AXHelp text is exact and mutually exclusive —
-  never two states' text simultaneously, never a badge with count 0.
-  **Fails if** the working spinner persists after the queue drains (stuck
-  state), or the problem badge doesn't clear once the offline source is
-  restored.
-- Step 5: no badge, exact help text `"Activity"`.
-- Step 7: badge shows count 1. **Fails if** the badge never appears — the
-  sync scan isn't picking up the out-of-band edit, or the badge logic
-  (`ActivityCenterPresentation.badge`) isn't wired to `xmpConflicts`.
-- Step 9: **Fails if** the click doesn't switch workspace/select the asset —
-  the popover row action isn't wired end to end.
+
+- Idle fails unless the exact `Activity` control is present with `No active
+  work` and no active/problem section.
+- Working fails unless the 130-original import produces `Activity - working`
+  and at least one real published kind row. A launch-window glimpse is not a
+  pass.
+- Return-to-idle fails unless the exact idle control replaces working, all 130
+  assets exist, and `Worker idle` plus Stop render after publication.
+- Problem fails unless exactly one owned conflict yields exactly
+  `Activity - 1 problem`.
+- Navigation fails unless the row lands in Grid with only the XMP Conflicts
+  scope active and `smoke-0.jpg` selected.
 
 ## Cleanup
+
+The catalog is a disposable fresh `empty` run. Remove only the fixture and
+presentation row this card owns:
+
 ```bash
-rm -f "$SRC.xmp"
-./script/reset_isolated_test_data.sh --delete
+script/vm_scenario_run.sh sql empty "DELETE FROM metadata_sync_state WHERE sidecar_path='/Users/admin/teststrip-vm/fixtures/activity-001-conflict-target.xmp';"
+script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+script/vm_scenario_run.sh shell 'rm -rf "$HOME/teststrip-vm/fixtures/activity-001-smokebig"'
 ```
 
 ## Sharp edges
-- **No UI-reachable trigger exists for the metadata-sync-conflict or
-  source-availability rescans** — both fire only off worker-queue events.
-  Quoted precisely from `docs/product/focused-workspaces-followups.md`
-  ("Known test-fixture gaps"): *"No UI-reachable trigger exists for the
-  metadata-sync-conflict or source-availability rescans — both fire only
-  off worker-queue events. This makes the Activity item's badge states
-  impossible to scenario-test (`quiet-activity-badge` and
-  `activity-icon-states` are PARTIAL for this reason) and may also be a
-  real product gap: a user who fixes a sidecar or remounts a drive has no
-  way to ask for a re-check."* Steps 3, 6-7 above inherit this gap; a
-  relaunch against the mutated catalog is the most likely workaround but
-  wasn't independently reverified in this merge pass.
+
+- The `smokebig` seed catalog itself is pre-rendered. This card copies only its
+  originals and imports them into `empty`; launching `smokebig` would make the
+  working assertion a timing accident.
+- The toolbar is a coalesced publication surface. Use its positive exact
+  controls as barriers before negative assertions; SQL may update first.
+- The inserted `metadata_sync_state` row is presentation-only. It does not
+  claim that a missing `.xmp` is a naturally detected conflict.
+- Receipts may coexist with `No active work`, and an idle worker may coexist
+  with the idle toolbar. Neither is active work or a problem.
 
 ## Run status
-BLOCKED-CONSOLE — locked console prevents any AX step. State text confirmed
-at `Sources/TeststripApp/LibraryGridView.swift:369-395`
-(`activityToolbarIcon`/`activityToolbarHelp`: `isWorking` → spinner + "Activity
-- working"; `.problems(count)` → badge + "Activity - N problem(s)"; else
-"Activity"). Conflict-badge/popover wiring confirmed at
-`Sources/TeststripApp/LibraryGridView.swift:390-395` (`activityToolbarHelp`),
-`Sources/TeststripApp/AppModel.swift:2481-2492` (`xmpConflicts` built from
-`metadataSyncConflictItems`), `Sources/TeststripApp/ActivityCenterView.swift:39-40`
-(conflicts section). Needs a human-present re-run. All SQL in this card was
-run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per
-Sources/TeststripCore/Catalog/CatalogMigrations.swift). This file merges the
-former `activity-icon-states.md` and `quiet-activity-badge.md`; both were
-independently BLOCKED-CONSOLE before the merge and the merge does not change
-that status.
+
+**Spec'd — NOT RUN (2026-08-10).** The current procedure has not been run in
+the Tart VM. This repair replaces direct host commands, the pre-rendered-smoke
+launch race, fixed-delay publication assumptions, and the obsolete claim that
+no UI rescan exists. It makes every external operation VM-contained and uses
+positive published controls as state barriers.
+
+Historical evidence is preserved but is not current execution evidence:
+
+- 2026-07-10: the smoke schema/queue SQL was checked headlessly; no Activity UI
+  leg ran.
+- The former card was marked `BLOCKED-CONSOLE`; its source reading established
+  the three toolbar strings but did not drive them.
+- Later sidecar-rescan and conflict-deep-link work removed the original fixture
+  gap, but no fresh run of this rewritten 130-original procedure occurred.

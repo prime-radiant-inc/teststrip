@@ -1,6 +1,6 @@
 # people-005-queue-keyboard: arrow to a card, Return confirms — person_assets appears only after
 
-**What this covers**: inventory items 12-16, 27 — the People workspace's
+**What this covers**: inventory items 12-16, 27 — the People lens's
 unified suggestions+review queue keyboard model and its confirm-before-write
 invariant (Task 21): clamped `focusedIndex` with an accent border, ←→ wrap
 navigation, Return confirms only the focused card (nameable cards open the
@@ -21,7 +21,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘3 for People.
+1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘6 for People.
 2. Wait for the worker to embed faces and grouping suggestions to appear
    (mirror `script/verify_people_clustering.sh`'s warm-poll loop on
    `face_observations`).
@@ -36,7 +36,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    "Who is this?" cards on the first pass — a one-tap "Is this X?" card can
    only exist once a person has already been named, per
    `PeopleView.suggestionCards`/`isOneTapConfirm`
-   (`Sources/TeststripApp/PeopleView.swift:637-663`) — so don't assume one
+   (`Sources/TeststripApp/PeopleView.swift:734-760`) — so don't assume one
    kind is reachable; branch on what's actually focused):
    - **Name-routing card** ("Who is this?"): Return opens the naming sheet.
      Assert `person_assets` is *still* 0 here — opening the sheet is routing,
@@ -71,3 +71,11 @@ routing already covered by a unit test per task-21-report.md
 `Tests/TeststripAppTests/PeopleQueuePresentationTests.swift`, full suite
 green); this card is the live-AX counterpart the report calls out as still
 needed. Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: Step 1
+pressed ⌘3 for People, from a build that predates even the "Library
+sub-view" era — under the unified shell, People is one of the six
+top-level `LibraryLens` cases, keyed ⌘6, not ⌘3 (`LibraryLens.keyEquivalent`,
+`LibraryLens.swift:44-51`). Preamble only; the queue-keyboard/confirm-before-
+write assertions don't depend on how People was reached. Supersedes prior
+status: no prior run evidence exists to invalidate (still BLOCKED-CONSOLE).

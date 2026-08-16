@@ -155,6 +155,37 @@ final class TimelinePresentationTests: XCTestCase {
         XCTAssertNil(TimelineContentScrollPolicy.focusedTargetID(for: scrubber))
     }
 
+    // Spec behaviour change 7: the year histogram was catalog-wide while the
+    // thumbnails below it were filtered, papered over by "Showing N loaded of
+    // M photos". Under the unified shell every lens is source-scoped, so the
+    // ribbon counts only the source's photos. The self-deriving initializer
+    // that makes this free has existed all along, exercised only by this file.
+    func testTheHistogramCountsOnlyTheSelectedSourcesPhotos() throws {
+        let inScope = makeAsset(id: "timeline-in", path: "/Photos/Inside/a.jpg", capturedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        let outOfScope = makeAsset(id: "timeline-out", path: "/Photos/Outside/b.jpg", capturedAt: Date(timeIntervalSince1970: 1_600_000_000))
+        let (model, _) = try makeModelWithCatalogAssets(named: "timeline-scoped", assets: [inScope, outOfScope])
+
+        try model.selectSource(.folder("/Photos/Inside"))
+        model.selectLens(.timeline)
+
+        let presentation = model.timelinePresentation
+        XCTAssertEqual(presentation.yearRibbon.years.map(\.assetCount).reduce(0, +), 1)
+        XCTAssertFalse(
+            presentation.summaryText.contains("loaded of"),
+            "the loaded-vs-total apology only existed because the halves disagreed"
+        )
+    }
+
+    func testTheHistogramCoversTheWholeCatalogOnAllPhotos() throws {
+        let first = makeAsset(id: "timeline-all-a", path: "/Photos/Inside/a.jpg", capturedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        let second = makeAsset(id: "timeline-all-b", path: "/Photos/Outside/b.jpg", capturedAt: Date(timeIntervalSince1970: 1_600_000_000))
+        let (model, _) = try makeModelWithCatalogAssets(named: "timeline-all", assets: [first, second])
+
+        try model.selectSource(.allPhotos)
+
+        XCTAssertEqual(model.timelinePresentation.yearRibbon.years.map(\.assetCount).reduce(0, +), 2)
+    }
+
     private static var gregorianUTC: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -184,5 +215,54 @@ final class TimelinePresentationTests: XCTestCase {
                 provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "test")
             )
         )
+    }
+
+    private func makeAsset(id: String, path: String, capturedAt: Date?) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: path),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: Int64(id.count + 1), modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata(),
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                capturedAt: capturedAt,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        )
+    }
+
+    // Plan-mandated duplication (task-10A brief, Step "Add the two fixtures
+    // this file needs"): copied verbatim from
+    // `Tests/TeststripAppTests/LibrarySourceTests.swift`. This ~28-line
+    // catalog-bootstrap fixture is already duplicated across most of this
+    // test target (open findings M18, M36). Not refactored here — extracting
+    // a shared helper is a real cross-file refactor and out of scope for a
+    // test-only task.
+    private func makeModelWithCatalogAssets(
+        named name: String,
+        assets: [Asset]
+    ) throws -> (AppModel, CatalogRepository) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-timeline-\(name)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(assets)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
+        return (model, repository)
     }
 }

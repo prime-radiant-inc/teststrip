@@ -39,7 +39,7 @@ card):
   → window `7..<13`; anchor=0 → `0..<6`; anchor=19 → `14..<20`.
 - **Rendering**, `runStrip`/`runStripStop`/`runStripStackThumb`/
   `runStripStandaloneThumb`/`runStripThumbnailFace`
-  (`Sources/TeststripApp/LibraryGridView.swift:4507-4708`). **Reconciled
+  (`Sources/TeststripApp/LibraryGridView.swift:4487-4681`). **Reconciled
   2026-07-17 (dogfood-r1 panel pass)**: a multi-frame stop no longer renders
   as a wide text pill (`label` + count + sparkle chip in a `Capsule`) — it
   now renders `runStripStackThumb`, a small **photo stack**: the lead
@@ -63,7 +63,7 @@ card):
   current-stop selection ring are unaffected. Both button forms still carry
   `.help(stop.label)`, `.accessibilityLabel("Stop \(stop.label)")`, and
   `.accessibilityValue(runStripStopAccessibilityValue(stop))`
-  (`:4602-4604`) — the value is now just `["Current"]/["Done"] + "N
+  (`:4590-4595`) — the value is now just `["Current"]/["Done"] + "N
   frame(s)"` joined by `", "`; the old trailing `["N suggestion(s)"]`
   segment is gone along with the field that fed it
   (`stop.sparkleCount`). This is the **only** reliable AX read of
@@ -74,12 +74,12 @@ card):
   rendered `Text`) still holds unchanged; only assertions that read the
   now-gone suggestion segment (removed from this card below) are affected.
   A click routes through `AppModel.selectStackLanding(for:)`
-  (`AppModel.swift:7213-7218`) — the same preference-gated
+  (`AppModel.swift:7687-7692`, via `:7676-7679`) — the same preference-gated
   recommended-or-first landing helper `←`/`→`/`H`/`L` use (see
   `cull-022-flow-grammar-walk.md`'s T7.5 citation) — so a stop click never
   disagrees with keyboard arrival.
 - **Triple counter**, `CullFilmstripPresentation.tripleCounterText`
-  (`Sources/TeststripApp/CullFilmstripPresentation.swift:59-76`):
+  (`Sources/TeststripApp/CullFilmstripPresentation.swift:60-77`):
   `"\(frameIndex+1) of \(totalFrames) · stack \(stackIndex+1) of
   \(stacks.count)"`, **plus** `" · frame \(withinStackIndex+1) of
   \(stackAssetIDs.count)"` **only when** the current stop has more than one
@@ -88,9 +88,9 @@ card):
   `stacks`) — this is the tutorial's "stop" model wearing the label
   "stack"; don't read a standalone's "stack S of Σ" segment as a bug.
 - **User-origin-only progress**: `runStripStatusBar`
-  (`LibraryGridView.swift:4543-4567`) computes `progressFraction =
+  (`LibraryGridView.swift:4525-4549`) computes `progressFraction =
   reviewedCount / totalCount` from `model.cullingProgressSummary`
-  (`AppModel.swift:2754-2763`), whose `pickCount`/`rejectCount` come from
+  (`AppModel.swift:2768-2777`), whose `pickCount`/`rejectCount` come from
   `cullingDecisionCount(flag:repository:)` →
   `CatalogRepository.assetCount(ids:confirmedFlag:)` — **confirmed flags
   only** (`cull-026-tentative-never-commits.md`'s citation of this exact
@@ -125,15 +125,15 @@ card):
   (`.export`/`.moveRejects`/`.moveRejectsToTrash`/`.reviewPicks`) always;
   `.savePicksAsSet` appended only if `picks > 0`.
 - **Rendering the summary**, `cullCompletionStage`
-  (`LibraryGridView.swift:3958-4004`): exact text —
+  (`LibraryGridView.swift:3871-3940`): exact text —
   `Text("Nothing left to decide")`; `Text("\(picks) picks · \(rejects)
   rejects")`; a run-coverage line, `cullCompletionRunDetailText`
-  (`:4029-4031`): exactly `"\(skipped) skipped · \(neverViewed) never
+  (`:3942-3944`): exactly `"\(skipped) skipped · \(neverViewed) never
   viewed"` — no trailing segment of any kind. `undecided` itself is **never
   rendered directly** here — the gate that reveals this whole stage already
   proves it's 0, so a direct display would be redundant; this card confirms
   0 via the presentation math instead. Action button titles
-  (`:4009-4028`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
+  (`:3919-3940`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
   Trash…"`, `"Review Picks"`, `"Save Picks as Set"` — exactly these five,
   gated per the Actions rule above; there is no sixth
   `"Review AI Suggestions"` button anywhere in the source.
@@ -143,23 +143,23 @@ card):
   Step 3 rather than re-derived independently; if the two ever disagree,
   `cull-016` wins. `"Save Picks as
   Set"` calls
-  `model.saveCullingPicksAsSet()` (`AppModel.swift:5660-5686`): with **no**
+  `model.saveCullingPicksAsSet()` (`AppModel.swift:6108-6134`): with **no**
   active persisted culling session (burst seeds directly, bypassing
   `IngestService` — same gap `cull-021-stack-rail-nav.md` documents), it
-  takes the ad-hoc branch (`:5675-5686`) — snapshots
+  takes the ad-hoc branch (`:6123-6133`) — snapshots
   `assets.filter { confirmedProjection.flag == .pick }.map(\.id)` into a
   **new** `AssetSet(membership: .snapshot(...))`, named via
-  `suggestedPicksSetName` (`:5688-5696`: `"Catalog Picks"` absent an active
+  `suggestedPicksSetName` (`:6136-6144`: `"Catalog Picks"` absent an active
   set/search context). Persisted at `asset_sets.membership_json`; a
   `.snapshot([AssetID])` encodes at JSON path `$.snapshot._0`, each element
   `{"rawValue": "<id>"}` (`CatalogRepository
   .workSessionAssetMembershipSelector`, `Sources/TeststripCore/Catalog/
-  CatalogRepository.swift:3405-3414`, the same path shape `cull-021`
+  CatalogRepository.swift:3462-3471`, the same path shape `cull-021`
   documents for `work-stack-` sets, applied here to a plain saved set).
 - **Fixture and seeding gap**: no seed command produces a tentative-AI flag
   (`cull-026`'s established finding). `autopilot_proposals` no longer
   exists as a table (`DROP TABLE IF EXISTS autopilot_proposals`, SP-D0,
-  `Sources/TeststripCore/Catalog/CatalogMigrations.swift:263`) — there is no
+  `Sources/TeststripCore/Catalog/CatalogMigrations.swift:255-267`) — there is no
   row left to seed at all. This card patches the local `burst` template's
   `metadata_json` directly (Pre-state below), mirroring `cull-023`'s/
   `cull-026`'s `aiUnconfirmedFields` template-patch technique, rather than
@@ -173,7 +173,7 @@ card):
   step is needed for the grid-tile badges (`AutopilotGhost.kind(in:)` reads
   the asset's own metadata directly — cull-029's Source); at launch,
   `AppModel.load(catalog:)` also calls `refreshAutopilotGhostAssetIDs()`
-  (`AppModel.swift:4718`) to populate the sidebar's cached
+  (`AppModel.swift:4646`) to populate the sidebar's cached
   `autopilotGhostAssetIDs`/count from `assetIDsWithAutopilotGhost()` — the
   SP-D0 replacement for the deleted `reconstructAutopilotStateAfterLoad()`.
   Unlike that deleted function, this hand-seeded ghost does **not** set
@@ -364,7 +364,7 @@ later card in the same session that needs the pristine baseline.
    shown, but **completely absent**, because Steps 4/6 decided `smoke-4`/
    `smoke-16` directly via `P`, and `setFlagForSelectedAsset` unconditionally
    clears `aiUnconfirmedFields` the instant any direct flag decision lands
-   (`AppModel.swift:7371-7374`) — regardless of whether the new value agrees
+   (`AppModel.swift:7740-7746`) — regardless of whether the new value agrees
    with the old tentative one:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # 0 — both ghosts cleared by Steps 4/6's direct decisions, not by a commit/dismiss gesture
@@ -527,7 +527,7 @@ Run once per leg (separate launches); quit each instance before the next.
   `cull-017-autopilot-review.md`'s territory regardless, not re-driven
   here.
 - **`saveCullingPicksAsSet()`'s ad-hoc branch calls `saveAndSelect(...)`
-  (`AppModel.swift:5681`), which immediately applies the new set as the
+  (`AppModel.swift:5876-5888`, called at `:6129`), which immediately applies the new set as the
   active library scope/selection** — the very next render is that new set's
   *own* freshly-recomputed completion state (a different, smaller
   population), not the original session's. Confirmed live: a screenshot

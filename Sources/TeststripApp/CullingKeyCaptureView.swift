@@ -2,15 +2,15 @@ import AppKit
 import SwiftUI
 
 // Task C1 fix: the culling monitor (P/X/U flags, ratings, Return-promote,
-// arrow/stack navigation) must only fire in the Cull workspace, and only in
-// its loupe/compare/A-B sub-views — never in .cullGrid (which has its own
-// GridKeyCaptureView monitor) and never in the other workspaces' views
+// arrow/stack navigation) must only fire in the Cull lens, and only in its
+// loupe/compare/A-B sub-modes — never in .cullGrid (which has its own
+// GridKeyCaptureView monitor) and never in the other lenses' routes
 // (.people, .timeline, .map, .grid, .libraryLoupe), where its Return/rating/
 // pick/reject shortcuts would write metadata or navigate behind chrome that
 // doesn't show them.
 enum CullingKeyCaptureGate {
-    static func isActive(workspace: Workspace, selectedView: LibraryViewMode) -> Bool {
-        workspace == .cull && selectedView != .cullGrid
+    static func isActive(lens: LibraryLens, selectedView: LibraryViewMode) -> Bool {
+        lens == .cull && selectedView != .cullGrid
     }
 }
 

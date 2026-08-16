@@ -1,6 +1,6 @@
-# cull-020-pass-scope-and-undo: P/X/S/Return in the Cull workspace, and ⌘Z reverts one gesture at a time
+# cull-020-pass-scope-and-undo: P/X/S/Return in the Cull lens, and ⌘Z reverts one gesture at a time
 
-**What this covers**: the Cull workspace's keyboard loop — pick (`P`) and
+**What this covers**: the Cull lens's keyboard loop — pick (`P`) and
 reject (`X`) a few frames, cycle scope with `S` to Picks and confirm the
 sidebar/HUD reflect it, then Return on a stack writes pick+sibling-rejects as
 one gesture. Undo is scoped per gesture, not per pass: a single ⌘Z reverts
@@ -99,8 +99,8 @@ script/vm_scenario_run.sh sync burst && script/vm_scenario_run.sh launch burst
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. `CullScope.cycleScope`
-keyboard wiring confirmed at `Sources/TeststripApp/AppModel.swift:210-260`
-and `:5418`; scope titles at `:270-303`. All SQL in this card was run
+keyboard wiring confirmed at `Sources/TeststripApp/AppModel.swift:187-241`
+and `:6658`; scope titles at `:247-290`. All SQL in this card was run
 headlessly against a seeded `--smoke` catalog on 2026-07-10 (schema per
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift`). Needs a
 human-present re-run, including the preload-ahead spot-check above.

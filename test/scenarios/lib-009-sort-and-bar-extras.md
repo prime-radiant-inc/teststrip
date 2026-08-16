@@ -76,7 +76,7 @@ different, stricter condition,
 (line 7317-7319), which checks `model.canRetryPendingMetadataSyncInCurrentScope`
 — itself gated on `metadataSyncPendingFilter && catalog != nil &&
 workerSupervisor != nil` plus a non-empty retry-candidate scope
-(`AppModel.swift:2231-2240`). So the button can be **visible but disabled**
+(`AppModel.swift:2738-2750`). So the button can be **visible but disabled**
 whenever the pending filter is on but there's nothing retriable (e.g. no
 worker supervisor running, or zero pending-sync assets in the current
 scope) — worth a dedicated disabled-state assertion if this card is
@@ -85,8 +85,8 @@ extended, since step 4 above only checks visibility, not enabled-ness.
 ## Run status
 NOT RUN — GUI/AX driving was not attempted this session. Sort options and
 conditional-button logic confirmed by reading
-`Sources/TeststripApp/LibraryGridView.swift:695-718` and `843-852` and
-`7304-7368`, plus `AppModel.swift:2231-2245, 2643-2645` in full. SQL
+`Sources/TeststripApp/LibraryGridView.swift:876-899` and `843-852` and
+`7304-7368`, plus `AppModel.swift:2307-2321, 3168-3170` in full. SQL
 dry-run headlessly against a fresh `--smoke` catalog on 2026-07-10
 (`TOTAL=24`); the max-rating query in step 6 was not dry-run this session.
 Schema per `Sources/TeststripCore/Catalog/CatalogMigrations.swift`.

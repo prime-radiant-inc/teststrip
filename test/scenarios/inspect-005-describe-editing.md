@@ -35,7 +35,7 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
 4. Press the green label swatch (`--help "Green"`). Assert
    `"colorLabel":"green"`.
 5. With a single asset selected, assert the "Rating, flag, and label apply to
-   all N selected photos" note (`metadataControls`, `InspectorView.swift:899-903`)
+   all N selected photos" note (`metadataControls`, `InspectorView.swift:945-949`)
    is **absent** (`model.selectedBatchAssetCount == 1`).
 
 ### Keyword chips
@@ -48,17 +48,17 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
    original_path='$SRC_A';"` shows `"keywords":["sunset","beach"]` (order
    per the split, not alphabetized).
 7. Click the X on the `beach` chip (`ax_drive.sh press --role AXButton --help
-   "Remove beach"`, `InspectorView.swift:1032-1056`). Assert the chip is gone
+   "Remove beach"`, `InspectorView.swift:1098-1134`). Assert the chip is gone
    and `metadata_json` keywords now shows only `["sunset"]`.
 
 ### Caption/creator/copyright: commit-on-submit, empty → nil
 8. Type "A quiet dock at dusk" into the Caption field and press Return
-   (`onSubmit`, `InspectorView.swift:1156-1177`). Assert
+   (`onSubmit`, `InspectorView.swift:1276-1302`). Assert
    `metadata_json.caption == "A quiet dock at dusk"`.
 9. Clear the Caption field entirely (select-all, delete) and press Return.
    Assert `metadata_json` has **no** `"caption"` key (nil, not `""`) —
-   `Self.portableText(from:)` (`AppModel.swift:6306-6310`,
-   `setCaptionForSelectedAsset`) is expected to map empty string to nil;
+   `Self.portableText(from:)` (`AppModel.swift:8876-8879`,
+   `setCaptionForSelectedAsset`, `:8325-8332`) is expected to map empty string to nil;
    confirm the exact nil-vs-empty-string serialization in the JSON dump.
 10. Repeat for Creator and Copyright: type a value, submit, confirm it's
     stored; clear and submit, confirm the key is absent/null rather than
@@ -67,7 +67,7 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
     click elsewhere in the panel (e.g. the Creator field) without pressing
     Return first. Assert the caption still commits — or, if it does *not*
     commit on blur and only the explicit checkmark button
-    (`InspectorView.swift:1167-1175`) or Return commits, document that as
+    (`InspectorView.swift:1292-1299`) or Return commits, document that as
     the actual behavior (don't assume commit-on-blur without observing it;
     the `TextField.onSubmit` wiring shown in the source only fires on
     Return/checkmark-click, not on focus loss — flag this in Sharp edges if
@@ -89,7 +89,7 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
 14. Assert the uncommitted Caption text is **not** clobbered — the draft
     ("— draft edit" still present, uncommitted) survives the external
     refresh, per `InspectorMetadataDraft.sync(to:)`'s `guard
-    !hasUnsavedChanges else { return }` (`InspectorView.swift:1357-1369`):
+    !hasUnsavedChanges else { return }` (`InspectorView.swift:1482-1499`):
     the draft only re-syncs from the catalog when the current draft *matches*
     the last-synced metadata; a draft the user is still editing is left
     alone even though the catalog changed. Confirm the rating change (4) is
@@ -97,7 +97,7 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
     the caption draft was preserved — the protection is field-independent to
     the whole draft struct, not per-field (`InspectorMetadataDraft` bundles
     keywords/caption/creator/copyright as one struct that either fully
-    resyncs or fully doesn't, `InspectorView.swift:1340-1382`).
+    resyncs or fully doesn't, `InspectorView.swift:1465-1506`).
 15. Now press Return to commit the draft caption. Assert it writes
     successfully and the resulting `metadata_json` has both the committed
     caption (with "— draft edit") and the externally-set rating of 4 (the
@@ -210,7 +210,7 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
   trigger during a real run, prefer it — but the SQL approach is a valid
   probe of the same code path (`InspectorMetadataDraft.sync(to:)` is called
   from `.onChange(of: asset.metadata)`, which fires regardless of what
-  produced the change, `InspectorView.swift:1027-1029`).
+  produced the change, `InspectorView.swift:1081-1082`).
 - Step 11's blur-commit behavior is genuinely unconfirmed from static
   reading — SwiftUI's plain `TextField` with `.onSubmit` does not fire on
   focus loss by default, so the card's default expectation should be "does

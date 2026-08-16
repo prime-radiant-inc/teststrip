@@ -21,11 +21,12 @@ below). The 112px crop size, the Cull-chrome-only gate, and the
 display-only/nothing-persisted behavior are unchanged.
 
 **Source (re-verified 2026-08-01, SP-B per-face report cards citation
-sweep)**: `cullFacesReadsPanel` at
-`Sources/TeststripApp/LibraryGridView.swift:4116-4135` (an `HStack` of
+sweep; gate citation re-verified 2026-08-09, unified-shell sweep — see Run
+status)**: `cullFacesReadsPanel` at
+`Sources/TeststripApp/LibraryGridView.swift:4002-4021` (an `HStack` of
 `readsCard` + `closeUpsRail`), gated into the loupe body only `if
-presentation.showsCullChrome && model.showsCullFacesPanel` at `:3903`;
-`closeUpsRail` at `:4137-4190`; per-tile rendering (`closeUpCropCell`,
+presentation.showsCullChrome && model.showsCullFacesPanel` at `:3796`;
+`closeUpsRail` at `:4023-4075`; per-tile rendering (`closeUpCropCell`,
 `closeUpChips`) at `:4200-4231`; `refreshCloseUps(for:)` at `:4321-4366`.
 Each tile's composed accessibility value now comes from
 `FaceReportRollUpPresentation.tileAccessibilityValue`
@@ -94,7 +95,7 @@ script/ax_drive.sh wait-vended Teststrip
    sqlite3 "$DB" "SELECT count(*) FROM person_faces;"    # PF0, expect 0
    sqlite3 "$DB" "SELECT count(*) FROM dismissed_faces;" # DF0, expect 0
    ```
-2. Switch to Cull workspace (⌘1) and select that asset in the loupe. Wait for
+2. Switch to the Cull lens (⌘1) and select that asset in the loupe. Wait for
    the panel to populate:
    ```bash
    script/ax_drive.sh wait --role AXStaticText --contains "CLOSE-UPS"
@@ -110,12 +111,27 @@ script/ax_drive.sh wait-vended Teststrip
    ```
    (The whole panel is toggled by the bare `/` culling key,
    `AppModel.showsCullFacesPanel`, default shown — don't press `/` mid-run.)
-3. Switch to Library workspace (⌘2) with the same asset selected/open in its
-   loupe. Assert the Close-Ups panel is **absent** (cull-chrome-only claim):
+3. **Switch to the Loupe lens (⌘3) — not the Grid lens (⌘2).** Under the old
+   two-workspace shell, ⌘2 (Library) opened the Library's own loupe on the
+   same asset: a genuine single-image view, just without cull chrome — so
+   this step proved the panel is gated on cull chrome specifically, not
+   merely on "is some per-asset detail view showing." The unified shell's
+   ⌘2 now opens the **Grid lens** (thumbnails, no loupe at all); swapping in
+   ⌘2 here would make the assertion trivially true for the wrong reason (no
+   detail view of any kind is showing, so of course no face-crop rail
+   renders). ⌘3 is the actual like-for-like successor: it opens the Loupe
+   lens's `.libraryLoupe` view (`lib-013-library-loupe.md`) — the same
+   plain-navigation, no-pick/reject-pills loupe the old Library workspace
+   used — on the identical asset. `LoupePresentation.showsCullChrome = (mode
+   == .loupe)` (`AppModel.swift:33`) is `false` for `.libraryLoupe`, exactly
+   as it was for the old Library loupe, so this preserves the original
+   test's meaning. With the same asset selected/open in the Loupe lens,
+   assert the Close-Ups panel is **absent** (cull-chrome-only claim, gated at
+   `LibraryGridView.swift:3796`):
    ```bash
    script/ax_drive.sh find --contains "Face close-ups"   # expect exit nonzero (not found)
    ```
-4. Back in Cull (⌘1), re-select the asset, wait for the panel again, then
+4. Back in the Cull lens (⌘1), re-select the asset, wait for the panel again, then
    click/interact with one of the crop images. Read the source first to know
    whether it's even hit-testable — `closeUpCropCell`'s `Image(decorative:...)`
    rows carry no `Button`/tap gesture in the current source, so this step may
@@ -145,13 +161,16 @@ script/ax_drive.sh wait-vended Teststrip
 
 ## Expected
 - Step 2: the Close-Ups rail renders with at least one 112x112 crop while in
-  the Cull workspace on an asset with detected faces. **Fails if** the rail
+  the Cull lens on an asset with detected faces. **Fails if** the rail
   never appears despite a `--faces` asset with confirmed multi-face
   `face_observations`, or if it still shows the "No faces" empty-state value
   (zero crops).
-- Step 3: the rail is completely absent from the Library workspace's loupe
-  for the identical asset. **Fails if** it renders in Library — that would
-  contradict the "Cull-chrome-only" claim in the gate at `:3903`.
+- Step 3: the rail is completely absent from the Loupe lens's loupe for the
+  identical asset — a genuine per-asset detail view, just not the Cull
+  lens's. **Fails if** it renders there — that would contradict the
+  "Cull-chrome-only" claim in the gate at `LibraryGridView.swift:3796`
+  (`showsCullChrome = (mode == .loupe)`, `AppModel.swift:33`, `false` for
+  `.libraryLoupe`).
 - Step 4: `person_assets`/`person_faces`/`dismissed_faces` counts are
   identical before and after interacting with a crop (`PA1==PA0`,
   `PF1==PF0`, `DF1==DF0`). **Fails if** any count changed — that would be a
@@ -236,7 +255,7 @@ well past the stated 3-attempt cap, and CPU visibly spiked to 12-20% during
 each such burst before settling back to idle. Root cause (read from the exact
 deployed source, `.worktrees/cull012-bugs` @ `af4d104c`):
 `AppModel.requestVisibleLoupeAssetPreview`/`prefetchLoupeNeighborLargePreviews`
-(`AppModel.swift:9283-9315`) are a separate dispatch path from the one the
+(`AppModel.swift:9776-9813`) are a separate dispatch path from the one the
 kata #15 fix covers (`CatalogRepository.pendingPreviewGenerationItems`/
 `enqueuePendingPreviewGeneration`). They gate only on `.offline`/`.missing`
 (`refreshAvailability`, `:9291`) and `requiresCachedPreviewOnly`
@@ -469,3 +488,34 @@ card covers is unchanged: the 112px crop size, the Cull-chrome-only gate, the
 `"No faces"` empty state for a genuinely faceless frame, and the
 display-only/nothing-persisted behavior. The replacement assertions live in
 `cull-028-face-report-cards.md`.
+
+---
+
+**Reconciled 2026-08-09 (Task 13, unified-shell push — load-bearing, not a
+mechanical preamble swap)**: Steps 2-4 are this card's actual test, not a
+preamble to it — the ⌘1/⌘2 round trip proves the Close-Ups rail is gated on
+cull chrome specifically, by showing the identical asset in two different
+single-image views and asserting the rail only renders in one of them. A
+mechanical "⌘2 → Grid lens" swap would have broken that: the unified shell's
+⌘2 now opens the **Grid lens** (`.grid`, a thumbnail grid, no per-asset loupe
+at all), so Step 3 would trivially pass for the wrong reason — no detail
+view of any kind is showing, not "cull chrome absent from a detail view."
+Rewrote Step 3 to press **⌘3 (the Loupe lens)** instead: it opens
+`.libraryLoupe`, the direct successor to the old Library workspace's loupe
+(`lib-013-library-loupe.md`) — same plain-navigation, no-pick/reject-pills
+single-image view, same asset, just reached via a different key. Verified
+`LoupePresentation.showsCullChrome = (mode == .loupe)` (`AppModel.swift:33`)
+is `false` for `.libraryLoupe`, exactly as it was `false` for the old
+Library loupe's equivalent state — so the round trip's *meaning* is
+unchanged: two different loupes on the same asset, one with cull chrome, one
+without, and only one renders the rail. Also corrected the gate's own line
+citation, drifted from `:3903` to its real location at
+`LibraryGridView.swift:3796` (`if presentation.showsCullChrome &&
+model.showsCullFacesPanel`), verified by direct read rather than trusting
+the prior number. Steps 1 and 5 are unaffected (no lens keys). Historical
+Run-status entries above (the 2026-07-28/07-29 live runs) describe what
+those runs actually drove under the pre-unified-shell build and are left
+as-is per this file's own precedent for historical entries. Supersedes
+prior status: every live run recorded above drove the old ⌘2-into-Library-
+loupe round trip, which no longer exists — none of that evidence covers
+Steps 2-4 as now written. Needs a fresh VM run.

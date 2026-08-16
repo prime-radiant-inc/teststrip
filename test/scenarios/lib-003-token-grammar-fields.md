@@ -1,6 +1,6 @@
 # lib-003: the structured `field:value` token grammar narrows the grid per its documented SQL semantics
 
-**What this covers**: the Library workspace's query token field recognizes a
+**What this covers**: the browse lenses' query token field recognizes a
 fixed set of `field:value` tokens (`camera:`, `lens:`, `keyword:`/`tag:`,
 `person:`, `folder:`/`path:`, `color:`/`colour:`/`label:`, `iso:`, `rating:`
 (+3 more aliases), `from:`/`after:`/`since:`, `before:`/`until:`, `date:`,
@@ -9,7 +9,7 @@ fixed set of `field:value` tokens (`camera:`, `lens:`, `keyword:`/`tag:`,
 `LibrarySearchIntent.fieldPredicates(from:)`
 (`Sources/TeststripApp/LibrarySearchIntent.swift:107-173`), compiled to SQL by
 `CatalogRepository.compileClauses(_:)`
-(`Sources/TeststripCore/Catalog/CatalogRepository.swift:2261-2555`), and
+(`Sources/TeststripCore/Catalog/CatalogRepository.swift:3082-3387`), and
 rendered as a chip via `LibraryQueryToken` (`Sources/TeststripApp/LibraryQueryTokenField.swift`).
 Unit coverage already proves the parse step
 (`Tests/TeststripAppTests/LibrarySearchIntentTests.swift`); this card is the
@@ -164,7 +164,7 @@ ground truth or to keep this card's Steps bounded:
   `eyeSharpness`. `signal:faceCount` and `signal:faceQuality` compile to an
   extra `AND NOT EXISTS (dismissed_face_assets) AND NOT EXISTS (person_assets)`
   clause the other 13 kinds don't get
-  (`CatalogRepository.swift:2374-2396`). `--smoke` seeds zero
+  (`CatalogRepository.swift:3199-3221`). `--smoke` seeds zero
   `evaluation_signals` rows, so every `signal:` value returns 0 of 24 against
   this fixture — untestable narrowing here; needs a catalog with evaluated
   assets (e.g. after running the evaluator against `--sample-photos`).
@@ -180,7 +180,7 @@ ground truth or to keep this card's Steps bounded:
   `output_set_ids_json` (session checks both, import checks output only) —
   too structurally complex for a simple ground-truth `SELECT count`; verified
   by reading `CatalogRepository.compileClauses` case `.workSession`/
-  `.importBatch` (`CatalogRepository.swift:2517-2554`) and by
+  `.importBatch` (`CatalogRepository.swift:3342-3379`) and by
   `LibrarySearchIntentTests.testParsesQuotedFieldValuesAndImportBatch`. Not
   independently dry-run.
 

@@ -27,86 +27,89 @@ over from any older card):
   stops (default `3`, `:12`, `:24-30`), then the landing asset of exactly
   the one previous stop (`:31-33`), deduped (`:34-35`). No caller overrides
   `nextStackCount` (`AppModel.swift` calls `warmAssetIDs` with only `stops:`/
-  `stagedAssetID:`/`landingAssetID:`, `:9444-9448`), so the live default is
+  `stagedAssetID:`/`landingAssetID:`, `:9825-9829`), so the live default is
   always 3. `CullPrefetchPlannerTests.swift` covers the ordering, first/
   last-stop edge cases, and nil-landing/dedup handling directly against this
   pure function — this card proves the wiring live, not those cases again.
 - **The driver**, `AppModel.requestVisibleCullPreview(assetID:)`
-  (`AppModel.swift:9437-9440`): the cull loupe's per-frame request, wired at
-  `LibraryGridView.swift:3894-3900` — only when `presentation.showsCullChrome`
+  (`AppModel.swift:9818-9821`): the cull loupe's per-frame request, wired at
+  `LibraryGridView.swift:3800-3806` — only when `presentation.showsCullChrome`
   (the plain Library loupe still uses the old ±1 deck-order
   `requestVisibleLoupePreview`). It requests the visible frame's own preview
   at `.front` priority first (`requestVisibleLoupeAssetPreview`, unchanged —
   for `.loupe(isVisible: true, requestedFullResolution: false)` that request
   is level `.large`, `Sources/TeststripCore/Preview/PreviewScheduler.swift:35-40`),
   then calls `refreshCullPrefetchWindow(around:)`
-  (`AppModel.swift:9442-9477`) to turn the planner's warm set into gated
+  (`AppModel.swift:9823-9858`) to turn the planner's warm set into gated
   `.back`-priority requests: skips an asset that already has a cached
-  `.large` (`:9457`), is unavailable (`:9458-9459`), or has exhausted its
-  automatic render attempts (`:9460`); otherwise
-  `requestPreview(assetID:level:.large, placement: .back)` (`:9469`). A
+  `.large` (`:9838`), is unavailable (`:9839-9840`), or has exhausted its
+  automatic render attempts (`:9841`); otherwise
+  `requestPreview(assetID:level:.large, placement: .back)` (`:9850`). A
   window slide cancels only the *undispatched* stragglers this same driver
-  itself enqueued (`cullPrefetchItemIDs`, `:9450-9455`) — never an item some
+  itself enqueued (`cullPrefetchItemIDs`, `:9831-9836`) — never an item some
   other path is tracking, including the staged frame's own front-placed
-  request (`:9462-9468`, the review-round-1 fix in `20a72ce1`); anything
+  request (`:9843-9854`, the review-round-1 fix in `20a72ce1`); anything
   already `.running` is left to finish. `CullPrefetchDriverTests.swift`
   covers the gating/dedup/cancel-scoping directly.
 - **The render gate now arms instead of just complaining**,
-  `promoteCurrentFrameAndRejectSiblings` (`AppModel.swift:6387-6443`): the
-  guard at `:6410` (`previewURL(for: context.selectedAssetID, levels:
-  [.large]) != nil`, `previewURL(for:levels:)` at `:14152-14161` — a live
+  `promoteCurrentFrameAndRejectSiblings` (`AppModel.swift:6754-6810`): the
+  guard at `:6777` (`previewURL(for: context.selectedAssetID, levels:
+  [.large]) != nil`, `previewURL(for:levels:)` at `:14642-14651` — a live
   `FileManager.fileExists` check against the preview-cache file for that
   exact level, no fallback to a smaller cached level) is unchanged, but the
   closed-gate branch now calls `armStackCommit(stagedAssetID:asset:)`
-  (`:6411`, function at `:6445-6466`) instead of just setting an
+  (`:6778`, function at `:6812-6833`) instead of just setting an
   informational toast and returning. `armStackCommit` re-checks stored
   availability and attempt-exhaustion — the same gates the prefetch driver
-  uses (`:6448-6450`) — and if the render can genuinely never succeed it
+  uses (`:6815-6817`) — and if the render can genuinely never succeed it
   refuses to arm and shows `"Preview unavailable — not committed"`
-  (`renderUnavailableFeedback`, `:6513-6521`) instead. Otherwise it
-  front-places a fresh preview request (`:6461`, jumping whatever queue
+  (`renderUnavailableFeedback`, `:6880-6888`) instead. Otherwise it
+  front-places a fresh preview request (`:6828`, jumping whatever queue
   position the frame's own visible request already held) and *only then*
-  records `armedStackCommitAssetID = stagedAssetID` (`:6462` — ordered after
+  records `armedStackCommitAssetID = stagedAssetID` (`:6829` — ordered after
   the throwing request per the `11cdf360` review fix, so a request failure
   can never leave a dangling arm with no work item to ever resolve it) and
   shows `"Rendering full preview… will keep when ready"`
-  (`armedCommitFeedback`, `:6503-6511`, `isInformational: true` — no
+  (`armedCommitFeedback`, `:6870-6878`, `isInformational: true` — no
   metadata write yet).
 - **The fire hook**, inside the worker-completion handler
-  (`AppModel.swift:10453-10458`): every completed preview render calls
-  `fireArmedStackCommitIfReady(previewAssetID:)` (`:6472-6491`), a no-op
-  unless the completed asset *is* the armed one (`:6473`). If it is, it
+  (`AppModel.swift:10723-10728`): every completed preview render calls
+  `fireArmedStackCommitIfReady(previewAssetID:)` (`:6839-6858`), a no-op
+  unless the completed asset *is* the armed one (`:6840`). If it is, it
   re-checks that the selection hasn't moved, that a Return-capturing cull
-  sub-view is still active (`isCullingMenuShortcutActive`, `:2112-2113`,
+  sub-view is still active (`isCullingMenuShortcutActive`, `:2025-2027`,
   delegating to `CullingKeyCaptureGate.isActive`,
   `CullingKeyCaptureView.swift:11-15` — true for `.loupe`/`.compare`/
   `.abCompare`, false for `.cullGrid`; the `11cdf360` review fix replaced a
   hardcoded `selectedView == .loupe` check that silently ate an arm made
   from Compare/A-B), and that the `.large` file genuinely exists now
-  (`:6481`) — then disarms and calls `promoteCurrentFrameAndRejectSiblings()`
-  again (`:6485-6487`), which this time finds the gate open and commits for
-  real with the exact same pick/reject/toast/undo-group semantics
+  (`AppModel.swift:6847-6848`) — then disarms and calls
+  `promoteCurrentFrameAndRejectSiblings()` again
+  (`AppModel.swift:6852-6854`), which this time finds the gate open and
+  commits for real with the exact same pick/reject/toast/undo-group semantics
   `cull-023-return-commit-undo.md` already covers in depth (unchanged by
   this branch).
 - **Disarm is deliberately promiscuous** — anything other than a repeat
   Return clears `armedStackCommitAssetID`: `selectAssetID` on any target
-  other than the armed asset (`:4854-4860` — covers every arrow-key/Space/
-  click navigation path, since they all funnel through this one choke
-  point); the top of `applyCullingShortcut` for any shortcut that isn't
-  `.promoteAndRejectSiblings` itself (`:6632-6639` — a repeat Return
-  re-arms the same asset, the specced no-op); and every rail/menu/Inspector
-  write path that bypasses `applyCullingShortcut` entirely —
-  `applyCompareFlags` (`:6103-6112`, the shared Compare/A-B "keep" write
-  path), `keepAllFramesInSelectedCullingStack` (`:6553-6557`),
-  `keepTopRankedFramesInSelectedCullingStack` (`:6562-6564`),
-  `setFlagForSelectedAsset` (`:7350-7355`), and `setFlagForSelectedAssets`
-  (`:7419-7422`). A render *failure* on the armed asset also disarms, inside
-  the queue-changed handler (`:4485-4491`), showing the same
+  other than the armed asset (`AppModel.swift:4791-4797` — covers every
+  arrow-key/Space/click navigation path, since they all funnel through this
+  one choke point); the top of `applyCullingShortcut` for any shortcut that
+  isn't `.promoteAndRejectSiblings` itself (`AppModel.swift:7006-7012` — a
+  repeat Return re-arms the same asset, the specced no-op); and every
+  rail/menu/Inspector write path that bypasses `applyCullingShortcut`
+  entirely — `applyCompareFlags` (`AppModel.swift:6466-6475`, the shared
+  Compare/A-B "keep" write path), `keepAllFramesInSelectedCullingStack`
+  (`AppModel.swift:6920-6927`),
+  `keepTopRankedFramesInSelectedCullingStack` (`AppModel.swift:6929-6939`),
+  `setFlagForSelectedAsset` (`AppModel.swift:7723-7728`), and
+  `setFlagForSelectedAssets` (`AppModel.swift:7792-7795`). A render *failure*
+  on the armed asset also disarms, inside the queue-changed handler
+  (`AppModel.swift:4444-4450`), showing the same
   `renderUnavailableFeedback` toast — not exercised live by this card (no
   seed fixture induces a genuine render failure; see Sharp edges).
 - **Fixture reality**: `burst` (`seed-burst-catalog` →
   `SmokeCatalogSeeder` with `BurstFixtureLayout`'s capture offsets,
-  `Sources/TeststripBench/main.swift:424-437`,
+  `Sources/TeststripBench/main.swift:440-452`,
   `Sources/TeststripBench/SmokeCatalogSeeder.swift:33-54`) pre-renders
   **every** level including `.large` for every asset before the app ever
   launches (`renderedLevels`, `SmokeCatalogSeeder.swift:63`) — the same fact
@@ -130,7 +133,7 @@ over from any older card):
   clean, minimally-invasive way to manufacture a genuinely-missing preview
   against an otherwise fully-rendered fixture. Deleting a file this way
   leaves no trace in any DB table, so `enqueuePendingPreviewGeneration`'s
-  generic background scan (`AppModel.swift:9104-9158`, driven by
+  generic background scan (`AppModel.swift:9485-9539`, driven by
   `pendingPreviewGenerationItems`, a DB-side pending list) can never pick it
   up independently — the only thing that can notice and re-request a
   deleted file is a live `previewURL(...) == nil` check in the code paths
@@ -142,7 +145,7 @@ over from any older card):
 - **Landing frames without evaluation signals**: `burst` never seeds
   evaluation signals (no `EvaluationSignal`/scoring code anywhere in
   `SmokeCatalogSeeder.swift`), so `recommendedStackLandingAssetID`
-  (`AppModel.swift:7303-7306`) falls back to `stack.assetIDs.first` for
+  (`AppModel.swift:7676-7679`) falls back to `stack.assetIDs.first` for
   every stack — i.e., capture order — matching `cull-023`'s own confirmed
   default landing on `smoke-0`. `BurstFixtureLayout.burstFrameCounts = [3,
   4, 3, 4]`, `singleCount = 4` (`SmokeCatalogSeeder.swift:34-35`): group1 =
@@ -158,10 +161,10 @@ over from any older card):
   table exactly (same fixture, same formula, unchanged by this branch).
 - **Toast mechanics** (unchanged by this branch, re-verified at current
   line numbers): the toast `Text` is `decisionToast`
-  (`LibraryGridView.swift:4513`), whose AX title is the literal
+  (`LibraryGridView.swift:4468-4477`), whose AX title is the literal
   `decisionText` string with no accessibility-label override, and it fades
   after 2 real seconds (`showDecisionToastThenFade`,
-  `LibraryGridView.swift:4492-4498`, `Task.sleep(for: .seconds(2))`) — poll
+  `LibraryGridView.swift:4447-4462`, `Task.sleep(for: .seconds(2))`) — poll
   immediately after each keypress, matching
   `cull-023-return-commit-undo.md`/`cull-022-flow-grammar-walk.md`'s
   identical caution.
@@ -180,10 +183,10 @@ This card never patches the shared `burst` seed template (unlike
 `$RUN_DIR` (this launch's fresh copy) — so no template cleanup is needed
 afterward. The app is still on its default Library grid at this point:
 `AppModel.load(catalog:...)` (the factory the real app launch uses)
-initializes `selectedView: .grid` (`AppModel.swift:4672`), and
-`restoreSessionStateIfAvailable()` (`:11906-11912`) — called right after —
+initializes `selectedView: .grid` (`AppModel.swift:4600-4603`), and
+`restoreSessionStateIfAvailable()` (`:4647`, function at `:12314-12320`) — called right after —
 keys its lookup by `catalog.paths.root` (`SessionRestoreStore(...).load()`,
-`:11908`), which is this launch's unique `$RUN_DIR`-rooted path and so can
+`:12316`), which is this launch's unique `$RUN_DIR`-rooted path and so can
 never match a persisted entry from any earlier launch; there is nothing to
 restore, and `.grid` stands. Do **not** press ⌘1 yet; the deletions in
 Step 2 must land before the cull loupe ever mounts and fires its first
@@ -321,7 +324,7 @@ preview request, or there is nothing to observe.
 
 6. **Disarm: repeat the deletion on a fresh stack, arm, then move away
    before the render lands.** The Step 5 commit's post-commit advance
-   (`applyCullingStackDecision`'s tail, `AppModel.swift:6610-6622`) lands
+   (`applyCullingStackDecision`'s tail, `AppModel.swift:6977-6989`) lands
    selection on `smoke-3` (group2's landing frame, the very next stop) —
    confirm with `ax find --role AXStaticText --contains "smoke-3.jpg"`; if
    it isn't there, navigate to it (`→`/`key code 124`) before continuing.
@@ -388,7 +391,7 @@ makes lives under `$RUN_DIR`, which `launch` never reuses across runs.
 
 ## Sharp edges
 - **The toast fades after 2 real seconds** (`showDecisionToastThenFade`,
-  `LibraryGridView.swift:4492-4498`) — poll immediately after each
+  `LibraryGridView.swift:4447-4462`) — poll immediately after each
   keypress; don't interleave several other `find`/`sql` round-trips first.
 - **Keep the app frontmost during every wait.** A backgrounded/idle SwiftUI
   app parks its accessibility tree (idle-wedge, `test/scenarios/README.md`)
@@ -422,7 +425,7 @@ makes lives under `$RUN_DIR`, which `launch` never reuses across runs.
   that far, but any edit to this card's navigation must re-check which
   stop's window `smoke-14` falls inside before reusing it as a negative
   control elsewhere.
-- **The render-failure disarm path (`AppModel.swift:4485-4491`,
+- **The render-failure disarm path (`AppModel.swift:4444-4450`,
   `"Preview unavailable — not committed"`) is not exercised here.** No seed
   fixture in this repo induces a genuine preview-generation failure (a
   corrupted/unreadable original); this leg is source-verified only (Source

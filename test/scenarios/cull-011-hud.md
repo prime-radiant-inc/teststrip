@@ -36,8 +36,8 @@ incorrectly, attributed to the HUD). Source: `cullHUD`, `cullHUDPresentation`,
 and `isRatingEchoActive` in `Sources/TeststripApp/LibraryGridView.swift`;
 `CullHUDPresentation` (`showsScopeChip`/`showsRating`/`showsLabelDot`/
 `sessionClusterText`) in `Sources/TeststripApp/CullHUDPresentation.swift`;
-`CullingProgressSummary` at `Sources/TeststripApp/AppModel.swift:119-137` +
-`cullingProgressSummary` at `:2754-2763` (line numbers drift as the file grows;
+`CullingProgressSummary` at `Sources/TeststripApp/AppModel.swift:50-68` +
+`cullingProgressSummary` at `:2768-2777` (line numbers drift as the file grows;
 re-grep `struct CullingProgressSummary`/`var cullingProgressSummary` if these
 are stale again); and the decision-toast timing state
 (`isDecisionToastVisible`, `lastCullingMetadataDecision`) that the rating
@@ -77,7 +77,7 @@ panel's reads card, not this HUD — see `cull-024-honest-states.md`.
 ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 script/ax_drive.sh wait-vended Teststrip
-script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-switching.md convention
+script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 (Cull lens) per app-019-lens-shell.md convention
 ```
 
 ## Steps
@@ -354,3 +354,13 @@ supports (steps 2 partial/3/4/5) + 1 step blocked by a harness limitation
 text (by design), the smoke fixture's fixed color-label/rating cycling, or
 auto-advance's documented default-on behavior, not to `CullHUDPresentation`
 logic, which matched its spec exactly in every live check.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Pre-state
+cited `app-003-workspace-switching.md`'s convention for landing on the Cull
+loupe via ⌘1; that card was replaced wholesale by this push (now a stub
+pointing at `app-019-lens-shell.md`), so the citation is repointed there.
+⌘1's actual effect (select the Cull lens) is unchanged. Preamble/citation
+only; the assertions (session cluster, rating echo, hover-reveal controls)
+were not affected. Supersedes prior status: the 2026-07-28 PASS-WITH-
+CARD-FIXES evidence above is unaffected — it never depended on which
+convention doc the launch comment cited.

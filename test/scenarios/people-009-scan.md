@@ -3,7 +3,7 @@
 **What this covers**: the People view's face-scan trigger lives only in
 the **People ▸ Scan for Faces** menu item (no canvas button — deliberately
 removed so the review queue owns the Return keystroke, per the comment at
-`Sources/TeststripApp/main.swift:335-339`); the menu item is disabled unless
+`Sources/TeststripApp/main.swift:356-375`); the menu item is disabled unless
 `canRequestPeopleFaceScan` (== `canRequestCurrentScopeAssetEvaluations`) is
 true; triggering it calls `requestCurrentScopeAssetEvaluations(providers:
 ["apple-vision"])`, and the resulting work is visible via the Activity
@@ -33,7 +33,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    scan the AX tree for any
    `AXButton` whose title/help mentions "Scan" — assert none exists in the
    canvas (only the review-strip's static `scanAction.detail` caption text
-   remains, per the comment at `PeopleView.swift:147-156`: the trigger moved
+   remains, per the comment at `PeopleView.swift:172-180`: the trigger moved
    to the menu in Task 21).
 2. **Menu presence and gating.** Open the **People** menu
    (`script/ax_drive.sh find --role AXMenuItem --label "Scan for Faces"`)
@@ -41,8 +41,8 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    previews exist for the current scope — or immediately after launch while
    previews are still generating). If reachable in that window, assert the
    item is `AXDisabled` per `canRequestPeopleFaceScan`
-   (`AppModel.swift:2635-2637`) delegating to
-   `canRequestCurrentScopeAssetEvaluations` (`AppModel.swift:2626-2633`),
+   (`AppModel.swift:3142-3144`) delegating to
+   `canRequestCurrentScopeAssetEvaluations` (`AppModel.swift:3133-3140`),
    which requires **all three**: `workerSupervisor != nil` (worker
    supervised/alive), `catalog != nil`, and at least one asset in the current
    scope with a cached preview (`currentScopeCachedPreviewAssetIDs(...,
@@ -83,7 +83,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   changes). **Fails if** nothing observably happens.
 - Step 8: `E1 > E0` and/or `F1 > F0` (per-provider — confirm the `provider`
   column includes `apple-vision`, matching `requestPeopleFaceScan`'s
-  hardcoded `providers: ["apple-vision"]`, `AppModel.swift:7969-7971`), and
+  hardcoded `providers: ["apple-vision"]`, `AppModel.swift:10479-10481`), and
   the provider breakdown shows only `apple-vision` grew from this action
   (other providers' evaluation counts unchanged since step 4, since the scan
   intentionally scopes to that one provider). **Fails if** counts don't grow,
@@ -113,11 +113,11 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Menu-only placement
-confirmed by static read of `Sources/TeststripApp/main.swift:335-352`
+confirmed by static read of `Sources/TeststripApp/main.swift:359-382`
 (`PeopleCommands`); gating confirmed by
-`Sources/TeststripApp/AppModel.swift:2626-2637`
+`Sources/TeststripApp/AppModel.swift:3133-3144`
 (`canRequestCurrentScopeAssetEvaluations`, `canRequestPeopleFaceScan`); the
-apple-vision-only provider scoping confirmed by `AppModel.swift:7969-7971`
+apple-vision-only provider scoping confirmed by `AppModel.swift:10479-10481`
 (`requestPeopleFaceScan`). Needs a human-present re-run. All SQL in this card
 was run headlessly against a seeded --faces catalog on 2026-07-10 (schema per
 Sources/TeststripCore/Catalog/CatalogMigrations.swift).

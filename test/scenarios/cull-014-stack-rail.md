@@ -32,14 +32,14 @@ thumbnails) and 40 (guidance text/action set — resolved below by reading
 
 Source (re-verified against the working tree on this branch):
 - **Rail placement and structure**: `cullingStackRail(presentation:)`,
-  `Sources/TeststripApp/LibraryGridView.swift:4784-4883` — a vertical
+  `Sources/TeststripApp/LibraryGridView.swift:4697-4796` — a vertical
   `VStack` (title/position/rationale text, then a `ScrollView`/`LazyVStack`
   of per-frame thumbnail cells, then a footer `HStack` holding the primary
-  Keep `Button` (`:4827-4840`) and, when
+  Keep `Button` (`:4739-4752`) and, when
   `presentation.actions.dropFirst()` is non-empty, an `ellipsis.circle`
-  `Menu` labeled "More stack actions" (`:4841-4859`) wrapping the secondary
+  `Menu` labeled "More stack actions" (`:4754-4771`) wrapping the secondary
   actions. Placed leftmost in the loupe's middle `HStack`, shown only when
-  `presentation.showsCullChrome` — `:3873-3876`. **AX role note (verified
+  `presentation.showsCullChrome` — `:3786-3789`. **AX role note (verified
   live 2026-07-28):** the primary Keep `Button` is `AXButton` as expected,
   but SwiftUI's `Menu` control AX-exposes as **`AXMenuButton`**, not
   `AXButton` — `--role AXButton --help "More stack actions"` matches
@@ -47,17 +47,17 @@ Source (re-verified against the working tree on this branch):
   `ellipsis.circle` SF Symbol's default accessibility label, or `--help
   "More stack actions"`).
 - **Per-frame cells** (the "chips" of the old description; now thumbnail
-  cells): `cullStackRailCell(_:)`, `LibraryGridView.swift:4917-4987` — each
+  cells): `cullStackRailCell(_:)`, `LibraryGridView.swift:4830-4900` — each
   cell renders a `CachedPreviewImage` thumbnail, a decision overlay
-  (`cullStackRailDecisionOverlay`, `:4992-5009`), the `✦` recommended
-  marker (`:4944-4952`), a selection-highlight stroke, and — **one mark
+  (`cullStackRailDecisionOverlay`, `:4905-4922`), the `✦` recommended
+  marker (`:4857-4865`), a selection-highlight stroke, and — **one mark
   per AI-read flaw**, not a single red dot —
-  `compareDecisionBadges(item.flawBadges)` (`:4978-4980`) (only two kinds
+  `compareDecisionBadges(item.flawBadges)` (`:4891-4893`) (only two kinds
   exist today: `EYES CLOSED`/`SOFT`, see `cull-021-stack-rail-nav.md`'s
   source notes on `CompareSurveyPresentation.flawBadges`,
-  `LibraryGridView.swift:5953-5964`). **Reconciled 2026-07-17 (dogfood-r1
+  `LibraryGridView.swift:5860-5876`). **Reconciled 2026-07-17 (dogfood-r1
   panel pass)**: a flaw's `CompareDecisionBadge.tone` is now `.flaw`, not
-  `.destructive`, and `compareDecisionBadge(_:)` (`LibraryGridView.swift:6068-6075`)
+  `.destructive`, and `compareDecisionBadge(_:)` (`LibraryGridView.swift:5980-5990`)
   renders `.flaw` as quiet, secondary-colored caption text — no filled
   background, no bold — instead of the old bold red pill; the text content
   itself is unchanged (still "SOFT"/"EYES CLOSED", not lowercased, so
@@ -65,15 +65,15 @@ Source (re-verified against the working tree on this branch):
   (`.destructive`) is now reserved for genuinely destructive states
   (REJECTED). The text content (`EYES CLOSED`/`SOFT`) and the "one mark per
   flaw kind" structure are unchanged — only the visual weight.
-- **`CullingStackRailPresentation.init`**, `LibraryGridView.swift:6451-6587`
+- **`CullingStackRailPresentation.init`**, `LibraryGridView.swift:6326-6500`
   — the standalone-vs-stack guard is `isStandalone = stackScope.assetIDs.count
-  == 1` (`:6517`); when true, `init` returns early before building actions or
-  position text (`:6548-6555`). Otherwise it always builds exactly three
-  action entries in this order (`:6565-6586`):
+  == 1` (`:6430`); when true, `init` returns early before building actions or
+  position text (`:6461-6467`). Otherwise it always builds exactly three
+  action entries in this order (`:6478-6499`):
   1. `.keepSelectedAndRejectAlternates` — title `"Keep frame N · cut M"`,
      always enabled, help `"Keep selected frame and reject stack
      alternates"`.
-  2. `Self.rankedAction(...)` (`:6619-6659`) — **`.keepTopRanked([top2])`**
+  2. `Self.rankedAction(...)` (`:6532-6572`) — **`.keepTopRanked([top2])`**
      titled `"Keep top 2"` if the stack has >2 frames and 2+ ranked
      candidates exist; otherwise **`.keepRecommended(assetID)`** titled
      `"Keep recommended N"`, or `nil` (omitted) if there's no ranked
@@ -81,22 +81,22 @@ Source (re-verified against the working tree on this branch):
      the case).
   3. `.keepAll` — title `"Keep all N"`, always enabled.
   `CullingStackAction`, the real action enum, is exactly four cases
-  (`:6662-6667`): `keepSelectedAndRejectAlternates`, `keepTopRanked([AssetID])`,
+  (`:6575-6580`): `keepSelectedAndRejectAlternates`, `keepTopRanked([AssetID])`,
   `keepRecommended(AssetID)`, `keepAll`. `CullingStackActionPresentation`
-  is the view-layer presentation wrapper (`:6669-6705`), not a
+  is the view-layer presentation wrapper (`:6582-6618`), not a
   `TeststripCore` model.
 - **The rail's primary "Keep" button does not follow keepRecommended/
   topRanked guidance** — its handler `keepSelectedStackFrame()`
-  (`LibraryGridView.swift:5152-5158`) calls
+  (`LibraryGridView.swift:5065-5070`) calls
   `model.promoteCurrentFrameAndRejectSiblings()` unconditionally on whatever
   frame is currently *selected*, regardless of which frame the ranking
   recommends. The recommended/top-ranked guidance only surfaces via (a) the
   secondary action button, dispatched through `performCullingStackAction`
-  (`:5173-5184`: `.keepRecommended` → `keepRecommendedStackFrame(_:)`
-  (`:5160-5163`, selects the recommended asset first, then calls the same
+  (`:5086-5096`: `.keepRecommended` → `keepRecommendedStackFrame(_:)`
+  (`:5073-5075`, selects the recommended asset first, then calls the same
   `keepSelectedStackFrame()`) and `.keepTopRanked` →
-  `keepTopRankedStackFrames(_:)`, `:5165-5171`) and (b) the `✦` marker on
-  the recommended cell (`:4944-4952`). There is no third surface: the HUD
+  `keepTopRankedStackFrames(_:)`, `:5078-5083`) and (b) the `✦` marker on
+  the recommended cell (`:4857-4865`). There is no third surface: the HUD
   carries no verdict at all (`CullHUDPresentation`'s doc comment — "the
   assist verdict is deliberately absent... the right panel's reads card owns
   it" — see `cull-011-hud.md`), and the reads card's `verdictText`
@@ -112,7 +112,7 @@ Source (re-verified against the working tree on this branch):
   one-thumb rail entry (dogfood fix), just none of that multi-frame chrome.
   `--smoke`'s 900-second seed spacing (`SmokeCatalogSeeder.swift:136`) is
   outside the default 2-second `model.burstIntervalSeconds` (a persisted
-  Settings preference, `AppModel.swift:2549`), so `--smoke` produces **no
+  Settings preference, `AppModel.swift:2523`), so `--smoke` produces **no
   auto-stacks and no persisted `work-stack-` sets** — this card uses the
   `burst` seed variant (`TeststripBench seed-burst-catalog`), whose capture
   times are 1s apart within each group, guaranteeing 4 multi-frame
@@ -162,7 +162,7 @@ script/vm_scenario_run.sh ax wait-vended
    one — i.e. it applied `keepSelectedAndRejectAlternates` semantics on the
    currently-focused asset. **A silent no-op is a hard failure** — the
    rail renders `model.selectedCullingStackScope`'s own resolved stack
-   (`AppModel.swift:7134-7156`), the same membership
+   (`AppModel.swift:7505-7527`), the same membership
    `promoteCurrentFrameAndRejectSiblings` writes, so a visible Keep button
    must always write. Also assert the frames written are exactly the
    rail's displayed membership — the button title's "cut M" count must
@@ -186,7 +186,7 @@ script/vm_scenario_run.sh ax wait-vended
    evaluation-signal read predicted, regardless of which frame was selected
    beforehand.
 6. Assert each stack member has its own thumbnail cell
-   (`presentation.items`, `LibraryGridView.swift:6531-6540`) with the `✦`
+   (`presentation.items`, `LibraryGridView.swift:6444-6453`) with the `✦`
    marker (via accessibility value, not a raw AX-findable glyph — see
    above) on exactly the recommended one, and — the reorg's actual change
    from a single red dot — **one mark per AI-read flaw** on any cell whose
@@ -195,12 +195,12 @@ script/vm_scenario_run.sh ax wait-vended
    script/ax_drive.sh find --role AXButton --label "Stack frame 1"
    ```
    (cell accessibility label is `"Stack frame \(label)"`,
-   `LibraryGridView.swift:4985`; value carries Selected/Recommended + each
-   flaw badge's text per `stackChipAccessibilityValue`, `:5016-5026`).
+   `LibraryGridView.swift:4898`; value carries Selected/Recommended + each
+   flaw badge's text per `stackChipAccessibilityValue`, `:4929-4938`).
    **Correction (verified live 2026-07-28): the flaw marks are NOT
    separate `AXStaticText` children.** The `Text(badge.text)` built by
-   `compareDecisionBadge(_:)` (`:4978-4980` calls `compareDecisionBadges`,
-   which renders each badge via `compareDecisionBadge` at `:6060`) lives
+   `compareDecisionBadge(_:)` (`:4891-4893` calls `compareDecisionBadges`,
+   which renders each badge via `compareDecisionBadge` at `:5980-5997`) lives
    inside the `cullStackRailCell` `Button`'s label closure, and SwiftUI
    collapses a `Button`'s label subtree into the single accessibility
    element carrying `.accessibilityLabel`/`.accessibilityValue` — exactly
@@ -263,7 +263,8 @@ script/vm_scenario_run.sh ax wait-vended
   fixture as constituted; report it as a confirmed fixture gap, not a
   forced pass.
 - **"Keep recommended N" is structurally unreachable with this fixture
-  regardless of the tie finding above.** `rankedAction` (`:6619-6659`)
+  regardless of the tie finding above.** `rankedAction`
+  (`LibraryGridView.swift:6532-6572`)
   checks `stackAssetIDs.count > 2 && topTwo.count >= 2` *before* it looks
   at `tiedLeaderIDs`, and returns `"Keep top 2"` whenever that holds. Every
   `burst` stack has 3 or 4 frames (never exactly 2), and every asset gets a

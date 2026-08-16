@@ -17,7 +17,7 @@ JPEG rides along silently.
   `Sources/TeststripCore/Decode/ImageIODecodeProvider.swift:7-22`.
   `CatalogRepository.setBond` (`:205-211`), `.bondedPrimaryID(of:)` (`:213-220`),
   `.bondedSecondaryIDs(of:)` (`:222-228`), `.assetIDsWithBondedSecondaries()`
-  (`:230-237`) — all in `CatalogRepository.swift`.
+  (`:232-237`) — all in `CatalogRepository.swift`.
 - **Import-time pairing**: the real "Import Path" folder-import route
   (`IngestService`/`FolderScanner(supportedExtensions:
   ImageIODecodeProvider.catalogableExtensions)`,
@@ -30,45 +30,45 @@ JPEG rides along silently.
 - **Listing exclusion**: every asset-listing path defaults
   `includeBondedSecondaries: false`
   (`CatalogRepository.swift:321` `excludingSecondaries`, threaded through
-  `allAssets`/`assetIDs`/`assetCount` `:330-412`), so a bonded JPEG never
+  `allAssets`/`assetIDs`/`assetCount` `:330-412, 608-611`), so a bonded JPEG never
   appears as its own row anywhere the grid reads from —
   `AppModel`'s `catalogContents(repository:query:sort:)`
-  (`Sources/TeststripApp/AppModel.swift:13481-13494`), which calls
+  (`Sources/TeststripApp/AppModel.swift:14529-14542`), which calls
   `repository.allAssets(sort:)`, feeds `model.assets` (the Library grid's
   data source) with this same default.
 - **The badge**: `RawBadgeLabel.text(isRaw:hasBondedStill:)`
-  (`Sources/TeststripApp/LibraryGridView.swift:6703-6710`) returns
+  (`Sources/TeststripApp/LibraryGridView.swift:6798-6805`) returns
   `"RAW+JPEG"` only when `isRaw` and `hasBondedStill` are both true (a
   non-RAW can never carry the badge — bonding always makes the RAW the
   primary). Rendered as a small, muted caption *below* the tile's thumbnail
   (dogfood feedback: an earlier over-the-image badge dominated the grid),
   not on `AssetGridCell` itself — the `rawBadgeCaption(for:)` view at
-  `LibraryGridView.swift:2990-3001`, driven by
-  `model.assetIDsWithBondedSecondaries` (published at `AppModel.swift:2064`,
-  refreshed at `:12701`) and wired as a sibling of `AssetGridCell` at the
-  grid's `ForEach` call site (`LibraryGridView.swift:2361-2426`).
+  `LibraryGridView.swift:2966-2975`, driven by
+  `model.assetIDsWithBondedSecondaries` (published at `AppModel.swift:2066`,
+  refreshed at `:13227-13233`) and wired as a sibling of `AssetGridCell` at the
+  grid's `ForEach` call site (`LibraryGridView.swift:2338-2408`).
 - **Rate/reject stay RAW-scoped structurally, not incidentally**: the grid
   only ever selects/batch-selects ids present in `model.assets`, which never
   includes the bonded JPEG — so `setRatingForSelectedAssets`/
-  `setFlagForSelectedAssets` (`AppModel.swift:6927-6935, 6937-6943`, via
-  `updateSelectedAssetsMetadata` `:7617-7646`) can never target the JPEG's
+  `setFlagForSelectedAssets` (`AppModel.swift:7782-7790, 7792-7815`, via
+  `updateSelectedAssetsMetadata` `:8105-8134`) can never target the JPEG's
   row, and `applyMetadataSnapshot`/`syncMetadataSidecar`
-  (`AppModel.swift:8011-8025, 8027-8051`) key the sidecar write off the
+  (`AppModel.swift:8888-8902, 8904-8944`) key the sidecar write off the
   *edited* asset's own `originalURL` — the RAW's, always. Same story for the
   Inspector's rating stars (`Sources/TeststripApp/InspectorView.swift:953-978`,
   each helped `"Rate N"`) and flag buttons (`:980-999`, `"Pick"`/`"Reject"`).
 - **Reject relocation carries the bonded secondary**: `rejectRelocationScope`
-  (`AppModel.swift:11546-11558`) selects `rejectIDs` via
+  (`AppModel.swift:12561-12605`) selects `rejectIDs` via
   `assetIDs(ids:matching:)`'s default `includeBondedSecondaries: false`, so
   only the RAW (if flagged reject) is ever counted in `moveCount`
-  (`:1482`) or shown in the confirm sheet's title (`confirmationText`,
-  `:1486-1488` — "Move 1 reject photo to \<folder\>", never "Move 2", even
+  (`:1444`) or shown in the confirm sheet's title (`confirmationText`,
+  `:1448-1450` — "Move 1 reject photo to \<folder\>", never "Move 2", even
   though two files move). `AppModel.moveRejectsToFolder`
-  (`:11712-11783`) moves the primary, then fans out to
-  `relocateBondedSecondaries` (`:11613-11656`, itself calling
-  `bondedSecondaryAssets` `:11602-11604`), which relocates each bonded
+  (`:12244-12340`) moves the primary, then fans out to
+  `relocateBondedSecondaries` (`:12145-12188`, itself calling
+  `bondedSecondaryAssets` `:12134-12135`), which relocates each bonded
   secondary via the same `CatalogRepository.relocateOriginal`
-  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:2437-2454`, rewrites
+  (`Sources/TeststripCore/Catalog/CatalogRepository.swift:2493-2510`, rewrites
   `original_path`) and records its own
   `relocation_manifest_entries` row (`CatalogMigrations.swift:193-206`) under
   the same session id.
@@ -124,7 +124,7 @@ FRESH=$(echo "$LAUNCH_OUTPUT" | sed -n "s/^launched 'empty' fresh at \([^ ]*\).*
 # build_and_run.sh's own open_app() uses for multiple env vars
 # (script/build_and_run.sh's open_args chaining):
 REJECTS_DIR=/tmp/raw-jpeg-bonding-rejects   # do NOT mkdir — the app creates
-                                            # it itself (LibraryGridView.swift:3262-3271)
+                                            # it itself (LibraryGridView.swift:3199-3208)
 script/vm_scenario_run.sh shell "pkill -x Teststrip 2>/dev/null || true; pkill -x TeststripApp 2>/dev/null || true; pkill -x TeststripWorker 2>/dev/null || true; sleep 1; open -n ~/teststrip-vm/dist/Teststrip.app --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=$FRESH --env TESTSTRIP_REJECT_DESTINATION_DIR=$REJECTS_DIR && sleep 2 && pgrep -x Teststrip"
 script/vm_scenario_run.sh ax wait-vended Teststrip
 
@@ -156,7 +156,7 @@ script/vm_scenario_run.sh shell "cd ~/teststrip-vm && ./script/submit_import_pat
    script/vm_scenario_run.sh sql empty "SELECT count(*) FROM assets WHERE bonded_to_asset_id IS NULL;" # 1 — exactly one tile-eligible row, matching the predicate the grid's own listing query applies
    ```
 4. **One tile, not two**: the grid cell's own accessible label is the
-   filename (`LibraryGridView.swift:7098`,
+   filename (`LibraryGridView.swift:7558`,
    `.accessibilityLabel(asset.originalURL.lastPathComponent)`):
    ```bash
    script/vm_scenario_run.sh ax find --role AXButton --label "frame.dng"   # exit 0 — the RAW's tile exists
@@ -215,25 +215,25 @@ script/vm_scenario_run.sh shell "cd ~/teststrip-vm && ./script/submit_import_pat
    script/vm_scenario_run.sh sql empty "SELECT json_extract(metadata_json,'\$.flag') FROM assets WHERE id='$JPEG_ID';"  # NULL
    ```
 3. Open the toolbar's "More actions" overflow menu, then "Move Rejects…"
-   (`LibraryGridView.swift:344-406`; the menu button is helped `"More
-   actions"`, the item's label is `"Move Rejects…"` at `:350`):
+   (`LibraryGridView.swift:375-436`; the menu button is helped `"More
+   actions"`, the item's label is `"Move Rejects…"` at `:381`):
    ```bash
    script/vm_scenario_run.sh ax press --role AXButton --help "More actions"
    script/vm_scenario_run.sh ax press --role AXMenuItem --contains "Move Rejects"
    ```
 4. With `TESTSTRIP_REJECT_DESTINATION_DIR` set at launch, the destination is
    already `$REJECTS_DIR` and the confirm sheet appears directly (no native
-   panel — `resolvedDestinationFolder`, `LibraryGridView.swift:3262-3271`).
+   panel — `resolvedDestinationFolder`, `LibraryGridView.swift:3199-3208`).
    Check the sheet's own wording before confirming — it must read **"Move 1
    reject photo to raw-jpeg-bonding-rejects"**, not "Move 2" (the bonded
    JPEG is carried but never independently counted,
-   `AppModel.swift:1482,1486-1488`):
+   `AppModel.swift:1444,1448-1450`):
    ```bash
    script/vm_scenario_run.sh ax find --role AXButton --contains "Move 1 reject photo to raw-jpeg-bonding-rejects"
    ```
    Toggle the confirm checkbox on, then press the now-enabled primary button.
    The toggle's own accessible label is the *same* `confirmationText` string
-   as the button (`LibraryGridView.swift:3442`), so per
+   as the button (`LibraryGridView.swift:3379`), so per
    `people-020-ai-label-provenance.md`'s precedent driving this exact sheet, a
    bare `--role AXCheckBox` press (no label filter — it's the only checkbox
    in the sheet) is the reliable match, not a `--contains` filter on the
@@ -331,7 +331,7 @@ ever touched.
   to accept extra `--env` pairs so future cards don't need to replicate this.
 - **This card deliberately avoids driving the grid's nested
   `.contextMenu` → `Menu("Rate")`/`Menu("Flag")` submenus**
-  (`LibraryGridView.swift:2376-2415`, `applyGridContextMenuRating`/
+  (`LibraryGridView.swift:2357-2397`, `applyGridContextMenuRating`/
   `applyGridContextMenuFlag` at `:3072-3088`). The closest existing
   precedent, `lib-019-multiselect.md`, only drives one level of
   `.contextMenu` (the flat item "Cull These" via `--button right`) and
@@ -346,7 +346,7 @@ ever touched.
 - **`ax_drive.sh` has no verb for checking `AXEnabled`/disabled state** — the
   confirm sheet's checkbox-gates-the-primary-button behavior
   (`RejectRelocationSheetPresentation.isMoveEnabled`,
-  `LibraryGridView.swift:5174`) is exercised functionally here (check the
+  `LibraryGridView.swift:5483`) is exercised functionally here (check the
   box, then press) but not asserted for disabled-while-unchecked; that
   assertion already lives in `app-010-move-rejects.md` and isn't re-derived
   in this bonding-focused card.

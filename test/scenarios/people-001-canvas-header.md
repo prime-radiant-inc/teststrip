@@ -1,13 +1,13 @@
 # people-001-canvas-header: People canvas three-panel layout and the header count
 
-**What this covers**: the People workspace's top-level canvas — the header
+**What this covers**: the People lens's top-level canvas — the header
 line "N people · M photos with face signals" and the three stacked panels it
 sits above (face-suggestion/review strip, ALL PEOPLE grid, and the per-person
 detail reachable by tapping a card) — render counts that match catalog ground
 truth. `N` is `namedPeople.count` (confirmed `people` rows); `M` is
 `photosWithFaceSignals`, which `PeoplePresentation.init` derives as
 `max(faceCountSignals, faceQualitySignals)` — the larger of the two
-per-evaluation-kind asset counts (`Sources/TeststripApp/PeopleView.swift:551-553`),
+per-evaluation-kind asset counts (`Sources/TeststripApp/PeopleView.swift:630-632`),
 **not** a sum and **not** a distinct-asset union across both kinds.
 
 ## Pre-state
@@ -27,7 +27,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    sqlite3 "$DB" "SELECT count(DISTINCT asset_id) FROM evaluation_signals WHERE kind='faceQuality';"
    ```
    Call these `P`, `FC`, `FQ`. The header's expected `M` is `max(FC, FQ)`.
-2. `script/ax_drive.sh wait-vended Teststrip`; press ⌘3 for People.
+2. `script/ax_drive.sh wait-vended Teststrip`; press ⌘6 for People.
 3. `script/ax_drive.sh wait --role AXStaticText --contains "photos with face signals"`
    (falls back to "· N photos" if `P == 0` and `M == 0`, per
    `headerSummary`'s third branch).
@@ -41,7 +41,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    `people-008-person-cards-merge.md`).
 
 6. **Empty-catalog copy variant (persona-8 defect)**: relaunch with
-   `./script/build_and_run.sh --isolated` (empty catalog), ⌘3 for People.
+   `./script/build_and_run.sh --isolated` (empty catalog), ⌘6 for People.
    Assert the review strip's empty-state detail reads
    "These photos haven’t been scanned for faces yet. Scan for faces to see
    who’s in your photos." and that NO empty-state text contains internal
@@ -86,7 +86,17 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. The `max(faceCount,
 faceQuality)` derivation is confirmed by static read of
-`Sources/TeststripApp/PeopleView.swift:551-556` (`PeoplePresentation.init`)
+`Sources/TeststripApp/PeopleView.swift:630-635` (`PeoplePresentation.init`)
 and `566-574` (`headerSummary`). Needs a human-present re-run. All SQL in this
 card was run headlessly against a seeded --faces catalog on 2026-07-10
 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: Steps 2
+and 6 pressed ⌘3 for People, from a build that predates even the
+"Library sub-view" era — under the unified shell, People is one of the six
+top-level `LibraryLens` cases, keyed ⌘6, not ⌘3 (`LibraryLens.keyEquivalent`,
+`LibraryLens.swift:44-51`; ⌘3 now selects the Loupe lens,
+`lib-013-library-loupe.md`). Fixed both presses to ⌘6. Preamble only; the
+header-math and empty-state-copy assertions don't depend on how People was
+reached. Supersedes prior status: no prior run evidence exists to invalidate
+(still BLOCKED-CONSOLE).

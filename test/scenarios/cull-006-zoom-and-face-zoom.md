@@ -10,23 +10,23 @@ detections the Close-Ups panel shows, so the two features never disagree
 about "what counts as a face").
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:5494-5497` — `toggleLoupeZoom()`, the
-  `z` shortcut (`CullingShortcut.toggleZoom`, keyed at `:255`).
-- `Sources/TeststripApp/AppModel.swift:5519-5540` — `zoomToNearestFaceOrCycleFace()`,
+- `Sources/TeststripApp/AppModel.swift:7234-7237` — `toggleLoupeZoom()`, the
+  `z` shortcut (`CullingShortcut.toggleZoom`, keyed at `:230`).
+- `Sources/TeststripApp/AppModel.swift:7263-7280` — `zoomToNearestFaceOrCycleFace()`,
   the `Z` (shift-z, exact-case) shortcut (`CullingShortcut.zoomToNearestFace`,
-  keyed at `:233-234`): first press zooms to the face nearest the current
+  keyed at `:199-202`): first press zooms to the face nearest the current
   focus (or center); a repeated press while still face-zoomed cycles to the
-  next face, wrapping (`LoupeFaceZoomTargeting.wrappedIndex`, `:394-397`);
-  falls back to a plain centered 1:1 zoom if no faces were detected (`:5524-5527`).
-- `Sources/TeststripApp/LibraryGridView.swift:3736-3769` (`refreshCloseUps`) —
+  next face, wrapping (`LoupeFaceZoomTargeting.wrappedIndex`, `:419-422`);
+  falls back to a plain centered 1:1 zoom if no faces were detected (`:7264-7267`).
+- `Sources/TeststripApp/LibraryGridView.swift:4200-4252` (`refreshCloseUps`) —
   **verified same-detections claim**: this is the single call site that both
   populates the Close-Ups panel crops (`closeUpCrops`) and calls
   `model.setLoupeFaceFocuses(result.faceFocuses)` (the Z-cycle targets). Both
   come from one `CoreImageFaceExpressionAnalyzer().detectFaces(...)` call per
   selection change — there is no second, independent face-detection path for
-  the loupe. Comment at `:3736-3740` states this explicitly. Detection here
+  the loupe. Comment at `:4200-4206` states this explicitly. Detection here
   is **display-only and in-memory** (nothing persisted to `face_observations`
-  — that table backs the separate People-workspace clustering pipeline, not
+  — that table backs the separate People lens clustering pipeline, not
   this loupe feature).
 
 ## Pre-state
@@ -48,7 +48,7 @@ multi-face frame, and any single-portrait frame (e.g.
    Return to open loupe).
 2. Press `z`. There is **no AX signal in the plain loupe** that reflects
    `model.loupeZoomFocus` (see Sharp edges) — the on-screen legend text
-   `"Z 1:1"` (`LibraryGridView.swift:5313`) is static and does not change
+   `"Z 1:1"` (`LibraryGridView.swift:6249`) is static and does not change
    with zoom state. Fall back to a screenshot comparison:
    `script/capture_app_window.sh` before and after the press, and visually
    confirm the frame now renders cropped/magnified rather than fit-to-pane.
@@ -96,7 +96,7 @@ multi-face frame, and any single-portrait frame (e.g.
   drives only pixel-level rendering in the standard loupe view; there is no
   accessibility label/value that mirrors it there. The only place the app
   exposes this state as text is the **A/B compare pane's header button**
-  (`LibraryGridView.swift:5859-5865`), whose label reads `"Zoom 1:1"` when
+  (`LibraryGridView.swift:6862-6868`), whose label reads `"Zoom 1:1"` when
   unzoomed and `"Fit"` when zoomed — and it reads the *same* shared
   `model.loupeZoomFocus`. A more rigorous re-run of this card could press `z`
   in the loupe, then press `B` to switch to A/B compare, and assert that
@@ -114,3 +114,12 @@ multi-face frame, and any single-portrait frame (e.g.
 
 ## Run status
 UNRUN — needs human-present execution per test/scenarios/README.md.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; the assertions were not affected. (The Source/Sharp-edges
+prose still says "People-workspace clustering pipeline" as an informal name
+for the face-clustering feature, not a citation of any `Workspace` symbol —
+left as-is; People is now a lens, but this card never asserts against that
+naming.)

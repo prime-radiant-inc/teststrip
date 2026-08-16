@@ -105,8 +105,8 @@ to document, not fix.
 NOT RUN — GUI/AX driving was not attempted this session. Header/suggestion/
 save-menu logic confirmed by reading
 `Sources/TeststripApp/LibraryResultHeaderPresentation.swift` in full (all
-139 lines) and `Sources/TeststripApp/LibraryGridView.swift:744-841`, plus
-the three gating booleans at `AppModel.swift:2728-2730, 2847-2853`. The
+139 lines) and `Sources/TeststripApp/LibraryGridView.swift:924-1015`, plus
+the three gating booleans at `AppModel.swift:3241-3243, 3366-3372`. The
 empty-query/no-interpretation and residual-text cases are also covered by
 `Tests/TeststripAppTests/LibraryResultHeaderTests.swift` (already
 green per unit tests, per task briefing). SQL dry-run headlessly against a

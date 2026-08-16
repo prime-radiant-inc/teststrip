@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 import TeststripCore
 
-public enum LibraryViewMode: String, CaseIterable, Sendable {
+public enum LibraryViewMode: String, CaseIterable, Codable, Sendable {
     case grid
     case loupe
     case libraryLoupe
@@ -13,79 +13,10 @@ public enum LibraryViewMode: String, CaseIterable, Sendable {
     case map
     case people
     /// The asset grid scoped to the active cull session (Task 18) — same grid
-    /// rendering as `.grid`, but a distinct case so it stays in the `.cull`
-    /// workspace (autopilot badges, cull sidebar, cull session scope) instead
-    /// of jumping to Library the way plain `.grid` does.
+    /// rendering as `.grid`, but a distinct case so it stays in the Cull lens
+    /// (autopilot badges, cull sidebar, cull session scope) instead of jumping
+    /// to the Grid lens the way plain `.grid` does.
     case cullGrid
-}
-
-extension LibraryViewMode: Codable {
-    // Search used to be its own route (`.search`); it's now just the Library
-    // grid with a query in the token field (Task 9). Copilot/Review was its
-    // own route (`.copilot`) until the Cull sidebar's source picker absorbed
-    // it (Task 13). A persisted session from before those migrations decodes
-    // its stored "search"/"copilot" rawValue as `.grid` instead of failing
-    // the whole `SessionRestoreState` decode.
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-        if rawValue == "search" || rawValue == "copilot" {
-            self = .grid
-            return
-        }
-        guard let mode = LibraryViewMode(rawValue: rawValue) else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unknown LibraryViewMode rawValue: \(rawValue)"
-            )
-        }
-        self = mode
-    }
-}
-
-/// The two top-level workspaces the UI is organized around; each
-/// `LibraryViewMode` belongs to exactly one. People is *not* a workspace — it
-/// is a Library sub-view (peer of Grid/Loupe/Timeline/Map), so it lives under
-/// `.library` and is reached from the sub-view toggle, not the ⌘1/⌘2 switcher.
-public enum Workspace: String, CaseIterable, Sendable {
-    case cull
-    case library
-
-    /// The sub-view shown when a workspace is selected for the first time.
-    var defaultSubView: LibraryViewMode {
-        switch self {
-        case .cull: return .loupe
-        case .library: return .grid
-        }
-    }
-
-    /// Display name shared by the toolbar switcher and the View menu.
-    public var title: String {
-        switch self {
-        case .cull: return "Cull"
-        case .library: return "Library"
-        }
-    }
-
-    /// ⌘1/2, shared by the toolbar switcher and the View menu so the two
-    /// never drift out of sync.
-    public var keyEquivalent: KeyEquivalent {
-        switch self {
-        case .cull: return "1"
-        case .library: return "2"
-        }
-    }
-}
-
-extension LibraryViewMode {
-    public var workspace: Workspace {
-        switch self {
-        case .loupe, .compare, .abCompare, .cullGrid:
-            return .cull
-        case .grid, .timeline, .map, .libraryLoupe, .people:
-            return .library
-        }
-    }
 }
 
 /// Which chrome `LoupeView` shows: the culling loupe (`.loupe`) gets the full
@@ -662,7 +593,7 @@ private struct IndexedCullingStack {
     var lastIndex: Int
 }
 
-public enum ReviewQueue: String, CaseIterable, Equatable, Hashable, Sendable {
+public enum SmartCollection: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case picks
     case potentialPicks
     case rejects
@@ -675,7 +606,7 @@ public enum ReviewQueue: String, CaseIterable, Equatable, Hashable, Sendable {
     case providerFailures
 }
 
-public struct ReviewQueuePresentation: Equatable, Sendable {
+public struct SmartCollectionPresentation: Equatable, Sendable {
     public var title: String
     public var systemImage: String
 
@@ -685,88 +616,61 @@ public struct ReviewQueuePresentation: Equatable, Sendable {
     }
 }
 
-public extension ReviewQueue {
-    var presentation: ReviewQueuePresentation {
+public extension SmartCollection {
+    var presentation: SmartCollectionPresentation {
         switch self {
         case .picks:
-            return ReviewQueuePresentation(title: "Picks", systemImage: "flag.fill")
+            return SmartCollectionPresentation(title: "Picks", systemImage: "flag.fill")
         case .potentialPicks:
-            return ReviewQueuePresentation(title: "Potential Picks", systemImage: "sparkles")
+            return SmartCollectionPresentation(title: "Potential Picks", systemImage: "sparkles")
         case .rejects:
-            return ReviewQueuePresentation(title: "Rejects", systemImage: "xmark.circle")
+            return SmartCollectionPresentation(title: "Rejects", systemImage: "xmark.circle")
         case .fiveStars:
-            return ReviewQueuePresentation(title: "5 Stars", systemImage: "star.fill")
+            return SmartCollectionPresentation(title: "5 Stars", systemImage: "star.fill")
         case .needsKeywords:
-            return ReviewQueuePresentation(title: "Needs Keywords", systemImage: "tag")
+            return SmartCollectionPresentation(title: "Needs Keywords", systemImage: "tag")
         case .needsEvaluation:
-            return ReviewQueuePresentation(title: "Not analyzed yet", systemImage: "wand.and.stars")
+            return SmartCollectionPresentation(title: "Not analyzed yet", systemImage: "wand.and.stars")
         case .facesFound:
-            return ReviewQueuePresentation(title: "Faces Found", systemImage: "person.2")
+            return SmartCollectionPresentation(title: "Faces Found", systemImage: "person.2")
         case .ocrFound:
-            return ReviewQueuePresentation(title: "OCR Found", systemImage: "text.viewfinder")
+            return SmartCollectionPresentation(title: "OCR Found", systemImage: "text.viewfinder")
         case .likelyIssues:
-            return ReviewQueuePresentation(title: "Likely Issues", systemImage: "exclamationmark.triangle")
+            return SmartCollectionPresentation(title: "Likely Issues", systemImage: "exclamationmark.triangle")
         case .providerFailures:
-            return ReviewQueuePresentation(title: "Analysis Failures", systemImage: "bolt.horizontal.circle")
+            return SmartCollectionPresentation(title: "Analysis Failures", systemImage: "bolt.horizontal.circle")
         }
     }
 }
 
-/// The groupings the Cull sidebar's source picker presents. Recent Import,
-/// Autopilot Proposals, and Selection are singletons; Top Picks and Needs
-/// Eyes each carry the pair of review queues Copilot used to read
-/// (picks/potentialPicks, likelyIssues/needsEvaluation) so the sidebar
-/// row-per-queue reuses the same counts.
-public enum CullSourceGroup: String, Equatable, Sendable {
-    case recentImport
-    case autopilotProposals
-    case topPicks
-    case needsEyes
-    case diagnostics
-    case selection
-}
-
-public struct CullSource: Equatable, Sendable, Identifiable {
-    public enum Target: Equatable, Sendable {
-        case recentImport
-        case autopilotProposals
-        case reviewQueue(ReviewQueue)
-        case selection
-    }
-
-    public var id: String
-    public var group: CullSourceGroup
-    public var title: String
-    public var systemImage: String
-    public var count: Int
-    public var target: Target
-
-    public init(id: String, group: CullSourceGroup, title: String, systemImage: String, count: Int, target: Target) {
-        self.id = id
-        self.group = group
-        self.title = title
-        self.systemImage = systemImage
-        self.count = count
-        self.target = target
-    }
-}
-
-public struct CullSourcePresentation: Equatable, Sendable {
-    public var sources: [CullSource]
-
-    public init(sources: [CullSource]) {
-        self.sources = sources
-    }
-
-    /// Sources actually worth showing: zero-count rows are omitted rather
-    /// than rendered disabled, so the sidebar never shows a dead-end row.
-    public var visibleSources: [CullSource] {
-        sources.filter { $0.count > 0 }
-    }
-
-    /// True when there is nothing actionable to cull from any source.
-    public var isEmpty: Bool {
-        visibleSources.isEmpty
+public extension SmartCollection {
+    /// The one and only expression of a smart collection's membership. The
+    /// sidebar count, the list you get when you click the row, and every
+    /// import-scoped variant are all derived from this — never re-expressed.
+    /// A second expression is how the count and the list drift apart.
+    var query: SetQuery {
+        switch self {
+        case .picks:
+            return SetQuery(predicates: [.flag(.pick)])
+        case .potentialPicks:
+            return SetQuery(predicates: [.likelyPick])
+        case .rejects:
+            return SetQuery(predicates: [.flag(.reject)])
+        case .fiveStars:
+            return SetQuery(predicates: [.ratingAtLeast(5)])
+        case .needsKeywords:
+            return SetQuery(predicates: [.missingKeywords])
+        case .needsEvaluation:
+            return SetQuery(predicates: [.unevaluated])
+        case .facesFound:
+            return SetQuery(predicates: [.evaluationKind(.faceCount)])
+        case .ocrFound:
+            return SetQuery(predicates: [.evaluationKind(.ocrText)])
+        case .likelyIssues:
+            return SetQuery(predicates: [.likelyIssue])
+        case .providerFailures:
+            return SetQuery(predicates: [.evaluationFailure])
+        }
     }
 }
 
@@ -777,7 +681,7 @@ public struct CullSourcePresentation: Equatable, Sendable {
 /// avoidance) instead of routing to an empty queue.
 public struct FindBestShotsPlan: Equatable, Sendable {
     public enum Route: Equatable, Sendable {
-        case reviewQueue(ReviewQueue)
+        case smartCollection(SmartCollection)
         case nothingRanked(message: String)
     }
 
@@ -805,16 +709,16 @@ public enum FindBestShotsRouter {
         let shouldEvaluate = canEvaluateScope && needsEvaluationCount > 0
 
         if potentialPickCount > 0 {
-            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .reviewQueue(.potentialPicks))
+            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .smartCollection(.potentialPicks))
         }
         if pickCount > 0 {
-            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .reviewQueue(.picks))
+            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .smartCollection(.picks))
         }
         // Nothing ranks yet. If there are still-unevaluated frames we can read,
         // trigger evaluation and land on Potential Picks so it fills in as the
         // worker reports; otherwise say what actually happened, never zero.
         if shouldEvaluate {
-            return FindBestShotsPlan(shouldTriggerEvaluation: true, route: .reviewQueue(.potentialPicks))
+            return FindBestShotsPlan(shouldTriggerEvaluation: true, route: .smartCollection(.potentialPicks))
         }
         return FindBestShotsPlan(shouldTriggerEvaluation: false, route: .nothingRanked(message: nothingRankedMessage))
     }
@@ -987,23 +891,6 @@ public struct ProposedPersonPhoto: Identifiable, Equatable {
     public var id: String { asset.id.rawValue }
 }
 
-public enum SidebarRowTarget: Equatable, Sendable {
-    case allPhotographs
-    case search
-    case timeline
-    case people
-    case places
-    case placeholder
-    case reviewQueue(ReviewQueue)
-    case folder(String)
-    case sourceAvailability(SourceAvailability)
-    case evaluationKind(EvaluationKind)
-    case metadataSyncPending
-    case metadataSyncConflicts
-    case assetSet(AssetSetID)
-    case workSession(WorkSessionID)
-}
-
 public enum SidebarRowContextActionKind: Equatable, Sendable {
     case renameAssetSet(AssetSetID)
     case duplicateAssetSet(AssetSetID)
@@ -1011,6 +898,9 @@ public enum SidebarRowContextActionKind: Equatable, Sendable {
     case toggleAssetSetStarred(AssetSetID)
     case deleteAssetSet(AssetSetID)
     case toggleWorkSessionStarred(WorkSessionID)
+    case cullImportStacks(WorkSessionID)
+    case evaluateImport(WorkSessionID)
+    case compareImport(WorkSessionID)
 }
 
 public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
@@ -1032,6 +922,12 @@ public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
             return "delete-asset-set-\(id.rawValue)"
         case .toggleWorkSessionStarred(let id):
             return "toggle-work-session-starred-\(id.rawValue)"
+        case .cullImportStacks(let id):
+            return "cull-import-stacks-\(id.rawValue)"
+        case .evaluateImport(let id):
+            return "evaluate-import-\(id.rawValue)"
+        case .compareImport(let id):
+            return "compare-import-\(id.rawValue)"
         }
     }
 
@@ -1048,7 +944,7 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var detailText: String?
     public var countText: String?
     public var tone: SidebarRowTone
-    public var target: SidebarRowTarget
+    public var target: LibrarySource?
     public var liveMockupPlaceholder: LiveMockupPlaceholder?
     /// Indentation level for tree-shaped sections (currently only Folders).
     /// Zero for every other section's flat rows.
@@ -1063,7 +959,7 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
         detailText: String? = nil,
         countText: String? = nil,
         tone: SidebarRowTone = .neutral,
-        target: SidebarRowTarget = .placeholder,
+        target: LibrarySource? = nil,
         liveMockupPlaceholder: LiveMockupPlaceholder? = nil,
         depth: Int = 0,
         disclosure: SidebarRowDisclosure = .none
@@ -1080,7 +976,7 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     }
 
     public var isSelectable: Bool {
-        target != .placeholder
+        target != nil
     }
 }
 
@@ -1092,7 +988,7 @@ public enum SidebarRowDisclosure: Equatable, Sendable {
 
 public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
     public var title: String
-    public var target: SidebarRowTarget?
+    public var target: LibrarySource?
     /// True when this row is the unparsed leftover of the top-bar search text (LibrarySearchIntent's
     /// residual text), which is matched as plain filename/text search rather than a structured filter.
     public var isPlainSearchFallback: Bool
@@ -1105,7 +1001,7 @@ public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
         isPlainSearchFallback ? "Not a filter — matching file names and photo text" : nil
     }
 
-    public init(title: String, target: SidebarRowTarget? = nil, isPlainSearchFallback: Bool = false) {
+    public init(title: String, target: LibrarySource? = nil, isPlainSearchFallback: Bool = false) {
         self.title = title
         self.target = target
         self.isPlainSearchFallback = isPlainSearchFallback
@@ -1431,12 +1327,7 @@ public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
     public var photoCountText: String
     public var newPhotoCount: Int
     public var existingPhotoCount: Int
-    public var previewFailureCount: Int
-    public var failureText: String?
-    public var previewStatusText: String
     public var issues: [WorkSessionIssue]
-    public var stackCount: Int = 0
-    public var stackedPhotoCount: Int = 0
     public var cullingSessionName: String
 
     public var id: String { activityID }
@@ -1723,25 +1614,13 @@ public struct BatchKeywordSuggestion: Identifiable, Equatable, Sendable {
     }
 }
 
-// Stable part of the latest-import panel: changes only when activities, metadata,
-// or evaluations change, never on preview queue transitions. The summary's preview
-// fields are placeholders until LatestImportPreviewStatus is patched in.
+// The cached latest-import summary. The wrapper carries the distinction the
+// bare optional cannot: a nil cache means "stale, rebuild me", while a cached
+// nil summary means "there is no completed import".
 private struct LatestImportPresentationCore: Equatable, Sendable {
     var summary: ImportCompletionSummary?
-    var flaggedReviewAssetCount: Int
-    var faceReviewAssetCount: Int
-    var batchKeywordSuggestions: [BatchKeywordSuggestion]
-    var canRequestAssetEvaluations: Bool
-    var outputAssetIDs: [AssetID]
 
-    static let empty = LatestImportPresentationCore(
-        summary: nil,
-        flaggedReviewAssetCount: 0,
-        faceReviewAssetCount: 0,
-        batchKeywordSuggestions: [],
-        canRequestAssetEvaluations: false,
-        outputAssetIDs: []
-    )
+    static let empty = LatestImportPresentationCore(summary: nil)
 }
 
 // Hands the coalesced-publication flush to WorkerTimeoutScheduling's @Sendable
@@ -1756,21 +1635,6 @@ private final class BackgroundWorkPublicationFlush: @unchecked Sendable {
     func callAsFunction() {
         flush()
     }
-}
-
-// Live preview-drain part of the latest-import panel, rebuilt on preview queue
-// transitions; its rebuild must stay limited to indexed count queries because those
-// transitions fire for every preview of an import.
-private struct LatestImportPreviewStatus: Equatable, Sendable {
-    var previewFailureCount: Int
-    var failureText: String?
-    var previewStatusText: String
-
-    static let empty = LatestImportPreviewStatus(
-        previewFailureCount: 0,
-        failureText: nil,
-        previewStatusText: ""
-    )
 }
 
 private struct BatchKeywordAccumulator {
@@ -2042,6 +1906,46 @@ private struct MetadataSyncStateSnapshot {
     var conflictCount: Int
 }
 
+private struct PeopleSourceSnapshot {
+    var faceSuggestions: [PeopleFaceSuggestion] = []
+    var faceObservationAssetCount = 0
+    var namedPeople: [CatalogPerson] = []
+    var evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
+    var hasUnavailableSources = false
+}
+
+/// A complete Map snapshot so one failed aggregate read cannot publish only
+/// part of the current source's place data.
+private struct CatalogPlaceProjection {
+    var clusters: [CatalogPlaceCluster]
+    var topLocations: [CatalogTopLocation]
+    var geotaggedCoverage: CatalogGeotaggedCoverage
+}
+
+/// Every fallible read needed to make a newly saved set the active source.
+/// Building this before the set write gives save-and-select a single commit
+/// point without a compensating repository rollback.
+private struct SavedAssetSetSelectionProjection {
+    var savedAssetSets: [AssetSet]
+    var assetSetCounts: [AssetSetID: Int]
+    var smartCollectionCounts: [SmartCollection: Int]
+    var workSessionScopeCounts: [WorkSessionID: Int]
+    var importSourceSummaries: [ImportSidebarSummary]
+    var completedImports: [AppWorkActivity]
+    var importChildCountsBySessionID: [String: ImportChildCounts]
+    var catalogFolders: [CatalogFolder]
+    var sourceRoots: [CatalogSourceRoot]
+    var assetIDsWithBondedSecondaries: Set<AssetID>
+    var autopilotGhostAssetIDs: [AssetID]
+    var assets: [Asset]
+    var totalAssetCount: Int
+    var batchSelectionScopeAssetIDs: Set<AssetID>
+    var proposedPhotos: [ProposedPersonPhoto]
+    var placeProjection: CatalogPlaceProjection?
+    var peopleSourceSnapshot: PeopleSourceSnapshot?
+    var nonfatalRefreshErrorMessage: String?
+}
+
 public enum MetadataSyncConflictSidecarMetadataState: Equatable {
     case none
     case readable(AssetMetadata)
@@ -2053,34 +1957,28 @@ public final class AppModel {
     public var sidebarSections: [SidebarSection]
     public var selectedView: LibraryViewMode {
         didSet {
-            // .compare/.abCompare aren't sticky restore targets (item 1's
-            // ⌘1 root cause): they're transient comparator overlays, not a
-            // "home" sub-view. Without this, re-pressing ⌘1 while already in
-            // Cull workspace but trapped in A/B Compare set
-            // `selectedView = lastSubView[.cull]`, which *was* `.abCompare`
-            // (recorded on the way in) — a silent no-op that read as ⌘1
-            // being dead, when it was actually just restoring the trap.
-            if selectedView != .compare && selectedView != .abCompare {
-                lastSubView[selectedView.workspace] = selectedView
+            // .compare/.abCompare aren't sticky restore targets (the ⌘1 dead-key
+            // root cause): they're transient comparator overlays, not a "home"
+            // sub-mode. Without this, re-pressing ⌘1 while trapped in A/B
+            // Compare restored the trap instead of escaping it.
+            if selectedView.lens == .cull, selectedView != .compare, selectedView != .abCompare {
+                lastCullViewMode = selectedView
             }
             updateCompareSetAfterViewChange(from: oldValue)
             persistSessionState()
-            if selectedView.workspace != oldValue.workspace {
-                rebuildSidebarSections()
-            }
             // The loupe's toast task re-fires whenever the view reappears,
             // re-rendering whatever feedback is still stored here — so a
             // stale decision toast (including the once-per-session hint
             // below) replayed on every re-entry to Cull. Expire it when the
-            // workspace is left.
-            if oldValue.workspace == .cull, selectedView.workspace != .cull {
+            // lens is left.
+            if oldValue.lens == .cull, selectedView.lens != .cull {
                 lastCullingMetadataDecision = nil
             }
             // The ? keymap overlay is the loupe's whole manual, but nothing
             // advertised it (persona-8) — announce it once per session on
-            // first entry to the Cull workspace, via the decision toast.
-            if selectedView.workspace == .cull,
-               oldValue.workspace != .cull,
+            // first entry to the Cull lens, via the decision toast.
+            if selectedView.lens == .cull,
+               oldValue.lens != .cull,
                !hasShownCullKeyboardHint {
                 hasShownCullKeyboardHint = true
                 lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
@@ -2096,47 +1994,69 @@ public final class AppModel {
 
     /// Once per session: the keymap-overlay hint shown on first entry to Cull.
     private var hasShownCullKeyboardHint = false
-    /// Which workspace `selectedView` currently belongs to.
-    public var selectedWorkspace: Workspace {
-        selectedView.workspace
+
+    /// What the user is looking at, as opposed to how. Stored rather than
+    /// reconstructed from filter state, so the scope line can name it and a
+    /// relaunch can restore it.
+    public private(set) var selectedSource: LibrarySource = .allPhotos {
+        didSet { persistSessionState() }
+    }
+
+    @ObservationIgnored
+    private var sourceBeingApplied: LibrarySource?
+
+    private var sourceForScopeResolution: LibrarySource {
+        sourceBeingApplied ?? selectedSource
+    }
+
+    /// Which lens `selectedView` currently belongs to.
+    public var selectedLens: LibraryLens {
+        selectedView.lens
     }
 
     /// Whether the Culling menu's shortcut items (Navigation/Ratings/Color
     /// Labels/Flags/Loupe/Scope) should be enabled right now. SwiftUI menu
-    /// `.keyboardShortcut` bindings are workspace-blind — they fire from
-    /// anywhere the app is frontmost, unlike `CullingKeyCaptureView`'s local
-    /// key monitor, which `CullingKeyCaptureGate` scopes to the Cull
-    /// workspace's loupe/compare/A-B sub-views. Mirroring that same gate here
-    /// keeps the menu (bare "P"/"X"/etc, no modifiers) from writing flags or
-    /// promoting frames while e.g. the Library Loupe is frontmost.
+    /// `.keyboardShortcut` bindings are lens-blind — they fire from anywhere
+    /// the app is frontmost, unlike `CullingKeyCaptureView`'s local key
+    /// monitor, which `CullingKeyCaptureGate` scopes to the Cull lens's
+    /// loupe/compare/A-B sub-modes. Mirroring that same gate here keeps the
+    /// menu (bare "P"/"X"/etc, no modifiers) from writing flags or promoting
+    /// frames while e.g. the Loupe lens is frontmost.
     public var isCullingMenuShortcutActive: Bool {
-        CullingKeyCaptureGate.isActive(workspace: selectedWorkspace, selectedView: selectedView)
+        CullingKeyCaptureGate.isActive(lens: selectedLens, selectedView: selectedView)
     }
 
-    /// The sidebar sections for a given workspace. Library is navigation
-    /// only (Collections/Saved Sets/Folders) — shared by every Library view,
-    /// People included; Cull has its own sidebar (CullSidebarView).
-    public func sidebarSections(for workspace: Workspace) -> [SidebarSection] {
-        switch workspace {
-        case .library:
-            return Self.defaultSidebarSections(
-                totalAssetCount: totalAssetCount,
-                savedAssetSets: savedAssetSets,
-                assetSetCounts: assetSetCounts,
-                workSessionScopeCounts: workSessionScopeCounts,
-                catalogFolders: catalogFolders,
-                expandedFolderPaths: expandedFolderPaths,
-                recentWork: recentWork,
-                starredWork: starredWork,
-                matchedWork: workHistorySearchResults
-            )
-        case .cull:
-            return []
-        }
+    /// One sidebar, every lens. Sources are nouns; lenses are verbs; the
+    /// sidebar lists nouns, so it does not vary with the lens.
+    public func buildSidebarSections() -> [SidebarSection] {
+        UnifiedSidebarPresentation.sections(
+            totalAssetCount: totalAssetCount,
+            importSummaries: importSourceSummaries,
+            runningImport: visibleImportActivity,
+            expandedImportSessionIDs: expandedImportSessionIDs,
+            importChildCounts: importChildCountsBySessionID,
+            isShowingAllImports: isShowingAllImports,
+            smartCollectionCounts: smartCollectionCounts,
+            autopilotGhostCount: autopilotGhostAssetIDs.count,
+            savedAssetSets: savedAssetSets,
+            assetSetCounts: assetSetCounts,
+            catalogFolders: catalogFolders,
+            expandedFolderPaths: expandedFolderPaths,
+            recentWork: recentNonImportWork,
+            starredWork: starredNonImportWork,
+            matchedWork: workHistorySearchResults,
+            isWorkHistorySearchActive: isWorkHistorySearchActive,
+            workSessionScopeCounts: workSessionScopeCounts,
+            selectionCount: selectedBatchAssetIDs.isEmpty
+                ? (selectedAssetID != nil ? 1 : 0)
+                : selectedBatchAssetIDs.count
+        )
     }
-    /// The last sub-view shown in each workspace, so switching workspaces
-    /// and back restores where the user left off.
-    private var lastSubView: [Workspace: LibraryViewMode] = [:]
+
+    /// The cull sub-mode to return to when the Cull lens is re-entered. The
+    /// other five lenses have exactly one route each, so one property replaces
+    /// the old per-workspace dictionary.
+    private var lastCullViewMode: LibraryViewMode = .loupe
     public var assets: [Asset]
     public var totalAssetCount: Int
     /// Primary asset IDs that have >=1 bonded secondary (a RAW with a bonded
@@ -2146,9 +2066,9 @@ public final class AppModel {
     public private(set) var assetIDsWithBondedSecondaries: Set<AssetID> = []
     // Global view history so ⌘⇧[ / ⌘⇧] step back and forth through the
     // sidebar destinations the user has visited this session.
-    private var navigationBackStack: [SidebarRowTarget] = []
-    private var navigationForwardStack: [SidebarRowTarget] = []
-    private var currentNavigationTarget: SidebarRowTarget?
+    private var navigationBackStack: [LibrarySource] = []
+    private var navigationForwardStack: [LibrarySource] = []
+    private var currentNavigationTarget: LibrarySource?
     private var isRestoringNavigation = false
     public var selectedAssetID: AssetID? {
         didSet {
@@ -2210,7 +2130,7 @@ public final class AppModel {
     private(set) var cullRunTracker = CullRunTracker()
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
-    /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
+    /// `.inspector()` and gated by `LensChromePolicy.showsInspector`.
     public var isInspectorVisible = false
     /// Which stacked inspector section the ⌥⌘1..3 menu items (or a
     /// conflict deep-link) most recently asked to scroll to. Read alongside
@@ -2234,10 +2154,49 @@ public final class AppModel {
     /// Drives the Activity Center popover (toolbar item + Window ▸ Activity).
     public var isActivityCenterPresented = false
     public private(set) var isExporting = false
-    public var activeWork: AppWorkActivity?
+    /// The Imports section's in-progress row reads this through
+    /// `visibleImportActivity`, so every mutation — start, each progress
+    /// tick, and the nil-out on finish — has to recompose the sidebar. This
+    /// is what keeps the row's count live and what retires it on completion.
+    public var activeWork: AppWorkActivity? {
+        didSet {
+            rebuildSidebarSections()
+        }
+    }
     public var recentWork: [AppWorkActivity]
     public var starredWork: [AppWorkActivity]
+    // Recent Work excludes imports before applying either display window.
+    // Keep these separate because the mixed caches above still feed import
+    // completion and background-work surfaces.
+    private var recentNonImportWork: [AppWorkActivity]
+    private var starredNonImportWork: [AppWorkActivity]
+    /// Every completed import, newest first — the Imports sidebar section's
+    /// source of truth. Refreshed alongside `recentWork`.
+    public private(set) var importSourceSummaries: [ImportSidebarSummary] = []
+    /// The same completed imports as work activities — the Activity Center
+    /// bell's receipt source. Reading the unbounded, kind-scoped query rather
+    /// than the mixed-kind `recentWork` cache is what makes the receipts'
+    /// display cap the only thing that limits them: an import that produced
+    /// no output set has no Imports row, so its receipt is its only record
+    /// and must not be evicted by later work of other kinds.
+    public private(set) var completedImports: [AppWorkActivity] = []
+    /// Which import rows are disclosed. Child counts for the rows the
+    /// Imports section actually shows (the `recentImportRowLimit` most
+    /// recent, plus whichever overflow rows "All imports…" has revealed) are
+    /// primed in `primeVisibleImportChildCounts`/`toggleSidebarExpansion` —
+    /// on load, after an import completes, or on that explicit click, never
+    /// on a sidebar rebuild or a cull-session refresh — so a catalog with
+    /// hundreds of imports does not pay five queries per row on every render
+    /// or every P/X keystroke.
+    public private(set) var expandedImportSessionIDs: Set<String> = []
+    public private(set) var importChildCountsBySessionID: [String: ImportChildCounts] = [:]
+    /// Whether the Imports section is showing every import rather than the
+    /// three most recent plus the overflow row.
+    public private(set) var isShowingAllImports = false
     public var workHistorySearchResults: [AppWorkActivity]
+    // Empty results can mean either no residual search or a residual search
+    // with no matches; the sidebar must distinguish those two states.
+    private var isWorkHistorySearchActive: Bool
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     // SP-C: a Return that hit the render gate arms the commit; the moment the
     // staged frame's large preview lands, the decision fires. Deliberately
@@ -2252,7 +2211,7 @@ public final class AppModel {
     /// The catalog-wide set of assets carrying an autopilot ghost — derived,
     /// never stored. Backs the Cull sidebar's "Autopilot Proposals" source and
     /// its count; refreshed through `refreshCatalogSidebarCounts()`, the same
-    /// funnel that maintains `reviewQueueCounts`.
+    /// funnel that maintains `smartCollectionCounts`.
     public private(set) var autopilotGhostAssetIDs: [AssetID] = []
     public private(set) var isAutopilotReviewActive = false
     // The run-time metadata undo group for the most recent autopilot run's
@@ -2273,9 +2232,9 @@ public final class AppModel {
     // Opt-in natural-language Ask translator. nil (default) keeps the Ask on
     // the always-available deterministic parser with byte-identical behavior.
     public var autopilotQueryTranslator: (any AutopilotQueryTranslator)?
-    // Tracks which stack-cull sessions came from beginStackCullingFromLatestImportCompletion()
-    // and which import they scoped, so completion can offer to cull the
-    // import's unstacked singles afterward. In-memory only; not persisted.
+    // Tracks the import scoped by each stack-cull session, so completion can
+    // offer to cull that import's unstacked singles afterward. In-memory only;
+    // not persisted.
     private var stackCullingImportActivityIDBySessionID: [WorkSessionID: String] = [:]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
@@ -2355,12 +2314,9 @@ public final class AppModel {
     public var metadataSyncConflictFilter: Bool {
         didSet { persistSessionState() }
     }
-    /// The visible map region a cluster or top-location tap drilled into. Set
-    /// from the map, applied through `.withinGeoBounds` in `currentLibraryQuery`,
-    /// and cleared by `clearLibraryQueryFilters`. In-memory only — not part of
-    /// session restore.
-    public var geoBoundsFilter: GeoBounds?
-    private var detachedLibraryFilterPredicates: [SetQuery.Predicate]
+    private var detachedLibraryFilterPredicates: [SetQuery.Predicate] {
+        didSet { persistSessionState() }
+    }
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
     public var workSessionScopeCounts: [WorkSessionID: Int]
@@ -2369,7 +2325,6 @@ public final class AppModel {
     /// section, keyed by the row's full folder path. In-memory only; not
     /// persisted across launches.
     public private(set) var expandedFolderPaths: Set<String>
-    public var catalogTimelineDays: [CatalogTimelineDay]
     public private(set) var catalogPlaceClusters: [CatalogPlaceCluster] = []
     public private(set) var catalogTopLocations: [CatalogTopLocation] = []
     public private(set) var geotaggedCoverage = CatalogGeotaggedCoverage(geotaggedCount: 0, totalCount: 0)
@@ -2388,8 +2343,30 @@ public final class AppModel {
     private func noteRecentlyNamedPerson(_ personID: String) {
         recentlyNamedPersonIDs = [personID] + recentlyNamedPersonIDs.filter { $0 != personID }
     }
-    public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
-    public private(set) var peopleFaceObservationAssetCount = 0
+    private var peopleSourceSnapshot = PeopleSourceSnapshot()
+
+    public var peopleFaceSuggestions: [PeopleFaceSuggestion] {
+        peopleSourceSnapshot.faceSuggestions
+    }
+
+    public var peopleFaceObservationAssetCount: Int {
+        peopleSourceSnapshot.faceObservationAssetCount
+    }
+    /// The people present in the currently selected source — what the People
+    /// lens lists. `catalogPeople` stays catalog-wide on purpose: naming,
+    /// merging, and autocomplete must still reach a person who isn't in this
+    /// shoot.
+    public var peopleInCurrentSource: [CatalogPerson] {
+        peopleSourceSnapshot.namedPeople
+    }
+
+    public var peopleEvaluationKindSummaries: [CatalogEvaluationKindSummary] {
+        peopleSourceSnapshot.evaluationKindSummaries
+    }
+
+    public var peopleHasUnavailableSources: Bool {
+        peopleSourceSnapshot.hasUnavailableSources
+    }
     /// True for the duration of `importFacesFromContacts()` — drives the People
     /// menu's busy guard so a large address book can't be re-imported mid-run.
     public private(set) var isImportingContacts = false
@@ -2410,16 +2387,13 @@ public final class AppModel {
     /// loupe overlay never present the naming popover for the same face at once
     /// (`FaceNamingPopover`).
     public var editingFaceSource: FaceEditSurface?
-    public var reviewQueueCounts: [ReviewQueue: Int]
+    public var smartCollectionCounts: [SmartCollection: Int]
     public var selectedAssetSetID: AssetSetID? {
         didSet { persistSessionState() }
     }
-    // Cached latest-import panel state so SwiftUI render passes never run catalog
-    // queries; nil means the piece is rebuilt on the next getter access. Split in
-    // two so per-preview queue transitions refresh only the cheap preview status,
-    // not the full rebuild (asset loads, JSON decoding, stack detection).
+    // Cached latest-import summary so SwiftUI render passes never run catalog
+    // queries; nil means it is rebuilt on the next getter access.
     private var latestImportPresentationCore: LatestImportPresentationCore?
-    private var latestImportPreviewStatus: LatestImportPreviewStatus?
 
     // Coalesced publication of background-work state: preview drains fire queue
     // transitions roughly twice per imported photo, and republishing tracked state
@@ -2441,9 +2415,6 @@ public final class AppModel {
     private var lastProcessedBackgroundWorkQueue: BackgroundWorkQueue?
 
     @ObservationIgnored
-    private var pendingLatestImportPreviewStatusRefresh: Bool
-
-    @ObservationIgnored
     private var pendingPreviewGenerationQueueStatesRefresh: Bool
 
     // Enables session restore and selects which UserDefaults it reads/writes; nil
@@ -2451,6 +2422,9 @@ public final class AppModel {
     // AppModel never touches real app preferences unless a caller opts in.
     @ObservationIgnored
     private let sessionRestoreDefaults: UserDefaults?
+
+    @ObservationIgnored
+    private var sessionPersistenceDeferralDepth = 0
 
     // Per-cell preview lookups hit the filesystem and scan the work queue; the grid
     // re-renders far more often than preview state can change, so all three are
@@ -2563,13 +2537,12 @@ public final class AppModel {
 
     // Bumped by Edit ▸ Find ⌘F so LibraryGridView's @FocusState can move
     // keyboard focus into the query field. The query field only exists in the
-    // Library *browse* views — not the Cull views, and not People (a Library
-    // view that suppresses browse chrome) — so from anywhere that can't show
-    // it, switch to the grid first rather than silently doing nothing.
+    // browse lenses — not Cull, not People — so from anywhere that can't show
+    // it, switch to the Grid lens first rather than silently doing nothing.
     public private(set) var focusSearchRequestToken = 0
     public func requestFocusSearch() {
-        if !WorkspaceChromePolicy.showsSearchField(selectedView) {
-            selectedView = .grid
+        if !LensChromePolicy.showsSearchField(selectedView) {
+            selectLens(.grid)
         }
         focusSearchRequestToken += 1
     }
@@ -2596,16 +2569,15 @@ public final class AppModel {
     }
 
     public private(set) var exportRequestToken = 0
-    // Export's sheet is a popover hosted on the Library toolbar's Export
-    // button, which only the browse views show
-    // (WorkspaceChromePolicy.showsExportButton) — not Cull, not People. So
-    // bumping the token alone is a silent no-op while Cull is frontmost —
-    // Maya's persona-1 finding ("File > Export does nothing in the Cull
-    // workspace"). Switch to the grid first, so the token-consuming onChange
-    // has somewhere to attach.
+    // Export's sheet is a popover hosted on the toolbar's Export button, which
+    // only the browse lenses show (LensChromePolicy.showsExportButton) — not
+    // Cull, not People. So bumping the token alone is a silent no-op while
+    // Cull is frontmost — Maya's persona-1 finding ("File > Export does
+    // nothing in the Cull lens"). Switch to the Grid lens first, so the
+    // token-consuming onChange has somewhere to attach.
     public func requestExport() {
-        if !WorkspaceChromePolicy.showsExportButton(selectedView) {
-            selectedView = .grid
+        if !LensChromePolicy.showsExportButton(selectedView) {
+            selectLens(.grid)
         }
         exportRequestToken += 1
     }
@@ -2624,9 +2596,39 @@ public final class AppModel {
         newSetFromSelectionRequestToken += 1
     }
 
+    /// Bumped by the Smart Collections header's "+ New from search…", which
+    /// opens the existing save-search popover rather than a second builder.
+    public private(set) var saveSearchRequestToken = 0
+    public func requestSaveSearch() {
+        saveSearchRequestToken += 1
+    }
+
     public private(set) var moveRejectsToTrashRequestToken = 0
     public func requestMoveRejectsToTrash() {
         moveRejectsToTrashRequestToken += 1
+    }
+
+    /// Bumped by the sidebar's "⚠ Skipped files" import child, via
+    /// `selectSidebarRow`. Skipped files are never catalogued (see
+    /// `ImportChildKind.isDiagnostic`'s doc), so unlike every other import
+    /// child there is no Grid scope to select into — the row instead opens
+    /// `LibraryGridView`'s `ImportIssueReview` sheet, which only the view's
+    /// own @State can present.
+    public private(set) var importIssueReviewSessionID: WorkSessionID?
+    public private(set) var importIssueReviewRequestToken = 0
+    public func requestImportIssueReview(sessionID: WorkSessionID) {
+        importIssueReviewSessionID = sessionID
+        importIssueReviewRequestToken += 1
+    }
+
+    /// The requested import's skipped-files issues, read straight off its
+    /// `WorkSession` rather than `latestImportCompletionSummary` — this child
+    /// is reachable for any past import in the sidebar, not only the newest.
+    public func importIssues(sessionID: WorkSessionID) throws -> [WorkSessionIssue] {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        return try catalog.repository.session(id: sessionID).issues
     }
 
     // Set at import start from the import's autopilotAfterImport decision; the
@@ -2840,16 +2842,8 @@ public final class AppModel {
     }
 
     private var activePreviewGenerationStatusText: String? {
-        activePreviewGenerationStatusText(assetIDs: nil)
-    }
-
-    private func activePreviewGenerationStatusText(assetIDs: Set<AssetID>?) -> String? {
         let previewItems = backgroundWorkQueue.items.filter { item in
-            guard item.kind == .previewGeneration,
-                  [.queued, .running, .paused].contains(item.status) else { return false }
-            guard let assetIDs else { return true }
-            guard let previewAssetID = Self.previewAssetID(from: item.id) else { return false }
-            return assetIDs.contains(previewAssetID)
+            item.kind == .previewGeneration && [.queued, .running, .paused].contains(item.status)
         }
         guard !previewItems.isEmpty else { return nil }
         if backgroundWorkQueue.isPaused || previewItems.contains(where: { $0.status == .paused }) {
@@ -3032,18 +3026,21 @@ public final class AppModel {
             importError: importError,
             sources: sources,
             xmpConflicts: xmpConflicts,
-            providerFailureCount: reviewQueueCounts[.providerFailures] ?? 0
+            receipts: ImportReceiptRow.rows(from: completedImports, limit: ImportReceiptRow.retentionLimit),
+            providerFailureCount: smartCollectionCounts[.providerFailures] ?? 0
         )
     }
 
     /// Deep-links from the Activity Center's conflict row(s) back to the
-    /// affected assets: switches to Library, filters to the XMP-conflict
+    /// affected assets: switches to the Grid lens, filters to the XMP-conflict
     /// scope, selects the assets, and reveals the inspector.
     public func revealConflicts(_ assetIDs: [AssetID]) throws {
         guard !assetIDs.isEmpty else { return }
-        // Land in Grid regardless of which Library subview was last used —
-        // the conflicted selection is only visible there.
+        // A deep link with an explicit destination, not a plain source
+        // selection: land in Grid regardless of the current lens, because the
+        // conflicted selection is only visible there.
         selectedView = .grid
+        selectedSource = .metadataSyncConflicts
         selectedAssetID = assetIDs.first
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
@@ -3133,10 +3130,6 @@ public final class AppModel {
         workerSupervisor != nil && assets.contains { hasCachedPreview(for: $0.id) }
     }
 
-    public var canRequestLatestImportAssetEvaluations: Bool {
-        latestImportCoreRebuildingIfNeeded().canRequestAssetEvaluations
-    }
-
     public var canRequestCurrentScopeAssetEvaluations: Bool {
         guard workerSupervisor != nil,
               let catalog,
@@ -3152,9 +3145,17 @@ public final class AppModel {
 
     /// True when any catalog source root is unreachable — its recorded path
     /// no longer exists on this machine, or assets under it are offline.
-    /// The People workspace uses this to say "sources offline" instead of
-    /// advertising a scan that cannot enqueue any work.
+    /// The unfiltered People scope uses this global fact; narrowed People
+    /// scopes derive the same status only from their intersecting sources.
     public var hasUnavailableSourceRoots: Bool {
+        Self.sourceRootsUnavailable(sourceRoots)
+    }
+
+    /// The shared predicate behind `hasUnavailableSourceRoots` and the
+    /// nil-scope branch of `peopleScopeHasUnavailableSources`, which needs to
+    /// evaluate it over a passed-in `sourceRoots` snapshot rather than
+    /// `self.sourceRoots`.
+    private static func sourceRootsUnavailable(_ sourceRoots: [CatalogSourceRoot]) -> Bool {
         sourceRoots.contains { root in
             root.unavailableAssetCount > 0 || !FileManager.default.fileExists(atPath: root.path)
         }
@@ -3223,18 +3224,6 @@ public final class AppModel {
         return batchKeywordSuggestions(for: selectedAssets)
     }
 
-    public var latestImportBatchKeywordSuggestions: [BatchKeywordSuggestion] {
-        latestImportCoreRebuildingIfNeeded().batchKeywordSuggestions
-    }
-
-    public var latestImportFaceReviewAssetCount: Int {
-        latestImportCoreRebuildingIfNeeded().faceReviewAssetCount
-    }
-
-    public var latestImportFlaggedReviewAssetCount: Int {
-        latestImportCoreRebuildingIfNeeded().flaggedReviewAssetCount
-    }
-
     public var currentScopeBatchKeywordSuggestions: [BatchKeywordSuggestion] {
         guard let catalog,
               let assetIDs = try? currentAssetScopeIDs(repository: catalog.repository),
@@ -3246,7 +3235,7 @@ public final class AppModel {
     }
 
     public var starredAssetSets: [AssetSet] {
-        Self.visibleSavedAssetSets(savedAssetSets).filter(\.starred)
+        UnifiedSidebarPresentation.visibleSavedAssetSets(savedAssetSets).filter(\.starred)
     }
 
     public var canSaveCurrentLibraryQuery: Bool {
@@ -3264,7 +3253,13 @@ public final class AppModel {
     public var activeLibraryFilterRows: [ActiveLibraryFilterRow] {
         var rows: [ActiveLibraryFilterRow] = []
         if let selectedAssetSet {
-            Self.append(ActiveLibraryFilterRow(title: selectedAssetSet.name, target: .assetSet(selectedAssetSet.id)), to: &rows)
+            Self.append(
+                ActiveLibraryFilterRow(
+                    title: selectedAssetSet.name,
+                    target: .assetSet(selectedAssetSet.id, titled: selectedAssetSet.name)
+                ),
+                to: &rows
+            )
         }
         if let selectedDynamicSetQuery {
             for predicate in selectedDynamicSetQuery.predicates {
@@ -3285,7 +3280,7 @@ public final class AppModel {
         }
         for (index, chip) in searchIntent.chips.enumerated() {
             let target = searchIntent.predicates.indices.contains(index)
-                ? Self.sidebarTarget(for: searchIntent.predicates[index])
+                ? Self.librarySource(for: searchIntent.predicates[index])
                 : nil
             Self.append(ActiveLibraryFilterRow(title: chip, target: target), to: &rows)
         }
@@ -3301,14 +3296,14 @@ public final class AppModel {
             Self.append(
                 ActiveLibraryFilterRow(
                     title: "Rating >= \(minimumRatingFilter)",
-                    target: minimumRatingFilter == 5 ? .reviewQueue(.fiveStars) : nil
+                    target: minimumRatingFilter == 5 ? .smartCollection(.fiveStars) : nil
                 ),
                 to: &rows
             )
         }
         if let flagFilter {
             Self.append(
-                ActiveLibraryFilterRow(title: flagFilter.rawValue.capitalized, target: Self.sidebarTarget(for: .flag(flagFilter))),
+                ActiveLibraryFilterRow(title: flagFilter.rawValue.capitalized, target: Self.librarySource(for: .flag(flagFilter))),
                 to: &rows
             )
         }
@@ -3345,19 +3340,19 @@ public final class AppModel {
             )
         }
         if needsKeywordsFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Needs Keywords", target: .smartCollection(.needsKeywords)), to: &rows)
         }
         if needsEvaluationFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Not analyzed yet", target: .reviewQueue(.needsEvaluation)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Not analyzed yet", target: .smartCollection(.needsEvaluation)), to: &rows)
         }
         if likelyIssuesFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .reviewQueue(.likelyIssues)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .smartCollection(.likelyIssues)), to: &rows)
         }
         if potentialPicksFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Potential Picks", target: .reviewQueue(.potentialPicks)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Potential Picks", target: .smartCollection(.potentialPicks)), to: &rows)
         }
         if providerFailuresFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Analysis Failures", target: .reviewQueue(.providerFailures)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Analysis Failures", target: .smartCollection(.providerFailures)), to: &rows)
         }
         if metadataSyncPendingFilter {
             Self.append(ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending), to: &rows)
@@ -3380,14 +3375,52 @@ public final class AppModel {
         catalog != nil && !assets.isEmpty
     }
 
+    /// The Cull lens's "Cull these" is unavailable on diagnostic sources —
+    /// nothing there is cullable — and on an empty scope.
+    public var canCullCurrentResults: Bool {
+        canBeginCullingSession && !selectedSource.isDiagnostic
+    }
+
+    /// The persistent scope line under the toolbar. `cullProgress` and
+    /// `stackCount` are gated on the Cull lens being selected, not merely on
+    /// a session being active — `ScopeLinePresentation.line` ignores both
+    /// outside its `.cull` branch, and `cullingProgressSummary` and
+    /// `cullingStackListEntries()` each query the catalog, so evaluating them
+    /// only to discard the result would put catalog reads on every browse
+    /// lens's body evaluation (the same hazard `SidebarView`'s stack-rows
+    /// gate guards against).
+    public var scopeLine: ScopeLinePresentation {
+        let isCullSessionActive = selectedLens == .cull && activeCullingSessionID != nil
+        return ScopeLinePresentation.line(
+            source: selectedSource,
+            lens: selectedLens,
+            resultCount: totalAssetCount,
+            activeFilterChips: activeLibraryFilterChips,
+            cullProgress: isCullSessionActive ? cullingProgressSummary : nil,
+            stackCount: isCullSessionActive ? cullingStackListEntries().count : 0
+        )
+    }
+
+    /// The Timeline lens over the selected source. Built from the loaded
+    /// source rather than a catalog-wide query, which takes no scope: the
+    /// year ribbon and scrubber used to show catalog-wide numbers over
+    /// filtered thumbnails, papered over by "Showing N loaded of M photos".
+    var timelinePresentation: TimelinePresentation {
+        TimelinePresentation(assets: assets, totalAssetCount: totalAssetCount)
+    }
+
     public var latestImportCompletionSummary: ImportCompletionSummary? {
-        let core = latestImportCoreRebuildingIfNeeded()
-        guard var summary = core.summary else { return nil }
-        let previewStatus = latestImportPreviewStatusRebuildingIfNeeded(core: core)
-        summary.previewFailureCount = previewStatus.previewFailureCount
-        summary.failureText = previewStatus.failureText
-        summary.previewStatusText = previewStatus.previewStatusText
-        return summary
+        latestImportCoreRebuildingIfNeeded().summary
+    }
+
+    /// The completion toast, or nil when there is nothing to announce.
+    public var importCompletionToast: ImportCompletionToastPresentation? {
+        guard let summary = latestImportCompletionSummary else { return nil }
+        return ImportCompletionToastPresentation.toast(
+            for: summary,
+            isCurrentSessionActivity: isCurrentSessionActivity(id: summary.activityID),
+            isImporting: isImporting
+        )
     }
 
     /// Marks the cached latest-import panel state stale so the next getter access
@@ -3396,24 +3429,6 @@ public final class AppModel {
     /// on every render pass.
     public func refreshLatestImportPresentation() {
         latestImportPresentationCore = nil
-        latestImportPreviewStatus = nil
-    }
-
-    /// Marks only the live preview-drain status stale. Preview queue transitions
-    /// fire for every preview of an import, so they must not trigger the full
-    /// presentation rebuild.
-    private func refreshLatestImportPreviewStatus() {
-        latestImportPreviewStatus = nil
-        // A newly cached preview can flip the cached core's evaluate gate; patch
-        // it in place instead of paying the full core rebuild per preview
-        // transition. The recheck short-circuits on the first cached preview.
-        if let core = latestImportPresentationCore,
-           !core.canRequestAssetEvaluations,
-           canRequestLatestImportAssetEvaluations(assetIDs: core.outputAssetIDs) {
-            var updatedCore = core
-            updatedCore.canRequestAssetEvaluations = true
-            latestImportPresentationCore = updatedCore
-        }
     }
 
     private func latestImportCoreRebuildingIfNeeded() -> LatestImportPresentationCore {
@@ -3425,106 +3440,16 @@ public final class AppModel {
         return core
     }
 
-    private func latestImportPreviewStatusRebuildingIfNeeded(core: LatestImportPresentationCore) -> LatestImportPreviewStatus {
-        if let latestImportPreviewStatus {
-            return latestImportPreviewStatus
-        }
-        let previewStatus = buildLatestImportPreviewStatus(core: core)
-        latestImportPreviewStatus = previewStatus
-        return previewStatus
-    }
-
     private func buildLatestImportPresentationCore() -> LatestImportPresentationCore {
         guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             return .empty
         }
-        let outputAssetIDs: [AssetID]
-        if let catalog {
-            outputAssetIDs = (try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)) ?? []
-        } else {
-            outputAssetIDs = []
-        }
-        let summary = latestImportCompletionSummary(activity: activity)
-        return LatestImportPresentationCore(
-            summary: summary,
-            flaggedReviewAssetCount: latestImportFlaggedReviewAssetCount(summary: summary),
-            faceReviewAssetCount: latestImportFaceReviewAssetCount(assetIDs: outputAssetIDs),
-            batchKeywordSuggestions: latestImportBatchKeywordSuggestions(assetIDs: outputAssetIDs),
-            canRequestAssetEvaluations: canRequestLatestImportAssetEvaluations(assetIDs: outputAssetIDs),
-            outputAssetIDs: outputAssetIDs
-        )
+        return LatestImportPresentationCore(summary: latestImportCompletionSummary(activity: activity))
     }
 
-    private func buildLatestImportPreviewStatus(core: LatestImportPresentationCore) -> LatestImportPreviewStatus {
-        guard let summary = core.summary,
-              let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
-            return .empty
-        }
-        let previewFailureCount = latestImportPreviewFailureCount(activity: activity, assetIDs: core.outputAssetIDs)
-        let failureText = previewFailureCount > 0
-            ? "\(previewFailureCount) preview \(previewFailureCount == 1 ? "failure" : "failures")"
-            : nil
-        return LatestImportPreviewStatus(
-            previewFailureCount: previewFailureCount,
-            failureText: failureText,
-            previewStatusText: latestImportPreviewStatusText(
-                assetIDs: core.outputAssetIDs,
-                hasImportedPhotos: summary.importedPhotoCount > 0,
-                failureText: failureText
-            )
-        )
-    }
-
-    private func latestImportBatchKeywordSuggestions(assetIDs: [AssetID]) -> [BatchKeywordSuggestion] {
-        guard let catalog,
-              !assetIDs.isEmpty,
-              let importedAssets = try? catalog.repository.assets(ids: assetIDs, limit: assetIDs.count) else {
-            return []
-        }
-        return batchKeywordSuggestions(for: importedAssets)
-    }
-
-    private func latestImportFaceReviewAssetCount(assetIDs: [AssetID]) -> Int {
-        guard let catalog,
-              !assetIDs.isEmpty,
-              let faceAssetIDs = try? catalog.repository.assetIDs(
-                ids: assetIDs,
-                matching: Self.reviewQueueQuery(.facesFound)
-              ) else {
-            return 0
-        }
-        return faceAssetIDs.count
-    }
-
-    private func latestImportFlaggedReviewAssetCount(summary: ImportCompletionSummary?) -> Int {
-        guard let catalog,
-              let summary,
-              let count = try? catalog.repository.assetCount(
-                matching: SetQuery(predicates: [
-                    .importBatch(summary.activityID),
-                    .likelyIssue
-                ])
-              ) else {
-            return 0
-        }
-        return count
-    }
-
-    private func canRequestLatestImportAssetEvaluations(assetIDs: [AssetID]) -> Bool {
-        guard workerSupervisor != nil, catalog != nil else {
-            return false
-        }
-        return assetIDs.contains { hasCachedPreview(for: $0) }
-    }
-
-    // The preview fields hold placeholders here; latestImportCompletionSummary
-    // patches in the separately cached LatestImportPreviewStatus.
     private func latestImportCompletionSummary(activity: AppWorkActivity) -> ImportCompletionSummary {
         let importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount
         let newPhotoCount = activity.completedUnitCount
-        let existingPhotoCount = max(importedPhotoCount - newPhotoCount, 0)
-        let hasImportedPhotos = importedPhotoCount > 0
-        let stackSummary = hasImportedPhotos ? latestImportStackSummary(activity: activity) : (stackCount: 0, stackedPhotoCount: 0)
         return ImportCompletionSummary(
             activityID: activity.id,
             title: "Import complete",
@@ -3532,67 +3457,23 @@ public final class AppModel {
             importedPhotoCount: importedPhotoCount,
             photoCountText: Self.photoCountDescription(importedPhotoCount),
             newPhotoCount: newPhotoCount,
-            existingPhotoCount: existingPhotoCount,
-            previewFailureCount: 0,
-            failureText: nil,
-            previewStatusText: "",
+            existingPhotoCount: max(importedPhotoCount - newPhotoCount, 0),
             issues: activity.issues,
-            stackCount: stackSummary.stackCount,
-            stackedPhotoCount: stackSummary.stackedPhotoCount,
             cullingSessionName: "\(activity.detail) Cull"
         )
     }
 
-    private func latestImportPreviewStatusText(
-        assetIDs: [AssetID],
-        hasImportedPhotos: Bool,
-        failureText: String?
-    ) -> String {
-        if let failureText {
-            return failureText
-        }
-        guard hasImportedPhotos else {
-            return "No previews needed"
-        }
-        guard let catalog else {
-            return activePreviewGenerationStatusText ?? "Previews ready"
-        }
-        do {
-            let pendingPreviewCount = try catalog.repository.previewGenerationPendingAssetCount(assetIDs: assetIDs)
-            guard pendingPreviewCount > 0 else {
-                return "Previews ready"
-            }
-            return activePreviewGenerationStatusText(assetIDs: Set(assetIDs)) ?? "previews queued"
-        } catch {
-            return activePreviewGenerationStatusText ?? "Previews ready"
-        }
-    }
-
-    private func latestImportPreviewFailureCount(activity: AppWorkActivity, assetIDs: [AssetID]) -> Int {
-        guard let catalog else { return activity.failureCount }
-        do {
-            let deferredFailureCount = try catalog.repository.previewGenerationFailureAssetCount(assetIDs: assetIDs)
-            return max(activity.failureCount, deferredFailureCount)
-        } catch {
-            return activity.failureCount
-        }
-    }
-
-    private func latestImportStackSummary(activity: AppWorkActivity) -> (stackCount: Int, stackedPhotoCount: Int) {
-        guard let catalog else { return (0, 0) }
-        do {
-            let stacks = try latestImportStacks(activityID: activity.id, repository: catalog.repository)
-            return (
-                stackCount: stacks.count,
-                stackedPhotoCount: stacks.reduce(0) { $0 + $1.assetIDs.count }
-            )
-        } catch {
-            return (0, 0)
-        }
-    }
-
     public var suggestedSavedSearchName: String {
         var parts: [String] = []
+        // Smart-collection selections (and any other detached predicates,
+        // e.g. from a Smart Collection Builder preset) no longer set the
+        // boolean filter properties below, so their name has to come from
+        // here — through the same `activeLibraryFilterRow(for:)` the filter
+        // chips already use, not a second title spelling.
+        for predicate in detachedLibraryFilterPredicates {
+            guard let title = Self.activeLibraryFilterRow(for: predicate)?.title else { continue }
+            Self.append(title, to: &parts)
+        }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
             parts.append(residualSearch)
@@ -3830,34 +3711,109 @@ public final class AppModel {
         return namesByID
     }
 
+    /// The asset scope every People read runs against. `nil` means the whole
+    /// catalog — the People × All Photos global queue — and avoids materializing
+    /// every asset id just to hand it back as an `IN` list.
+    public func peopleScopeAssetIDs() throws -> [AssetID]? {
+        guard let catalog else { return nil }
+        guard selectedExplicitAssetIDs != nil || currentLibraryQuery() != nil else { return nil }
+        return try currentAssetScopeIDs(repository: catalog.repository)
+    }
+
+    private func currentSourceScopePredicates() -> [SetQuery.Predicate] {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            return [.assetIDs(explicitAssetIDs)]
+        }
+        return currentLibraryQuery()?.predicates ?? []
+    }
+
     public func refreshPeopleFaceSuggestions() {
         guard let catalog else { return }
         do {
-            let provenance = AppleVisionEvaluationProvider.faceProvenance
-            let unassigned = try catalog.repository.unassignedFaceObservations(
-                provenance: provenance,
-                limit: Self.maximumFaceSuggestionInputCount
+            let scopeAssetIDs = try peopleScopeAssetIDs()
+            peopleSourceSnapshot = try loadPeopleSourceSnapshot(
+                assetIDs: scopeAssetIDs,
+                sourceRoots: sourceRoots,
+                repository: catalog.repository
             )
-            let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
-            let suggestions = FaceSuggestionBuilder().suggestions(
-                unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
-                confirmedFacesByPerson: confirmedFacesByPerson
-            )
-            let observationsByFaceID = Dictionary(
-                uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
-            )
-            let personNamesByID = try unionedPersonNamesByID()
-            let rejectedPairs = try catalog.repository.rejectedFacePeople()
-            peopleFaceSuggestions = Self.peopleFaceSuggestions(
-                from: suggestions,
-                observationsByFaceID: observationsByFaceID,
-                personNamesByID: personNamesByID,
-                rejectedPairs: rejectedPairs
-            )
-            peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(provenance: provenance)
         } catch {
+            peopleSourceSnapshot = PeopleSourceSnapshot()
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func loadPeopleSourceSnapshot(
+        assetIDs: [AssetID]?,
+        sourceRoots: [CatalogSourceRoot],
+        repository: CatalogRepository
+    ) throws -> PeopleSourceSnapshot {
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let unassigned = try repository.unassignedFaceObservations(
+            provenance: provenance,
+            limit: Self.maximumFaceSuggestionInputCount,
+            assetIDs: assetIDs
+        )
+        let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
+        let suggestions = FaceSuggestionBuilder().suggestions(
+            unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
+            confirmedFacesByPerson: confirmedFacesByPerson
+        )
+        let observationsByFaceID = Dictionary(
+            uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
+        )
+        let personNamesByID = try unionedPersonNamesByID()
+        let rejectedPairs = try repository.rejectedFacePeople()
+        let faceSuggestions = Self.peopleFaceSuggestions(
+            from: suggestions,
+            observationsByFaceID: observationsByFaceID,
+            personNamesByID: personNamesByID,
+            rejectedPairs: rejectedPairs
+        )
+        let faceObservationAssetCount = try repository.faceObservationAssetCount(
+            provenance: provenance,
+            assetIDs: assetIDs
+        )
+        let namedPeople = try repository.people(assetIDs: assetIDs)
+        let evaluationKindSummaries = try repository.evaluationKindSummaries(assetIDs: assetIDs)
+        let hasUnavailableSources = try peopleScopeHasUnavailableSources(
+            assetIDs: assetIDs,
+            sourceRoots: sourceRoots,
+            repository: repository
+        )
+        return PeopleSourceSnapshot(
+            faceSuggestions: faceSuggestions,
+            faceObservationAssetCount: faceObservationAssetCount,
+            namedPeople: namedPeople,
+            evaluationKindSummaries: evaluationKindSummaries,
+            hasUnavailableSources: hasUnavailableSources
+        )
+    }
+
+    private func peopleScopeHasUnavailableSources(
+        assetIDs: [AssetID]?,
+        sourceRoots: [CatalogSourceRoot],
+        repository: CatalogRepository
+    ) throws -> Bool {
+        guard let assetIDs else {
+            return Self.sourceRootsUnavailable(sourceRoots)
+        }
+        guard !assetIDs.isEmpty else { return false }
+        let scopedAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
+        return scopedAssets.contains { asset in
+            if asset.availability != .online {
+                return true
+            }
+            let assetPath = asset.originalURL.standardizedFileURL.path
+            return sourceRoots.contains { root in
+                let rootPath = URL(fileURLWithPath: root.path).standardizedFileURL.path
+                guard Self.path(assetPath, isWithin: rootPath) else { return false }
+                return !FileManager.default.fileExists(atPath: rootPath)
+            }
+        }
+    }
+
+    private static func path(_ path: String, isWithin rootPath: String) -> Bool {
+        rootPath == "/" || path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     /// Candidate people for naming a face, ranked by similarity to that face (or
@@ -4190,11 +4146,26 @@ public final class AppModel {
     }
 
     public func showPersonPhotos(named name: String) throws {
-        selectedAssetSetID = nil
-        clearLibraryQueryFilters()
-        librarySearchText = Self.librarySearchText(residualText: nil, predicates: [.person(name)])
-        selectedView = .grid
-        try reload()
+        let basePredicates = currentSourceScopePredicates()
+        var predicates = basePredicates
+        let personPredicate = SetQuery.Predicate.person(name)
+        Self.append(personPredicate, to: &predicates)
+        let query = SetQuery(predicates: predicates)
+        try selectSource(.search(query, titled: name))
+
+        // Only expose a query string when parsing it reconstructs the same
+        // predicates; reserved plain text such as "pick" otherwise changes scope.
+        if let searchText = Self.losslessLibrarySearchText(for: predicates) {
+            librarySearchText = searchText
+            detachedLibraryFilterPredicates = []
+        } else if let personSearchText = Self.losslessLibrarySearchText(for: [personPredicate]) {
+            librarySearchText = personSearchText
+            detachedLibraryFilterPredicates = basePredicates
+        } else {
+            librarySearchText = ""
+            detachedLibraryFilterPredicates = predicates
+        }
+        selectLens(.grid)
     }
 
     /// Builds the review-first surface behind a face-group suggestion: resolves
@@ -4306,6 +4277,8 @@ public final class AppModel {
         activeWork: AppWorkActivity? = nil,
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = [],
+        recentNonImportWork: [AppWorkActivity]? = nil,
+        starredNonImportWork: [AppWorkActivity]? = nil,
         workHistorySearchResults: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
@@ -4317,12 +4290,11 @@ public final class AppModel {
         assetSetCounts: [AssetSetID: Int] = [:],
         workSessionScopeCounts: [WorkSessionID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
-        catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceRoots: [CatalogSourceRoot] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         catalogPeople: [CatalogPerson] = [],
-        reviewQueueCounts: [ReviewQueue: Int] = [:],
+        smartCollectionCounts: [SmartCollection: Int] = [:],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil,
@@ -4338,23 +4310,10 @@ public final class AppModel {
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
         let resolvedPendingMetadataSyncCount = pendingMetadataSyncCount ?? pendingMetadataSyncItems.count
         let resolvedMetadataSyncConflictCount = metadataSyncConflictCount ?? metadataSyncConflictItems.count
-        self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
-            totalAssetCount: resolvedTotalAssetCount,
-            savedAssetSets: savedAssetSets,
-            assetSetCounts: assetSetCounts,
-            workSessionScopeCounts: workSessionScopeCounts,
-            catalogFolders: catalogFolders,
-            catalogTimelineDays: catalogTimelineDays,
-            sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            reviewQueueCounts: reviewQueueCounts,
-            pendingMetadataSyncItems: pendingMetadataSyncItems,
-            metadataSyncConflictItems: metadataSyncConflictItems,
-            pendingMetadataSyncCount: resolvedPendingMetadataSyncCount,
-            metadataSyncConflictCount: resolvedMetadataSyncConflictCount,
-            recentWork: recentWork,
-            starredWork: starredWork
-        ) : sidebarSections
+        // Seeded only so the stored property is initialized; the
+        // `rebuildSidebarSections()` at the end of this initializer is what
+        // actually composes the sidebar from the state assigned below.
+        self.sidebarSections = sidebarSections
         self.selectedView = selectedView
         self.assets = assets
         self.totalAssetCount = resolvedTotalAssetCount
@@ -4367,7 +4326,12 @@ public final class AppModel {
         self.activeWork = activeWork
         self.recentWork = recentWork
         self.starredWork = starredWork
+        self.recentNonImportWork = recentNonImportWork
+            ?? Array(recentWork.filter { $0.kind != .ingest }.prefix(5))
+        self.starredNonImportWork = starredNonImportWork
+            ?? Array(starredWork.filter { $0.kind != .ingest }.prefix(10))
         self.workHistorySearchResults = workHistorySearchResults
+        self.isWorkHistorySearchActive = !workHistorySearchResults.isEmpty
         self.lastCullingMetadataDecision = nil
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
@@ -4402,15 +4366,13 @@ public final class AppModel {
         self.workSessionScopeCounts = workSessionScopeCounts
         self.catalogFolders = catalogFolders
         self.expandedFolderPaths = []
-        self.catalogTimelineDays = catalogTimelineDays
         self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
         self.catalogPeople = catalogPeople
-        self.reviewQueueCounts = reviewQueueCounts
+        self.smartCollectionCounts = smartCollectionCounts
         self.selectedAssetSetID = selectedAssetSetID
         self.latestImportPresentationCore = nil
-        self.latestImportPreviewStatus = nil
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
         self.workerImportsEnabled = resolvedWorkerImportsEnabled
@@ -4423,7 +4385,6 @@ public final class AppModel {
         self.backgroundWorkPublicationTimer = nil
         self.currentPreviewCacheGenerationsByAssetID = [:]
         self.lastProcessedBackgroundWorkQueue = nil
-        self.pendingLatestImportPreviewStatusRefresh = false
         self.pendingPreviewGenerationQueueStatesRefresh = false
         self.gridPreviewURLCacheByAssetID = [:]
         self.gridPreviewStatusCacheByAssetID = [:]
@@ -4470,11 +4431,7 @@ public final class AppModel {
             let previousQueue = self.lastProcessedBackgroundWorkQueue ?? self.backgroundWorkQueue
             let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: previousQueue)
             self.lastProcessedBackgroundWorkQueue = queue
-            if Self.previewGenerationWorkChanged(from: previousQueue, to: queue) {
-                self.pendingLatestImportPreviewStatusRefresh = true
-            }
             self.publishBackgroundWorkState()
-            self.recordPersistedActiveBackgroundWorkActivities(in: queue)
             if Self.metadataSyncWorkChanged(from: previousQueue, to: queue) {
                 try? self.refreshMetadataSyncState()
             }
@@ -4544,11 +4501,13 @@ public final class AppModel {
             availability: .online,
             metadata: AssetMetadata(rating: 4, colorLabel: .green, flag: .pick, keywords: ["demo"])
         )
-        return AppModel(
-            sidebarSections: defaultSidebarSections(totalAssetCount: 1),
+        let model = AppModel(
+            sidebarSections: [],
             selectedView: .grid,
             assets: [asset]
         )
+        model.rebuildSidebarSections()
+        return model
     }
 
     public static func load(repository: CatalogRepository) throws -> AppModel {
@@ -4557,46 +4516,32 @@ public final class AppModel {
         let savedAssetSets = try repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: repository)
         let catalogFolders = try repository.folders()
-        let catalogTimelineDays = try repository.timelineDays()
         let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
         let catalogPeople = try repository.people()
-        let reviewQueueCounts = try Self.reviewQueueCounts(repository: repository)
+        let smartCollectionCounts = try Self.smartCollectionCounts(repository: repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: repository,
             selectedAssetID: assets.first?.id
         )
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let nonImportWork = try Self.nonImportWorkActivities(repository: repository)
         let workSessionScopeCounts = try Self.workSessionScopeCounts(
-            activities: recentWork + starredWork,
+            activities: recentWork + starredWork + nonImportWork.recent + nonImportWork.starred,
             repository: repository
         )
         let totalAssetCount = try repository.assetCount()
         return AppModel(
-            sidebarSections: defaultSidebarSections(
-                totalAssetCount: totalAssetCount,
-                savedAssetSets: savedAssetSets,
-                assetSetCounts: assetSetCounts,
-                workSessionScopeCounts: workSessionScopeCounts,
-                catalogFolders: catalogFolders,
-                catalogTimelineDays: catalogTimelineDays,
-                sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-                catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-                reviewQueueCounts: reviewQueueCounts,
-                pendingMetadataSyncItems: metadataSyncState.pendingItems,
-                metadataSyncConflictItems: metadataSyncState.conflictItems,
-                pendingMetadataSyncCount: metadataSyncState.pendingCount,
-                metadataSyncConflictCount: metadataSyncState.conflictCount,
-                recentWork: recentWork,
-                starredWork: starredWork
-            ),
+            sidebarSections: [],
             selectedView: .grid,
             assets: assets,
             totalAssetCount: totalAssetCount,
             recentWork: recentWork,
             starredWork: starredWork,
+            recentNonImportWork: nonImportWork.recent,
+            starredNonImportWork: nonImportWork.starred,
             pendingMetadataSyncItems: metadataSyncState.pendingItems,
             metadataSyncConflictItems: metadataSyncState.conflictItems,
             pendingMetadataSyncCount: metadataSyncState.pendingCount,
@@ -4609,12 +4554,11 @@ public final class AppModel {
             assetSetCounts: assetSetCounts,
             workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
-            catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             catalogPeople: catalogPeople,
-            reviewQueueCounts: reviewQueueCounts
+            smartCollectionCounts: smartCollectionCounts
         )
     }
 
@@ -4637,46 +4581,32 @@ public final class AppModel {
         let savedAssetSets = try catalog.repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         let catalogFolders = try catalog.repository.folders()
-        let catalogTimelineDays = try catalog.repository.timelineDays()
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
-        let reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+        let smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: catalog.repository,
             selectedAssetID: assets.first?.id
         )
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let nonImportWork = try Self.nonImportWorkActivities(repository: catalog.repository)
         let workSessionScopeCounts = try Self.workSessionScopeCounts(
-            activities: recentWork + starredWork,
+            activities: recentWork + starredWork + nonImportWork.recent + nonImportWork.starred,
             repository: catalog.repository
         )
         let totalAssetCount = try catalog.repository.assetCount()
         let model = AppModel(
-            sidebarSections: defaultSidebarSections(
-                totalAssetCount: totalAssetCount,
-                savedAssetSets: savedAssetSets,
-                assetSetCounts: assetSetCounts,
-                workSessionScopeCounts: workSessionScopeCounts,
-                catalogFolders: catalogFolders,
-                catalogTimelineDays: catalogTimelineDays,
-                sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-                catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-                reviewQueueCounts: reviewQueueCounts,
-                pendingMetadataSyncItems: metadataSyncState.pendingItems,
-                metadataSyncConflictItems: metadataSyncState.conflictItems,
-                pendingMetadataSyncCount: metadataSyncState.pendingCount,
-                metadataSyncConflictCount: metadataSyncState.conflictCount,
-                recentWork: recentWork,
-                starredWork: starredWork
-            ),
+            sidebarSections: [],
             selectedView: .grid,
             assets: assets,
             totalAssetCount: totalAssetCount,
             catalog: catalog,
             recentWork: recentWork,
             starredWork: starredWork,
+            recentNonImportWork: nonImportWork.recent,
+            starredNonImportWork: nonImportWork.starred,
             pendingMetadataSyncItems: metadataSyncState.pendingItems,
             metadataSyncConflictItems: metadataSyncState.conflictItems,
             pendingMetadataSyncCount: metadataSyncState.pendingCount,
@@ -4689,11 +4619,10 @@ public final class AppModel {
             assetSetCounts: assetSetCounts,
             workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
-            catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            reviewQueueCounts: reviewQueueCounts,
+            smartCollectionCounts: smartCollectionCounts,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
             cardImportTaskFactory: cardImportTaskFactory,
@@ -4714,8 +4643,14 @@ public final class AppModel {
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.enqueuePendingGeocoding()
-        try model.restoreSessionStateIfAvailable()
         try model.refreshAutopilotGhostAssetIDs()
+        try model.restoreSessionStateIfAvailable()
+        // The Imports section reads `importSourceSummaries`, which the
+        // initializer cannot compute (it takes no repository), so a launch
+        // would otherwise show no imports until the next work-session refresh.
+        try model.refreshImportSourceSummaries()
+        model.primeVisibleImportChildCounts()
+        model.rebuildSidebarSections()
         if let sessionRestoreDefaults {
             model.autopilotEnabled = sessionRestoreDefaults.bool(forKey: autopilotEnabledDefaultsKey)
             model.defaultCreator = sessionRestoreDefaults.string(forKey: defaultCreatorDefaultsKey) ?? ""
@@ -4930,7 +4865,15 @@ public final class AppModel {
     }
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
-        try selectSidebarTarget(row.target)
+        guard let source = row.target else { return }
+        // Skipped files use the import's catalogued output scope while the
+        // issue-review sheet presents the uncatalogued issue records.
+        if case .importChild(let sessionID, .skippedFiles) = source.kind {
+            try selectSource(source)
+            requestImportIssueReview(sessionID: sessionID)
+            return
+        }
+        try selectSource(source)
     }
 
     /// Expands or collapses a Folders-sidebar tree row without changing the
@@ -4945,30 +4888,92 @@ public final class AppModel {
         rebuildSidebarSections()
     }
 
-    public func selectSidebarTarget(_ target: SidebarRowTarget) throws {
-        try applySidebarTarget(target)
-        recordNavigation(to: target)
+    /// One disclosure gesture for every tree-shaped sidebar row: Folders,
+    /// import rows, and the "All imports…" overflow row. Purely a rendering
+    /// concern, so it never reloads the library scope.
+    public func toggleSidebarExpansion(_ row: SidebarRow) {
+        if case .folder(let path)? = row.target?.kind {
+            toggleFolderExpansion(path: path)
+            return
+        }
+        if case .workSession(let sessionID)? = row.target?.kind {
+            if expandedImportSessionIDs.contains(sessionID.rawValue) {
+                expandedImportSessionIDs.remove(sessionID.rawValue)
+            } else {
+                expandedImportSessionIDs.insert(sessionID.rawValue)
+                importChildCountsBySessionID[sessionID.rawValue] =
+                    (try? importChildCounts(sessionID: sessionID)) ?? ImportChildCounts()
+            }
+            rebuildSidebarSections()
+            return
+        }
+        if row.id == UnifiedSidebarPresentation.allImportsRowID {
+            isShowingAllImports.toggle()
+            if isShowingAllImports {
+                // Revealing the overflow rows for the first time hits the
+                // same deadlock the top `recentImportRowLimit` rows had
+                // before `refreshImportSourceSummaries` primed their counts:
+                // an unexpanded row with no counts on file renders `.none`
+                // and its chevron never appears. Priming here is bounded by
+                // however many imports this explicit click just chose to
+                // render, not by the catalog's full import history.
+                for summary in importSourceSummaries where summary.producedOutputSet {
+                    guard importChildCountsBySessionID[summary.sessionID.rawValue] == nil else { continue }
+                    importChildCountsBySessionID[summary.sessionID.rawValue] =
+                        (try? importChildCounts(sessionID: summary.sessionID)) ?? ImportChildCounts()
+                }
+            }
+            rebuildSidebarSections()
+        }
     }
 
-    /// Switches to a workspace, restoring whichever sub-view was last shown
-    /// there (defaulting to each workspace's primary view).
-    public func selectWorkspace(_ workspace: Workspace) {
-        selectedView = lastSubView[workspace] ?? workspace.defaultSubView
+    public func selectSource(_ source: LibrarySource) throws {
+        try applySource(source)
+        recordNavigation(to: source)
     }
 
-    /// ⌘I. Toggles the on-demand inspector, reachable in every workspace
-    /// (Task 5 unified it onto the Cull loupe alongside Library/People).
+    /// ⌘1–⌘6 and the toolbar switcher. Switching lenses never changes the
+    /// selected source or the selection; the Cull lens returns to whichever
+    /// sub-mode it was last in.
+    public func selectLens(_ lens: LibraryLens) {
+        guard lensAvailability(for: lens).isEnabled else { return }
+        selectedView = lens == .cull ? lastCullViewMode : lens.defaultViewMode
+    }
+
+    /// The current source's enabled state for one lens. Commands and toolbar
+    /// presentation share this calculation so neither can bypass source rules.
+    public func lensAvailability(for lens: LibraryLens) -> LensAvailability {
+        LensRules.availability(
+            for: lens,
+            sourceIsDiagnostic: selectedSource.isDiagnostic,
+            sourceAssetCount: assets.count
+        )
+    }
+
+    /// The switcher's per-lens enabled state for the current source.
+    public var lensAvailabilities: [LensAvailability] {
+        LibraryLens.allCases.map(lensAvailability(for:))
+    }
+
+    /// Enters a Cull sub-mode only when the current source can use Cull.
+    public func selectCullSubMode(_ mode: LibraryViewMode) {
+        guard mode.lens == .cull, lensAvailability(for: .cull).isEnabled else { return }
+        selectedView = mode
+    }
+
+    /// ⌘I. Toggles the on-demand inspector, reachable in every lens
+    /// (Task 5 unified it onto the Cull loupe alongside the browse lenses).
     public func toggleInspector() {
         isInspectorVisible.toggle()
     }
 
     /// ⌥⌘1..3 (or a conflict deep-link). Scrolls the on-demand inspector to
-    /// a stacked section, presenting the inspector if the current workspace
-    /// can show one.
+    /// a stacked section, presenting the inspector if the current lens can
+    /// show one.
     public func scrollInspector(to section: InspectorTab) {
         inspectorScrollTarget = section
         inspectorScrollRequestToken += 1
-        if WorkspaceChromePolicy.showsInspector(selectedView) {
+        if LensChromePolicy.showsInspector(selectedView) {
             isInspectorVisible = true
         }
     }
@@ -4997,7 +5002,7 @@ public final class AppModel {
         try restoreNavigation(to: next)
     }
 
-    private func recordNavigation(to target: SidebarRowTarget) {
+    private func recordNavigation(to target: LibrarySource) {
         guard !isRestoringNavigation else { return }
         if let current = currentNavigationTarget, current != target {
             navigationBackStack.append(current)
@@ -5006,51 +5011,52 @@ public final class AppModel {
         currentNavigationTarget = target
     }
 
-    private func restoreNavigation(to target: SidebarRowTarget) throws {
+    private func restoreNavigation(to target: LibrarySource) throws {
         isRestoringNavigation = true
         defer { isRestoringNavigation = false }
-        try applySidebarTarget(target)
+        try applySource(target)
         currentNavigationTarget = target
     }
 
-    private func applySidebarTarget(_ target: SidebarRowTarget) throws {
-        switch target {
-        case .allPhotographs:
+    /// Applies a source's scope and records it as the selected source.
+    /// Deliberately never touches `selectedView` except for the one spec'd
+    /// exception: a source the current lens disables on falls back to Grid.
+    private func applySource(_ source: LibrarySource) throws {
+        // A catalog-less model has no scope to apply. Nothing in Sources/
+        // constructs one and then selects a source — this is a genuine
+        // precondition failure, not a state worth special-casing, so it
+        // throws the same way every other catalog-gated applier below does
+        // (e.g. `applyImportChild`).
+        guard catalog != nil else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let previousSourceBeingApplied = sourceBeingApplied
+        let refreshPeopleAfterApplyingSource = selectedView == .people
+        sourceBeingApplied = source
+        defer { sourceBeingApplied = previousSourceBeingApplied }
+
+        switch source.kind {
+        case .allPhotos:
             selectedAssetSetID = nil
-            selectedView = .grid
             try clearLibraryFilters()
-        case .search:
-            // Search's permanent home is the Library grid's token query
-            // field and result header (Task 9) — SidebarRowTarget.search
-            // just routes there now instead of a dedicated route.
-            selectedAssetSetID = nil
-            selectedView = .grid
-        case .timeline:
-            selectedAssetSetID = nil
-            selectedView = .timeline
-        case .people:
+        case .search(let query):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
-            selectedView = .people
-            refreshPeopleFaceSuggestions()
-        case .places:
-            selectedAssetSetID = nil
-            clearLibraryQueryFilters()
-            selectedView = .map
-            try refreshPlaceData()
-        case .reviewQueue(let queue):
-            try applyReviewQueue(queue)
+            detachedLibraryFilterPredicates = query.predicates
+            try reload()
+        case .smartCollection(let collection):
+            try applySmartCollection(collection)
+        case .autopilotSuggestions:
+            try applyAutopilotSuggestionsScope()
         case .folder(let path):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             folderFilterText = path
-            selectedView = .grid
             try reload()
         case .sourceAvailability(let availability):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             availabilityFilter = availability
-            selectedView = .grid
             try reload()
         case .evaluationKind(let kind):
             try applyEvaluationKindFilter(kind)
@@ -5058,20 +5064,32 @@ public final class AppModel {
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             metadataSyncPendingFilter = true
-            selectedView = .grid
             try reload()
         case .metadataSyncConflicts:
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             metadataSyncConflictFilter = true
-            selectedView = .grid
             try reload()
         case .assetSet(let id):
             try applyAssetSet(id: id)
         case .workSession(let id):
             try applyWorkSession(id: id)
-        case .placeholder:
-            break
+        case .importChild(let sessionID, let child):
+            try applyImportChild(sessionID: sessionID, child: child)
+        case .selection:
+            try applySelectionSource()
+        }
+        selectedSource = source
+        let resolvedLens = LensRules.resolvedLens(
+            selectedLens,
+            sourceIsDiagnostic: source.isDiagnostic,
+            sourceAssetCount: assets.count
+        )
+        if resolvedLens != selectedLens {
+            selectLens(resolvedLens)
+        }
+        if refreshPeopleAfterApplyingSource || selectedView == .people {
+            refreshPeopleFaceSuggestions()
         }
     }
 
@@ -5080,48 +5098,135 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let session = try catalog.repository.session(id: id)
+        let title = session.detail.isEmpty ? session.title : session.detail
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         librarySearchText = Self.librarySearchText(
             residualText: nil,
             predicates: [.workSession(id.rawValue)]
         )
-        selectedView = session.kind == .culling ? .loupe : .grid
         try reload()
-        statusMessage = session.detail.isEmpty ? session.title : session.detail
+        // A direct work-session application reloads that session's scope, so
+        // it must leave `selectedSource` coherent with the assets now loaded.
+        // `selectSource` also writes the same source after this returns.
+        selectedSource = .workSession(id, titled: title)
+        statusMessage = title
     }
 
-    @discardableResult
-    public func openLatestImportCompletion() throws -> ImportCompletionSummary {
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("no completed import")
+    /// An import row's disclosure child. The two diagnostic children have no
+    /// catalog scope of their own — skipped files aren't in the catalog and a
+    /// failed preview's frame is only interesting as a problem row — so they
+    /// scope to the import and let the Grid render the issue list.
+    private func applyImportChild(sessionID: WorkSessionID, child: ImportChildKind) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
         }
-        try applyWorkSession(id: WorkSessionID(rawValue: summary.activityID))
-        return summary
+        let stackAssetIDs: [AssetID]
+        switch child {
+        case .stacks:
+            stackAssetIDs = try latestImportStacks(
+                activityID: sessionID.rawValue,
+                repository: catalog.repository
+            ).flatMap(\.assetIDs)
+        default:
+            stackAssetIDs = []
+        }
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        switch child {
+        case .stacks:
+            detachedLibraryFilterPredicates = [.assetIDs(stackAssetIDs)]
+            try reload()
+        case .skippedFiles:
+            detachedLibraryFilterPredicates = [.importBatch(sessionID.rawValue)]
+            try reload()
+        case .likelyIssues:
+            detachedLibraryFilterPredicates =
+                [.importBatch(sessionID.rawValue)] + SmartCollection.likelyIssues.query.predicates
+            try reload()
+        case .facesFound:
+            detachedLibraryFilterPredicates =
+                [.importBatch(sessionID.rawValue)] + SmartCollection.facesFound.query.predicates
+            try reload()
+        case .previewFailed:
+            let importAssetIDs = try latestImportOutputAssetIDs(
+                activityID: sessionID.rawValue,
+                repository: catalog.repository
+            )
+            let failedAssetIDs = try catalog.repository.previewGenerationFailureAssetIDs(assetIDs: importAssetIDs)
+            let setID = AssetSetID(rawValue: "import-preview-failed-\(sessionID.rawValue)")
+            try catalog.repository.upsert(
+                AssetSet.manual(id: setID, name: ImportChildKind.previewFailed.title, assetIDs: failedAssetIDs)
+            )
+            // `applyAssetSet` already reloads and claims `selectedSource` for
+            // its own `.assetSet` kind; the trailing assignment below
+            // reclaims it as `.importChild` so `isDiagnostic` reads
+            // `.previewFailed`'s diagnostic status, not `.assetSet`'s
+            // (never diagnostic).
+            try applyAssetSet(id: setID)
+        }
+        // Every path above has already reloaded successfully (directly, or
+        // via `applyAssetSet` for `.previewFailed`), so this always
+        // describes a scope that's actually on screen — the same
+        // write-after-reload convention every other applier follows.
+        selectedSource = .importChild(session: sessionID, child: child)
     }
 
-    @discardableResult
-    public func beginCullingFromLatestImportCompletion() throws -> WorkSession {
-        let summary = try openLatestImportCompletion()
-        return try beginCullingSession(named: summary.cullingSessionName)
+    /// The transient Selection source: the current batch selection, or the
+    /// single selected frame. One deterministic id, not a fresh UUID per
+    /// activation — re-activating overwrites the same catalog row rather
+    /// than accumulating one row per click. `applyAssetSet` checks its
+    /// in-memory cache before the catalog, so the stale cache entry from the
+    /// previous activation is dropped first; otherwise a re-activation with
+    /// a different selection would keep showing the old one.
+    private func applySelectionSource() throws {
+        let selectionIDs = selectedBatchAssetIDsInCatalogOrder.isEmpty
+            ? (selectedAssetID.map { [$0] } ?? [])
+            : selectedBatchAssetIDsInCatalogOrder
+        guard !selectionIDs.isEmpty, let catalog else { return }
+        let setID = AssetSetID(rawValue: "selection-source-current")
+        try catalog.repository.upsert(
+            AssetSet.manual(id: setID, name: "Selection", assetIDs: selectionIDs)
+        )
+        savedAssetSets.removeAll { $0.id == setID }
+        // `applyAssetSet` already reloads and claims `selectedSource` for
+        // its own `.assetSet` kind; the trailing assignment below reclaims
+        // it as `.selection` so the lens switcher (and everything else
+        // reading `selectedSource`) sees the Selection source the caller
+        // actually asked for, not the synthetic set backing it.
+        try applyAssetSet(id: setID)
+        selectedSource = .selection
     }
 
+    /// The single "cull this import" primitive, shared by the toast's Start
+    /// culling button, the bell receipt, and the sidebar's import rows.
     @discardableResult
-    public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
+    public func startCullingImport(sessionID: WorkSessionID, title: String) throws -> WorkSession {
+        try selectSource(.workSession(sessionID, titled: title))
+        return try beginCullingSession(named: title)
+    }
+
+    /// Culls one import's time-adjacent stacks. Takes the import explicitly so
+    /// every import row can start a stack cull, not only the newest one.
+    @discardableResult
+    public func beginStackCulling(importSessionID: WorkSessionID, title: String) throws -> WorkSession {
         cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("no completed import")
-        }
-        let stackIntent = summary.stackCount > 0
-            ? "Cull \(Self.stackCountDescription(summary.stackCount)) from latest import"
+        let activityID = importSessionID.rawValue
+        let stacks = try latestImportStacks(activityID: activityID, repository: catalog.repository)
+        // "latest import" only when it actually is — a sidebar "Cull stacks"
+        // context action reaches this for any past import (see the doc
+        // comment above), and the recorded intent must not claim currency
+        // it doesn't have.
+        let isLatestImport = activityID == latestImportCompletionSummary?.activityID
+        let stackIntent = !stacks.isEmpty
+            ? "Cull \(Self.stackCountDescription(stacks.count)) from \(isLatestImport ? "latest" : "this") import"
             : ""
-        let stacks = try latestImportStacks(activityID: summary.activityID, repository: catalog.repository)
         guard !stacks.isEmpty else {
-            _ = try openLatestImportCompletion()
-            let session = try beginCullingSession(named: summary.cullingSessionName, intent: stackIntent)
+            try selectSource(.workSession(importSessionID, titled: title))
+            let session = try beginCullingSession(named: title, intent: stackIntent)
             statusMessage = "Started \(session.title); no time-adjacent stacks found"
             return session
         }
@@ -5129,13 +5234,13 @@ public final class AppModel {
         let sessionID = WorkSessionID.new()
         let inputSetIDs = try saveCullingStackInputSets(
             sessionID: sessionID,
-            title: summary.cullingSessionName,
+            title: title,
             stacks: stacks
         )
         guard let firstStackSetID = inputSetIDs.first else {
             throw TeststripError.invalidState("no stack sets were created")
         }
-        stackCullingImportActivityIDBySessionID[sessionID] = summary.activityID
+        stackCullingImportActivityIDBySessionID[sessionID] = activityID
         try applyAssetSet(id: firstStackSetID)
         if let firstStack = stacks.first {
             selectAssetID(recommendedStackLandingAssetID(for: firstStack) ?? firstStack.assetIDs.first)
@@ -5148,7 +5253,7 @@ public final class AppModel {
             id: sessionID.rawValue,
             kind: .culling,
             status: .running,
-            title: summary.cullingSessionName,
+            title: title,
             detail: stackIntent,
             completedUnitCount: 0,
             totalUnitCount: totalUnitCount,
@@ -5161,23 +5266,6 @@ public final class AppModel {
         )
         statusMessage = "Started stack cull with \(Self.stackCountDescription(stacks.count))"
         return try catalog.repository.session(id: sessionID)
-    }
-
-    public func reviewLatestImportInCompare() throws {
-        _ = try openLatestImportCompletion()
-        selectedView = .compare
-    }
-
-    public func reviewLatestImportFlagged() throws {
-        guard let summary = latestImportCompletionSummary else {
-            throw TeststripError.invalidState("there is no completed import to review")
-        }
-        selectedAssetSetID = nil
-        clearLibraryQueryFilters()
-        librarySearchText = "import:\(summary.activityID)"
-        likelyIssuesFilter = true
-        selectedView = .grid
-        try reload()
     }
 
     @discardableResult
@@ -5242,16 +5330,6 @@ public final class AppModel {
     }
 
     @discardableResult
-    public func acceptLatestImportBatchKeywordSuggestion(_ keyword: String) throws -> Int {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
-        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository)
-        _ = try openLatestImportCompletion()
-        return try acceptBatchKeywordSuggestion(keyword, assetIDs: assetIDs)
-    }
-
-    @discardableResult
     public func acceptCurrentScopeBatchKeywordSuggestion(_ keyword: String) throws -> Int {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -5264,14 +5342,14 @@ public final class AppModel {
 
     public func canToggleWorkSessionStarred(_ row: SidebarRow) -> Bool {
         guard catalog != nil,
-              case .workSession(let id) = row.target else {
+              case .workSession(let id)? = row.target?.kind else {
             return false
         }
         return persistedWorkActivityIDs.contains(id.rawValue)
     }
 
     public func sidebarContextActions(for row: SidebarRow) -> [SidebarRowContextAction] {
-        switch row.target {
+        switch row.target?.kind {
         case .assetSet(let id):
             guard canToggleAssetSetStarred(row),
                   let assetSet = savedAssetSets.first(where: { $0.id == id }) else {
@@ -5310,17 +5388,35 @@ public final class AppModel {
             ))
             return actions
         case .workSession(let id):
-            guard canToggleWorkSessionStarred(row),
-                  let activity = workActivity(id: id) else {
-                return []
-            }
-            return [
-                SidebarRowContextAction(
+            var actions: [SidebarRowContextAction] = []
+            if canToggleWorkSessionStarred(row), let activity = workActivity(id: id) {
+                actions.append(SidebarRowContextAction(
                     kind: .toggleWorkSessionStarred(id),
                     title: activity.starred ? "Remove Star" : "Star Work",
                     systemImage: activity.starred ? "star.slash" : "star"
-                )
-            ]
+                ))
+            }
+            // An import row's verbs. `importSourceSummaries` is the unbounded
+            // completed-ingest list, so every import keeps them — not just the
+            // ten most recent work sessions the star action is limited to.
+            if importSourceSummaries.contains(where: { $0.sessionID == id }) {
+                actions.append(SidebarRowContextAction(
+                    kind: .cullImportStacks(id),
+                    title: "Cull stacks",
+                    systemImage: "square.stack"
+                ))
+                actions.append(SidebarRowContextAction(
+                    kind: .evaluateImport(id),
+                    title: "Evaluate import",
+                    systemImage: "sparkles"
+                ))
+                actions.append(SidebarRowContextAction(
+                    kind: .compareImport(id),
+                    title: "Manual Compare over the import",
+                    systemImage: "rectangle.split.2x1"
+                ))
+            }
+            return actions
         default:
             return []
         }
@@ -5340,6 +5436,17 @@ public final class AppModel {
             try deleteAssetSet(id: id)
         case .toggleWorkSessionStarred(let id):
             try toggleWorkSessionStarred(id: id)
+        case .cullImportStacks(let sessionID):
+            let title = importSourceSummaries.first { $0.sessionID == sessionID }?.title ?? "Stack cull"
+            _ = try beginStackCulling(importSessionID: sessionID, title: title)
+        case .evaluateImport(let sessionID):
+            let title = importSourceSummaries.first { $0.sessionID == sessionID }?.title ?? "Import"
+            try selectSource(.workSession(sessionID, titled: title))
+            try requestCurrentScopeAssetEvaluations()
+        case .compareImport(let sessionID):
+            let title = importSourceSummaries.first { $0.sessionID == sessionID }?.title ?? "Import"
+            try selectSource(.workSession(sessionID, titled: title))
+            selectedView = .compare
         }
     }
 
@@ -5358,12 +5465,15 @@ public final class AppModel {
         var session = try catalog.repository.session(id: id)
         session.starred = starred
         try catalog.repository.save(session)
+        if let index = workHistorySearchResults.firstIndex(where: { $0.id == id.rawValue }) {
+            workHistorySearchResults[index].starred = starred
+        }
         try refreshWorkSessions()
     }
 
     public func canToggleAssetSetStarred(_ row: SidebarRow) -> Bool {
         guard catalog != nil,
-              case .assetSet(let id) = row.target else {
+              case .assetSet(let id)? = row.target?.kind else {
             return false
         }
         return savedAssetSets.contains { $0.id == id }
@@ -5399,6 +5509,9 @@ public final class AppModel {
         assetSet.name = trimmedName
         try catalog.repository.upsert(assetSet)
         try refreshSavedAssetSets()
+        if case .assetSet(let selectedID) = selectedSource.kind, selectedID == id {
+            selectedSource = .assetSet(id, titled: trimmedName)
+        }
         statusMessage = "Renamed \(trimmedName)"
     }
 
@@ -5411,6 +5524,7 @@ public final class AppModel {
         if selectedAssetSetID == id {
             selectedAssetSetID = nil
             try reload()
+            selectedSource = .allPhotos
         }
         try refreshSavedAssetSets()
         statusMessage = "Deleted \(assetSet.name)"
@@ -5462,7 +5576,11 @@ public final class AppModel {
     }
 
     private func workActivity(id: WorkSessionID) -> AppWorkActivity? {
-        recentWork.first { $0.id == id.rawValue } ?? starredWork.first { $0.id == id.rawValue }
+        recentWork.first { $0.id == id.rawValue }
+            ?? starredWork.first { $0.id == id.rawValue }
+            ?? recentNonImportWork.first { $0.id == id.rawValue }
+            ?? starredNonImportWork.first { $0.id == id.rawValue }
+            ?? workHistorySearchResults.first { $0.id == id.rawValue }
     }
 
     public func applyAssetSet(id: AssetSetID) throws {
@@ -5477,8 +5595,16 @@ public final class AppModel {
         }
         selectedAssetSetID = id
         clearLibraryQueryFilters()
-        selectedView = .grid
         try reload()
+        // `applyAssetSet` is called directly (bypassing `applySource`) from
+        // every culling-session entry point and several deep links, so it
+        // owns `selectedSource` itself rather than leaving it to whichever
+        // caller remembers to set it. Written after a successful `reload()`:
+        // if `reload()` throws, `assets` still holds the previous source's
+        // rows (`reload()` only calls `replaceAssets` once its catalog reads
+        // succeed), so `selectedSource` must stay put too rather than
+        // claiming a scope that was never actually loaded.
+        selectedSource = .assetSet(id, titled: assetSet.name)
     }
 
     public func refreshSavedAssetSets() throws {
@@ -5496,12 +5622,116 @@ public final class AppModel {
         }
         recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
-        workSessionScopeCounts = try Self.workSessionScopeCounts(
-            activities: recentWork + starredWork,
-            repository: catalog.repository
-        )
+        let nonImportWork = try Self.nonImportWorkActivities(repository: catalog.repository)
+        recentNonImportWork = nonImportWork.recent
+        starredNonImportWork = nonImportWork.starred
+        workSessionScopeCounts.merge(
+            try Self.workSessionScopeCounts(
+                activities: recentWork + starredWork + recentNonImportWork + starredNonImportWork,
+                repository: catalog.repository
+            )
+        ) { _, refreshedCount in
+            refreshedCount
+        }
+        // Cull progress cannot change an import's persisted output membership.
+        // Reuse the counts already refreshed on load/import completion so this
+        // hot path does not rescan every import output set on each P/X press.
+        try refreshImportSourceSummaries(recomputeAssetCounts: false)
         refreshLatestImportPresentation()
         rebuildSidebarSections()
+    }
+
+    /// Rebuilds the Imports section and the bell's receipts from the unbounded
+    /// completed-ingest query. `recentWork` is limit-10 across all thirteen
+    /// work kinds, so it cannot promise even the three most recent imports.
+    ///
+    /// This also runs on `refreshWorkSessions()`'s hot path — every P/X
+    /// keystroke goes through `updateActiveCullingSessionProgressAfterFlagChange`
+    /// -> `refreshWorkSessions` -> here — so it must stay limited to rebuilding
+    /// summaries. Priming `importChildCountsBySessionID` is a much more
+    /// expensive operation (each entry walks `importChildCounts` ->
+    /// `latestImportStacks` -> `visualSimilarityVectorsByAssetID` ->
+    /// `evaluationSignals`, once per asset in that import) and lives in
+    /// `primeVisibleImportChildCounts()`, called only from `AppModel.load`
+    /// and `recordRecentActivity`'s ingest branch — on load or after an
+    /// import completes, never on a cull-session refresh.
+    public func refreshImportSourceSummaries() throws {
+        try refreshImportSourceSummaries(recomputeAssetCounts: true)
+    }
+
+    private func refreshImportSourceSummaries(recomputeAssetCounts: Bool) throws {
+        guard let catalog else { return }
+        let sessions = try catalog.repository.workSessions(kind: .ingest, statuses: [.completed])
+        if recomputeAssetCounts {
+            workSessionScopeCounts.merge(
+                try Self.importSourceAssetCounts(sessions: sessions, repository: catalog.repository)
+            ) { _, refreshedCount in
+                refreshedCount
+            }
+        }
+        completedImports = sessions.map(AppWorkActivity.init)
+        importSourceSummaries = sessions.map { session in
+            ImportSidebarSummary(
+                sessionID: session.id,
+                createdAt: session.createdAt,
+                detail: session.detail,
+                assetCount: session.outputSetIDs.isEmpty
+                    ? session.totalUnitCount ?? session.completedUnitCount
+                    : workSessionScopeCounts[session.id] ?? 0,
+                issues: session.issues,
+                producedOutputSet: !session.outputSetIDs.isEmpty
+            )
+        }
+    }
+
+    /// Primes `importChildCountsBySessionID` for the rows the Imports
+    /// section actually shows by default (the `recentImportRowLimit` most
+    /// recent, matching `importSectionRows`'s own filter-then-prefix) so
+    /// their disclosure triangle is correct the first time they render, not
+    /// only after the user has already expanded them once.
+    ///
+    /// Call this only from `AppModel.load` and `recordRecentActivity`'s
+    /// ingest branch — on load or after an import completes. It must never
+    /// be reachable from `refreshWorkSessions()`/`refreshImportSourceSummaries()`,
+    /// which also run on every cull flag change; each priming here costs a
+    /// full stack build plus a per-asset `evaluationSignals` query for every
+    /// asset in the import, so on a keystroke path it turns a P/X press into
+    /// dozens of queries.
+    private func primeVisibleImportChildCounts() {
+        let visibleSessionIDs = importSourceSummaries
+            .filter(\.producedOutputSet)
+            .prefix(UnifiedSidebarPresentation.recentImportRowLimit)
+            .map(\.sessionID)
+        for sessionID in visibleSessionIDs {
+            importChildCountsBySessionID[sessionID.rawValue] =
+                (try? importChildCounts(sessionID: sessionID)) ?? ImportChildCounts()
+        }
+    }
+
+    /// The counts behind one import row's children. `likelyIssues` and
+    /// `facesFound` are each a smart source's own predicate ANDed with
+    /// `.importBatch`, so neither can drift from its catalog-wide sibling.
+    /// The other three use different mechanisms: `stacks` runs the
+    /// stack-builder pipeline scoped by `activityID`; `skippedFiles` reads
+    /// the session's stored issue list; `previewFailed` takes `.count` of
+    /// the same asset-ID list the child row displays, so its count and
+    /// contents come from one query, not two.
+    public func importChildCounts(sessionID: WorkSessionID) throws -> ImportChildCounts {
+        guard let catalog else { return ImportChildCounts() }
+        let repository = catalog.repository
+        let session = try repository.session(id: sessionID)
+        let assetIDs = try latestImportOutputAssetIDs(activityID: sessionID.rawValue, repository: repository)
+        return ImportChildCounts(
+            stacks: try latestImportStacks(activityID: sessionID.rawValue, repository: repository).count,
+            skippedFiles: session.issues.filter { $0.kind == .skippedSourceFile }.count,
+            previewFailed: try repository.previewGenerationFailureAssetIDs(assetIDs: assetIDs).count,
+            likelyIssues: try repository.assetCount(
+                matching: SetQuery(predicates: [.importBatch(sessionID.rawValue)] + SmartCollection.likelyIssues.query.predicates)
+            ),
+            facesFound: try repository.assetCount(
+                matching: SetQuery(predicates: [.importBatch(sessionID.rawValue)] + SmartCollection.facesFound.query.predicates)
+            )
+        )
     }
 
     @discardableResult
@@ -5647,15 +5877,203 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        try catalog.repository.upsert(assetSet)
-        savedAssetSets = try catalog.repository.assetSets()
-        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
-        selectedAssetSetID = assetSet.id
-        clearLibraryQueryFilters()
-        rebuildSidebarSections()
-        try reload()
-        statusMessage = "Saved \(assetSet.name)"
+        let projection = try catalog.repository.upsert(assetSet, afterPreparing: { repository in
+            try savedAssetSetSelectionProjection(
+                assetSet: assetSet,
+                repository: repository
+            )
+        })
+        publishSavedAssetSetSelection(projection, assetSet: assetSet)
         return assetSet
+    }
+
+    private func savedAssetSetSelectionProjection(
+        assetSet: AssetSet,
+        repository: CatalogRepository
+    ) throws -> SavedAssetSetSelectionProjection {
+        var prospectiveSavedAssetSets = try repository.assetSets()
+        if let existingIndex = prospectiveSavedAssetSets.firstIndex(where: { $0.id == assetSet.id }) {
+            prospectiveSavedAssetSets[existingIndex] = assetSet
+        } else {
+            prospectiveSavedAssetSets.append(assetSet)
+        }
+
+        let loadedAssets: [Asset]
+        let totalAssetCount: Int
+        let mapQuery: SetQuery?
+        let peopleScopeAssetIDs: [AssetID]?
+        let batchSelectionScopeAssetIDs: Set<AssetID>
+        let proposedPhotos: [ProposedPersonPhoto]
+        switch assetSet.membership {
+        case .manual(let ids), .snapshot(let ids):
+            loadedAssets = try repository.assets(ids: ids, flag: nil, limit: ids.count)
+            totalAssetCount = try repository.assetCount(ids: ids, flag: nil)
+            mapQuery = SetQuery(predicates: [.assetIDs(ids)])
+            peopleScopeAssetIDs = selectedView == .people ? loadedAssets.map(\.id) : nil
+            batchSelectionScopeAssetIDs = Set(ids)
+            proposedPhotos = []
+        case .dynamic(let storedQuery):
+            if storedQuery.predicates.isEmpty {
+                loadedAssets = try repository.allAssets(sort: librarySortOption)
+                totalAssetCount = try repository.assetCount()
+                mapQuery = nil
+                peopleScopeAssetIDs = nil
+                batchSelectionScopeAssetIDs = selectedBatchAssetIDs
+                proposedPhotos = []
+            } else {
+                loadedAssets = try repository.allAssets(matching: storedQuery, sort: librarySortOption)
+                totalAssetCount = try repository.assetCount(matching: storedQuery)
+                mapQuery = storedQuery
+                peopleScopeAssetIDs = selectedView == .people
+                    ? try repository.assetIDs(matching: storedQuery)
+                    : nil
+                batchSelectionScopeAssetIDs = Set(try repository.assetIDs(
+                    ids: selectedBatchAssetIDsInCatalogOrder,
+                    matching: storedQuery
+                ))
+                proposedPhotos = try Self.proposedPhotos(matching: storedQuery, repository: repository)
+            }
+        }
+
+        let smartCollectionCounts = try Self.smartCollectionCounts(repository: repository)
+        let autopilotGhostAssetIDs = try repository.assetIDsWithAutopilotGhost(sort: librarySortOption)
+        let assetSetCounts = try Self.assetSetCounts(prospectiveSavedAssetSets, repository: repository)
+
+        var refreshedImportChildCounts = importChildCountsBySessionID
+        for sessionID in expandedImportSessionIDs {
+            refreshedImportChildCounts[sessionID] =
+                (try? importChildCounts(sessionID: WorkSessionID(rawValue: sessionID))) ?? ImportChildCounts()
+        }
+
+        let importSessions = try repository.workSessions(kind: .ingest, statuses: [.completed])
+        let retainedScopeCountIDs = Set(
+            (recentWork + starredWork + recentNonImportWork + starredNonImportWork)
+                .map { WorkSessionID(rawValue: $0.id) }
+        ).union(importSourceSummaries.map(\.sessionID))
+        var refreshedWorkSessionScopeCounts = workSessionScopeCounts.filter {
+            retainedScopeCountIDs.contains($0.key)
+        }
+        refreshedWorkSessionScopeCounts.merge(
+            try Self.importSourceAssetCounts(sessions: importSessions, repository: repository)
+        ) { _, refreshedCount in
+            refreshedCount
+        }
+        let completedImports = importSessions.map(AppWorkActivity.init)
+        let importSourceSummaries = importSessions.map { session in
+            ImportSidebarSummary(
+                sessionID: session.id,
+                createdAt: session.createdAt,
+                detail: session.detail,
+                assetCount: session.outputSetIDs.isEmpty
+                    ? session.totalUnitCount ?? session.completedUnitCount
+                    : refreshedWorkSessionScopeCounts[session.id] ?? 0,
+                issues: session.issues,
+                producedOutputSet: !session.outputSetIDs.isEmpty
+            )
+        }
+
+        var catalogFolders = self.catalogFolders
+        var sourceRoots = self.sourceRoots
+        var nonfatalRefreshErrorMessage: String?
+        do {
+            catalogFolders = try repository.folders()
+            sourceRoots = try repository.sourceRoots()
+        } catch {
+            nonfatalRefreshErrorMessage = error.localizedDescription
+        }
+
+        var assetIDsWithBondedSecondaries = self.assetIDsWithBondedSecondaries
+        do {
+            assetIDsWithBondedSecondaries = try repository.assetIDsWithBondedSecondaries()
+        } catch {
+            nonfatalRefreshErrorMessage = error.localizedDescription
+        }
+        let placeProjection = selectedView == .map
+            ? try Self.placeProjection(
+                bounds: nil,
+                cellSize: Self.defaultPlaceClusterCellSize,
+                matching: mapQuery,
+                repository: repository
+            )
+            : nil
+        var peopleSourceSnapshot: PeopleSourceSnapshot?
+        if selectedView == .people {
+            do {
+                peopleSourceSnapshot = try loadPeopleSourceSnapshot(
+                    assetIDs: peopleScopeAssetIDs,
+                    sourceRoots: sourceRoots,
+                    repository: repository
+                )
+            } catch {
+                peopleSourceSnapshot = PeopleSourceSnapshot()
+                nonfatalRefreshErrorMessage = error.localizedDescription
+            }
+        }
+
+        return SavedAssetSetSelectionProjection(
+            savedAssetSets: prospectiveSavedAssetSets,
+            assetSetCounts: assetSetCounts,
+            smartCollectionCounts: smartCollectionCounts,
+            workSessionScopeCounts: refreshedWorkSessionScopeCounts,
+            importSourceSummaries: importSourceSummaries,
+            completedImports: completedImports,
+            importChildCountsBySessionID: refreshedImportChildCounts,
+            catalogFolders: catalogFolders,
+            sourceRoots: sourceRoots,
+            assetIDsWithBondedSecondaries: assetIDsWithBondedSecondaries,
+            autopilotGhostAssetIDs: autopilotGhostAssetIDs,
+            assets: loadedAssets,
+            totalAssetCount: totalAssetCount,
+            batchSelectionScopeAssetIDs: batchSelectionScopeAssetIDs,
+            proposedPhotos: proposedPhotos,
+            placeProjection: placeProjection,
+            peopleSourceSnapshot: peopleSourceSnapshot,
+            nonfatalRefreshErrorMessage: nonfatalRefreshErrorMessage
+        )
+    }
+
+    private func publishSavedAssetSetSelection(
+        _ projection: SavedAssetSetSelectionProjection,
+        assetSet: AssetSet
+    ) {
+        withDeferredSessionPersistence {
+            savedAssetSets = projection.savedAssetSets
+            assetSetCounts = projection.assetSetCounts
+            smartCollectionCounts = projection.smartCollectionCounts
+            workSessionScopeCounts = projection.workSessionScopeCounts
+            importSourceSummaries = projection.importSourceSummaries
+            completedImports = projection.completedImports
+            importChildCountsBySessionID = projection.importChildCountsBySessionID
+            catalogFolders = projection.catalogFolders
+            sourceRoots = projection.sourceRoots
+            assetIDsWithBondedSecondaries = projection.assetIDsWithBondedSecondaries
+            autopilotGhostAssetIDs = projection.autopilotGhostAssetIDs
+            isAutopilotReviewActive = false
+            proposedPhotos = projection.proposedPhotos
+            workHistorySearchResults = []
+            isWorkHistorySearchActive = false
+            selectedAssetSetID = assetSet.id
+            // Saving always selects what it just saved, but bypasses
+            // `applyAssetSet` (it already has the `AssetSet` in hand), so it
+            // owns `selectedSource` itself rather than leaving it stale.
+            selectedSource = .assetSet(assetSet.id, titled: assetSet.name)
+            clearLibraryQueryFilters()
+            replaceAssets(projection.assets)
+            totalAssetCount = projection.totalAssetCount
+            pruneBatchSelection(retaining: projection.batchSelectionScopeAssetIDs)
+            if let placeProjection = projection.placeProjection {
+                publishPlaceProjection(placeProjection)
+            }
+            if let peopleSourceSnapshot = projection.peopleSourceSnapshot {
+                self.peopleSourceSnapshot = peopleSourceSnapshot
+            }
+            refreshLatestImportPresentation()
+            rebuildSidebarSections()
+            if let errorMessage = projection.nonfatalRefreshErrorMessage {
+                self.errorMessage = errorMessage
+            }
+            statusMessage = "Saved \(assetSet.name)"
+        }
     }
 
     public func openCullingSessionPicks() throws {
@@ -5666,6 +6084,10 @@ public final class AppModel {
             throw TeststripError.invalidState("the completed session has no picks")
         }
         try applyAssetSet(id: picksSetID)
+        // A deep link with an explicit destination, not a plain source
+        // selection: the end-of-run "view your picks" action means the
+        // contact sheet, never the loupe the run just finished in.
+        selectedView = .grid
         cullingSessionCompletion = nil
         statusMessage = "Viewing \(completion.title) Picks"
     }
@@ -5786,10 +6208,10 @@ public final class AppModel {
         if selectedAssetSetID == nil && activeWorkSessionFilterID == nil {
             // Pure filter scope: the cull overlays the live filtered `assets`
             // rather than snapshotting into a selected set, so the filters
-            // stay intact when navigating back to Library. A `session:`
-            // search token (e.g. from openLatestImportCompletion) is its own
-            // explicit re-scoping gesture, not a persisted filter scope —
-            // that path keeps applying the input snapshot below.
+            // stay intact when returning to a browse lens. A work-session
+            // search token is its own explicit re-scoping gesture, not a
+            // persisted filter scope — that source keeps applying the input
+            // snapshot below.
             selectedView = .loupe
         } else {
             try applyAssetSet(id: inputSetID)
@@ -5821,10 +6243,10 @@ public final class AppModel {
         return try catalog.repository.session(id: sessionID)
     }
 
-    /// Scopes a fresh culling session to whatever the Library has selected —
-    /// the multi-select batch if there is one, else the single loupe/grid
-    /// selection — and switches into the Cull workspace on it. Exposed as the
-    /// Library context-menu item "Cull These".
+    /// Scopes a fresh culling session to the current selection — the
+    /// multi-select batch if there is one, else the single loupe/grid
+    /// selection — and switches into the Cull lens on it. Exposed as the
+    /// browse-lens context-menu item "Cull These".
     @discardableResult
     public func cullCurrentSelection() throws -> WorkSession {
         let selectionIDs = selectedBatchAssetIDsInCatalogOrder.isEmpty
@@ -5845,95 +6267,34 @@ public final class AppModel {
         return try beginCullingSession(named: "Cull These")
     }
 
-    /// Activates a Cull sidebar source: reuses the same routes Copilot's
-    /// Top Picks / Needs Eyes panels and "Cull remaining from latest import"
-    /// action used, scoping a fresh culling session to the source's assets.
-    /// Autopilot proposals route into the confirm-before-write review flow
-    /// instead of a culling session — nothing is written until the user
-    /// keeps them.
-    public func activateCullSource(_ target: CullSource.Target) throws {
-        switch target {
-        case .recentImport:
-            try beginCullingFromLatestImportCompletion()
-        case .autopilotProposals:
-            try beginAutopilotReview()
-        case .reviewQueue(let queue):
-            try applyReviewQueue(queue)
-            _ = try beginCullingSession(named: queue.presentation.title)
-        case .selection:
-            try cullCurrentSelection()
+    /// "Cull these": hands the current result set to the Cull lens as its
+    /// source. The handoff travels as a `SetQuery`, never through the text
+    /// serializer — `searchTextToken(for:)` returns nil for `.likelyPick`,
+    /// `.likelyIssue`, `.evaluationFailure`, and `.withinGeoBounds`, so a
+    /// text round trip would silently widen the scope.
+    ///
+    /// The scope must be applied and loaded before a run can start
+    /// (`beginCullingSession` guards on `assets.isEmpty` and reads the current
+    /// scope's count), so this is a re-scope followed by a session start, not
+    /// a pure state change. Inverting the order is worse than a guard
+    /// failure: `applySource`'s `.search` arm calls `clearLibraryQueryFilters()`,
+    /// which sets `activeCullingSessionID = nil` — so the just-started session
+    /// would be immediately forgotten, the scope line would show no progress,
+    /// and `activeCullingSession(repository:)`'s fallback would go dark.
+    @discardableResult
+    public func cullCurrentResults() throws -> WorkSession {
+        let title = cullTheseSourceTitle()
+        if selectedExplicitAssetIDs == nil, let query = currentLibraryQuery() {
+            try selectSource(.search(query, titled: title))
         }
+        // An explicit-id scope (a saved set, the selection) already *is* the
+        // source; there is nothing to re-scope.
+        return try beginCullingSession(named: title)
     }
 
-    /// The Cull sidebar's source picker: recent import, the Top Picks /
-    /// Needs Eyes review-queue groups Copilot used to read, and whatever the
-    /// Library currently has selected.
-    public var cullSourcePresentation: CullSourcePresentation {
-        var sources: [CullSource] = []
-        if let summary = latestImportCompletionSummary {
-            sources.append(CullSource(
-                id: "recent-import",
-                group: .recentImport,
-                title: summary.title,
-                systemImage: "tray.and.arrow.down",
-                count: summary.importedPhotoCount,
-                target: .recentImport
-            ))
-        }
-        // The confirm-before-write review path for machine labels: present
-        // only while ghosts exist so it never renders as a dead row.
-        if !autopilotGhostAssetIDs.isEmpty {
-            sources.append(CullSource(
-                id: "autopilot-proposals",
-                group: .autopilotProposals,
-                title: "Autopilot Proposals",
-                systemImage: "wand.and.stars",
-                count: autopilotGhostAssetIDs.count,
-                target: .autopilotProposals
-            ))
-        }
-        for queue in [ReviewQueue.picks, .potentialPicks] {
-            sources.append(CullSource(
-                id: "queue-\(queue.rawValue)",
-                group: .topPicks,
-                title: queue.presentation.title,
-                systemImage: queue.presentation.systemImage,
-                count: reviewQueueCounts[queue] ?? 0,
-                target: .reviewQueue(queue)
-            ))
-        }
-        for queue in [ReviewQueue.likelyIssues, .needsEvaluation] {
-            sources.append(CullSource(
-                id: "queue-\(queue.rawValue)",
-                group: .needsEyes,
-                title: queue.presentation.title,
-                systemImage: queue.presentation.systemImage,
-                count: reviewQueueCounts[queue] ?? 0,
-                target: .reviewQueue(queue)
-            ))
-        }
-        for queue in [ReviewQueue.rejects, .fiveStars, .needsKeywords, .facesFound, .ocrFound, .providerFailures] {
-            sources.append(CullSource(
-                id: "queue-\(queue.rawValue)",
-                group: .diagnostics,
-                title: queue.presentation.title,
-                systemImage: queue.presentation.systemImage,
-                count: reviewQueueCounts[queue] ?? 0,
-                target: .reviewQueue(queue)
-            ))
-        }
-        let selectionCount = selectedBatchAssetIDs.isEmpty
-            ? (selectedAssetID != nil ? 1 : 0)
-            : selectedBatchAssetIDs.count
-        sources.append(CullSource(
-            id: "selection",
-            group: .selection,
-            title: "Selection",
-            systemImage: "checkmark.circle",
-            count: selectionCount,
-            target: .selection
-        ))
-        return CullSourcePresentation(sources: sources)
+    private func cullTheseSourceTitle() -> String {
+        let chips = activeLibraryFilterChips
+        return chips.isEmpty ? selectedSource.title : chips.joined(separator: " + ")
     }
 
     public func openAssetInLoupe(_ assetID: AssetID) {
@@ -5941,8 +6302,8 @@ public final class AppModel {
         selectedView = .loupe
     }
 
-    // Enter/Space from the Library grid opens the plain-chrome Library loupe,
-    // not the culling loupe (which stays reachable only from the Cull workspace).
+    // Enter/Space from the Grid lens opens the plain-chrome Loupe lens, not
+    // the culling loupe (which stays reachable only from the Cull lens).
     public func openAssetInLibraryLoupe(_ assetID: AssetID) {
         select(assetID)
         selectedView = .libraryLoupe
@@ -6345,6 +6706,10 @@ public final class AppModel {
                 break
             }
         }
+        if case .switchCullSubView = command,
+           !lensAvailability(for: .cull).isEnabled {
+            return
+        }
         switch command {
         case .move(let direction):
             moveGridSelection(direction, columns: columns)
@@ -6367,7 +6732,7 @@ public final class AppModel {
         case .returnToGrid:
             returnToLibraryGrid()
         case .switchCullSubView(let mode):
-            selectedView = mode
+            selectCullSubMode(mode)
         }
     }
 
@@ -6632,6 +6997,12 @@ public final class AppModel {
     }
 
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
+        switch shortcut {
+        case .showCullGrid, .showCompare, .showABCompare, .exitCullSubView:
+            guard isKeyMapOverlayVisible || lensAvailability(for: .cull).isEnabled else { return }
+        default:
+            break
+        }
         // Any input other than the arming Return itself disarms: an armed
         // commit must never fire against a frame the user has moved past. A
         // repeat Return re-enters the gate and re-arms the same asset, which
@@ -6716,15 +7087,15 @@ public final class AppModel {
         case .cycleScope:
             cycleCullScope()
         case .showCullGrid:
-            selectedView = .cullGrid
+            selectCullSubMode(.cullGrid)
         case .showCompare:
-            selectedView = .compare
+            selectCullSubMode(.compare)
         case .showABCompare:
             // "b" toggles (item 1): pressed again from inside .abCompare, it
             // exits back to .loupe instead of re-entering a no-op.
-            selectedView = selectedView == .abCompare ? .loupe : .abCompare
+            selectCullSubMode(selectedView == .abCompare ? .loupe : .abCompare)
         case .exitCullSubView:
-            selectedView = .loupe
+            selectCullSubMode(.loupe)
         case .keepAOverB:
             try keepCurrentABPair(preferPrimary: true)
         case .keepBOverA:
@@ -8930,6 +9301,9 @@ public final class AppModel {
         guard let catalog else { return }
         sourceRoots = try catalog.repository.sourceRoots()
         sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
+        if selectedView == .people {
+            refreshPeopleFaceSuggestions()
+        }
         rebuildSidebarSections()
     }
 
@@ -9793,17 +10167,17 @@ public final class AppModel {
     @discardableResult
     public func findBestShots() throws -> FindBestShotsPlan {
         let plan = FindBestShotsRouter.plan(
-            pickCount: reviewQueueCounts[.picks] ?? 0,
-            potentialPickCount: reviewQueueCounts[.potentialPicks] ?? 0,
+            pickCount: smartCollectionCounts[.picks] ?? 0,
+            potentialPickCount: smartCollectionCounts[.potentialPicks] ?? 0,
             canEvaluateScope: canRequestCurrentScopeAssetEvaluations,
-            needsEvaluationCount: reviewQueueCounts[.needsEvaluation] ?? 0
+            needsEvaluationCount: smartCollectionCounts[.needsEvaluation] ?? 0
         )
         if plan.shouldTriggerEvaluation {
             try? requestCurrentScopeAssetEvaluations()
         }
         switch plan.route {
-        case .reviewQueue(let queue):
-            try selectSidebarTarget(.reviewQueue(queue))
+        case .smartCollection(let collection):
+            try selectSource(.smartCollection(collection))
         case .nothingRanked(let message):
             statusMessage = message
         }
@@ -9828,18 +10202,39 @@ public final class AppModel {
     /// the loaded scope — the review queue must never silently shrink to
     /// whatever the grid happens to hold. Reads only; writes no catalog state.
     public func beginAutopilotReview() throws {
+        try applyAutopilotSuggestionsScope()
+        selectedView = .grid
+    }
+
+    /// The scope half of `beginAutopilotReview()`, without the lens write.
+    /// Selecting the AI Suggestions source must leave the lens alone
+    /// (orthogonality); only the explicit "Review" action moves the user to
+    /// Grid, where the KEEP/CUT badges and the commit bar live.
+    private func applyAutopilotSuggestionsScope() throws {
+        try loadAutopilotSuggestionsScope(preferredSelection: nil)
+        if selectedView == .map {
+            try refreshPlaceData(
+                bounds: nil,
+                cellSize: Self.defaultPlaceClusterCellSize,
+                matching: SetQuery(predicates: [.assetIDs(autopilotGhostAssetIDs)])
+            )
+        }
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+    }
+
+    private func loadAutopilotSuggestionsScope(preferredSelection: AssetID?) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let assetIDs = try catalog.repository.assetIDsWithAutopilotGhost()
-        autopilotGhostAssetIDs = assetIDs
-        selectedAssetSetID = nil
-        clearLibraryQueryFilters()
-        let loadedAssets = try catalog.repository.assets(ids: assetIDs, limit: assetIDs.count)
-        replaceAssets(loadedAssets)
-        totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
+        try refreshAutopilotGhostAssetIDs()
+        let loadedAssets = try catalog.repository.assets(
+            ids: autopilotGhostAssetIDs,
+            limit: autopilotGhostAssetIDs.count
+        )
+        replaceAssets(loadedAssets, preferredSelection: preferredSelection)
+        totalAssetCount = try catalog.repository.assetCount(ids: autopilotGhostAssetIDs)
         isAutopilotReviewActive = true
-        selectedView = .grid
     }
 
     /// Confirms the ghosts on the given assets: each one's tentative
@@ -10085,27 +10480,6 @@ public final class AppModel {
         try requestCurrentScopeAssetEvaluations(providers: ["apple-vision"])
     }
 
-    public func requestLatestImportAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
-        // A bonded shot's hidden JPEG secondary must still get evaluated
-        // (preview/eval processing is never special-cased out of bonding).
-        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository, includeBondedSecondaries: true)
-        guard !assetIDs.isEmpty else {
-            throw TeststripError.invalidState("no latest import assets")
-        }
-        let evaluableAssetIDs = assetIDs.filter { hasCachedPreview(for: $0) }
-        guard !evaluableAssetIDs.isEmpty else {
-            throw TeststripError.invalidState("no latest import assets with cached previews")
-        }
-        for assetID in evaluableAssetIDs {
-            for provider in providers {
-                try requestEvaluation(assetID: assetID, provider: provider)
-            }
-        }
-    }
-
     // Seeds the provisional read pass for a finished import. Bounded by the
     // import's asset list; each queued pass is a normal cancellable
     // .recognition work item, so Activity shows and controls all of it.
@@ -10212,17 +10586,19 @@ public final class AppModel {
     }
 
     private func flushBackgroundWorkPublication() {
+        let queue = currentBackgroundWorkQueue
         clearPreviewLookupCaches()
-        backgroundWorkQueue = currentBackgroundWorkQueue
+        backgroundWorkQueue = queue
+        recordPersistedActiveBackgroundWorkActivities(in: queue)
         previewCacheGenerationsByAssetID = currentPreviewCacheGenerationsByAssetID
-        if pendingLatestImportPreviewStatusRefresh {
-            pendingLatestImportPreviewStatusRefresh = false
-            refreshLatestImportPreviewStatus()
-        }
         if pendingPreviewGenerationQueueStatesRefresh {
             pendingPreviewGenerationQueueStatesRefresh = false
             try? refreshPreviewGenerationQueueStates()
         }
+        // A worker-driven ingest never touches `activeWork` — it surfaces
+        // only through the republished queue — so this is the Imports
+        // in-progress row's liveness hook for that path.
+        rebuildSidebarSections()
     }
 
     private func clearPreviewLookupCaches() {
@@ -10258,22 +10634,6 @@ public final class AppModel {
         Dictionary(
             uniqueKeysWithValues: queue?.items.compactMap { item in
                 guard item.kind == .xmpSync else { return nil }
-                return (item.id, item.status)
-            } ?? []
-        )
-    }
-
-    private static func previewGenerationWorkChanged(
-        from previousQueue: BackgroundWorkQueue?,
-        to queue: BackgroundWorkQueue
-    ) -> Bool {
-        previewGenerationWorkStatuses(in: previousQueue) != previewGenerationWorkStatuses(in: queue)
-    }
-
-    private static func previewGenerationWorkStatuses(in queue: BackgroundWorkQueue?) -> [WorkSessionID: WorkSessionStatus] {
-        Dictionary(
-            uniqueKeysWithValues: queue?.items.compactMap { item in
-                guard item.kind == .previewGeneration else { return nil }
                 return (item.id, item.status)
             } ?? []
         )
@@ -10517,21 +10877,15 @@ public final class AppModel {
 
     /// Auto-applies the machine-label-provenance promoters for one
     /// just-evaluated asset, then refreshes the in-memory `assets` cache
-    /// (and, transitively, `selectedAsset`, which is derived from it) and
-    /// face-suggestion state so the promoted labels/faces are visible right
-    /// away — the fetch-and-splice half mirrors
-    /// `refreshLoadedAssetMetadataIfNeeded`'s pattern after other
-    /// catalog-mutating background work completes; the suggestion refresh
-    /// mirrors what runs after every other face-table mutation (confirm/
-    /// dismiss a face suggestion, dismiss face review). Bounded to the one
-    /// asset that just finished evaluating — never scans the whole catalog.
+    /// (and, transitively, `selectedAsset`, which is derived from it) so the
+    /// promoted labels/faces are visible right away. Bounded to the one asset
+    /// that just finished evaluating — never scans the whole catalog.
     private func promoteEvaluationResults(for assetID: AssetID) {
         guard catalog != nil else { return }
         do {
             try promoteMetadataLabels(for: assetID)
             try promoteFaceMatches(for: assetID)
             try refreshInMemoryAsset(assetID)
-            refreshPeopleFaceSuggestions()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -10821,7 +11175,10 @@ public final class AppModel {
     }
 
     private var persistedWorkActivityIDs: Set<String> {
-        Set((recentWork + starredWork).map(\.id))
+        Set(
+            (recentWork + starredWork + recentNonImportWork + starredNonImportWork + workHistorySearchResults)
+                .map(\.id)
+        )
     }
 
     private var activeBackgroundImportItem: BackgroundWorkItem? {
@@ -10880,8 +11237,20 @@ public final class AppModel {
         // counts while the HUD and catalog already tell the new story
         // (persona-7's "three surfaces, three stories").
         try refreshCatalogSidebarCounts()
+        try refreshImportSourceSummaries()
         refreshCatalogFolders()
         refreshAssetIDsWithBondedSecondaries()
+        if sourceForScopeResolution == .autopilotSuggestions {
+            try loadAutopilotSuggestionsScope(preferredSelection: nil)
+            pruneBatchSelection(retaining: Set(autopilotGhostAssetIDs))
+            if selectedView == .map {
+                try refreshPlaceData()
+            }
+            if sourceBeingApplied == nil, selectedView == .people {
+                refreshPeopleFaceSuggestions()
+            }
+            return
+        }
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
             replaceAssets(loadedAssets)
@@ -10890,15 +11259,20 @@ public final class AppModel {
             if selectedView == .map {
                 try refreshPlaceData()
             }
+            // The People lens is source-scoped like every other lens, and `reload()`
+            // is the single funnel every source change passes through.
+            if sourceBeingApplied == nil, selectedView == .people {
+                refreshPeopleFaceSuggestions()
+            }
             return
         }
         let loadedAssets: [Asset]
         let count: Int
         if let query = currentLibraryQuery() {
-            loadedAssets = try catalog.repository.allAssets(matching: query)
+            loadedAssets = try catalog.repository.allAssets(matching: query, sort: librarySortOption)
             count = try catalog.repository.assetCount(matching: query)
         } else {
-            loadedAssets = try catalog.repository.allAssets()
+            loadedAssets = try catalog.repository.allAssets(sort: librarySortOption)
             count = try catalog.repository.assetCount()
         }
         replaceAssets(loadedAssets)
@@ -10910,6 +11284,11 @@ public final class AppModel {
         if selectedView == .map {
             try refreshPlaceData()
         }
+        // The People lens is source-scoped like every other lens, and `reload()`
+        // is the single funnel every source change passes through.
+        if sourceBeingApplied == nil, selectedView == .people {
+            refreshPeopleFaceSuggestions()
+        }
     }
 
     /// A person's PROPOSED photos — shown as a separate section below the
@@ -10919,17 +11298,28 @@ public final class AppModel {
     /// Picks/export/destructive ops.
     private func refreshProposedAssets() throws {
         guard let catalog,
-              selectedExplicitAssetIDs == nil,
-              let query = currentLibraryQuery(),
-              query.predicates.count == 1,
-              case .person(let name) = query.predicates[0] else {
+              selectedExplicitAssetIDs == nil else {
             proposedPhotos = []
             return
         }
-        let proposed = try catalog.repository.proposedPersonFaces(personName: name)
+        proposedPhotos = try Self.proposedPhotos(
+            matching: currentLibraryQuery(),
+            repository: catalog.repository
+        )
+    }
+
+    private static func proposedPhotos(
+        matching query: SetQuery?,
+        repository: CatalogRepository
+    ) throws -> [ProposedPersonPhoto] {
+        guard let query,
+              query.predicates.count == 1,
+              case .person(let name) = query.predicates[0] else {
+            return []
+        }
+        let proposed = try repository.proposedPersonFaces(personName: name)
         guard !proposed.isEmpty else {
-            proposedPhotos = []
-            return
+            return []
         }
         var order: [AssetID] = []
         var byAsset: [AssetID: [ProposedPersonFace]] = [:]
@@ -10937,9 +11327,9 @@ public final class AppModel {
             if byAsset[face.assetID] == nil { order.append(face.assetID) }
             byAsset[face.assetID, default: []].append(face)
         }
-        let assets = try catalog.repository.assets(ids: order, flag: nil, limit: order.count)
+        let assets = try repository.assets(ids: order, flag: nil, limit: order.count)
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        proposedPhotos = order.compactMap { id in
+        return order.compactMap { id in
             guard let asset = assetByID[id] else { return nil }
             return ProposedPersonPhoto(asset: asset, faces: byAsset[id] ?? [])
         }
@@ -10947,17 +11337,44 @@ public final class AppModel {
 
     private func refreshWorkHistorySearchResults(repository: CatalogRepository) throws {
         let previousResults = workHistorySearchResults
+        let wasSearchActive = isWorkHistorySearchActive
         let residualText = LibrarySearchIntent.parse(librarySearchText).residualText?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let refreshedResults: [AppWorkActivity]
+        let isSearchActive: Bool
         if let residualText, !residualText.isEmpty {
-            workHistorySearchResults = try repository.workSessions(matching: residualText, limit: 5)
+            refreshedResults = try repository.workSessions(
+                matching: residualText,
+                limit: 5,
+                excluding: .ingest
+            )
                 .map(AppWorkActivity.init)
+            isSearchActive = true
         } else {
-            workHistorySearchResults = []
+            refreshedResults = []
+            isSearchActive = false
         }
+        let refreshedScopeCounts = try Self.workSessionScopeCounts(
+            activities: refreshedResults,
+            repository: repository
+        )
+        let retainedScopeCountIDs = Set(
+            (recentWork + starredWork + recentNonImportWork + starredNonImportWork)
+                .map { WorkSessionID(rawValue: $0.id) }
+        ).union(importSourceSummaries.map(\.sessionID))
+        var refreshedWorkSessionScopeCounts = workSessionScopeCounts.filter {
+            retainedScopeCountIDs.contains($0.key)
+        }
+        refreshedWorkSessionScopeCounts.merge(refreshedScopeCounts) { _, refreshedCount in
+            refreshedCount
+        }
+        workHistorySearchResults = refreshedResults
+        isWorkHistorySearchActive = isSearchActive
+        workSessionScopeCounts = refreshedWorkSessionScopeCounts
         // The Collections group's Recent Work rows show the matched sessions
-        // while a query is active, so a result change re-renders the sidebar.
-        if workHistorySearchResults != previousResults {
+        // while a residual query is active. Track that state independently
+        // because an active search with no matches must suppress the defaults.
+        if workHistorySearchResults != previousResults || isWorkHistorySearchActive != wasSearchActive {
             rebuildSidebarSections()
         }
     }
@@ -10969,11 +11386,27 @@ public final class AppModel {
     public func setLibrarySortOption(_ option: LibrarySortOption) throws {
         guard librarySortOption != option else { return }
         librarySortOption = option
+        if selectedSource == .autopilotSuggestions {
+            try loadAutopilotSuggestionsScope(preferredSelection: nil)
+            if selectedView == .map {
+                try refreshPlaceData(
+                    bounds: nil,
+                    cellSize: Self.defaultPlaceClusterCellSize,
+                    matching: SetQuery(predicates: [.assetIDs(autopilotGhostAssetIDs)])
+                )
+            }
+            return
+        }
         try loadCatalogPage(preferredSelection: nil)
     }
 
     public func selectPeopleSignal(_ kind: EvaluationKind) throws {
-        try applyEvaluationKindFilter(kind)
+        var predicates = selectedLens == .people ? currentSourceScopePredicates() : []
+        Self.append(.evaluationKind(kind), to: &predicates)
+        try selectSource(
+            .search(SetQuery(predicates: predicates), titled: Self.filterName(for: kind))
+        )
+        selectLens(.grid)
     }
 
     public func selectTimelineDay(_ day: CatalogTimelineDay, calendar: Calendar = .current) throws {
@@ -11003,11 +11436,13 @@ public final class AppModel {
         try reload()
     }
 
+    /// A Map drill-down with an explicit destination: the drawn area becomes
+    /// the selected source and the Grid renders what fell inside it.
     public func selectPlaceBounds(_ bounds: GeoBounds) throws {
-        selectedAssetSetID = nil
-        geoBoundsFilter = bounds
         selectedView = .grid
-        try reload()
+        try applySource(
+            .search(SetQuery(predicates: [.withinGeoBounds(bounds)]), titled: "Map area")
+        )
     }
 
     /// Fills the place-data properties the map surface reads. Bounded: cluster
@@ -11018,11 +11453,61 @@ public final class AppModel {
         bounds: GeoBounds? = nil,
         cellSize: Double = AppModel.defaultPlaceClusterCellSize
     ) throws {
+        try refreshPlaceData(bounds: bounds, cellSize: cellSize, matching: currentMapQuery())
+    }
+
+    private func refreshPlaceData(
+        bounds: GeoBounds?,
+        cellSize: Double,
+        matching query: SetQuery?
+    ) throws {
         guard let catalog else { return }
-        let query = currentLibraryQuery()
-        catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize, matching: query)
-        catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit, matching: query)
-        geotaggedCoverage = try catalog.repository.geotaggedCoverage(matching: query)
+        publishPlaceProjection(try Self.placeProjection(
+            bounds: bounds,
+            cellSize: cellSize,
+            matching: query,
+            repository: catalog.repository
+        ))
+    }
+
+    private static func placeProjection(
+        bounds: GeoBounds?,
+        cellSize: Double,
+        matching query: SetQuery?,
+        repository: CatalogRepository
+    ) throws -> CatalogPlaceProjection {
+        let clusters = try repository.placeClusters(bounds: bounds, cellSize: cellSize, matching: query)
+        let topLocations = try repository.topLocations(limit: Self.topLocationsDisplayLimit, matching: query)
+        let geotaggedCoverage = try repository.geotaggedCoverage(matching: query)
+        return CatalogPlaceProjection(
+            clusters: clusters,
+            topLocations: topLocations,
+            geotaggedCoverage: geotaggedCoverage
+        )
+    }
+
+    private func publishPlaceProjection(_ projection: CatalogPlaceProjection) {
+        catalogPlaceClusters = projection.clusters
+        catalogTopLocations = projection.topLocations
+        geotaggedCoverage = projection.geotaggedCoverage
+    }
+
+    /// The Map lens is source-scoped like every other lens. Dynamic scopes
+    /// already reach SQL through `currentLibraryQuery()`. Saved static scopes
+    /// use their set membership, while derived explicit scopes such as AI
+    /// Suggestions carry their current IDs, including an empty scope.
+    private func currentMapQuery() -> SetQuery? {
+        var predicates = sourceForScopeResolution == .autopilotSuggestions
+            ? []
+            : currentLibraryQuery()?.predicates ?? []
+        if let selectedExplicitAssetIDs {
+            if let selectedAssetSetID {
+                predicates.append(.assetSet(selectedAssetSetID))
+            } else {
+                predicates.append(.assetIDs(selectedExplicitAssetIDs))
+            }
+        }
+        return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
     }
 
     static let defaultPlaceClusterCellSize = 10.0
@@ -11032,20 +11517,25 @@ public final class AppModel {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         evaluationKindFilter = kind
-        selectedView = .grid
         try reload()
+        selectedSource = .evaluationKind(kind, titled: kind.filterChipLabel)
     }
 
+    /// Clearing every filter always widens the view back to the whole
+    /// catalog, so `selectedSource` unconditionally becomes `.allPhotos` —
+    /// the one case where the caller's "what am I looking at" answer never
+    /// needs to survive.
     public func clearLibraryFilters() throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         try reload()
+        selectedSource = .allPhotos
     }
 
     public func removeActiveLibraryFilter(_ row: ActiveLibraryFilterRow) throws {
         var removed = false
         if let selectedAssetSet,
-           row.title == selectedAssetSet.name || row.target == .assetSet(selectedAssetSet.id) {
+           row.title == selectedAssetSet.name || row.target == .assetSet(selectedAssetSet.id, titled: selectedAssetSet.name) {
             self.selectedAssetSetID = nil
             removed = true
         } else if removeSelectedDynamicSetRuleFilter(row) {
@@ -11057,35 +11547,26 @@ public final class AppModel {
         }
         guard removed else { return }
         try reload()
+        // Removing a chip can widen the view all the way back to the whole
+        // catalog (e.g. the XMP Conflicts chip was the only active filter) —
+        // when it does, `selectedSource` must stop describing a scope that
+        // no longer exists. A chip removal that still leaves other filters
+        // active leaves `selectedSource` alone.
+        if !hasActiveLibraryFilters {
+            selectedSource = .allPhotos
+        }
     }
 
-    private func applyReviewQueue(_ queue: ReviewQueue) throws {
+    private func applySmartCollection(_ collection: SmartCollection) throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
-        switch queue {
-        case .picks:
-            flagFilter = .pick
-        case .potentialPicks:
-            potentialPicksFilter = true
-        case .rejects:
-            flagFilter = .reject
-        case .fiveStars:
-            minimumRatingFilter = 5
-        case .needsKeywords:
-            needsKeywordsFilter = true
-        case .needsEvaluation:
-            needsEvaluationFilter = true
-        case .facesFound:
-            evaluationKindFilter = .faceCount
-        case .ocrFound:
-            evaluationKindFilter = .ocrText
-        case .likelyIssues:
-            likelyIssuesFilter = true
-        case .providerFailures:
-            providerFailuresFilter = true
-        }
-        selectedView = .grid
+        // The smart collection's own predicates, installed as detached filter
+        // predicates: `currentLibraryQuery()` folds them into the SQL and
+        // `activeLibraryFilterRows` renders them as removable chips, so the
+        // list and the sidebar count are two readings of one expression.
+        detachedLibraryFilterPredicates = collection.query.predicates
         try reload()
+        selectedSource = .smartCollection(collection)
     }
 
     public func refreshSelectedAssetAvailability() throws {
@@ -11128,9 +11609,7 @@ public final class AppModel {
         persistSecurityScopedBookmarkForSourceRoot(newRoot)
         try loadCatalogPage(preferredSelection: preferredSelection)
         catalogFolders = try catalog.repository.folders()
-        sourceRoots = try catalog.repository.sourceRoots()
-        sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
-        rebuildSidebarSections()
+        try refreshSourceAvailabilitySummaries()
         try enqueuePendingPreviewGeneration()
         let sourceLabel = result.reconnectedAssetCount == 1 ? "source" : "sources"
         statusMessage = "Reconnected \(result.reconnectedAssetCount) \(sourceLabel)"
@@ -11340,9 +11819,9 @@ public final class AppModel {
         case .text(let text):
             ActiveLibraryFilterRow(title: "Search: \(text)")
         case .ratingAtLeast(let rating):
-            ActiveLibraryFilterRow(title: "Rating >= \(rating)", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Rating >= \(rating)", target: librarySource(for: predicate))
         case .flag(let flag):
-            ActiveLibraryFilterRow(title: flag.rawValue.capitalized, target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: flag.rawValue.capitalized, target: librarySource(for: predicate))
         case .colorLabel(let label):
             ActiveLibraryFilterRow(title: "\(label.rawValue.capitalized) Label")
         case .keyword(let keyword):
@@ -11350,9 +11829,9 @@ public final class AppModel {
         case .person(let name):
             ActiveLibraryFilterRow(title: "Person: \(name)")
         case .missingKeywords:
-            ActiveLibraryFilterRow(title: "Needs Keywords", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Needs Keywords", target: librarySource(for: predicate))
         case .availability(let availability):
-            ActiveLibraryFilterRow(title: "Source: \(availability.rawValue.capitalized)", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Source: \(availability.rawValue.capitalized)", target: librarySource(for: predicate))
         case .folderPrefix(let path):
             ActiveLibraryFilterRow(title: "Folder: \(URL(fileURLWithPath: path).lastPathComponent)")
         case .camera(let camera):
@@ -11370,36 +11849,44 @@ public final class AppModel {
         case .evaluationKind(let kind):
             activeLibraryFilterRow(forEvaluationKind: kind)
         case .unevaluated:
-            ActiveLibraryFilterRow(title: "Not analyzed yet", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Not analyzed yet", target: librarySource(for: predicate))
         case .likelyIssue:
-            ActiveLibraryFilterRow(title: "Likely Issues", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Likely Issues", target: librarySource(for: predicate))
         case .likelyPick:
-            ActiveLibraryFilterRow(title: "Potential Picks", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Potential Picks", target: librarySource(for: predicate))
         case .evaluationFailure:
-            ActiveLibraryFilterRow(title: "Analysis Failures", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Analysis Failures", target: librarySource(for: predicate))
         case .metadataSyncPending:
-            ActiveLibraryFilterRow(title: "XMP Pending", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "XMP Pending", target: librarySource(for: predicate))
         case .metadataSyncConflict:
-            ActiveLibraryFilterRow(title: "XMP Conflicts", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "XMP Conflicts", target: librarySource(for: predicate))
         case .importBatch(let id):
-            ActiveLibraryFilterRow(title: "Import: \(id)", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Import: \(id)", target: librarySource(for: predicate))
         case .workSession(let id):
-            ActiveLibraryFilterRow(title: "Session: \(id)", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Session: \(id)", target: librarySource(for: predicate))
+        case .assetSet:
+            // No chip: `activeLibraryFilterRows` already renders the selected
+            // set by name, with a live removable target. A second row here
+            // would double-render the same scope (Jesse's ruling 2026-08-07).
+            nil
+        case .assetIDs:
+            // Runtime explicit membership is named by its selected source.
+            nil
         }
     }
 
     private static func activeLibraryFilterRow(forEvaluationKind kind: EvaluationKind) -> ActiveLibraryFilterRow {
-        if let queue = reviewQueue(forEvaluationKind: kind) {
-            return ActiveLibraryFilterRow(title: queue.presentation.title, target: .reviewQueue(queue))
+        if let collection = smartCollection(forEvaluationKind: kind) {
+            return ActiveLibraryFilterRow(title: collection.presentation.title, target: .smartCollection(collection))
         }
-        return ActiveLibraryFilterRow(title: kind.filterChipLabel, target: .evaluationKind(kind))
+        return ActiveLibraryFilterRow(title: kind.filterChipLabel, target: .evaluationKind(kind, titled: kind.filterChipLabel))
     }
 
     private static func filterName(for kind: EvaluationKind) -> String {
-        reviewQueue(forEvaluationKind: kind)?.presentation.title ?? kind.filterChipLabel
+        smartCollection(forEvaluationKind: kind)?.presentation.title ?? kind.filterChipLabel
     }
 
-    private static func reviewQueue(forEvaluationKind kind: EvaluationKind) -> ReviewQueue? {
+    private static func smartCollection(forEvaluationKind kind: EvaluationKind) -> SmartCollection? {
         switch kind {
         case .faceCount:
             .facesFound
@@ -11410,40 +11897,38 @@ public final class AppModel {
         }
     }
 
-    private static func sidebarTarget(for predicate: SetQuery.Predicate) -> SidebarRowTarget? {
+    private static func librarySource(for predicate: SetQuery.Predicate) -> LibrarySource? {
         switch predicate {
         case .ratingAtLeast(let rating):
-            rating == 5 ? .reviewQueue(.fiveStars) : nil
+            rating == 5 ? LibrarySource.smartCollection(.fiveStars) : nil
         case .flag(.pick):
-            .reviewQueue(.picks)
+            LibrarySource.smartCollection(.picks)
         case .flag(.reject):
-            .reviewQueue(.rejects)
+            LibrarySource.smartCollection(.rejects)
         case .missingKeywords:
-            .reviewQueue(.needsKeywords)
+            LibrarySource.smartCollection(.needsKeywords)
         case .availability(let availability):
-            .sourceAvailability(availability)
+            LibrarySource.sourceAvailability(availability)
         case .evaluationKind(let kind):
-            if let queue = reviewQueue(forEvaluationKind: kind) {
-                .reviewQueue(queue)
+            if let collection = smartCollection(forEvaluationKind: kind) {
+                LibrarySource.smartCollection(collection)
             } else {
-                .evaluationKind(kind)
+                LibrarySource.evaluationKind(kind, titled: kind.filterChipLabel)
             }
         case .unevaluated:
-            .reviewQueue(.needsEvaluation)
+            LibrarySource.smartCollection(.needsEvaluation)
         case .likelyIssue:
-            .reviewQueue(.likelyIssues)
+            LibrarySource.smartCollection(.likelyIssues)
         case .likelyPick:
-            .reviewQueue(.potentialPicks)
+            LibrarySource.smartCollection(.potentialPicks)
         case .evaluationFailure:
-            .reviewQueue(.providerFailures)
+            LibrarySource.smartCollection(.providerFailures)
         case .metadataSyncPending:
-            .metadataSyncPending
+            LibrarySource.metadataSyncPending
         case .metadataSyncConflict:
-            .metadataSyncConflicts
-        case .importBatch(let id):
-            .workSession(WorkSessionID(rawValue: id))
-        case .workSession(let id):
-            .workSession(WorkSessionID(rawValue: id))
+            LibrarySource.metadataSyncConflicts
+        case .importBatch(let id), .workSession(let id):
+            LibrarySource.workSession(WorkSessionID(rawValue: id), titled: id)
         default:
             nil
         }
@@ -11495,53 +11980,53 @@ public final class AppModel {
             captureDateEndFilter = nil
             removed = true
         }
-        switch row.target {
-        case .reviewQueue(.picks):
+        switch row.target?.kind {
+        case .smartCollection(.picks):
             if flagFilter == .pick {
                 flagFilter = nil
                 removed = true
             }
-        case .reviewQueue(.rejects):
+        case .smartCollection(.rejects):
             if flagFilter == .reject {
                 flagFilter = nil
                 removed = true
             }
-        case .reviewQueue(.fiveStars):
+        case .smartCollection(.fiveStars):
             if minimumRatingFilter == 5 {
                 minimumRatingFilter = nil
                 removed = true
             }
-        case .reviewQueue(.needsKeywords):
+        case .smartCollection(.needsKeywords):
             if needsKeywordsFilter {
                 needsKeywordsFilter = false
                 removed = true
             }
-        case .reviewQueue(.needsEvaluation):
+        case .smartCollection(.needsEvaluation):
             if needsEvaluationFilter {
                 needsEvaluationFilter = false
                 removed = true
             }
-        case .reviewQueue(.facesFound):
+        case .smartCollection(.facesFound):
             if evaluationKindFilter == .faceCount {
                 evaluationKindFilter = nil
                 removed = true
             }
-        case .reviewQueue(.ocrFound):
+        case .smartCollection(.ocrFound):
             if evaluationKindFilter == .ocrText {
                 evaluationKindFilter = nil
                 removed = true
             }
-        case .reviewQueue(.likelyIssues):
+        case .smartCollection(.likelyIssues):
             if likelyIssuesFilter {
                 likelyIssuesFilter = false
                 removed = true
             }
-        case .reviewQueue(.potentialPicks):
+        case .smartCollection(.potentialPicks):
             if potentialPicksFilter {
                 potentialPicksFilter = false
                 removed = true
             }
-        case .reviewQueue(.providerFailures):
+        case .smartCollection(.providerFailures):
             if providerFailuresFilter {
                 providerFailuresFilter = false
                 removed = true
@@ -11709,9 +12194,6 @@ public final class AppModel {
         if let captureDateEndFilter {
             Self.append(.capturedBefore(captureDateEndFilter), to: &predicates)
         }
-        if let geoBoundsFilter {
-            Self.append(.withinGeoBounds(geoBoundsFilter), to: &predicates)
-        }
         if let availabilityFilter {
             Self.append(.availability(availabilityFilter), to: &predicates)
         }
@@ -11754,7 +12236,6 @@ public final class AppModel {
         minimumISOFilter = nil
         captureDateStartFilter = nil
         captureDateEndFilter = nil
-        geoBoundsFilter = nil
         availabilityFilter = nil
         evaluationKindFilter = nil
         needsKeywordsFilter = false
@@ -11770,23 +12251,39 @@ public final class AppModel {
 
     // MARK: - Session restore
     //
-    // Persists the library-browsing surface (route, scope, filters, search text,
+    // Persists the library-browsing surface (lens, source, filters, search text,
     // selection, sort) so relaunching lands back where the user left off, the same
     // way LibraryGridView.thumbnailWidth already persists via app preferences.
     // Mid-culling-session state is out of scope on purpose: culling sessions already
-    // survive as work sessions and are reopened explicitly via Recent Work, so
-    // `.loupe`/`.compare` routes and in-progress work-stack asset sets are never
-    // written or restored here.
+    // survive as work sessions and are reopened explicitly via Recent Work, so the
+    // Cull lens — and its `.loupe`/`.compare` sub-modes — falls back to Grid on
+    // restore instead of resuming. A work-stack asset set is written like any
+    // other selected set; `isWorkStackSetID` drops it on the restore side, so a
+    // mid-cull quit cannot land back inside a run's stack.
+
+    private func withDeferredSessionPersistence(_ publish: () -> Void) {
+        sessionPersistenceDeferralDepth += 1
+        defer {
+            sessionPersistenceDeferralDepth -= 1
+            if sessionPersistenceDeferralDepth == 0 {
+                persistSessionState()
+            }
+        }
+        publish()
+    }
 
     private func persistSessionState() {
-        guard let sessionRestoreDefaults, let catalog else { return }
+        guard sessionPersistenceDeferralDepth == 0,
+              let sessionRestoreDefaults,
+              let catalog else { return }
         SessionRestoreStore(defaults: sessionRestoreDefaults, catalogRoot: catalog.paths.root)
             .save(currentSessionRestoreState())
     }
 
     private func currentSessionRestoreState() -> SessionRestoreState {
         SessionRestoreState(
-            selectedView: selectedView,
+            lens: selectedLens,
+            source: selectedSource,
             selectedAssetSetID: selectedAssetSetID,
             selectedAssetID: selectedAssetID,
             sortOption: librarySortOption,
@@ -11809,7 +12306,8 @@ public final class AppModel {
             potentialPicksFilter: potentialPicksFilter,
             providerFailuresFilter: providerFailuresFilter,
             metadataSyncPendingFilter: metadataSyncPendingFilter,
-            metadataSyncConflictFilter: metadataSyncConflictFilter
+            metadataSyncConflictFilter: metadataSyncConflictFilter,
+            detachedFilterPredicates: detachedLibraryFilterPredicates
         )
     }
 
@@ -11846,6 +12344,7 @@ public final class AppModel {
         providerFailuresFilter = state.providerFailuresFilter
         metadataSyncPendingFilter = state.metadataSyncPendingFilter
         metadataSyncConflictFilter = state.metadataSyncConflictFilter
+        detachedLibraryFilterPredicates = state.detachedFilterPredicates
 
         if let assetSetID = state.selectedAssetSetID,
            !Self.isWorkStackSetID(assetSetID),
@@ -11853,11 +12352,35 @@ public final class AppModel {
             selectedAssetSetID = assetSetID
         }
 
-        selectedView = Self.isRestorableSessionRoute(state.selectedView) ? state.selectedView : .grid
-        selectedAssetID = state.selectedAssetID
+        let restoringAutopilotSuggestions = state.source == .autopilotSuggestions
+        let restoredSource: LibrarySource
+        if restoringAutopilotSuggestions && autopilotGhostAssetIDs.isEmpty {
+            restoredSource = .allPhotos
+        } else if case .assetSet(let id) = state.source.kind {
+            if selectedAssetSetID == id,
+               let assetSet = savedAssetSets.first(where: { $0.id == id }) {
+                restoredSource = .assetSet(id, titled: assetSet.name)
+            } else {
+                selectedAssetSetID = nil
+                restoredSource = .allPhotos
+            }
+        } else {
+            restoredSource = state.source
+        }
+        selectLens(Self.isRestorableLens(state.lens) ? state.lens : .grid)
 
         try refreshWorkHistorySearchResults(repository: catalog.repository)
-        if let explicitAssetIDs = selectedExplicitAssetIDs {
+        if restoringAutopilotSuggestions, !autopilotGhostAssetIDs.isEmpty {
+            try loadAutopilotSuggestionsScope(preferredSelection: state.selectedAssetID)
+        } else if restoringAutopilotSuggestions {
+            let contents = try Self.catalogContents(
+                repository: catalog.repository,
+                query: nil,
+                sort: librarySortOption
+            )
+            replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
+            totalAssetCount = contents.totalAssetCount
+        } else if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
             replaceAssets(loadedAssets, preferredSelection: state.selectedAssetID)
             totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs, flag: flagFilter)
@@ -11870,23 +12393,27 @@ public final class AppModel {
             replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
             totalAssetCount = contents.totalAssetCount
         }
+        selectedSource = restoredSource
         refreshAssetIDsWithBondedSecondaries()
         try refreshProposedAssets()
     }
 
-    // Routes that only ever exist mid-culling-session; never auto-restored.
-    private static func isRestorableSessionRoute(_ view: LibraryViewMode) -> Bool {
-        switch view {
-        case .grid, .timeline, .people, .map:
-            return true
-        case .loupe, .libraryLoupe, .compare, .abCompare, .cullGrid:
-            return false
-        }
+    /// Every persisted Cull selection restores the same source in Grid; all
+    /// other lenses restore unchanged. An active culling run is not resumed.
+    private static func isRestorableLens(_ lens: LibraryLens) -> Bool {
+        lens != .cull
     }
 
     private static func librarySearchText(residualText: String?, predicates: [SetQuery.Predicate]) -> String {
         ([residualText].compactMap { $0 } + predicates.compactMap(searchTextToken(for:)))
             .joined(separator: " ")
+    }
+
+    private static func losslessLibrarySearchText(for predicates: [SetQuery.Predicate]) -> String? {
+        let searchText = librarySearchText(residualText: nil, predicates: predicates)
+        let intent = LibrarySearchIntent.parse(searchText)
+        guard intent.residualText == nil, intent.predicates == predicates else { return nil }
+        return searchText
     }
 
     private static func searchTextToken(for predicate: SetQuery.Predicate) -> String? {
@@ -11939,6 +12466,10 @@ public final class AppModel {
             "import:\(searchFieldValue(id))"
         case .workSession(let id):
             "session:\(searchFieldValue(id))"
+        case .assetSet:
+            nil
+        case .assetIDs:
+            nil
         }
     }
 
@@ -12034,12 +12565,12 @@ public final class AppModel {
         let scopeIDs = try currentAssetScopeIDs(repository: catalog.repository)
         let rejectIDs = try catalog.repository.assetIDs(
             ids: scopeIDs,
-            matching: SetQuery(predicates: [.flag(.reject)])
+            matching: SmartCollection.rejects.query
         )
         // Rejects that exist catalog-wide but fall outside the active
         // filter/scope — the sheet discloses this count instead of reading
         // as "there are no rejects" when a filter like Picks hides them all.
-        let allRejectCount = try catalog.repository.assetCount(matching: SetQuery(predicates: [.flag(.reject)]))
+        let allRejectCount = try catalog.repository.assetCount(matching: SmartCollection.rejects.query)
         let sidecarStore = XMPSidecarStore()
         let destinationRootPath = destinationFolder?.standardizedFileURL.path
         var scope = RejectRelocationScope()
@@ -12588,6 +13119,11 @@ public final class AppModel {
     }
 
     private var selectedExplicitAssetIDs: [AssetID]? {
+        // AI Suggestions has no persisted AssetSet; its current derived IDs
+        // still participate in every downstream explicit-source operation.
+        if sourceForScopeResolution == .autopilotSuggestions {
+            return autopilotGhostAssetIDs
+        }
         guard let selectedAssetSet else { return nil }
         switch selectedAssetSet.membership {
         case .manual(let ids), .snapshot(let ids):
@@ -12986,28 +13522,11 @@ public final class AppModel {
         return nil
     }
 
-    // Defaults to excluding a bonded shot's hidden JPEG, matching the other
-    // "latest import" display surfaces (preview/face-review banners, batch
-    // keyword suggestions). `requestLatestImportAssetEvaluations` opts back
-    // in — the hidden JPEG must still get evaluated.
-    private func latestImportOutputAssetIDs(
-        repository: CatalogRepository,
-        includeBondedSecondaries: Bool = false
-    ) throws -> [AssetID] {
-        guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
-            throw TeststripError.invalidState("no completed import")
-        }
-        return try latestImportOutputAssetIDs(
-            activityID: activity.id,
-            repository: repository,
-            includeBondedSecondaries: includeBondedSecondaries
-        )
-    }
-
+    // Excludes a bonded shot's hidden JPEG, matching the other "latest
+    // import" display surfaces.
     private func latestImportOutputAssetIDs(
         activityID: String,
-        repository: CatalogRepository,
-        includeBondedSecondaries: Bool = false
+        repository: CatalogRepository
     ) throws -> [AssetID] {
         let session = try repository.session(id: WorkSessionID(rawValue: activityID))
         guard let outputSetID = session.outputSetIDs.first else {
@@ -13018,7 +13537,7 @@ public final class AppModel {
         case .manual(let ids), .snapshot(let ids):
             return ids
         case .dynamic(let query):
-            return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
+            return try repository.assetIDs(matching: query)
         }
     }
 
@@ -13130,7 +13649,7 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        if let selectedAssetSetID {
+        if selectedSource.kind != .selection, let selectedAssetSetID {
             let selectedSet = try assetSetForSelection(id: selectedAssetSetID, repository: catalog.repository)
             switch selectedSet.membership {
             case .manual, .snapshot:
@@ -13165,14 +13684,19 @@ public final class AppModel {
     }
 
     private func rebuildSidebarSections() {
-        sidebarSections = sidebarSections(for: selectedWorkspace)
+        // Guarded because the hot callers — every work-progress tick and
+        // every background-queue republication — usually compose an
+        // identical sidebar, and `@Observable` notifies on assignment
+        // rather than on change.
+        let sections = buildSidebarSections()
+        guard sections != sidebarSections else { return }
+        sidebarSections = sections
     }
 
     private func refreshCatalogFolders() {
         guard let catalog else { return }
         do {
             catalogFolders = try catalog.repository.folders()
-            catalogTimelineDays = try catalog.repository.timelineDays()
             sourceRoots = try catalog.repository.sourceRoots()
             rebuildSidebarSections()
         } catch {
@@ -13196,7 +13720,7 @@ public final class AppModel {
         guard let catalog else { return }
         do {
             catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
-            reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+            smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
             refreshLatestImportPresentation()
             if selectedView == .people {
                 refreshPeopleFaceSuggestions()
@@ -13209,16 +13733,20 @@ public final class AppModel {
 
     private func refreshCatalogSidebarCounts() throws {
         guard let catalog else { return }
-        reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+        smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
         try refreshAutopilotGhostAssetIDs()
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         refreshLatestImportPresentation()
+        for sessionID in expandedImportSessionIDs {
+            importChildCountsBySessionID[sessionID] =
+                (try? importChildCounts(sessionID: WorkSessionID(rawValue: sessionID))) ?? ImportChildCounts()
+        }
         rebuildSidebarSections()
     }
 
     private func refreshAutopilotGhostAssetIDs() throws {
         guard let catalog else { return }
-        autopilotGhostAssetIDs = try catalog.repository.assetIDsWithAutopilotGhost()
+        autopilotGhostAssetIDs = try catalog.repository.assetIDsWithAutopilotGhost(sort: librarySortOption)
     }
 
     // Exposed so the import sheet can open a read-only catalog off the main
@@ -13579,7 +14107,13 @@ public final class AppModel {
     }
 
     private static func importCompletionStatus(result: LibraryImportResult) -> String {
-        guard !result.importedAssets.isEmpty else {
+        // `importedAssets` alone undercounts: `.skipCatalogedContent` (the
+        // default for every real import entry point) `continue`s past
+        // already-cataloged source files before ever building an `Asset` for
+        // them, so a folder that's entirely already in the catalog leaves
+        // `importedAssets` empty even though supported photos were found.
+        // `existingAssetCount` is what actually saw them.
+        guard !result.importedAssets.isEmpty || result.existingAssetCount > 0 else {
             if result.skippedSourceFileCount > 0 {
                 return "No photos imported"
             }
@@ -13680,7 +14214,7 @@ public final class AppModel {
                 sourceDescription: importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot)
             ),
             completedUnitCount: result.newAssetCount,
-            totalUnitCount: result.importedAssets.count,
+            totalUnitCount: result.newAssetCount + result.existingAssetCount,
             failureCount: result.previewFailures.count,
             issues: Self.workSessionIssues(for: result)
         )
@@ -13743,7 +14277,9 @@ public final class AppModel {
 
     private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {
         let warningSuffix = importCompletionWarningText(result: result).map { " (\($0))" } ?? ""
-        if result.importedAssets.isEmpty {
+        // See `importCompletionStatus` — `existingAssetCount` catches the
+        // already-cataloged files `importedAssets` never saw.
+        if result.importedAssets.isEmpty && result.existingAssetCount == 0 {
             if result.skippedSourceFileCount == 0 {
                 return "No supported photos found in \(sourceDescription)"
             }
@@ -13882,6 +14418,17 @@ public final class AppModel {
         currentSessionActivityIDs.insert(recordedActivity.id)
         recentWork.removeAll { $0.id == recordedActivity.id }
         recentWork.insert(recordedActivity, at: 0)
+        if recordedActivity.kind != .ingest {
+            recentNonImportWork.removeAll { $0.id == recordedActivity.id }
+            recentNonImportWork.insert(recordedActivity, at: 0)
+            recentNonImportWork = Array(recentNonImportWork.prefix(5))
+
+            starredNonImportWork.removeAll { $0.id == recordedActivity.id }
+            if recordedActivity.starred {
+                starredNonImportWork.insert(recordedActivity, at: 0)
+                starredNonImportWork = Array(starredNonImportWork.prefix(10))
+            }
+        }
         refreshLatestImportPresentation()
         guard let catalog else {
             rebuildSidebarSections()
@@ -13897,6 +14444,13 @@ public final class AppModel {
             workSessionScopeCounts[sessionID] = try catalog.repository.assetCount(
                 matching: SetQuery(predicates: [.workSession(recordedActivity.id)])
             )
+            // The session was just written, so this is where a finished
+            // import becomes an Imports row — the conversion from the
+            // in-progress row `activeWork` was driving a moment ago.
+            if recordedActivity.kind == .ingest {
+                try refreshImportSourceSummaries()
+                primeVisibleImportChildCounts()
+            }
             rebuildSidebarSections()
         } catch {
             rebuildSidebarSections()
@@ -14110,145 +14664,7 @@ public final class AppModel {
         previewURL(for: assetID, levels: [.large, .medium, .grid, .micro]) != nil
     }
 
-    private static func defaultSidebarSections(
-        totalAssetCount: Int? = nil,
-        savedAssetSets: [AssetSet] = [],
-        assetSetCounts: [AssetSetID: Int] = [:],
-        workSessionScopeCounts: [WorkSessionID: Int] = [:],
-        catalogFolders: [CatalogFolder] = [],
-        expandedFolderPaths: Set<String> = [],
-        catalogTimelineDays: [CatalogTimelineDay] = [],
-        sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
-        catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
-        reviewQueueCounts: [ReviewQueue: Int] = [:],
-        pendingMetadataSyncItems: [MetadataSyncItem] = [],
-        metadataSyncConflictItems: [MetadataSyncItem] = [],
-        pendingMetadataSyncCount: Int? = nil,
-        metadataSyncConflictCount: Int? = nil,
-        recentWork: [AppWorkActivity] = [],
-        starredWork: [AppWorkActivity] = [],
-        matchedWork: [AppWorkActivity] = [],
-        sourceRoots: [CatalogSourceRoot] = [],
-        sourceRootBookmarkRepairPaths: Set<String> = []
-    ) -> [SidebarSection] {
-        // Library is navigation only: Collections (All Photographs, Recent
-        // Import, Starred, Recent Work), Saved Sets, Folders. Search/Review/
-        // Timeline/People/Places routes moved to the workspace switcher, the
-        // Library view toggle, and the Cull source picker; review-queue data
-        // (`reviewQueueCounts`) stays available for the Cull sidebar even
-        // though its Library rows are gone.
-        var collectionsRows = [
-            SidebarRow(
-                id: "library-all",
-                title: "All Photographs",
-                countText: totalAssetCount.map(sidebarCountText),
-                target: .allPhotographs
-            )
-        ]
-        if let recentImportRow = recentlyAddedSidebarRow(recentWork) {
-            collectionsRows.append(recentImportRow)
-        }
-        let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
-        let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }
-        collectionsRows.append(contentsOf: starredRows)
-        if matchedWork.isEmpty {
-            collectionsRows.append(contentsOf: mergedRecentWorkSidebarRows(
-                recentWork: recentWork,
-                starredWork: starredWork,
-                scopeCounts: workSessionScopeCounts
-            ))
-        } else {
-            // An active Library query narrows Recent Work to the sessions
-            // matching its plain-text remainder (the SearchWorkspace "Work
-            // History" rail's home after Task 9), keeping their reopen targets.
-            collectionsRows.append(contentsOf: Self.workSidebarRows(
-                for: matchedWork,
-                idPrefix: "work-matched",
-                scopeCounts: workSessionScopeCounts
-            ))
-        }
-
-        var sections = [SidebarSection(title: "Collections", rows: collectionsRows)]
-        if !visibleSavedAssetSets.isEmpty {
-            sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }))
-        }
-        if !catalogFolders.isEmpty {
-            sections.append(SidebarSection(
-                title: "Folders",
-                rows: folderTreeSidebarRows(catalogFolders: catalogFolders, expandedFolderPaths: expandedFolderPaths)
-            ))
-        }
-        return sections
-    }
-
-    /// Folds the Recent Work and Starred Work rows into one list: the most
-    /// recent sessions, plus any starred session old enough to have fallen
-    /// out of that recent window (deduplicated by session id).
-    private static func mergedRecentWorkSidebarRows(
-        recentWork: [AppWorkActivity],
-        starredWork: [AppWorkActivity],
-        scopeCounts: [WorkSessionID: Int]
-    ) -> [SidebarRow] {
-        let recentSlice = Array(recentWork.prefix(5))
-        let recentIDs = Set(recentSlice.map(\.id))
-        let extraStarred = starredWork.filter { !recentIDs.contains($0.id) }
-        return Self.workSidebarRows(for: recentSlice, idPrefix: "work-recent", scopeCounts: scopeCounts)
-            + Self.workSidebarRows(for: Array(extraStarred.prefix(5)), idPrefix: "work-starred", scopeCounts: scopeCounts)
-    }
-
-    /// Flattens the folder tree into sidebar rows, only descending into a
-    /// node's children when its full path is in `expandedFolderPaths` -
-    /// expand-on-demand, so a deep or wide tree never renders more than the
-    /// rows the user has actually opened.
-    private static func folderTreeSidebarRows(
-        catalogFolders: [CatalogFolder],
-        expandedFolderPaths: Set<String>
-    ) -> [SidebarRow] {
-        FolderTreePresentation.build(from: catalogFolders).flatMap { node in
-            folderTreeSidebarRows(for: node, depth: 0, expandedFolderPaths: expandedFolderPaths)
-        }
-    }
-
-    private static func folderTreeSidebarRows(
-        for node: FolderTreeNode,
-        depth: Int,
-        expandedFolderPaths: Set<String>
-    ) -> [SidebarRow] {
-        let isExpanded = expandedFolderPaths.contains(node.fullPath)
-        let disclosure: SidebarRowDisclosure = node.hasChildren ? (isExpanded ? .expanded : .collapsed) : .none
-        let row = SidebarRow(
-            id: "folder-\(node.fullPath)",
-            title: node.title,
-            detailText: node.fullPath,
-            countText: sidebarCountText(node.assetCount),
-            target: .folder(node.fullPath),
-            depth: depth,
-            disclosure: disclosure
-        )
-        guard isExpanded else {
-            return [row]
-        }
-        return [row] + node.children.flatMap { child in
-            folderTreeSidebarRows(for: child, depth: depth + 1, expandedFolderPaths: expandedFolderPaths)
-        }
-    }
-
-    private static func reviewQueueSidebarRows(reviewQueueCounts: [ReviewQueue: Int]) -> [SidebarRow] {
-        reviewQueueSidebarOrder.compactMap { queue in
-            guard let count = reviewQueueCounts[queue],
-                  count > 0 else {
-                return nil
-            }
-            return SidebarRow(
-                id: "review-\(queue.rawValue)",
-                title: queue.presentation.title,
-                countText: sidebarCountText(count),
-                target: .reviewQueue(queue)
-            )
-        }
-    }
-
-    private static let reviewQueueSidebarOrder: [ReviewQueue] = [
+    private static let smartCollectionSidebarOrder: [SmartCollection] = [
         .picks,
         .potentialPicks,
         .rejects,
@@ -14261,37 +14677,12 @@ public final class AppModel {
         .providerFailures
     ]
 
-    private static func reviewQueueCounts(repository: CatalogRepository) throws -> [ReviewQueue: Int] {
-        var counts: [ReviewQueue: Int] = [:]
-        for queue in reviewQueueSidebarOrder {
-            counts[queue] = try repository.assetCount(matching: reviewQueueQuery(queue))
+    private static func smartCollectionCounts(repository: CatalogRepository) throws -> [SmartCollection: Int] {
+        var counts: [SmartCollection: Int] = [:]
+        for collection in smartCollectionSidebarOrder {
+            counts[collection] = try repository.assetCount(matching: collection.query)
         }
         return counts
-    }
-
-    private static func reviewQueueQuery(_ queue: ReviewQueue) -> SetQuery {
-        switch queue {
-        case .picks:
-            return SetQuery(predicates: [.flag(.pick)])
-        case .potentialPicks:
-            return SetQuery(predicates: [.likelyPick])
-        case .rejects:
-            return SetQuery(predicates: [.flag(.reject)])
-        case .fiveStars:
-            return SetQuery(predicates: [.ratingAtLeast(5)])
-        case .needsKeywords:
-            return SetQuery(predicates: [.missingKeywords])
-        case .needsEvaluation:
-            return SetQuery(predicates: [.unevaluated])
-        case .facesFound:
-            return SetQuery(predicates: [.evaluationKind(.faceCount)])
-        case .ocrFound:
-            return SetQuery(predicates: [.evaluationKind(.ocrText)])
-        case .likelyIssues:
-            return SetQuery(predicates: [.likelyIssue])
-        case .providerFailures:
-            return SetQuery(predicates: [.evaluationFailure])
-        }
     }
 
     private static func sourceAvailabilitySummaries(repository: CatalogRepository) throws -> [CatalogSourceAvailabilitySummary] {
@@ -14325,45 +14716,8 @@ public final class AppModel {
         }
     }
 
-    private static func recentlyAddedSidebarRow(_ recentWork: [AppWorkActivity]) -> SidebarRow? {
-        guard let activity = recentWork.first(where: { activity in
-            isImportCompletionActivity(activity)
-                && !activity.outputSetIDs.isEmpty
-                && (activity.totalUnitCount ?? activity.completedUnitCount) > 0
-        }) else {
-            return nil
-        }
-        return SidebarRow(
-            id: "library-recently-added",
-            title: "Recent Import",
-            detailText: activity.detail.isEmpty ? "Latest import" : activity.detail,
-            countText: sidebarCountText(activity.totalUnitCount ?? activity.completedUnitCount),
-            tone: .positive,
-            target: .workSession(WorkSessionID(rawValue: activity.id))
-        )
-    }
-
-    private static func visibleSavedAssetSets(_ assetSets: [AssetSet]) -> [AssetSet] {
-        assetSets.filter {
-            !$0.id.rawValue.hasPrefix("work-output-")
-                && !$0.id.rawValue.hasPrefix("work-input-")
-                && !$0.id.rawValue.hasPrefix("work-stack-")
-        }
-    }
-
-    private static func sidebarRow(for assetSet: AssetSet, count: Int?) -> SidebarRow {
-        SidebarRow(
-            id: "asset-set-\(assetSet.id.rawValue)",
-            title: assetSet.name,
-            detailText: assetSet.sidebarDetailText,
-            countText: count.map(sidebarCountText),
-            tone: assetSet.isDynamic ? .accent : .neutral,
-            target: .assetSet(assetSet.id)
-        )
-    }
-
     private static func assetSetCounts(_ assetSets: [AssetSet], repository: CatalogRepository) throws -> [AssetSetID: Int] {
-        let visibleAssetSets = visibleSavedAssetSets(assetSets)
+        let visibleAssetSets = UnifiedSidebarPresentation.visibleSavedAssetSets(assetSets)
         var counts: [AssetSetID: Int] = [:]
         for assetSet in visibleAssetSets {
             counts[assetSet.id] = try assetCount(for: assetSet, repository: repository)
@@ -14378,6 +14732,16 @@ public final class AppModel {
         case .dynamic(let query):
             return try repository.assetCount(matching: query)
         }
+    }
+
+    private static func nonImportWorkActivities(
+        repository: CatalogRepository
+    ) throws -> (recent: [AppWorkActivity], starred: [AppWorkActivity]) {
+        let recent = try repository.workSessions(limit: 5, excluding: .ingest)
+            .map(AppWorkActivity.init)
+        let starred = try repository.workSessions(limit: 10, starredOnly: true, excluding: .ingest)
+            .map(AppWorkActivity.init)
+        return (recent, starred)
     }
 
     private static func workSessionScopeCounts(
@@ -14396,35 +14760,49 @@ public final class AppModel {
         return counts
     }
 
-    private static func workSidebarRows(
-        for activities: [AppWorkActivity],
-        idPrefix: String,
-        scopeCounts: [WorkSessionID: Int]
-    ) -> [SidebarRow] {
-        activities.map { activity in
-            let sessionID = WorkSessionID(rawValue: activity.id)
-            return SidebarRow(
-                id: "\(idPrefix)-\(activity.id)",
-                title: workSidebarTitle(for: activity),
-                detailText: activity.sidebarDetailText,
-                countText: activity.sidebarCountText(scopeCount: scopeCounts[sessionID]),
-                tone: activity.sidebarTone,
-                target: .workSession(sessionID)
-            )
-        }
-    }
+    private static func importSourceAssetCounts(
+        sessions: [WorkSession],
+        repository: CatalogRepository
+    ) throws -> [WorkSessionID: Int] {
+        let outputSetIDs = Set(sessions.flatMap(\.outputSetIDs))
+        guard !outputSetIDs.isEmpty else { return [:] }
 
-    fileprivate static func sidebarCountText(_ count: Int) -> String {
-        count.formatted(.number.notation(.compactName))
-    }
-
-    private static func workSidebarTitle(for activity: AppWorkActivity) -> String {
-        let trimmedTitle = activity.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedDetail = activity.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedTitle == "Import photos", !trimmedDetail.isEmpty {
-            return trimmedDetail
+        let outputSetsByID = Dictionary(
+            uniqueKeysWithValues: try repository.assetSets()
+                .filter { outputSetIDs.contains($0.id) }
+                .map { ($0.id, $0) }
+        )
+        let hasExplicitMembership = outputSetsByID.values.contains { outputSet in
+            switch outputSet.membership {
+            case .manual, .snapshot:
+                true
+            case .dynamic:
+                false
+            }
         }
-        return trimmedTitle.isEmpty && !trimmedDetail.isEmpty ? trimmedDetail : activity.title
+        let selectableCatalogAssetIDs = hasExplicitMembership
+            ? Set(try repository.assetIDs())
+            : []
+        var selectableAssetIDsBySetID: [AssetSetID: Set<AssetID>] = [:]
+        for outputSetID in outputSetIDs {
+            guard let outputSet = outputSetsByID[outputSetID] else {
+                selectableAssetIDsBySetID[outputSetID] = []
+                continue
+            }
+            switch outputSet.membership {
+            case .manual(let assetIDs), .snapshot(let assetIDs):
+                selectableAssetIDsBySetID[outputSetID] = Set(assetIDs).intersection(selectableCatalogAssetIDs)
+            case .dynamic(let query):
+                selectableAssetIDsBySetID[outputSetID] = Set(try repository.assetIDs(matching: query))
+            }
+        }
+
+        return Dictionary(uniqueKeysWithValues: sessions.map { session in
+            let selectableAssetIDs = session.outputSetIDs.reduce(into: Set<AssetID>()) { assetIDs, outputSetID in
+                assetIDs.formUnion(selectableAssetIDsBySetID[outputSetID] ?? [])
+            }
+            return (session.id, selectableAssetIDs.count)
+        })
     }
 
     fileprivate static func workKindTitle(_ kind: WorkSessionKind) -> String {
@@ -14459,7 +14837,7 @@ public final class AppModel {
     }
 }
 
-private extension AssetSet {
+extension AssetSet {
     var sidebarDetailText: String {
         switch membership {
         case .dynamic:
@@ -14472,7 +14850,7 @@ private extension AssetSet {
     }
 }
 
-private extension AppWorkActivity {
+extension AppWorkActivity {
     var sidebarDetailText: String? {
         switch status {
         case .running:
@@ -14492,10 +14870,10 @@ private extension AppWorkActivity {
 
     func sidebarCountText(scopeCount: Int?) -> String? {
         if let scopeCount {
-            return AppModel.sidebarCountText(scopeCount)
+            return UnifiedSidebarPresentation.countText(scopeCount)
         }
         guard let totalUnitCount, totalUnitCount > 0 else {
-            return completedUnitCount > 0 ? AppModel.sidebarCountText(completedUnitCount) : nil
+            return completedUnitCount > 0 ? UnifiedSidebarPresentation.countText(completedUnitCount) : nil
         }
         return "\(completedUnitCount)/\(totalUnitCount)"
     }

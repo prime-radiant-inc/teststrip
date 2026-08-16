@@ -156,6 +156,10 @@ public struct ActivityCenterPresentation: Equatable {
     public var importError: String?
     public var sources: [SourceStatusRow]
     public var xmpConflicts: [ConflictRow]
+    /// Completed imports, newest first. Receipts never badge — the badge
+    /// counts problems only; the toast is the announcement and this is the
+    /// archive.
+    public var receipts: [ImportReceiptRow]
 
     public init(
         kindRows: [ActivityKindRow],
@@ -163,6 +167,7 @@ public struct ActivityCenterPresentation: Equatable {
         importError: String?,
         sources: [SourceStatusRow],
         xmpConflicts: [ConflictRow],
+        receipts: [ImportReceiptRow],
         providerFailureCount: Int
     ) {
         self.kindRows = kindRows
@@ -170,6 +175,7 @@ public struct ActivityCenterPresentation: Equatable {
         self.importError = importError
         self.sources = sources
         self.xmpConflicts = xmpConflicts
+        self.receipts = receipts
 
         let unavailableSourceCount = sources.filter { $0.availability != .online }.count
         let problemCount = xmpConflicts.count + unavailableSourceCount + providerFailureCount

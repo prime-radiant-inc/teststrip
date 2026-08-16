@@ -1,13 +1,14 @@
 # activity-006-xmp-lifecycle: XMP conflicts arise from divergence or unreadable sidecars, and never auto-resolve
 
 **What this covers**: `MetadataSyncPlanner.decision` (both-diverged
-conflicts, `MetadataSyncPlanner.swift:35-47`) and
+conflicts, `MetadataSyncPlanner.swift:55-67`) and
 `WorkerCommandExecutor.recordConflictForUnreadableSidecar` (corrupt/torn
-sidecars, `WorkerCommandExecutor.swift:550-576`) — the two distinct code
+sidecars, `WorkerCommandExecutor.swift:562-593`) — the two distinct code
 paths that produce an XMP conflict — plus the durability invariant: once
 `metadata_sync_state.status = 'conflict'`, repeated sync scans never
 re-evaluate or clear it (`CatalogRepository.pendingMetadataSyncItems` only
-selects `status = 'pending'` rows, `CatalogRepository.swift:1767-1777`, so a
+selects `status = 'pending'` rows,
+`CatalogRepository.swift:2567-2569,3656-3672`, so a
 conflicted row is structurally excluded from the scan's input set).
 
 ## Pre-state
@@ -41,7 +42,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    Now both `localChanged` and `sidecarContentChanged` are true relative to
    the last-synced fingerprint — the exact condition
    `MetadataSyncPlanner.decision`'s `case (true, true, _)` matches
-   (`MetadataSyncPlanner.swift:42-47`).
+   (`MetadataSyncPlanner.swift:62-66`).
 4. Trigger the next sync scan — use Metadata ▸ **Check Sidecars for
    Changes** (or relaunch; both run the rescan — see Sharp edges). Assert a
    conflict was recorded:
@@ -96,7 +97,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
     `metadata_sync_state` values must be byte-identical across repeated
     scans. Structurally, this is guaranteed by
     `pendingMetadataSyncItems` only querying `status = 'pending'`
-    (`CatalogRepository.swift:1767-1777`) — a `'conflict'` row is invisible
+    (`CatalogRepository.swift:2567-2569,3656-3672`) — a `'conflict'` row is invisible
     to the scan's own input query, so there is no code path by which a scan
     could silently flip it back. Confirm this holds by direct observation,
     not just by citing the query.
@@ -107,7 +108,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   the card's fixture must confirm both are necessary, not just sufficient
   (e.g. repeat with *only* step 2 or *only* step 3 done, and confirm no
   conflict is recorded — a plain `writeCatalog` or `importSidecar` decision
-  instead, per `MetadataSyncPlanner.swift:38-41`).
+  instead, per `MetadataSyncPlanner.swift:58-61`).
 - Step 8: **Fails if** the corrupt-sidecar path does not independently
   produce a conflict without any catalog-side change.
 - Step 10: **Fails if** `status` ever reverts to `pending`/`synced` or the
@@ -162,7 +163,7 @@ Quit the launched instance.
   confirm the literal string (`'synced'`, `'clean'`, or similar) against a
   live catalog before asserting it exactly.
 - `MetadataSyncPlanner.decision` is a pure function with a small, fully
-  enumerated case table (`MetadataSyncPlanner.swift:35-47`) — worth unit-test
+  enumerated case table (`MetadataSyncPlanner.swift:55-67`) — worth unit-test
   coverage independent of this end-to-end card if it doesn't already exist;
   not verified whether `MetadataSyncPlannerTests` covers the `(true, true,
   _)` conflict case specifically.

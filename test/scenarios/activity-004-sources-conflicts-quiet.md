@@ -1,130 +1,314 @@
-# activity-004-sources-conflicts-quiet: Activity popover Sources refresh/reconnect, XMP Conflicts rows, and the quiet "No active work" state
+# activity-004-sources-conflicts-quiet: Sources and XMP problems compose, refresh, and return to quiet
 
-**What this covers**: three independent sections of the Activity popover
-(`ActivityCenterView`) — the Sources section's per-row refresh/reconnect
-actions, the XMP Conflicts section listing conflicted assets separately from
-Sources, and the popover's quiet floor state, `"No active work"`, when
-nothing needs attention.
+**What this covers**: the Activity popover's quiet state, one source-
+availability row, one presentation-level XMP conflict row, their simultaneous
+problem count, and the transition back to quiet through the real Refresh
+action.
+
+Source: `Sources/TeststripApp/ActivityCenterView.swift` (section gates and
+quiet predicate `:14-63`, Sources and Refresh `:173-220`, conflicts
+`:241-268`), `Sources/TeststripApp/ActivityCenterPresentation.swift`
+(problems-only badge `:142-190`), `Sources/TeststripApp/AppModel.swift`
+(`activityCenterPresentation` `:2989-3032`,
+`refreshVisibleAssetAvailability()` `:11580-11593`, availability labels
+`:14704-14717`), and `Sources/TeststripApp/LibraryGridView.swift`
+(`activityToolbarHelp` `:445-492`). The catalog constraints are
+`Sources/TeststripCore/Catalog/CatalogMigrations.swift:12-39`: every
+`original_path` is unique and `metadata_sync_state.status='conflict'` feeds
+the conflict presentation.
 
 ## Pre-state
+
+This is a VM-only fresh-smoke card. Every launch, AX action, filesystem
+operation, and SQL query goes through `script/vm_scenario_run.sh`:
+
 ```bash
-./script/build_and_run.sh --smoke
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
+script/vm_scenario_run.sh sync smoke
+script/vm_scenario_run.sh launch smoke
+script/vm_scenario_run.sh ax wait-vended Teststrip
+```
+
+Capture `smoke-0`'s original path as a SQLite literal before changing it, and
+persist that literal in the card's owned fixture directory so cleanup remains
+recoverable after a failed intermediate step:
+
+```bash
+script/vm_scenario_run.sh shell '
+set -eu
+run=$(ls -dt "$HOME"/teststrip-vm/run/smoke-* | head -1)
+fixture="$HOME/teststrip-vm/fixtures/activity-004"
+rm -rf "$fixture"
+mkdir -p "$fixture"
+sqlite3 "$run/Teststrip/catalog.sqlite" "SELECT quote(original_path) FROM assets WHERE id='smoke-0';" > "$fixture/original-path.sql"
+test -s "$fixture/original-path.sql"
+'
+ORIGINAL_PATH_SQL=$(script/vm_scenario_run.sh shell 'cat "$HOME/teststrip-vm/fixtures/activity-004/original-path.sql"')
+test -n "$ORIGINAL_PATH_SQL"
+MISSING_PATH=/Users/admin/teststrip-vm/fixtures/activity-004/missing/smoke-0.jpg
+CONFLICT_PATH=/Users/admin/teststrip-vm/fixtures/activity-004/activity-004-smoke-1.jpg.xmp
 ```
 
 ## Steps
 
-### 1. Quiet floor state
-1. `script/ax_drive.sh wait-vended Teststrip`, then wait for the
-   preview/evaluation queue to drain (poll per `activity-icon-states.md`
-   step 2 — 0 rows across `preview_generation_queue` +
-   active `work_sessions`).
-2. Open the Activity popover. With no jobs, no import in progress, no
-   offline sources, and no XMP conflicts, assert the exact quiet-state text
-   (`ActivityCenterView.swift:42-46`, `isQuiet(_:)` at lines 59-64):
-   `ax_drive.sh find --role AXStaticText --contains "No active work"`. This
-   is the *only* thing that renders in the popover body at true idle — no
-   other section header (`"Sources"`, `"XMP Conflicts"`, `"Activity"`)
-   should be present.
+### Part A: establish and render the quiet floor
 
-### 2. Sources — refresh and reconnect are separate, per-row actions
-`--smoke` seeds no `source_roots` rows (confirmed empty via `sqlite3`
-2026-07-10) — the Sources section's two row families
-(`AppModel.activityCenterPresentation`, `AppModel.swift:2489-2511`) are:
-  - **availability rows** (`SourceStatusRow` per non-online
-    `sourceAvailabilitySummaries` bucket) — always show a refresh action
-    (`refreshActionID` is the availability's raw value, never nil for these
-    rows), never a reconnect action.
-  - **bookmark-repair rows** (`SourceStatusRow` per registered
-    `sourceRoots` entry whose security-scoped bookmark needs repair) — show
-    a reconnect action (`reconnectActionID = root.path`), never refresh.
-3. Seed an offline asset (per `activity-icon-states.md` step 3):
-   ```bash
-   sqlite3 "$DB" "UPDATE assets SET original_path = '/Volumes/NoSuchVolume/x.jpg' WHERE id = 'smoke-0';"
-   ```
-   and trigger a source-availability rescan (see Sharp edges — no UI
-   trigger exists; this may require an app restart against the mutated
-   catalog, or waiting for the next scan the app runs on its own).
-4. In the popover's Sources section, assert an availability row whose name
-   reads exactly `"Offline Originals"`
-   (`sourceAvailabilityDisplayName(.offline)`, `AppModel.swift:11776-11789`)
-   with a secondary status label `"Offline"` (`source.availability.rawValue
-   .capitalized`, `ActivityCenterView.swift:239-243`) and a refresh button:
-   `ax_drive.sh find --role AXButton --help "Refresh source availability"`.
-   Press it; it calls `model.refreshVisibleAssetAvailability()`
-   (`ActivityCenterView.swift:267-273`) — assert the row disappears once the
-   asset's `original_path` is restored:
-   ```bash
-   sqlite3 "$DB" "UPDATE assets SET original_path = (SELECT original_path FROM assets WHERE id != 'smoke-0' LIMIT 1) WHERE id = 'smoke-0';"
-   # (restore to a valid on-disk path before refreshing, or the row won't clear)
-   ```
-5. For a bookmark-repair row (requires a registered `source_roots` entry
-   whose bookmark needs repair — not producible by `--smoke`; needs a
-   card-import or Import Path flow that registers a source root, then an
-   out-of-band invalidation of its security-scoped bookmark), assert the
-   reconnect button `ax_drive.sh find --role AXButton --help "Reconnect <name>"`
-   opens `SourceReconnectSheet` (`ActivityCenterView.swift:275-278`) rather
-   than acting inline — distinct from refresh, which acts immediately with
-   no sheet.
+1. Wait conditionally for the fresh seed's background work to drain. Prove
+   the catalog has no active non-culling work, unavailable assets, XMP
+   conflicts, or provider failures:
 
-### 3. XMP Conflicts — listed separately from Sources
-6. Seed an XMP conflict (per `quiet-activity-badge.md` step 3 — edit a
-   sidecar out-of-band so catalog and sidecar diverge) and trigger the next
-   sync scan.
-7. Open the popover. Assert the conflict renders under its own `"XMP
-   Conflicts"` header (`ActivityCenterView.swift:296-313`), never merged
-   into the `"Sources"` list — the two sections are structurally
-   independent `VStack`s gated on `presentation.sources.isEmpty` and
-   `presentation.xmpConflicts.isEmpty` respectively
-   (`ActivityCenterView.swift:36-41`). Both can be simultaneously visible
-   (an offline source and an XMP conflict at once) without merging into a
-   combined list.
+   ```bash
+   attempt=0
+   QUIET_SAMPLES=0
+   while [ "$attempt" -lt 180 ]; do
+       ACTIVE_NON_CULL=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM work_sessions WHERE kind!='culling' AND status IN ('queued','running','paused');")
+       UNAVAILABLE=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM assets WHERE availability!='online';")
+       CONFLICTS=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE status='conflict';")
+       PROVIDER_FAILURES=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(DISTINCT asset_id) FROM evaluation_failures;")
+       if test "$ACTIVE_NON_CULL" -eq 0 && test "$UNAVAILABLE" -eq 0 && test "$CONFLICTS" -eq 0 && test "$PROVIDER_FAILURES" -eq 0; then
+           QUIET_SAMPLES=$((QUIET_SAMPLES + 1))
+           test "$QUIET_SAMPLES" -ge 2 && break
+       else
+           QUIET_SAMPLES=0
+       fi
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$QUIET_SAMPLES" -ge 2
+   test "$ACTIVE_NON_CULL" -eq 0
+   test "$UNAVAILABLE" -eq 0
+   test "$CONFLICTS" -eq 0
+   test "$PROVIDER_FAILURES" -eq 0
+   ```
+
+2. Open the exact idle toolbar state. Assert `No active work` and the
+   absence of active/problem headers and pause notices:
+
+   ```bash
+   script/vm_scenario_run.sh ax find --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "No active work"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Activity"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Sources"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused after current task"
+   script/vm_scenario_run.sh key 'key code 53'
+   ```
+
+   `Recent Imports` and `Worker idle` may coexist with this floor. They are
+   durable history and an idle process notice, not active work or problems.
+
+### Part B: one missing source, then a simultaneous conflict
+
+3. Prove the card's missing path is unique and nonexistent. Change only
+   `smoke-0` to that path and mark it missing:
+
+   ```bash
+   test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM assets WHERE original_path='$MISSING_PATH';")" -eq 0
+   script/vm_scenario_run.sh shell 'test ! -e /Users/admin/teststrip-vm/fixtures/activity-004/missing/smoke-0.jpg'
+   script/vm_scenario_run.sh sql smoke "UPDATE assets SET original_path='$MISSING_PATH', availability='missing' WHERE id='smoke-0';"
+   test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM assets WHERE id='smoke-0' AND original_path='$MISSING_PATH' AND availability='missing';")" -eq 1
+   ```
+
+4. Quit and relaunch the same recorded smoke run through the wrapper. Do not
+   call `launch smoke`, which would replace the mutated run with a fresh copy:
+
+   ```bash
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh shell '
+   sleep 1
+   run=$(ls -dt "$HOME"/teststrip-vm/run/smoke-* | head -1)
+   open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$run"
+   '
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   ```
+
+5. Assert one problem and the source row's current UI contract:
+
+   ```bash
+   script/vm_scenario_run.sh ax find --role AXButton --help "Activity - 1 problem"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - 1 problem"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Sources"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Missing Originals"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Missing"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Refresh source availability"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
+   script/vm_scenario_run.sh key 'key code 53'
+   ```
+
+6. While Sources remains unresolved, seed one owned presentation-only
+   conflict for `smoke-1`. A fresh smoke run must not already own a sync-state
+   row for that asset:
+
+   ```bash
+   test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE asset_id='smoke-1';")" -eq 0
+   script/vm_scenario_run.sh sql smoke "INSERT INTO metadata_sync_state (asset_id, sidecar_path, catalog_generation, last_synced_fingerprint, status, updated_at) SELECT 'smoke-1', '$CONFLICT_PATH', catalog_generation, 'activity-004-presentation-only', 'conflict', CAST(strftime('%s','now') AS REAL) FROM assets WHERE id='smoke-1';"
+   test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE asset_id='smoke-1' AND sidecar_path='$CONFLICT_PATH' AND status='conflict';")" -eq 1
+   ```
+
+7. Relaunch that same run again, then assert both independent sections and
+   the exact two-problem help:
+
+   ```bash
+   script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+   script/vm_scenario_run.sh shell '
+   sleep 1
+   run=$(ls -dt "$HOME"/teststrip-vm/run/smoke-* | head -1)
+   open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$run"
+   '
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   script/vm_scenario_run.sh ax find --role AXButton --help "Activity - 2 problems"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - 2 problems"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Sources"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "Missing Originals"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
+   script/vm_scenario_run.sh ax find --role AXButton --label "activity-004-smoke-1.jpg"
+   script/vm_scenario_run.sh key 'key code 53'
+   ```
+
+   This row tests Activity presentation and badge composition. Real sidecar
+   divergence, detection, and conflict persistence belong to
+   `activity-006-xmp-lifecycle.md`.
+
+### Part C: restore, Refresh, and return to quiet
+
+8. Restore `smoke-0`'s captured path while deliberately leaving its
+   availability as `missing`. Reopen the two-problem popover and press the
+   real Refresh action only after the path is valid again:
+
+   ```bash
+   ORIGINAL_PATH_SQL=$(script/vm_scenario_run.sh shell 'cat "$HOME/teststrip-vm/fixtures/activity-004/original-path.sql"')
+   script/vm_scenario_run.sh sql smoke "UPDATE assets SET original_path=$ORIGINAL_PATH_SQL WHERE id='smoke-0';"
+   test "$(script/vm_scenario_run.sh sql smoke "SELECT quote(original_path) FROM assets WHERE id='smoke-0';")" = "$ORIGINAL_PATH_SQL"
+   test "$(script/vm_scenario_run.sh sql smoke "SELECT availability FROM assets WHERE id='smoke-0';")" = missing
+   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - 2 problems"
+   script/vm_scenario_run.sh ax press --role AXButton --help "Refresh source availability"
+   ```
+
+9. Poll the catalog until the refresh work returns `smoke-0` online and all
+   non-culling work retires. Assert Sources clears while the owned XMP
+   conflict remains and the badge becomes one problem:
+
+   ```bash
+   attempt=0
+   while [ "$attempt" -lt 120 ]; do
+       AVAILABILITY=$(script/vm_scenario_run.sh sql smoke "SELECT availability FROM assets WHERE id='smoke-0';")
+       ACTIVE_NON_CULL=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM work_sessions WHERE kind!='culling' AND status IN ('queued','running','paused');")
+       test "$AVAILABILITY" = online && test "$ACTIVE_NON_CULL" -eq 0 && break
+       attempt=$((attempt + 1))
+       sleep 1
+   done
+   test "$AVAILABILITY" = online
+   test "$ACTIVE_NON_CULL" -eq 0
+   script/vm_scenario_run.sh ax find --role AXButton --help "Activity - 1 problem"
+   ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Sources"
+   script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
+   script/vm_scenario_run.sh ax find --role AXButton --label "activity-004-smoke-1.jpg"
+   script/vm_scenario_run.sh key 'key code 53'
+   ```
+
+10. Delete only the owned conflict, relaunch the same run so its cached
+    conflict projection reloads, and repeat the quiet proof:
+
+    ```bash
+    script/vm_scenario_run.sh sql smoke "DELETE FROM metadata_sync_state WHERE asset_id='smoke-1' AND sidecar_path='$CONFLICT_PATH';"
+    test "$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE status='conflict';")" -eq 0
+    script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+    script/vm_scenario_run.sh shell '
+    sleep 1
+    run=$(ls -dt "$HOME"/teststrip-vm/run/smoke-* | head -1)
+    open -n "$HOME/teststrip-vm/dist/Teststrip.app" --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$run"
+    '
+    script/vm_scenario_run.sh ax wait-vended Teststrip
+    attempt=0
+    QUIET_SAMPLES=0
+    while [ "$attempt" -lt 180 ]; do
+        ACTIVE_NON_CULL=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM work_sessions WHERE kind!='culling' AND status IN ('queued','running','paused');")
+        UNAVAILABLE=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM assets WHERE availability!='online';")
+        CONFLICTS=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM metadata_sync_state WHERE status='conflict';")
+        PROVIDER_FAILURES=$(script/vm_scenario_run.sh sql smoke "SELECT COUNT(DISTINCT asset_id) FROM evaluation_failures;")
+        if test "$ACTIVE_NON_CULL" -eq 0 && test "$UNAVAILABLE" -eq 0 && test "$CONFLICTS" -eq 0 && test "$PROVIDER_FAILURES" -eq 0; then
+            QUIET_SAMPLES=$((QUIET_SAMPLES + 1))
+            test "$QUIET_SAMPLES" -ge 2 && break
+        else
+            QUIET_SAMPLES=0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    test "$QUIET_SAMPLES" -ge 2
+    script/vm_scenario_run.sh ax find --role AXButton --help "Activity"
+    script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
+    script/vm_scenario_run.sh ax find --role AXStaticText --label "No active work"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Activity"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Sources"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
+    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused after current task"
+    ```
 
 ## Expected
-- Step 2: **Fails if** `"No active work"` renders alongside any other
-  section, or fails to render when all sections are genuinely empty.
-- Step 4: **Fails if** the refresh action doesn't clear the row once the
-  path is restored, or if a reconnect button (rather than refresh) appears
-  on an availability row.
-- Step 5: **Fails if** reconnect acts without opening the sheet, or if a
-  refresh button (rather than reconnect) appears on a bookmark-repair row.
-- Step 7: **Fails if** conflict rows appear inside the Sources section, or
-  the two headers never coexist when both kinds of problem are present
-  simultaneously.
+
+- Quiet fails unless SQL proves no active non-culling work, unavailable assets,
+  XMP conflicts, or provider failures and AX shows `No active work` without
+  Activity, Sources, XMP Conflicts, or pause notices. Durable receipts may
+  coexist.
+- The missing-source leg fails unless the unique missing path produces
+  `Missing Originals`, `Missing`, Refresh, and exactly one problem.
+- Composition fails unless Sources and XMP Conflicts render simultaneously
+  and toolbar help reads exactly `Activity - 2 problems`.
+- Refresh fails unless the captured path is restored first, the UI action
+  moves `smoke-0` from missing to online, Sources clears, XMP remains, and the
+  help becomes exactly one problem.
+- Final quiet fails unless deleting only the owned conflict and relaunching
+  removes the last problem and restores the original quiet assertions.
 
 ## Cleanup
+
+Cleanup restores path and availability before removing the recovery literal,
+and deletes only the conflict and fixture this card owns:
+
 ```bash
-sqlite3 "$DB" "UPDATE assets SET original_path = (SELECT original_path FROM assets WHERE id != 'smoke-0' LIMIT 1) WHERE id = 'smoke-0';" 2>/dev/null || true
-./script/reset_isolated_test_data.sh --delete
+if ORIGINAL_PATH_SQL=$(script/vm_scenario_run.sh shell 'test -f "$HOME/teststrip-vm/fixtures/activity-004/original-path.sql" && cat "$HOME/teststrip-vm/fixtures/activity-004/original-path.sql"'); then
+    script/vm_scenario_run.sh sql smoke "UPDATE assets SET original_path=$ORIGINAL_PATH_SQL, availability='online' WHERE id='smoke-0';"
+fi
+script/vm_scenario_run.sh sql smoke "DELETE FROM metadata_sync_state WHERE asset_id='smoke-1' AND sidecar_path='/Users/admin/teststrip-vm/fixtures/activity-004/activity-004-smoke-1.jpg.xmp';"
+script/vm_scenario_run.sh key 'keystroke "q" using {command down}'
+script/vm_scenario_run.sh shell 'rm -rf "$HOME/teststrip-vm/fixtures/activity-004"'
 ```
-Quit the launched instance.
 
 ## Sharp edges
-- **No UI-reachable trigger exists for source-availability or
-  metadata-sync-conflict rescans** — both fire only off worker-queue events
-  (`docs/product/focused-workspaces-followups.md`, "Known test-fixture
-  gaps": *"No UI-reachable trigger exists for the metadata-sync-conflict or
-  source-availability rescans — both fire only off worker-queue events."*).
-  Steps 3 and 6 above may need an app relaunch against the mutated catalog
-  (forcing a fresh scan at startup) rather than a live in-session trigger —
-  confirm which works before relying on either in a run.
-- `--smoke` seeds zero `source_roots` rows, so the bookmark-repair row path
-  (step 5) needs a fixture this card cannot self-produce; it's included for
-  completeness with the gap called out rather than silently dropped.
-- Verified all five `sourceAvailabilityDisplayName` strings by direct read of
-  `AppModel.swift:11776-11789`: Online → "Online Originals", Offline →
-  "Offline Originals", Missing → "Missing Originals", Moved → "Moved
-  Originals", Stale → "Stale Originals". Step 4 only exercises Offline; a
-  future card could sweep the rest.
+
+- Bookmark-repair and Reconnect are an explicit fixture gap, not pass
+  criteria here. They require a registered source root with a genuinely
+  invalid security-scoped bookmark. `import-007-refresh-reconnect.md` owns
+  that lifecycle.
+- The owned `metadata_sync_state` row is presentation-only. It proves section
+  separation and badge arithmetic without pretending to prove sidecar
+  detection. `activity-006-xmp-lifecycle.md` owns real conflict generation.
+- Relaunching the same run is required after out-of-band SQL because the model
+  caches source summaries and conflict items. Calling `launch smoke` would
+  silently discard the mutation and make these assertions vacuous.
+- Restoring `original_path` from another asset violates the unique index.
+  Updating `availability='online'` in SQL would bypass the Refresh action.
+  This card does neither.
+- Active Activity rows and persisted in-flight progress publish together on a
+  0.25-second cadence. Quiet must remain true across a full publication
+  interval before negative AX assertions; source and conflict model state is
+  otherwise immediate.
 
 ## Run status
-NOT RUN — no host GUI available in this session. `source_roots` emptiness
-and the offline-source `UPDATE` technique were verified headlessly against a
-seeded `--smoke` catalog on 2026-07-10 (schema per
-`Sources/TeststripCore/Catalog/CatalogMigrations.swift`). Section
-structure/control wiring confirmed by source citation
-(`Sources/TeststripApp/ActivityCenterView.swift`,
-`Sources/TeststripApp/AppModel.swift:2489-2511`). Needs a human-present or
-console-unlocked re-run to drive the AX steps, and confirmation of the exact
-`sourceAvailabilityDisplayName` strings.
+
+**Spec'd — NOT RUN (2026-08-10).** The executable procedure has been repaired
+against current source and schema, but no UI or VM leg has ever run. The old
+LEDGER `Tested-Fail` label was not supported by a driven failure and is
+corrected to this truthful pre-test state.
+
+Historical evidence is preserved:
+
+- 2026-07-10: `source_roots` emptiness and the smoke catalog schema were
+  inspected headlessly. No UI leg ran.
+- 2026-08-10: a docs-only contract cleanup re-anchored the quiet semantics.
+  It still ran no UI leg. This repair fixes the duplicated-path restore, the
+  Refresh ordering, and the mutually exclusive Sources/conflict setup before
+  the first live drive.

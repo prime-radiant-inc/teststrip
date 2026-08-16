@@ -116,7 +116,7 @@ final class ProposedAssetsPresentationTests: XCTestCase {
         XCTAssertTrue(model.proposedPhotos.isEmpty)
     }
 
-    // MARK: - Test helpers (copied from AppModelFilterPersistenceTests.swift:221-267)
+    // MARK: - Test helpers (copied from AppModelFilterPersistenceTests.swift:225-273)
 
     private func makeAsset(id: String, path: String) -> Asset {
         Asset(

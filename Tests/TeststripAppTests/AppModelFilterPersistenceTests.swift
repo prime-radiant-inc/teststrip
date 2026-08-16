@@ -34,10 +34,10 @@ final class AppModelFilterPersistenceTests: XCTestCase {
             XCTAssertEqual(model.assets.map(\.id), expectedAssetIDs, line: line)
         }
 
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
         assertFiltersUnchanged()
 
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
         assertFiltersUnchanged()
     }
 
@@ -52,7 +52,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         model.minimumRatingFilter = 4
         try model.applyLibraryFilters()
 
-        model.selectWorkspace(.cull)
+        model.selectLens(.cull)
 
         XCTAssertFalse(model.assets.isEmpty)
         XCTAssertTrue(model.assets.allSatisfy { $0.metadata.rating >= 4 })
@@ -180,19 +180,20 @@ final class AppModelFilterPersistenceTests: XCTestCase {
 
         _ = try model.beginCullingSession(named: "Scope Cull")
 
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
 
         XCTAssertEqual(model.minimumRatingFilter, 4)
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(Set(model.assets.map(\.id)), Set([five.id, four.id]))
     }
 
-    // A "Cull From" review-queue source is a filter-field scope (applyReviewQueue
-    // sets flagFilter, not a snapshot set), so culling from it keeps that filter
+    // A "Cull From" review-queue source is a filter-field scope (applySmartCollection
+    // installs the collection's query predicates as detached library filter
+    // predicates, not a snapshot set), so culling from it keeps that filter
     // live and it persists back to Library — the same single-scope behavior the
     // queue has when reached from the Library sidebar. Locks the emergent
     // behavior documented in the spec's "Cull From sources" section.
-    func testCullingFromReviewQueueSourcePersistsQueueFilter() throws {
+    func testCullingFromSmartCollectionSourcePersistsQueueFilter() throws {
         let pick = makeAsset(id: "pick", path: "/Photos/pick.jpg", rating: 5, flag: .pick)
         let unflagged = makeAsset(id: "unflagged", path: "/Photos/unflagged.jpg", rating: 3)
         let (model, _) = try makeModelWithCatalogAssets(
@@ -200,18 +201,23 @@ final class AppModelFilterPersistenceTests: XCTestCase {
             assets: [pick, unflagged]
         )
 
-        try model.activateCullSource(.reviewQueue(.picks))
+        // Selecting a source never changes the lens (orthogonality), so
+        // "Cull From" a queue is select-then-switch, not the deleted
+        // `activateCullSource` one-call router.
+        try model.selectSource(.smartCollection(.picks))
+        model.selectLens(.cull)
 
-        // Preserve branch was taken (else branch would clear flagFilter and
-        // switch selectedAssetSetID to the hidden work-input snapshot).
-        XCTAssertEqual(model.flagFilter, .pick)
+        // Preserve branch was taken (else branch would clear the detached
+        // filter predicates and switch selectedAssetSetID to the hidden
+        // work-input snapshot).
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
 
-        model.selectWorkspace(.library)
+        model.selectLens(.grid)
 
-        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
     }

@@ -62,7 +62,7 @@ so it stays a standalone stop.
    `stack-4-noface.jpg` in that order, 1s apart, then a fifth asset at least
    an hour later.
 
-2. Switch to the Cull workspace (⌘1) and select `stack-1-face.jpg`. Wait for
+2. Switch to the Cull lens (⌘1) and select `stack-1-face.jpg`. Wait for
    the close-ups panel, then read the rail:
    ```bash
    script/vm_scenario_run.sh ax wait --role AXStaticText --contains "CLOSE-UPS"
@@ -246,11 +246,11 @@ meaningfully exercised. Step 1 and Step 8 pass on their own merits.**
     (`LibraryGridView.swift:3922-3926`) and `cullingStackRail`'s `.task(id:
     faceReportSweepKey(for:))` (`:4903`, key built at `:4924-4932`) — are
     re-keyed on `model.previewCacheGeneration(for:)`
-    (`AppModel.swift:9386-9388`, reading `previewCacheGenerationsByAssetID`)
-    and `model.faceReportPreviewSource(for:)` (`:14146-14159`, itself
+    (`AppModel.swift:9763-9765`, reading `previewCacheGenerationsByAssetID`)
+    and `model.faceReportPreviewSource(for:)` (`:14611-14624`, itself
     memoized in `faceReportPreviewSourceCacheByAssetID`). Both of those
     reads are only refreshed by `flushBackgroundWorkPublication`
-    (`:10309-10321`, which calls `clearPreviewLookupCaches()` at `:10323-10327`
+    (`:10588-10602`, which calls `clearPreviewLookupCaches()` at `:10604-10608`
     and copies `currentPreviewCacheGenerationsByAssetID` into the published
     map), which itself only runs off worker-completion-driven
     `publishBackgroundWorkState()` calls. Since a from-disk cold read (the

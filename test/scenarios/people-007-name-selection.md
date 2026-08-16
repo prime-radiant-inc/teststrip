@@ -7,7 +7,7 @@ writes `people`/`person_assets`. The button is disabled until
 `canConfirmSelectedPerson` is true; its candidate asset IDs are the batch
 selection if one exists, else the single `selectedAssetID`
 (`AppModel.selectedPeopleCandidateAssetIDs`,
-`Sources/TeststripApp/AppModel.swift:3183-3189`). Also covers "Dismiss face
+`Sources/TeststripApp/AppModel.swift:3595-3601`). Also covers "Dismiss face
 review," which removes assets from the review queues
 (`dismissed_face_assets`) without ever touching `people`/`person_assets`.
 
@@ -48,7 +48,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    (persona-6 defect):** assert the sheet subtitle reads "Groups the 1
    selected photo under a new named person." — the count must match the
    actual selection (`PeoplePresentation.nameSelectionSubtitle`), so a stale
-   cross-workspace selection is visible before the confirming click.
+   cross-lens selection is visible before the confirming click.
    **Fails if** the subtitle is the old countless "Groups the selected
    photos…" text.
 6. **Confirm-before-write on opening the sheet:** re-run step 4's queries —
@@ -69,7 +69,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    with a distinct name ("Test Person Two"); assert the resulting
    `person_assets` row count equals the batch size, not 1 — proving
    `selectedPeopleCandidateAssetIDs` preferred the batch over any stale single
-   selection (`AppModel.swift:3184-3188`: `selectedBatchAssetIDsInCatalogOrder`
+   selection (`AppModel.swift:3595-3600`: `selectedBatchAssetIDsInCatalogOrder`
    wins when non-empty).
 10. **Dismiss face review, no write.** Select a photo that still carries an
     unnamed/undismissed face signal (not one just confirmed above). Press
@@ -126,14 +126,14 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   not re-driven live here.
 - `dismissFaceAssets` (the model call behind "Dismiss face review") also
   deletes matching `person_assets`/`person_faces` rows for the dismissed
-  asset (`CatalogRepository.swift:904-917`) — so if step 10's selected photo
+  asset (`CatalogRepository.swift:1219-1232`) — so if step 10's selected photo
   happens to already be linked to a person, dismissing it will remove that
   link. Pick an asset with no prior person link for a clean negative
   assertion, or explicitly account for the deletion if not.
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Confirm-before-write
-wiring confirmed by static read of `Sources/TeststripApp/AppModel.swift:3175-3225`
+wiring confirmed by static read of `Sources/TeststripApp/AppModel.swift:3580-3648`
 (`canConfirmSelectedPerson`, `selectedPeopleCandidateAssetIDs`,
 `confirmSelectedAssetsAsPerson`) and `PeopleView.swift:261-291` (sheet).
 Needs a human-present re-run. All SQL in this card was run headlessly against

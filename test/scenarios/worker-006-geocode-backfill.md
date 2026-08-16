@@ -6,20 +6,20 @@ run manually on a machine with network access.**
 
 **What this covers**: the geocode pipeline processes GPS-tagged assets in
 throttled batches of 50
-(`AppModel.geocodeBatchSize`, `Sources/TeststripApp/AppModel.swift:7322`,
+(`AppModel.geocodeBatchSize`, `Sources/TeststripApp/AppModel.swift:9546`,
 scan-limited to 500 pending coordinates per enqueue pass,
-`geocodeEnqueueScanLimit`, `AppModel.swift:7323`), results land in
+`geocodeEnqueueScanLimit`, `AppModel.swift:9547`), results land in
 `place_cache`
-(`Sources/TeststripCore/Catalog/CatalogMigrations.swift:212-220`), assets
+(`Sources/TeststripCore/Catalog/CatalogMigrations.swift:209-216`), assets
 with no resolvable location get a **nil-cached negative result** rather than
 being re-queried every time (`reverseGeocodeBatch`'s comment and behavior,
-`Sources/TeststripCore/Worker/WorkerCommandExecutor.swift:328-330`: "A nil
+`Sources/TeststripCore/Worker/WorkerCommandExecutor.swift:326-359`: "A nil
 result (no place found) is still cached with all-nil components so the
 coordinate leaves the queue and is never retried forever" —
-`recordPlaceName` with all-nil fields, `CatalogRepository.swift:577-597`),
+`recordPlaceName` with all-nil fields, `CatalogRepository.swift:847-875`),
 successful geocodes have map-visible effects, and the pipeline degrades
 gracefully offline — a failed lookup increments `geocode_queue.attempt_count`
-(`recordGeocodeFailure`, `CatalogRepository.swift:562-574`) up to
+(`recordGeocodeFailure`, `CatalogRepository.swift:832-845`) up to
 `reverseGeocodeMaximumAttemptCount = 5`
 (`WorkerCommandExecutor.swift:115`), not a crash or wedge.
 
@@ -44,7 +44,7 @@ sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_valid(technical_metadata_j
    sqlite3 "$DB" "SELECT count(*) FROM place_cache;"
    ```
 2. **Trigger the geocode pass.** `AppModel.enqueuePendingGeocoding`
-   (`AppModel.swift:7325-7334`) scans up to 500 pending coordinates and
+   (`AppModel.swift:9549-9574`) scans up to 500 pending coordinates and
    dispatches a `geocode-batch` work item under a single `WorkSessionID`
    that re-dispatches under the same ID until the queue drains — confirm the
    live trigger (an automatic scan on launch, or an explicit action) against
@@ -119,13 +119,13 @@ Step 6.
   over-fit assertions to specific place names; assert the mechanism, not
   the exact string.
 - `reverseGeocodeRequestInterval` throttles *within* a batch (a sleep
-  between individual lookups, `WorkerCommandExecutor.swift:325-327`), which
+  between individual lookups, `WorkerCommandExecutor.swift:340-342`), which
   is a separate throttle from the 50-item batch cap — don't conflate
   "geocoding is slow" (the intra-batch pacing) with "geocoding never
   exceeds 50 per pass" (the batch cap) when diagnosing a failure.
 - `enqueueMissingGeocodeCoordinates`'s scan is capped at 500
   (`geocodeEnqueueScanLimit`) per invocation
-  (`CatalogRepository.swift:518` excludes coordinates already in
+  (`CatalogRepository.swift:788-790` excludes coordinates already in
   `place_cache`) — a corpus with more than 500 distinct new coordinates
   needs multiple enqueue passes to fully drain; don't read a single pass's
   incomplete queue as a bug.

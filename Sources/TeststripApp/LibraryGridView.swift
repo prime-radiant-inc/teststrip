@@ -42,7 +42,8 @@ struct LibraryGridView: View {
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
-    @State private var dismissedImportCompletionSummaryID: String?
+    @State private var dismissedToastSummaryID: String?
+    @State private var isToastVisible = false
     @State private var importIssueReview: ImportIssueReview?
     @State private var importPathDraft = ImportFolderPathDraft()
     @State private var importCardPathDraft = ImportCardPathDraft()
@@ -73,7 +74,19 @@ struct LibraryGridView: View {
         model.isImporting
     }
 
+    // `bodyContent` is its own declaration so the compiler type-checks its
+    // long modifier chain and this `.onChange` as two separate expressions —
+    // chained on in-line, the tenth handler pushed the whole chain over the
+    // type-checker's "reasonable time" limit. It sits outside `bodyContent`'s
+    // lens `Group`, so the sidebar's skipped-files child can open its sheet
+    // from every lens.
     var body: some View {
+        bodyContent.onChange(of: model.importIssueReviewRequestToken) { _, _ in
+            presentRequestedImportIssueReview()
+        }
+    }
+
+    private var bodyContent: some View {
         Group {
             if model.selectedView == .people {
                 PeopleView(model: model)
@@ -152,6 +165,9 @@ struct LibraryGridView: View {
         .onChange(of: model.newSetFromSelectionRequestToken) { _, _ in
             showManualSetPopover()
         }
+        .onChange(of: model.saveSearchRequestToken) { _, _ in
+            showSaveSearchPopover()
+        }
         .onChange(of: model.moveRejectsToTrashRequestToken) { _, _ in
             beginRejectRelocationToTrash()
         }
@@ -170,7 +186,7 @@ struct LibraryGridView: View {
                         dismiss: { model.dismissRejectRelocationSummary() }
                     )
                 }
-                if WorkspaceChromePolicy.showsFooter(model.selectedView) {
+                if LensChromePolicy.showsFooter(model.selectedView) {
                     footer
                 }
             }
@@ -196,13 +212,13 @@ struct LibraryGridView: View {
         .overlay(alignment: .topLeading) {
             CullingKeyCaptureView(
                 focusRequest: cullingFocusRequest,
-                // Scoped to the Cull workspace's loupe/compare/A-B sub-views
-                // only (see CullingKeyCaptureGate) — every other view either
-                // has its own monitor (.cullGrid uses GridKeyCaptureView) or
-                // no culling chrome at all (.people/.timeline/.map/.grid/
+                // Scoped to the Cull lens's loupe/compare/A-B sub-modes only
+                // (see CullingKeyCaptureGate) — every other route either has
+                // its own monitor (.cullGrid uses GridKeyCaptureView) or no
+                // culling chrome at all (.people/.timeline/.map/.grid/
                 // .libraryLoupe), where these shortcuts would write metadata
                 // or navigate behind hidden chrome.
-                isActive: CullingKeyCaptureGate.isActive(workspace: model.selectedWorkspace, selectedView: model.selectedView),
+                isActive: CullingKeyCaptureGate.isActive(lens: model.selectedLens, selectedView: model.selectedView),
                 isCompareLikeMode: model.selectedView == .compare || model.selectedView == .abCompare,
                 onShortcut: handleCullingShortcut
             )
@@ -227,15 +243,30 @@ struct LibraryGridView: View {
                 .onExitCommand { model.isKeyMapOverlayVisible = false }
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if let toast = model.importCompletionToast,
+               toast.summaryID != dismissedToastSummaryID,
+               isToastVisible {
+                importCompletionToast(toast)
+                    .transition(.opacity)
+            }
+        }
+        .task(id: model.importCompletionToast?.summaryID) {
+            guard let toast = model.importCompletionToast, toast.summaryID != dismissedToastSummaryID else {
+                isToastVisible = false
+                return
+            }
+            await showToastThenFade(toast)
+        }
     }
 
     @ToolbarContentBuilder
     private var libraryToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            workspaceSwitcher
+            lensSwitcher
         }
 
-        if WorkspaceChromePolicy.showsImportMenu(model.selectedView) {
+        if LensChromePolicy.showsImportMenu(model.selectedView) {
             ToolbarItem {
                 Menu {
                     Button {
@@ -259,7 +290,7 @@ struct LibraryGridView: View {
             }
         }
 
-        if WorkspaceChromePolicy.showsImportMenu(model.selectedView)
+        if LensChromePolicy.showsImportMenu(model.selectedView)
             && LibraryGridChromePolicy.shouldExposeImportPathControl(
                 environment: ProcessInfo.processInfo.environment
             ) {
@@ -281,7 +312,7 @@ struct LibraryGridView: View {
         // "Start Culling" naming popover when nothing is batch-selected (no
         // Culling-menu or context-menu equivalent exists for that path —
         // "Cull These" only covers the batch-selection fast path).
-        if WorkspaceChromePolicy.showsCullButton(model.selectedView) {
+        if LensChromePolicy.showsCullButton(model.selectedView) {
             ToolbarItem {
                 Button {
                     // A batch selection culls straight to those photos (same
@@ -303,7 +334,7 @@ struct LibraryGridView: View {
             }
         }
 
-        if WorkspaceChromePolicy.showsExportButton(model.selectedView) {
+        if LensChromePolicy.showsExportButton(model.selectedView) {
             ToolbarItem {
                 Button {
                     beginExport()
@@ -341,7 +372,7 @@ struct LibraryGridView: View {
             }
         }
 
-        if WorkspaceChromePolicy.showsMoreMenu(model.selectedView) {
+        if LensChromePolicy.showsMoreMenu(model.selectedView) {
             ToolbarItem {
                 Menu {
                     Button {
@@ -460,37 +491,38 @@ struct LibraryGridView: View {
         return presentation.isWorking ? "Activity - working" : "Activity"
     }
 
-    private var workspaceSwitcher: some View {
-        Picker("Workspace", selection: Binding(
-            get: { model.selectedWorkspace },
-            set: { model.selectWorkspace($0) }
-        )) {
-            ForEach(Workspace.allCases, id: \.self) { workspace in
-                Text(workspace.title).tag(workspace)
+    /// The one lens control: Cull | Grid | Loupe | Timeline | Map | People,
+    /// ⌘1–⌘6 in the same order. A lens the current source disables on renders
+    /// disabled with its reason on hover. A `Picker` can't disable individual
+    /// segments, so this uses the same button-row idiom as
+    /// `thumbnailDensityControl`.
+    private var lensSwitcher: some View {
+        HStack(spacing: 2) {
+            ForEach(model.lensAvailabilities, id: \.lens) { availability in
+                Button {
+                    model.selectLens(availability.lens)
+                } label: {
+                    Text(availability.lens.title)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                        .padding(.horizontal, 9)
+                        .frame(height: 22)
+                        .background(
+                            model.selectedLens == availability.lens ? Color.white.opacity(0.14) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!availability.isEnabled)
+                .help(availability.disabledReason ?? availability.lens.title)
+                .accessibilityLabel(availability.lens.title)
+                .accessibilityValue(model.selectedLens == availability.lens ? "Selected" : "Not selected")
             }
         }
-        .pickerStyle(.segmented)
-        .frame(width: 220)
-    }
-
-    // Grid/Loupe/Timeline/Map/People: the Library workspace's own sub-view
-    // toggle (as distinct from the Cull sub-views reachable via the temporary
-    // View menu routes). Loupe here opens the plain-chrome Library loupe, not
-    // the culling loupe. People is a peer sub-view, not a top-level workspace.
-    private var librarySubViewToggle: some View {
-        Picker("Library View", selection: Binding(
-            get: { model.selectedView },
-            set: { model.selectedView = $0 }
-        )) {
-            Text("Grid").tag(LibraryViewMode.grid)
-            Text("Loupe").tag(LibraryViewMode.libraryLoupe)
-            Text("Timeline").tag(LibraryViewMode.timeline)
-            Text("Map").tag(LibraryViewMode.map)
-            Text("People").tag(LibraryViewMode.people)
-        }
-        .pickerStyle(.segmented)
-        .frame(width: 340)
-        .accessibilityLabel("Library View")
+        .padding(2)
+        .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 7))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Lens")
     }
 
     private var thumbnailSizeControl: some View {
@@ -549,11 +581,8 @@ struct LibraryGridView: View {
 
     private var libraryTopBar: some View {
         HStack(spacing: 12) {
-            if WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedView) {
-                librarySubViewToggle
-            }
             Spacer(minLength: 12)
-            if WorkspaceChromePolicy.showsImportButton(model.selectedView) {
+            if LensChromePolicy.showsImportButton(model.selectedView) {
                 Button {
                     showImportFolderPanel()
                 } label: {
@@ -709,12 +738,109 @@ struct LibraryGridView: View {
         ("source: / signal: / xmp:", "By availability, AI signal, or sync state")
     ]
 
-    // Cull and People have neither the sub-view toggle nor the import button
-    // (WorkspaceChromePolicy), so libraryTopBar would otherwise render an
-    // empty 52pt gradient bar with nothing in it.
+    // Cull and People have no import button (LensChromePolicy), so
+    // libraryTopBar would otherwise render an empty 52pt gradient bar with
+    // nothing in it.
     private var hasVisibleLibraryTopBarContent: Bool {
-        WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedView)
-            || WorkspaceChromePolicy.showsImportButton(model.selectedView)
+        LensChromePolicy.showsImportButton(model.selectedView)
+    }
+
+    /// Persistent in every lens: what you are looking at, and lens-appropriate
+    /// status about it.
+    private var scopeLineBar: some View {
+        let presentation = model.scopeLine
+        return HStack(spacing: 8) {
+            Text(presentation.sourceTitle)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+            Text(presentation.statusText)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(.bar)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Scope")
+        .accessibilityValue("\(presentation.sourceTitle), \(presentation.statusText)")
+    }
+
+    @ViewBuilder
+    private func importCompletionToast(_ toast: ImportCompletionToastPresentation) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(toast.headline)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                if let warningText = toast.warningText {
+                    Text(warningText)
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                        .lineLimit(1)
+                }
+            }
+            if toast.showsStartCulling {
+                Button("Start culling") {
+                    startCullingFromToast(toast)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.orange)
+                .accessibilityLabel("Start culling")
+            }
+            Button {
+                dismissToast(toast)
+            } label: {
+                Image(systemName: "xmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss import toast")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
+        .padding(.top, 10)
+        .padding(.trailing, 14)
+        .liveMockupPlaceholder(.importCompleteSummary)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Import complete")
+    }
+
+    private func startCullingFromToast(_ toast: ImportCompletionToastPresentation) {
+        do {
+            try model.startCullingImport(sessionID: toast.sessionID, title: toast.cullingSessionName)
+            dismissToast(toast)
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissToast(_ toast: ImportCompletionToastPresentation) {
+        dismissedToastSummaryID = toast.summaryID
+        isToastVisible = false
+    }
+
+    /// ~10s, then it fades and the bell keeps the receipt. Mirrors the cull
+    /// loupe's `showDecisionToastThenFade`, which is the only other
+    /// auto-dismissing surface in the app. Fading counts as a dismissal:
+    /// `.task(id:)` re-runs whenever the view re-enters the hierarchy, so a
+    /// toast that has already had its ten seconds would otherwise come back
+    /// for another ten.
+    private func showToastThenFade(_ toast: ImportCompletionToastPresentation) async {
+        isToastVisible = true
+        try? await Task.sleep(for: .seconds(ImportCompletionToastPresentation.visibleDuration))
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.3)) {
+            dismissToast(toast)
+        }
     }
 
     @ViewBuilder
@@ -723,7 +849,8 @@ struct LibraryGridView: View {
             if hasVisibleLibraryTopBarContent {
                 libraryTopBar
             }
-            if WorkspaceChromePolicy.showsFilterTokens(model.selectedView) {
+            scopeLineBar
+            if LensChromePolicy.showsFilterTokens(model.selectedView) {
                 libraryQueryBar
                 // spec §2b: no empty second row — the header renders only
                 // when it has content (active tokens, a residual-text
@@ -732,23 +859,7 @@ struct LibraryGridView: View {
                     libraryResultHeader
                 }
             }
-            if let summary = visibleImportCompletionSummary {
-                importCompletionSummary(summary)
-            }
         }
-    }
-
-    private var visibleImportCompletionSummary: ImportCompletionSummary? {
-        guard let summary = model.latestImportCompletionSummary else { return nil }
-        guard LibraryGridChromePolicy.shouldShowImportCompletionSummary(
-            isImporting: isImporting,
-            summaryID: summary.id,
-            dismissedSummaryID: dismissedImportCompletionSummaryID,
-            isFromCurrentSession: model.isCurrentSessionActivity(id: summary.activityID)
-        ) else {
-            return nil
-        }
-        return summary
     }
 
     /// One query surface: a persistent sort picker, the token query field,
@@ -817,7 +928,7 @@ struct LibraryGridView: View {
             canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
             canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
             canSaveManualSet: model.canSaveSelectedAssetAsManualSet,
-            reviewQueueCounts: model.reviewQueueCounts,
+            smartCollectionCounts: model.smartCollectionCounts,
             evaluationKindSummaries: model.catalogEvaluationKindSummaries,
             activeTokens: LibraryQueryToken.tokens(from: model)
         )
@@ -850,6 +961,13 @@ struct LibraryGridView: View {
                 }
             }
             Spacer(minLength: 0)
+            Button("Cull these") {
+                cullCurrentResults()
+            }
+            .buttonStyle(.borderless)
+            .disabled(!model.canCullCurrentResults)
+            .help("Cull the photos this search found")
+            .accessibilityLabel("Cull these")
             if !presentation.saveActions.isEmpty {
                 saveMenu(presentation.saveActions)
             }
@@ -905,6 +1023,15 @@ struct LibraryGridView: View {
             showSaveSnapshotSetPopover()
         case .manualSet:
             showManualSetPopover()
+        }
+    }
+
+    private func cullCurrentResults() {
+        do {
+            try model.cullCurrentResults()
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
@@ -1417,157 +1544,6 @@ struct LibraryGridView: View {
         )
     }
 
-    private func importCompletionSummary(_ summary: ImportCompletionSummary) -> some View {
-        let presentation = ImportCompletionPresentation.presentation(
-            for: summary,
-            batchKeywordSuggestions: model.latestImportBatchKeywordSuggestions,
-            faceReviewAssetCount: model.latestImportFaceReviewAssetCount,
-            flaggedReviewAssetCount: model.latestImportFlaggedReviewAssetCount,
-            canEvaluateImport: model.canRequestLatestImportAssetEvaluations
-        )
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.green)
-                    .frame(width: 28, height: 28)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(presentation.title)
-                        .font(.headline.weight(.semibold))
-                        .lineLimit(1)
-                    Text(presentation.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
-                Button {
-                    dismissedImportCompletionSummaryID = summary.id
-                } label: {
-                    Image(systemName: "xmark.circle")
-                }
-                .buttonStyle(.borderless)
-                .help("Dismiss import summary")
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
-                ForEach(presentation.metricRows) { metric in
-                    importCompletionMetric(metric)
-                }
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 8)], spacing: 8) {
-                ForEach(presentation.actionRows) { action in
-                    importCompletionAction(action)
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(.bar)
-        .liveMockupPlaceholder(.importCompleteSummary)
-    }
-
-    private func importCompletionMetric(_ metric: ImportCompletionMetricRow) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: metric.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(metric.tint)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(metric.value)
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .lineLimit(1)
-                Text(metric.label)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Text(metric.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
-        .padding(9)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(.quaternary)
-        }
-    }
-
-    @ViewBuilder
-    private func importCompletionAction(_ action: ImportCompletionActionPresentation) -> some View {
-        if action.isEnabled {
-            Button {
-                performImportCompletionAction(action.kind)
-            } label: {
-                importCompletionActionLabel(action)
-            }
-            .buttonStyle(.plain)
-            .help(action.detail)
-        } else {
-            Button {} label: {
-                importCompletionActionLabel(action)
-            }
-            .buttonStyle(.plain)
-            .disabled(true)
-            .help(action.detail)
-            .liveMockupPlaceholder(action.placeholder)
-        }
-    }
-
-    private func importCompletionActionLabel(_ action: ImportCompletionActionPresentation) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: action.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(action.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                Text(action.detail)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .foregroundStyle(action.isPrimary ? Color.black.opacity(0.72) : Color.secondary)
-            }
-        }
-        .foregroundStyle(action.isPrimary ? Color.black : Color.primary)
-        .frame(minWidth: 126, maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .padding(.horizontal, 10)
-        .background(action.isPrimary ? Color.orange : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(action.isPrimary ? Color.orange.opacity(0.5) : Color.white.opacity(0.08))
-        }
-        .opacity(action.isEnabled ? 1 : 0.55)
-    }
-
-    private func performImportCompletionAction(_ kind: ImportCompletionActionPresentation.Kind) {
-        switch kind {
-        case .startCulling:
-            beginCullingFromLatestImportCompletion()
-        case .reviewImportedFrames:
-            reviewLatestImportInCompare()
-        case .openInLibrary:
-            openLatestImportCompletion()
-        case .evaluateImport:
-            requestLatestImportEvaluations()
-        case .reviewImportIssues:
-            reviewImportIssuesFromCompletion()
-        case .reviewFlaggedFrames:
-            reviewLatestImportFlagged()
-        case .keywordSuggestions:
-            reviewLatestImportKeywordSuggestions()
-        case .stackGrouping:
-            beginStackCullingFromLatestImportCompletion()
-        case .faceNaming:
-            reviewFaceQueueFromImportCompletion()
-        }
-    }
-
     @ViewBuilder
     private var importProgressIndicator: some View {
         if let importActivity, let total = importActivity.totalUnitCount {
@@ -1646,7 +1622,7 @@ struct LibraryGridView: View {
                 activeFilterRows: model.activeLibraryFilterRows,
                 matchCount: model.totalAssetCount,
                 typedRuleText: savedSearchRuleText,
-                reviewQueueCounts: model.reviewQueueCounts,
+                smartCollectionCounts: model.smartCollectionCounts,
                 evaluationKindSummaries: model.catalogEvaluationKindSummaries
             ),
             previewAssets: Array(model.assets.prefix(18)),
@@ -3079,9 +3055,9 @@ struct LibraryGridView: View {
 
     // Grid cell right-click context menu (persona-2 item 5): star ratings,
     // Pick/Reject/Unflag, and color labels were previously only reachable
-    // via keyboard shortcuts (0-5/p/x/u, gated to the Cull workspace) or the
+    // via keyboard shortcuts (0-5/p/x/u, gated to the Cull lens) or the
     // hidden Inspector (⌘I) — a mouse-only user had no path to them from the
-    // Library grid. Anchors the same way "Cull These" does: applies to the
+    // Grid lens. Anchors the same way "Cull These" does: applies to the
     // whole batch selection if the right-clicked cell is part of it,
     // otherwise selects just the clicked cell first. This is architecturally
     // independent of GridKeyCaptureView's key monitor (a SwiftUI .contextMenu
@@ -3135,78 +3111,15 @@ struct LibraryGridView: View {
         isStartingCullingSession = true
     }
 
-    private func openLatestImportCompletion() {
+    // The sidebar's "⚠ Skipped files" import child (AppModel.selectSidebarRow)
+    // bumps importIssueReviewRequestToken instead of selecting a source —
+    // skipped files aren't catalogued, so there is no Grid scope to land on.
+    private func presentRequestedImportIssueReview() {
+        guard let sessionID = model.importIssueReviewSessionID else { return }
         do {
-            try model.openLatestImportCompletion()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func beginCullingFromLatestImportCompletion() {
-        do {
-            try model.beginCullingFromLatestImportCompletion()
-            focusCullingSurface()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func beginStackCullingFromLatestImportCompletion() {
-        do {
-            try model.beginStackCullingFromLatestImportCompletion()
-            focusCullingSurface()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reviewLatestImportInCompare() {
-        do {
-            try model.reviewLatestImportInCompare()
-            focusCullingSurface()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reviewLatestImportFlagged() {
-        do {
-            try model.reviewLatestImportFlagged()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reviewImportIssuesFromCompletion() {
-        guard let summary = visibleImportCompletionSummary, !summary.issues.isEmpty else { return }
-        importIssueReview = ImportIssueReview(summaryID: summary.id, issues: summary.issues)
-    }
-
-    private func reviewLatestImportKeywordSuggestions() {
-        do {
-            try model.openLatestImportCompletion()
-            batchMetadataScope = .visible
-            batchMetadataDraft = BatchMetadataDraft()
-            isAllCatalogBatchMetadataConfirmed = false
-            isReviewingBatchMetadata = true
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func requestLatestImportEvaluations() {
-        do {
-            try model.requestLatestImportAssetEvaluations()
-            model.statusMessage = "Evaluating latest import"
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reviewFaceQueueFromImportCompletion() {
-        do {
-            try model.selectSidebarTarget(.reviewQueue(.facesFound))
+            let issues = try model.importIssues(sessionID: sessionID)
+            guard !issues.isEmpty else { return }
+            importIssueReview = ImportIssueReview(summaryID: sessionID.rawValue, issues: issues)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -7602,10 +7515,9 @@ enum AssetActivationFocusPolicy {
 }
 
 private extension View {
-    // `openInLoupe` is which loupe a double-click lands in: Library-workspace
-    // callers (the grid, Timeline) pass `openAssetInLibraryLoupe`; the Cull
-    // workspace's Compare tile passes `openAssetInLoupe` to stay in the
-    // culling loupe.
+    // `openInLoupe` is which loupe a double-click lands in: Grid and Timeline
+    // callers pass `openAssetInLibraryLoupe`; the Cull lens's Compare tile
+    // passes `openAssetInLoupe` to stay in the culling loupe.
     func assetActivation(
         for asset: Asset,
         model: AppModel,
@@ -7837,11 +7749,7 @@ private struct TimelineWorkspaceView: View {
     var selectAsset: (AssetID) -> Void
 
     private var presentation: TimelinePresentation {
-        TimelinePresentation(
-            timelineDays: model.catalogTimelineDays,
-            loadedAssets: model.assets,
-            totalAssetCount: model.totalAssetCount
-        )
+        model.timelinePresentation
     }
 
     var body: some View {
@@ -8344,22 +8252,21 @@ enum CardDestinationResolution: Equatable {
 }
 
 /// Which browse-oriented chrome (search, filters, footer) and the on-demand
-/// inspector a workspace shows. Views branch on this policy, never on raw
-/// `Workspace` cases, so the test matrix pins the behavior. Library shows
-/// all of the browse chrome; Cull and People are focused surfaces that hide
-/// it, but all three workspaces show the inspector.
-/// Which chrome each Library/Cull sub-view shows. Keyed on the selected
-/// `LibraryViewMode`, not the workspace: People is a Library-workspace view but
-/// a focused, non-browse one, so keying on `Workspace` alone would leak the
-/// Library browse chrome onto it. Browse chrome belongs to the Library
-/// *browse* views (Grid/Timeline/Map/Library Loupe); Cull views and People
-/// carry none of it.
-enum WorkspaceChromePolicy {
+/// inspector each lens shows. Views branch on this policy, never on raw
+/// lens cases, so the test matrix pins the behavior. Keyed on the selected
+/// `LibraryViewMode` rather than the lens directly, because that is what every
+/// call site already has to hand.
+enum LensChromePolicy {
     /// The search field, filter tokens, import, footer, and the
     /// Cull/Export/More toolbar actions — everything a photographer uses to
-    /// browse the whole catalog. People, though a Library view, opts out.
+    /// browse. The two focused lenses (Cull and People) carry none of it.
     static func showsBrowseChrome(_ view: LibraryViewMode) -> Bool {
-        view.workspace == .library && view != .people
+        switch view.lens {
+        case .grid, .loupe, .timeline, .map:
+            return true
+        case .cull, .people:
+            return false
+        }
     }
 
     static func showsSearchField(_ view: LibraryViewMode) -> Bool {
@@ -8374,29 +8281,22 @@ enum WorkspaceChromePolicy {
         showsBrowseChrome(view)
     }
 
-    /// The Library sub-view toggle (Grid | Loupe | Timeline | Map | People)
-    /// shows for *every* Library view, People included — it's the only way
-    /// back out of People — so it is broader than the browse chrome.
-    static func showsLibraryViewToggle(_ view: LibraryViewMode) -> Bool {
-        view.workspace == .library
-    }
-
     static func showsFooter(_ view: LibraryViewMode) -> Bool {
         showsBrowseChrome(view)
     }
 
     /// The on-demand inspector (⌘I, Task 11; unified onto the Cull loupe in
-    /// Task 5) is reachable from every view — Library browse, People, and Cull.
+    /// Task 5) is reachable from every lens.
     static func showsInspector(_ view: LibraryViewMode) -> Bool {
         true
     }
 
     /// Toolbar-level import/search/export chrome (Import ▾, Import Path,
     /// Cull, Export, More): spec §3 gives Cull no import or search chrome,
-    /// and People has no browse chrome either — only the Library browse
-    /// views carry these actions. Activity stays global and isn't gated
-    /// here. "Find Best Shots" moved into the Culling menu only (spec §2b)
-    /// and has no toolbar presence to gate.
+    /// and People has no browse chrome either — only the browse lenses carry
+    /// these actions. Activity stays global and isn't gated here. "Find Best
+    /// Shots" moved into the Culling menu only (spec §2b) and has no toolbar
+    /// presence to gate.
     static func showsImportMenu(_ view: LibraryViewMode) -> Bool {
         showsBrowseChrome(view)
     }
@@ -8458,21 +8358,6 @@ enum LibraryGridChromePolicy {
         }
         let expandedPath = (path as NSString).expandingTildeInPath
         return URL(fileURLWithPath: expandedPath, isDirectory: true)
-    }
-
-    static func shouldShowImportCompletionSummary(
-        isImporting: Bool,
-        summaryID: String?,
-        dismissedSummaryID: String?,
-        isFromCurrentSession: Bool
-    ) -> Bool {
-        // Session-scoped: a summary restored from the persisted work history
-        // (previous app session) never auto-shows again — otherwise a
-        // relaunch resurrects a stale completion panel the user already
-        // moved past (persona-7's zombie panel). The work stays reachable
-        // through Recent Work.
-        guard !isImporting, isFromCurrentSession, let summaryID else { return false }
-        return summaryID != dismissedSummaryID
     }
 
     static func shouldShowPendingMetadataSyncRetryAction(isPendingFilterActive: Bool) -> Bool {
@@ -8625,12 +8510,12 @@ struct SmartCollectionBuilderPresentation: Equatable {
     var activeFilterRows: [ActiveLibraryFilterRow]? = nil
     var matchCount: Int
     var typedRuleText: String = ""
-    var reviewQueueCounts: [ReviewQueue: Int] = [:]
+    var smartCollectionCounts: [SmartCollection: Int] = [:]
     var evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
 
     var suggestedTemplateRows: [SmartCollectionSuggestedTemplateRow] {
         Self.suggestedTemplateRows(
-            reviewQueueCounts: reviewQueueCounts,
+            smartCollectionCounts: smartCollectionCounts,
             evaluationKindSummaries: evaluationKindSummaries,
             activeRuleChips: ruleChips
         )
@@ -8667,14 +8552,14 @@ struct SmartCollectionBuilderPresentation: Equatable {
     }
 
     private static func suggestedTemplateRows(
-        reviewQueueCounts: [ReviewQueue: Int],
+        smartCollectionCounts: [SmartCollection: Int],
         evaluationKindSummaries: [CatalogEvaluationKindSummary],
         activeRuleChips: [String]
     ) -> [SmartCollectionSuggestedTemplateRow] {
         var rows: [SmartCollectionSuggestedTemplateRow] = []
         let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 5
-        let ratedCount = reviewQueueCounts[.fiveStars] ?? 0
-        let pickedCount = reviewQueueCounts[.picks] ?? 0
+        let ratedCount = smartCollectionCounts[.fiveStars] ?? 0
+        let pickedCount = smartCollectionCounts[.picks] ?? 0
         if ratedCount > 0,
            pickedCount > 0,
            !isPresetActive(.ratingFourPlus, activeRuleChips: activeRuleChips),
@@ -8695,7 +8580,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
             rows.append(row)
         }
 
-        let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
+        let candidates: [(queue: SmartCollection, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
             (.facesFound, .facesFound, "Face review", "person.2.circle"),
             (.needsKeywords, .needsKeywords, "Needs keywords", "tag.circle"),
             (.needsEvaluation, .needsEvaluation, "Needs evaluation", "wand.and.stars.inverse"),
@@ -8704,7 +8589,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
         ]
         for candidate in candidates {
             guard rows.count < rowLimit else { break }
-            guard let count = reviewQueueCounts[candidate.queue], count > 0 else { continue }
+            guard let count = smartCollectionCounts[candidate.queue], count > 0 else { continue }
             guard !isPresetActive(candidate.preset, activeRuleChips: activeRuleChips) else { continue }
             guard !rows.containsPreset(candidate.preset) else { continue }
             rows.append(SmartCollectionSuggestedTemplateRow(
@@ -8755,7 +8640,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
         }
     }
 
-    private static func suggestionDetail(for queue: ReviewQueue, count: Int) -> String {
+    private static func suggestionDetail(for queue: SmartCollection, count: Int) -> String {
         switch queue {
         case .facesFound:
             return count == 1 ? "1 photo has faces" : "\(count) photos have faces"
@@ -8854,14 +8739,14 @@ struct SmartCollectionRuleRow: Equatable, Identifiable {
     var field: String
     var operation: String
     var value: String
-    var target: SidebarRowTarget?
+    var target: LibrarySource?
     private var title: String
 
     var activeFilterRow: ActiveLibraryFilterRow {
         ActiveLibraryFilterRow(title: title, target: target)
     }
 
-    init(field: String, operation: String, value: String, target: SidebarRowTarget? = nil) {
+    init(field: String, operation: String, value: String, target: LibrarySource? = nil) {
         self.field = field
         self.operation = operation
         self.value = value
@@ -8910,393 +8795,6 @@ struct SmartCollectionRuleRow: Equatable, Identifiable {
         }
         target = activeFilterRow.target
         title = activeFilterRow.title
-    }
-}
-
-struct ImportCompletionPresentation: Equatable {
-    var title: String
-    var detail: String
-    var metricRows: [ImportCompletionMetricRow]
-    var actionRows: [ImportCompletionActionPresentation]
-
-    var enabledActions: [ImportCompletionActionPresentation] {
-        actionRows.filter(\.isEnabled)
-    }
-
-    var placeholderActions: [ImportCompletionActionPresentation] {
-        actionRows.filter { !$0.isEnabled && $0.placeholder != nil }
-    }
-
-    static func presentation(
-        for summary: ImportCompletionSummary,
-        batchKeywordSuggestions: [BatchKeywordSuggestion] = [],
-        faceReviewAssetCount: Int = 0,
-        flaggedReviewAssetCount: Int = 0,
-        canEvaluateImport: Bool = false
-    ) -> ImportCompletionPresentation {
-        let hasImportedSet = summary.importedPhotoCount > 0
-        let existingOnlyImport = isExistingOnlyImport(summary)
-        var metricRows = [
-            importedSetMetric(for: summary),
-            previewMetric(for: summary),
-            cullScopeMetric(for: summary)
-        ]
-        if let issueMetric = issueMetric(for: summary) {
-            metricRows.append(issueMetric)
-        }
-        var actionRows: [ImportCompletionActionPresentation] = []
-        if hasImportedSet {
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .startCulling,
-                title: "Start culling",
-                detail: existingOnlyImport ? "Use the matched set" : "Use the imported set",
-                systemImage: "checkmark.seal.fill",
-                isEnabled: true,
-                isPrimary: true,
-                placeholder: nil
-            ))
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .reviewImportedFrames,
-                title: existingOnlyImport ? "Review matched frames" : "Review imported frames",
-                detail: existingOnlyImport ? "Manual Compare over already-cataloged photos" : "Manual Compare over this import",
-                systemImage: "rectangle.grid.2x2",
-                isEnabled: true,
-                isPrimary: false,
-                placeholder: nil
-            ))
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .openInLibrary,
-                title: existingOnlyImport ? "Open matched set" : "Open imported set",
-                detail: existingOnlyImport ? "Browse already-cataloged photos" : "Browse this import",
-                systemImage: "rectangle.stack",
-                isEnabled: true,
-                isPrimary: false,
-                placeholder: nil
-            ))
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .evaluateImport,
-                title: "Evaluate import",
-                detail: canEvaluateImport ? "Run local reads on this import" : "Waiting for cached previews",
-                systemImage: "sparkles",
-                isEnabled: canEvaluateImport,
-                isPrimary: false,
-                placeholder: nil
-            ))
-        }
-        if let issueAction = importIssueAction(for: summary) {
-            actionRows.append(issueAction)
-        }
-        if let flaggedAction = flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount) {
-            actionRows.append(flaggedAction)
-        }
-        if hasImportedSet {
-            actionRows.append(ImportCompletionActionPresentation(
-                kind: .stackGrouping,
-                title: "Cull stacks",
-                detail: stackCullActionDetail(for: summary),
-                systemImage: "square.stack.3d.up",
-                isEnabled: summary.stackCount > 0,
-                isPrimary: false,
-                placeholder: nil
-            ))
-        }
-        if let faceAction = faceReviewAction(faceReviewAssetCount: faceReviewAssetCount) {
-            actionRows.append(faceAction)
-        }
-        if let keywordAction = keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions) {
-            actionRows.append(keywordAction)
-        }
-        return ImportCompletionPresentation(
-            title: title(for: summary),
-            detail: summary.detail,
-            metricRows: metricRows,
-            actionRows: actionRows
-        )
-    }
-
-    private static func title(for summary: ImportCompletionSummary) -> String {
-        if summary.importedPhotoCount == 0 {
-            return "No photos imported"
-        }
-        if isExistingOnlyImport(summary) {
-            return "No new photos imported"
-        }
-        return "\(photoCountText(summary.newPhotoCount)) imported"
-    }
-
-    private static func isExistingOnlyImport(_ summary: ImportCompletionSummary) -> Bool {
-        summary.newPhotoCount == 0 && summary.existingPhotoCount > 0
-    }
-
-    private static func importedSetMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
-        if summary.importedPhotoCount == 0 {
-            return ImportCompletionMetricRow(
-                id: "imported-set",
-                value: photoCountText(0),
-                label: "Import result",
-                detail: "Nothing was added",
-                systemImage: "exclamationmark.triangle",
-                tone: .yellow
-            )
-        }
-        if summary.newPhotoCount == 0, summary.existingPhotoCount > 0 {
-            return ImportCompletionMetricRow(
-                id: "imported-set",
-                value: "\(photoCountText(summary.existingPhotoCount)) already in catalog",
-                label: "Matched set",
-                detail: "No new files added",
-                systemImage: "rectangle.stack",
-                tone: .yellow
-            )
-        }
-
-        let detail: String
-        if summary.existingPhotoCount > 0 {
-            detail = "\(photoCountText(summary.existingPhotoCount)) already in catalog"
-        } else {
-            detail = "Ready to browse and cull"
-        }
-        return ImportCompletionMetricRow(
-            id: "imported-set",
-            value: photoCountText(summary.newPhotoCount),
-            label: "Imported set",
-            detail: detail,
-            systemImage: "rectangle.stack.fill",
-            tone: .green
-        )
-    }
-
-    private static func photoCountText(_ count: Int) -> String {
-        "\(count) \(count == 1 ? "photo" : "photos")"
-    }
-
-    private static func stackCountText(_ count: Int) -> String {
-        "\(count) \(count == 1 ? "stack" : "stacks")"
-    }
-
-    private static func flaggedReviewAction(flaggedReviewAssetCount: Int) -> ImportCompletionActionPresentation? {
-        guard flaggedReviewAssetCount > 0 else { return nil }
-        return ImportCompletionActionPresentation(
-            kind: .reviewFlaggedFrames,
-            title: "Review \(flaggedReviewAssetCount) flagged",
-            detail: "Review likely issues from this import",
-            systemImage: "exclamationmark.triangle",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func issueMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow? {
-        guard !summary.issues.isEmpty else { return nil }
-        let issueCount = summary.issues.count
-        let skippedCount = summary.issues.filter { $0.kind == .skippedSourceFile }.count
-        let detail = summary.issues.first.map(issueDetail) ?? "\(issueCount) import issues"
-        return ImportCompletionMetricRow(
-            id: "import-issues",
-            value: issueCount == 1 ? "1 issue" : "\(issueCount) issues",
-            label: skippedCount == issueCount ? "Skipped files" : "Import issues",
-            detail: detail,
-            systemImage: "exclamationmark.triangle",
-            tone: .yellow
-        )
-    }
-
-    private static func issueDetail(_ issue: WorkSessionIssue) -> String {
-        let message = issue.message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let sourceURL = issue.sourceURL else { return message }
-        let fileName = sourceURL.lastPathComponent
-        guard !fileName.isEmpty else { return message }
-        guard !message.isEmpty else { return fileName }
-        return "\(fileName): \(message)"
-    }
-
-    private static func importIssueAction(for summary: ImportCompletionSummary) -> ImportCompletionActionPresentation? {
-        guard !summary.issues.isEmpty else { return nil }
-        let skippedCount = summary.issues.filter { $0.kind == .skippedSourceFile }.count
-        let title: String
-        if skippedCount == summary.issues.count {
-            title = skippedCount == 1 ? "Review 1 skipped file" : "Review \(skippedCount) skipped files"
-        } else {
-            title = summary.issues.count == 1 ? "Review 1 import issue" : "Review \(summary.issues.count) import issues"
-        }
-        return ImportCompletionActionPresentation(
-            kind: .reviewImportIssues,
-            title: title,
-            detail: summary.issues.first.map(issueDetail) ?? "Review import issues",
-            systemImage: "exclamationmark.triangle",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func cullScopeMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
-        guard summary.importedPhotoCount > 0 else {
-            return ImportCompletionMetricRow(
-                id: "cull-scope",
-                value: "Unavailable",
-                label: "Cull Set",
-                detail: "No imported set",
-                systemImage: "slash.circle",
-                tone: .yellow
-            )
-        }
-        guard summary.stackCount > 0 else {
-            return ImportCompletionMetricRow(
-                id: "cull-scope",
-                value: "Ready",
-                label: "Cull Set",
-                detail: isExistingOnlyImport(summary) ? "Uses the matched set" : "Uses the imported set",
-                systemImage: "checkmark.seal.fill",
-                tone: .orange
-            )
-        }
-        return ImportCompletionMetricRow(
-            id: "cull-scope",
-            value: stackCountText(summary.stackCount),
-            label: "Cull Set",
-            detail: "\(photoCountText(summary.stackedPhotoCount)) in time-adjacent stacks",
-            systemImage: "square.stack.3d.up.fill",
-            tone: .orange
-        )
-    }
-
-    private static func stackCullActionDetail(for summary: ImportCompletionSummary) -> String {
-        guard summary.stackCount > 0 else {
-            return "No time-adjacent stacks"
-        }
-        return "\(stackCountText(summary.stackCount)) · \(photoCountText(summary.stackedPhotoCount))"
-    }
-
-    private static func keywordSuggestionAction(
-        batchKeywordSuggestions: [BatchKeywordSuggestion]
-    ) -> ImportCompletionActionPresentation? {
-        guard let suggestion = batchKeywordSuggestions.first else { return nil }
-
-        let suggestionCount = batchKeywordSuggestions.count
-        return ImportCompletionActionPresentation(
-            kind: .keywordSuggestions,
-            title: suggestionCount == 1
-                ? "Review 1 keyword suggestion"
-                : "Review \(suggestionCount) keyword suggestions",
-            detail: "Top: \(suggestion.keyword) - \(suggestion.assetCountText) at \(suggestion.confidenceText)",
-            systemImage: "tag.fill",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func faceReviewAction(faceReviewAssetCount: Int) -> ImportCompletionActionPresentation? {
-        guard faceReviewAssetCount > 0 else { return nil }
-        return ImportCompletionActionPresentation(
-            kind: .faceNaming,
-            title: faceReviewAssetCount == 1 ? "Review 1 face photo" : "Review \(faceReviewAssetCount) face photos",
-            detail: "Open Faces Found review",
-            systemImage: "person.2.fill",
-            isEnabled: true,
-            isPrimary: false,
-            placeholder: nil
-        )
-    }
-
-    private static func previewMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
-        guard summary.importedPhotoCount > 0 else {
-            return ImportCompletionMetricRow(
-                id: "previews",
-                value: "Not needed",
-                label: "Previews",
-                detail: summary.previewStatusText,
-                systemImage: "photo.stack",
-                tone: .blue
-            )
-        }
-        if summary.previewFailureCount > 0 {
-            return ImportCompletionMetricRow(
-                id: "previews",
-                value: "\(summary.previewFailureCount) \(summary.previewFailureCount == 1 ? "issue" : "issues")",
-                label: "Previews",
-                detail: summary.failureText ?? summary.previewStatusText,
-                systemImage: "exclamationmark.triangle.fill",
-                tone: .yellow
-            )
-        }
-
-        let status = summary.previewStatusText.lowercased()
-        let value: String
-        if status.contains("queued") {
-            value = "Queued"
-        } else if status.contains("generating") || status.contains("building") {
-            value = "Building"
-        } else if status.contains("paused") {
-            value = "Paused"
-        } else {
-            value = "Ready"
-        }
-        return ImportCompletionMetricRow(
-            id: "previews",
-            value: value,
-            label: "Previews",
-            detail: summary.previewStatusText,
-            systemImage: "photo.stack",
-            tone: value == "Ready" ? .blue : .yellow
-        )
-    }
-}
-
-struct ImportCompletionMetricRow: Equatable, Identifiable {
-    enum Tone: Equatable {
-        case green
-        case blue
-        case yellow
-        case orange
-    }
-
-    var id: String
-    var value: String
-    var label: String
-    var detail: String
-    var systemImage: String
-    var tone: Tone
-
-    var tint: Color {
-        switch tone {
-        case .green:
-            return .green
-        case .blue:
-            return .blue
-        case .yellow:
-            return .yellow
-        case .orange:
-            return .orange
-        }
-    }
-}
-
-struct ImportCompletionActionPresentation: Equatable, Identifiable {
-    enum Kind: String, Equatable {
-        case startCulling
-        case reviewImportedFrames
-        case openInLibrary
-        case evaluateImport
-        case reviewImportIssues
-        case reviewFlaggedFrames
-        case stackGrouping
-        case faceNaming
-        case keywordSuggestions
-    }
-
-    var kind: Kind
-    var title: String
-    var detail: String
-    var systemImage: String
-    var isEnabled: Bool
-    var isPrimary: Bool
-    var placeholder: LiveMockupPlaceholder?
-
-    var id: String {
-        kind.rawValue
     }
 }
 

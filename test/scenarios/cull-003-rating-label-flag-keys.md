@@ -5,29 +5,29 @@ decision keystroke (1-5 rate, 0 clear rating, 6/7/8/9/v color labels, `-`
 clear label, P/X/U pick/reject/clear-flag) to write immediately, auto-advance
 to the next photo, show a toast confirming what happened, and be individually
 undoable with ⌘Z — not batched with neighboring keystrokes. Covers:
-- Shortcut-to-key mapping: `Sources/TeststripApp/AppModel.swift:237-262`
+- Shortcut-to-key mapping: `Sources/TeststripApp/AppModel.swift:187-241`
   (`CullingShortcut.init(key:)` — `0`-`5` rate, `6`=red, `7`=yellow,
   `8`=green, `9`=blue, `v`=purple, `-`=clear label, `p`=pick, `x`=reject,
   `u`=clearFlag).
-- Dispatch + auto-advance: `applyCullingShortcut` (`:5414-5458`) routes each
-  through `applyCullingCommandAndAdvance` (`:5542-5552`), which snapshots
+- Dispatch + auto-advance: `applyCullingShortcut` (`:6999-7106`) routes each
+  through `applyCullingCommandAndAdvance` (`:7282-7312`), which snapshots
   `lastCullingMetadataDecision` from the *pre-change* asset, applies the
   change, and advances to the next asset only if the selection didn't already
   move (it doesn't, for rating/label/flag commands).
 - Per-keystroke writes and undo grouping: `setRatingForSelectedAsset`
-  (`:5921-5928`, label `"Rating"`), `setColorLabelForSelectedAsset`
-  (`:5961-5965`, label `"Color label"`), `setFlagForSelectedAsset`
-  (`:5930-5939`, label `"Flag"`) — each calls `updateSelectedAssetMetadata`
+  (`:7709-7721`, label `"Rating"`), `setColorLabelForSelectedAsset`
+  (`:7773-7777`, label `"Color label"`), `setFlagForSelectedAsset`
+  (`:7723-7751`, label `"Flag"`) — each calls `updateSelectedAssetMetadata`
   for a *single* asset, so each keystroke is its own one-asset undo group
   (distinct from the multi-asset `setFlagForSelectedAssets`/stack-decision
   paths used elsewhere).
 - Toast text and decay: `CullDecisionToastPresentation.init`
-  (`Sources/TeststripApp/CullFilmstripPresentation.swift:42-58`) builds
+  (`Sources/TeststripApp/CullFilmstripPresentation.swift:83-99`) builds
   `"<symbol> <filename> <lowercased decision> — ⌘Z undoes"`; the view fades
   it after a 2s `Task.sleep` (`Sources/TeststripApp/
-  LibraryGridView.swift:3887-3902`, `showDecisionToastThenFade`).
+  LibraryGridView.swift:4447-4462`, `showDecisionToastThenFade`).
   Decision text strings: `cullingMetadataDecisionText`
-  (`AppModel.swift:5569-5583`) — `"Rated N"`/`"Cleared rating"`,
+  (`AppModel.swift:7330-7344`) — `"Rated N"`/`"Cleared rating"`,
   `"<Color> label"`/`"Cleared label"`, `"Picked"`/`"Rejected"`/`"Cleared
   flag"`.
 
@@ -151,3 +151,9 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
 ## Run status
 UNRUN — SQL not yet dry-run against a live catalog; needs human-present
 execution per test/scenarios/README.md.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; no other stale symbol found in this card. Supersedes prior
+status: no prior run evidence exists to invalidate (still UNRUN).

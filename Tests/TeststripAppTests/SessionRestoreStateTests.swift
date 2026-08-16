@@ -5,7 +5,8 @@ import TeststripCore
 final class SessionRestoreStateTests: XCTestCase {
     func testRoundTripPreservesAllFields() throws {
         let state = SessionRestoreState(
-            selectedView: .grid,
+            lens: .timeline,
+            source: .smartCollection(.likelyIssues),
             selectedAssetSetID: AssetSetID(rawValue: "set-1"),
             selectedAssetID: AssetID(rawValue: "asset-1"),
             sortOption: .captureTimeNewestFirst,
@@ -28,7 +29,8 @@ final class SessionRestoreStateTests: XCTestCase {
             potentialPicksFilter: true,
             providerFailuresFilter: true,
             metadataSyncPendingFilter: true,
-            metadataSyncConflictFilter: true
+            metadataSyncConflictFilter: true,
+            detachedFilterPredicates: [.likelyIssue, .importBatch("import-9")]
         )
 
         let data = try JSONEncoder().encode(state)
@@ -42,7 +44,7 @@ final class SessionRestoreStateTests: XCTestCase {
         let defaults = try makeIsolatedDefaults()
         let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-a", isDirectory: true)
         let store = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot)
-        let state = Self.minimalState(selectedView: .timeline, searchText: "roll 12")
+        let state = Self.minimalState(lens: .timeline, searchText: "roll 12")
 
         store.save(state)
 
@@ -62,8 +64,8 @@ final class SessionRestoreStateTests: XCTestCase {
         let catalogRootB = URL(fileURLWithPath: "/tmp/catalog-b", isDirectory: true)
         let storeA = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRootA)
         let storeB = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRootB)
-        let stateA = Self.minimalState(selectedView: .grid, searchText: "from A")
-        let stateB = Self.minimalState(selectedView: .people, searchText: "from B")
+        let stateA = Self.minimalState(lens: .grid, searchText: "from A")
+        let stateB = Self.minimalState(lens: .people, searchText: "from B")
 
         storeA.save(stateA)
         storeB.save(stateB)
@@ -76,28 +78,12 @@ final class SessionRestoreStateTests: XCTestCase {
         let defaults = try makeIsolatedDefaults()
         let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-version", isDirectory: true)
         let store = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot)
-        var futureState = Self.minimalState(selectedView: .grid, searchText: "")
+        var futureState = Self.minimalState(lens: .grid, searchText: "")
         futureState.version = SessionRestoreState.currentVersion + 1
         let data = try JSONEncoder().encode(futureState)
         defaults.set(data, forKey: SessionRestoreStore.key(forCatalogRoot: catalogRoot))
 
         XCTAssertNil(store.load())
-    }
-
-    func testLegacySearchRawValueDecodesAsGrid() throws {
-        // Search used to be its own LibraryViewMode case; a session
-        // persisted before Task 9 stored "search" as selectedView. That
-        // migrates to `.grid` (search's permanent home now) instead of
-        // failing SessionRestoreState's whole decode.
-        XCTAssertEqual(try JSONDecoder().decode(LibraryViewMode.self, from: Data("\"search\"".utf8)), .grid)
-    }
-
-    func testLegacyCopilotRawValueDecodesAsGrid() throws {
-        // Copilot/Review used to be its own LibraryViewMode case; a session
-        // persisted before Task 13 (Cull sidebar source picker absorbed the
-        // route) stored "copilot" as selectedView. That migrates to `.grid`
-        // instead of failing SessionRestoreState's whole decode.
-        XCTAssertEqual(try JSONDecoder().decode(LibraryViewMode.self, from: Data("\"copilot\"".utf8)), .grid)
     }
 
     func testStoreLoadReturnsNilForCorruptData() throws {
@@ -109,9 +95,49 @@ final class SessionRestoreStateTests: XCTestCase {
         XCTAssertNil(store.load())
     }
 
-    private static func minimalState(selectedView: LibraryViewMode, searchText: String) -> SessionRestoreState {
+    // A smart collection is now a set of predicates rather than a bag of
+    // boolean filter properties, so the predicates are what has to survive a
+    // relaunch — otherwise reopening the app drops you out of the collection.
+    func testDetachedPredicatesSurviveTheStoreRoundTrip() throws {
+        let defaults = try makeIsolatedDefaults()
+        let store = SessionRestoreStore(
+            defaults: defaults,
+            catalogRoot: URL(fileURLWithPath: "/tmp/catalog-detached", isDirectory: true)
+        )
+        var state = Self.minimalState(lens: .grid, searchText: "")
+        state.detachedFilterPredicates = [.evaluationFailure]
+
+        store.save(state)
+
+        XCTAssertEqual(store.load()?.detachedFilterPredicates, [.evaluationFailure])
+    }
+
+    func testTheStoredVersionIsTwo() {
+        XCTAssertEqual(SessionRestoreState.currentVersion, 2)
+    }
+
+    // No back-compat: a v1 blob is discarded rather than migrated, so the
+    // app cold-starts on All Photos in Grid instead of restoring a shape that
+    // no longer exists. The blob is otherwise fully v2-shaped (every v2 key
+    // present and decodable) so it is the version guard alone, not a missing
+    // `lens`/`source` key, that rejects it — see testStoreLoadReturnsNilForVersionMismatch,
+    // which pairs with this one to cover both edges of the guard.
+    func testAVersionOneBlobIsDiscarded() throws {
+        let defaults = try makeIsolatedDefaults()
+        let catalogRoot = URL(fileURLWithPath: "/tmp/catalog-v1", isDirectory: true)
+        let store = SessionRestoreStore(defaults: defaults, catalogRoot: catalogRoot)
+        var legacyVersionedState = Self.minimalState(lens: .grid, searchText: "")
+        legacyVersionedState.version = 1
+        let data = try JSONEncoder().encode(legacyVersionedState)
+        defaults.set(data, forKey: SessionRestoreStore.key(forCatalogRoot: catalogRoot))
+
+        XCTAssertNil(store.load())
+    }
+
+    private static func minimalState(lens: LibraryLens, source: LibrarySource = .allPhotos, searchText: String) -> SessionRestoreState {
         SessionRestoreState(
-            selectedView: selectedView,
+            lens: lens,
+            source: source,
             selectedAssetSetID: nil,
             selectedAssetID: nil,
             sortOption: .importOrder,
@@ -134,7 +160,8 @@ final class SessionRestoreStateTests: XCTestCase {
             potentialPicksFilter: false,
             providerFailuresFilter: false,
             metadataSyncPendingFilter: false,
-            metadataSyncConflictFilter: false
+            metadataSyncConflictFilter: false,
+            detachedFilterPredicates: []
         )
     }
 

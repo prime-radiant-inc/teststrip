@@ -9,8 +9,8 @@ tree indent and an independently-tappable disclosure chevron distinct from
 row selection; a placeholder row renders disabled; and a matched-work query
 replaces the merged Recent+Starred Work rows with `work-matched-*` rows.
 
-Ground truth for the row model is `AppModel.defaultSidebarSections`
-(`AppModel.swift:11576-11645`) and `SidebarView.swift:17-30,142-186` for how
+Ground truth for the row model is `AppModel.buildSidebarSections()`
+(`AppModel.swift:2031-2054`) and `SidebarView.swift:17-30,142-186` for how
 each row/disclosure renders.
 
 ## Pre-state
@@ -55,12 +55,12 @@ substring of its detail text.
    import — check `SELECT DISTINCT source_root_relative_dir FROM assets;`
    against `$DB` to find one with descendants). Assert it renders a disclosure
    chevron (`ax_drive.sh find --role AXButton --help "Expand <title>"`,
-   per `SidebarView.swift:184`) as a *separate* AX button from the row's own
+   per `SidebarView.swift:271-288`) as a *separate* AX button from the row's own
    selection button — pressing the chevron must not select the row, and
    pressing the row label must not toggle expansion.
 6. Press the chevron. Assert its `AXHelp` flips to `"Collapse <title>"` and
    a child row appears one indent level deeper (`.padding(.leading, depth *
-   14)`, `SidebarView.swift:151`) — compare the child row's frame x-origin to
+   14)`, `SidebarView.swift:254`) — compare the child row's frame x-origin to
    the parent's and confirm it's offset by roughly 14pt.
 7. Type a plain-text Library query (⌘2, focus the query field, type a
    substring of the seeding import's work-session detail text, e.g. part of
@@ -71,7 +71,7 @@ substring of its detail text.
    session, and that clearing the query restores `work-recent-*` rows.
 8. Assert a disabled/placeholder row (if any renders — e.g. an empty Recent
    Import slot before any import has happened) is not AX-pressable: `disabled`
-   per `row.isSelectable` (`AppModel.swift:919-921`, `SidebarRowButton`
+   per `row.isSelectable` (`AppModel.swift:978-980`, `SidebarRowButton`
    `.disabled(!row.isSelectable)` at `SidebarView.swift:165`). If `--smoke`'s
    seeding import always produces a Recent Import row, this sub-check may be
    unrunnable against this fixture — note that rather than fabricating one.
@@ -88,7 +88,7 @@ substring of its detail text.
   button, and neither tap target activates the other's action. **Fails if**
   clicking the chevron also calls `select(row)`, or clicking the row toggles
   expansion — this was the specific bug the sibling-button design in
-  `SidebarView.swift:134-141` was written to avoid.
+  `SidebarView.swift:237-288` was written to avoid.
 - Step 6: chevron `AXHelp` toggles Expand/Collapse and a child row renders
   indented ~14pt deeper than its parent. **Fails if** the child doesn't
   appear, or renders at the same indent as its parent.
@@ -135,6 +135,14 @@ above were read directly from `Sources/TeststripApp/SidebarView.swift` and
 `Sources/TeststripApp/AppModel.swift` on 2026-07-10; the `asset_sets` seed
 gap was confirmed by grepping `script/build_and_run.sh` for asset-set seeding
 (none found) rather than by running SQL against a live catalog.
+
+**Excluded unified-shell journey debt (Task 14 fix round):** the current
+sidebar implements Library / Imports / Smart Collections / Sets / Folders /
+Recent Work / Selection through `UnifiedSidebarPresentation`, not this
+card's pre-Task-14 Collections / Saved Sets journey. The original driven
+actions and Expected clauses are retained here as historical scenario
+contract; replacing them requires a separately scoped rewrite and fresh VM
+run.
 
 ## Fix notes (persona-fixes-5, 2026-07-11)
 PENDING-VM: idle-catalog CPU runaway root-caused to the geocode dispatch

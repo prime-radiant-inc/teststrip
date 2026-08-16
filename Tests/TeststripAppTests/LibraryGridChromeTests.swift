@@ -13,45 +13,6 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertNil(AutopilotBadgePresentation.badge(for: nil))
     }
 
-    func testImportCompletionSummaryShowsOnlyAfterImportFinishes() {
-        XCTAssertTrue(LibraryGridChromePolicy.shouldShowImportCompletionSummary(
-            isImporting: false,
-            summaryID: "import-1",
-            dismissedSummaryID: nil,
-            isFromCurrentSession: true
-        ))
-
-        XCTAssertFalse(LibraryGridChromePolicy.shouldShowImportCompletionSummary(
-            isImporting: true,
-            summaryID: "import-1",
-            dismissedSummaryID: nil,
-            isFromCurrentSession: true
-        ))
-    }
-
-    func testImportCompletionSummaryHidesAfterDismissal() {
-        XCTAssertFalse(LibraryGridChromePolicy.shouldShowImportCompletionSummary(
-            isImporting: false,
-            summaryID: "import-1",
-            dismissedSummaryID: "import-1",
-            isFromCurrentSession: true
-        ))
-    }
-
-    // Persona-7's zombie panel: relaunching the app resurrected the previous
-    // session's import-completion panel from the persisted work history.
-    // Completion banners are session-scoped — a summary whose import ran in
-    // an earlier app session never auto-shows again (the work stays
-    // reachable through Recent Work).
-    func testImportCompletionSummaryDoesNotResurrectAcrossRelaunch() {
-        XCTAssertFalse(LibraryGridChromePolicy.shouldShowImportCompletionSummary(
-            isImporting: false,
-            summaryID: "import-1",
-            dismissedSummaryID: nil,
-            isFromCurrentSession: false
-        ))
-    }
-
     func testPendingMetadataSyncRetryActionShowsOnlyForPendingFilter() {
         XCTAssertTrue(LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
             isPendingFilterActive: true

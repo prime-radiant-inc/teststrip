@@ -2986,6 +2986,143 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.workSessions(matching: "ceremony", limit: 0), [])
     }
 
+    func testListsNonIngestWorkSessionsByUpdatedRecencyBeforeApplyingLimit() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-non-ingest-work-sessions")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        for index in 1...7 {
+            try repository.save(repositoryWorkSession(
+                id: "eligible-work-\(index)",
+                kind: .culling,
+                title: "Eligible Work \(index)",
+                updatedAt: TimeInterval(index)
+            ))
+        }
+        for index in 1...11 {
+            try repository.save(repositoryWorkSession(
+                id: "newer-import-\(index)",
+                kind: .ingest,
+                title: "Newer Import \(index)",
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+
+        XCTAssertEqual(
+            try repository.workSessions(
+                limit: 5,
+                starredOnly: false,
+                excluding: WorkSessionKind.ingest
+            ).map(\.id),
+            [
+                WorkSessionID(rawValue: "eligible-work-7"),
+                WorkSessionID(rawValue: "eligible-work-6"),
+                WorkSessionID(rawValue: "eligible-work-5"),
+                WorkSessionID(rawValue: "eligible-work-4"),
+                WorkSessionID(rawValue: "eligible-work-3")
+            ]
+        )
+    }
+
+    func testListsStarredNonIngestWorkSessionsBeforeApplyingLimit() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-starred-non-ingest-work-sessions")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        for index in 1...11 {
+            try repository.save(repositoryWorkSession(
+                id: "starred-work-\(index)",
+                kind: .export,
+                title: "Starred Work \(index)",
+                starred: true,
+                updatedAt: TimeInterval(index)
+            ))
+        }
+        for index in 1...11 {
+            try repository.save(repositoryWorkSession(
+                id: "starred-import-\(index)",
+                kind: .ingest,
+                title: "Starred Import \(index)",
+                starred: true,
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+        for index in 1...11 {
+            try repository.save(repositoryWorkSession(
+                id: "unstarred-work-\(index)",
+                kind: .relocation,
+                title: "Unstarred Work \(index)",
+                updatedAt: TimeInterval(200 + index)
+            ))
+        }
+
+        XCTAssertEqual(
+            try repository.workSessions(
+                limit: 10,
+                starredOnly: true,
+                excluding: WorkSessionKind.ingest
+            ).map(\.id),
+            [
+                WorkSessionID(rawValue: "starred-work-11"),
+                WorkSessionID(rawValue: "starred-work-10"),
+                WorkSessionID(rawValue: "starred-work-9"),
+                WorkSessionID(rawValue: "starred-work-8"),
+                WorkSessionID(rawValue: "starred-work-7"),
+                WorkSessionID(rawValue: "starred-work-6"),
+                WorkSessionID(rawValue: "starred-work-5"),
+                WorkSessionID(rawValue: "starred-work-4"),
+                WorkSessionID(rawValue: "starred-work-3"),
+                WorkSessionID(rawValue: "starred-work-2")
+            ]
+        )
+    }
+
+    func testSearchesNonIngestWorkSessionsWithGroupedTermsBeforeApplyingLimit() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-search-non-ingest-work-sessions")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        for index in 1...7 {
+            try repository.save(repositoryWorkSession(
+                id: "search-work-\(index)",
+                kind: .culling,
+                title: "Needle Work \(index)",
+                updatedAt: TimeInterval(index)
+            ))
+        }
+        for index in 1...6 {
+            try repository.save(repositoryWorkSession(
+                id: "search-import-\(index)",
+                kind: .ingest,
+                title: "Needle Import \(index)",
+                intent: "Import photos",
+                detail: "Imported photos",
+                updatedAt: TimeInterval(100 + index)
+            ))
+        }
+        try repository.save(repositoryWorkSession(
+            id: "search-decoy",
+            kind: .export,
+            title: "Haystack",
+            updatedAt: 200
+        ))
+
+        XCTAssertEqual(
+            try repository.workSessions(
+                matching: "needle",
+                limit: 5,
+                excluding: WorkSessionKind.ingest
+            ).map(\.id),
+            [
+                WorkSessionID(rawValue: "search-work-7"),
+                WorkSessionID(rawValue: "search-work-6"),
+                WorkSessionID(rawValue: "search-work-5"),
+                WorkSessionID(rawValue: "search-work-4"),
+                WorkSessionID(rawValue: "search-work-3")
+            ]
+        )
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -3450,6 +3587,30 @@ private extension Asset {
 }
 
 private extension CatalogDatabaseTests {
+    func repositoryWorkSession(
+        id: String,
+        kind: WorkSessionKind,
+        title: String,
+        intent: String? = nil,
+        detail: String? = nil,
+        starred: Bool = false,
+        updatedAt: TimeInterval
+    ) -> WorkSession {
+        WorkSession(
+            id: WorkSessionID(rawValue: id),
+            kind: kind,
+            intent: intent ?? title,
+            title: title,
+            detail: detail ?? title,
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            starred: starred,
+            createdAt: Date(timeIntervalSince1970: 10_000 - updatedAt),
+            updatedAt: Date(timeIntervalSince1970: updatedAt)
+        )
+    }
+
     static func technicalMetadata(capturedAt: Date) -> AssetTechnicalMetadata {
         AssetTechnicalMetadata(
             pixelWidth: 6000,

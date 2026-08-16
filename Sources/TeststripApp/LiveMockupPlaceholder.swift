@@ -40,14 +40,14 @@ public enum LiveMockupPlaceholders {
         id: "library.studio",
         title: "Studio library direction",
         intendedBehavior: "Represent the refined classic pro layout with catalog navigation, adaptive grid, inspector, and quiet agentic affordances.",
-        currentFallback: "Main Library route with real catalog/sidebar/grid/inspector behavior, selectable Recently Added import output, and ongoing mockup-parity passes."
+        currentFallback: "The Grid lens has real catalog/sidebar/grid/inspector behavior, selectable recent-import sources, and ongoing mockup-parity passes."
     )
 
     public static let copilotLibrary = LiveMockupPlaceholder(
         id: "library.copilot",
         title: "Copilot library direction",
         intendedBehavior: "Put plain-language search, agentic culling, and background catalog work at the center of the library experience.",
-        currentFallback: "The dedicated Copilot route is absorbed (Task 13): review queues moved to the Cull sidebar's source picker, needs-eyes reasons and diagnostics to the Inspector's AI tab, and scope save/freeze actions stay in the Library toolbar; autonomous planning and actions are not built."
+        currentFallback: "The dedicated Copilot destination is absorbed (Task 13): review queues moved to the sidebar's Smart Collections section, needs-eyes reasons and diagnostics to the Inspector's AI tab, and scope save/freeze actions stay with the browse lenses; autonomous planning and actions are not built."
     )
 
     public static let timelineLibrary = LiveMockupPlaceholder(
@@ -68,7 +68,7 @@ public enum LiveMockupPlaceholders {
         id: "sidebar.people",
         title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Selectable People route with a faces-need-a-name band of automatic grouping suggestions over persisted face embeddings, one-tap confirm for matches to confirmed people, name-the-group confirmation for new clusters, per-group dismissal, Apple Vision scan action for cached previews in the current scope, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; suggestions stay provisional until confirmed, and split and face-box-level naming remain disabled."
+        currentFallback: "The selectable People lens has a faces-need-a-name band of automatic grouping suggestions over persisted face embeddings, one-tap confirm for matches to confirmed people, name-the-group confirmation for new clusters, per-group dismissal, Apple Vision scan action for cached previews in the current source, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; suggestions stay provisional until confirmed, and split and face-box-level naming remain disabled."
     )
 
     public static let peopleFaceActions = LiveMockupPlaceholder(
@@ -89,7 +89,7 @@ public enum LiveMockupPlaceholders {
         id: "places.map",
         title: "Places map",
         intendedBehavior: "Browse geotagged frames on a map with clusters, reverse-geocoded locations, and region drill-down.",
-        currentFallback: "Catalog-backed Places route: GPS coordinates read at import ride technical metadata, a MapKit map plots cluster bubbles sized by photo count from bounded SQL aggregation, a worker-side throttled CLGeocoder pipeline fills a shared place-name cache surfaced as TOP LOCATIONS, a coverage badge shows geotagged-on-import counts, and a bubble or top-location tap drills the grid through an indexed geo-bounds predicate. Coordinates-only browsing works offline; custom basemap styling, region search, and draw-a-region selection are later."
+        currentFallback: "Catalog-backed Map lens: GPS coordinates read at import ride technical metadata, a MapKit map plots cluster bubbles sized by photo count from bounded SQL aggregation, a worker-side throttled CLGeocoder pipeline fills a shared place-name cache surfaced as TOP LOCATIONS, a coverage badge shows geotagged-on-import counts, and a bubble or top-location tap selects a geo-bounds source in the Grid lens. Coordinates-only browsing works offline; custom basemap styling, region search, and draw-a-region selection are later."
     )
 
     public static let agenticSearch = LiveMockupPlaceholder(
@@ -136,9 +136,9 @@ public enum LiveMockupPlaceholders {
 
     public static let importCompleteSummary = LiveMockupPlaceholder(
         id: "import.complete-summary",
-        title: "Import complete summary",
-        intendedBehavior: "Show the import-complete payoff surface with imported-set actions, preview status, culling entrypoints, and follow-up workflow suggestions.",
-        currentFallback: "Expanded post-import panel backed by the completed import work session and output set, with culling, stack-cull, compare, keyword, and face-review actions live when signals exist; automatic identity naming remains disabled and annotated."
+        title: "Import complete moment",
+        intendedBehavior: "Announce a finished import without stealing the canvas, and keep the receipt somewhere durable.",
+        currentFallback: "Thin top-right toast carrying the imported count, a skipped-file warning when the import had issues, and a Start culling button; it fades after about ten seconds and docks into the Activity Center bell, which keeps the receipt with the same counts, issue text, and Start culling. Existing-only imports get the same capsule with 'No new photos imported' copy and no Start culling. The follow-up work the old panel listed lives in the sidebar's Imports section — stacks, skipped files, preview failures, likely issues, faces found — and in the import row's context menu; automatic identity naming remains disabled and annotated."
     )
 
     public static let cullingAssistVerdict = LiveMockupPlaceholder(
@@ -234,28 +234,28 @@ public enum LiveMockupDesignSurfaces {
             title: "Studio",
             status: .partial,
             placeholder: .studioLibrary,
-            currentImplementation: "Library workspace (⌘2) has real catalog navigation, selectable Recently Added import output, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
+            currentImplementation: "The Grid lens (⌘2) has real catalog navigation, selectable import sources, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
         ),
         LiveMockupDesignSurface(
             designID: "1b",
             title: "Copilot",
             status: .partial,
             placeholder: .copilotLibrary,
-            currentImplementation: "Copilot route absorbed (Task 13) and further folded into the focused-workspaces chrome (Task 22, ⌘1/⌘2/⌘3): review queues live in the Cull sidebar's source picker, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions in the Library toolbar, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
+            currentImplementation: "The Copilot destination was absorbed (Task 13) and further folded into the unified sources × lenses shell (⌘1–⌘6): review queues live in the sidebar's Smart Collections section, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions stay with the browse lenses, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "1c",
             title: "Timeline",
             status: .partial,
             placeholder: .timelineLibrary,
-            currentImplementation: "Timeline sub-view (Library workspace, ⌘2) uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, month/year drill-down into existing date predicates, and scroll-position syncing centers focused chips and sections."
+            currentImplementation: "The Timeline lens (⌘4) uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, month/year drill-down into existing date predicates, and scroll-position syncing centers focused chips and sections."
         ),
         LiveMockupDesignSurface(
             designID: "2a",
             title: "Rapid cull",
             status: .partial,
             placeholder: .cullingAssistVerdict,
-            currentImplementation: "Cull workspace (⌘1), loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, selected-frame signal verdicts with compact supporting quality rationale, and stack-level keep recommendations when persisted quality signals rank the active stack."
+            currentImplementation: "The Cull lens (⌘1), loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, selected-frame signal verdicts with compact supporting quality rationale, and stack-level keep recommendations when persisted quality signals rank the active stack."
         ),
         LiveMockupDesignSurface(
             designID: "2b",
@@ -290,28 +290,28 @@ public enum LiveMockupDesignSurfaces {
             title: "Import complete",
             status: .partial,
             placeholder: .importCompleteSummary,
-            currentImplementation: "Expanded import-complete panel exposes imported count, preview status, Open, culling, stack-cull, compare, and keyword actions plus a Faces Found review handoff when face signals exist; automatic naming remains disabled."
+            currentImplementation: "Import completion is a thin top-right toast (imported count, skipped-file warning, Start culling) that fades after about ten seconds and docks into the Activity Center bell as a durable receipt; the expanded nine-action panel is deleted. Follow-up work lives in the sidebar's Imports section (stacks, skipped files, preview failures, likely issues, faces found) and the import row's context menu (Cull stacks, Evaluate import, Manual Compare over the import); automatic naming remains disabled."
         ),
         LiveMockupDesignSurface(
             designID: "5a",
             title: "People",
             status: .partial,
             placeholder: .peopleSidebar,
-            currentImplementation: "People workspace (⌘3) shows automatic grouping suggestions with one-tap confirm and dismiss backed by persisted per-face embeddings, plus the manual review strip, scan action, Name selection, face-review dismissal, persisted named people rows, and merge; suggestions are provisional until confirmed, and split and face-box-level naming remain disabled. Arrow keys move focus through the confirm queue and Return confirms/names the focused card (routed to the naming sheet's default action when it's open)."
+            currentImplementation: "The People lens (⌘6) shows automatic grouping suggestions with one-tap confirm and dismiss backed by persisted per-face embeddings, plus the manual review strip, scan action, Name selection, face-review dismissal, persisted named people rows, and merge; suggestions are provisional until confirmed, and split and face-box-level naming remain disabled. Arrow keys move focus through the confirm queue and Return confirms/names the focused card (routed to the naming sheet's default action when it's open)."
         ),
         LiveMockupDesignSurface(
             designID: "5b",
             title: "Places",
-            status: .deferred,
+            status: .partial,
             placeholder: .placesMap,
-            currentImplementation: "Out of scope for go-to-market; no map, clustering, or reverse-geocode route is exposed."
+            currentImplementation: "The Map lens exposes catalog-backed clustering, reverse-geocoded top locations, and geo-bounds drill-down; custom basemap styling, region search, and drawn-region selection remain deferred."
         ),
         LiveMockupDesignSurface(
             designID: "5c",
             title: "Search",
             status: .partial,
             placeholder: .agenticSearch,
-            currentImplementation: "Search route preserves catalog query/filter state, parsed chips, saved-set counts, results grid, matching work-history session rows, deterministic generated refinements, provider signal refinements, related filters, and suggested actions for existing save/freeze/review workflows; broader natural-language planning is not built."
+            currentImplementation: "Search sources preserve catalog query/filter state, parsed chips, saved-set counts, results in the selected browse lens, matching work-history session rows, deterministic generated refinements, provider signal refinements, related filters, and suggested actions for existing save/freeze/review workflows; broader natural-language planning is not built."
         ),
         LiveMockupDesignSurface(
             designID: "5d",

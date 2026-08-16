@@ -10,10 +10,13 @@ switch) and item 30 (grid Return/Space → loupe, G/Esc → back to grid),
 
 Source — **the G-key ambiguity is real but is two separate, non-conflicting
 key monitors, not one context-sensitive branch**:
-- `Sources/TeststripApp/AppModel.swift:5449-5456` — while the **culling
+- `Sources/TeststripApp/AppModel.swift:6999-7005, 7089-7098, 4959-4962` — while the **culling
   shortcut monitor** is active (loupe/culling context; `CullingShortcut.showCullGrid`,
-  keyed `"g"` at `AppModel.swift:258`), pressing `g` sets
-  `selectedView = .cullGrid` — loupe → grid.
+  keyed `"g"` at `AppModel.swift:233`), pressing `g` routes through
+  `selectCullSubMode(.cullGrid)` — loupe → grid. `selectCullSubMode`
+  assigns `selectedView` only when the requested mode belongs to the Cull
+  lens and Cull is available for the current source; otherwise the
+  sub-mode command is a no-op.
 - `Sources/TeststripApp/GridKeyCaptureView.swift:37-58` — while
   `GridKeyCaptureNSView.mode == .cullGrid` (the **grid key-capture view**,
   active only when the cull grid subview itself has focus), `command(for:)`
@@ -22,18 +25,21 @@ key monitors, not one context-sensitive branch**:
   `.switchCullSubView(.loupe)` in this branch (`:46-47`), so **G and Esc are
   synonyms while in the grid subview**. `c`/`b` in this same branch jump
   straight to `.compare`/`.abCompare` (`:51-52`), skipping the loupe.
+  `AppModel.applyGridKeyCommand` (`AppModel.swift:6693-6737`) rejects these
+  switches when Cull is unavailable (`:6709-6712`) and otherwise dispatches
+  them through `selectCullSubMode` (`:6734-6735`).
 - **Resolution — confirmed by the explicit gate, not just by inference**:
-  `CullingKeyCaptureGate.isActive(workspace:selectedView:)`
-  (`Sources/TeststripApp/CullingKeyCaptureView.swift:11-15`) returns
-  `workspace == .cull && selectedView != .cullGrid`, and
-  `LibraryGridView.swift:180-202` wires exactly one `CullingKeyCaptureView`
+  `CullingKeyCaptureGate.isActive(lens:selectedView:)`
+  (`Sources/TeststripApp/CullingKeyCaptureView.swift:12-14`) returns
+  `lens == .cull && selectedView != .cullGrid`, and
+  `LibraryGridView.swift:212-236` wires exactly one `CullingKeyCaptureView`
   (gated by `isActive`) and one always-installed `GridKeyCaptureView` (whose
   own `.cullSubViewSwitch` branch only matches when `mode == .cullGrid`,
   `GridKeyCaptureView.swift:222`) as sibling overlays on the same surface.
   The two `g` bindings are therefore mutually exclusive by construction:
   `CullingKeyCaptureNSView`'s local key monitor stays installed while its
   `NSView` is in the window, but `handleLocalKeyDown` guards on `isActive`
-  first (`CullingKeyCaptureView.swift:74`) and returns the event unhandled
+  first (`CullingKeyCaptureView.swift:75-84`) and returns the event unhandled
   when false — so while `.cullGrid` is showing, `CullingKeyCaptureView`'s `g`
   binding is a no-op at the handler level, and only `GridKeyCaptureView`'s
   `g` (which has no such gate, but only matches when `mode == .cullGrid`,
@@ -47,15 +53,15 @@ key monitors, not one context-sensitive branch**:
   doing anything) really does prevent both from matching, since local
   monitors run in installation order and neither explicitly waits for the
   other to decline first. `g` is "go to grid" from everywhere else in the
-  Cull workspace and "go back to the loupe" from the grid itself — a real
+  Cull lens and "go back to the loupe" from the grid itself — a real
   toggle, not an unresolved ambiguity, but the multi-monitor mechanics are
   subtle enough to spot-check live.
 - `Sources/TeststripApp/GridKeyCaptureView.swift:74-77` — plain grid mode
   (not `.cullGrid`): Return/Space → `.openLoupe`; Escape → `.returnToGrid`.
-- `Sources/TeststripApp/AppModel.swift:5309-5334` (`applyGridKeyCommand`) —
+- `Sources/TeststripApp/AppModel.swift:6693-6737` (`applyGridKeyCommand`) —
   `.openLoupe` in `.cullGrid` selects the asset and sets `selectedView =
-  .loupe` (`:5321-5325`); in plain `.grid` it calls
-  `openAssetInLibraryLoupe` instead (`:5326-5328`, Library's separate loupe —
+  .loupe` (`:6724-6728`); in plain `.grid` it calls
+  `openAssetInLibraryLoupe` instead (`:6729-6731`, the separate Loupe lens —
   out of scope here, see `library-loupe-no-cull-chrome.md`).
 
 ## Pre-state
@@ -86,7 +92,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 4. Press `B`. Assert A/B compare is active: `script/ax_drive.sh find
    --contains "A/B"` (the header label at `LibraryGridView.swift:5851`).
 5. From A/B, press `G` again to return to the grid subview. Per
-   `CullingKeyCaptureGate.isActive` (`workspace == .cull && selectedView !=
+   `CullingKeyCaptureGate.isActive` (`lens == .cull && selectedView !=
    .cullGrid`), the culling-shortcut monitor is active for `.abCompare` too
    (it's gated only against `.cullGrid`, not scoped to `.loupe` alone), so
    this should behave the same as step 7 below.
@@ -109,7 +115,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   step 4's A/B header (`"A/B"` label) is present.
 - Step 5: `selectedView` returns to `.cullGrid`. **Fails if** `G` from A/B
   does nothing — that would contradict `CullingKeyCaptureGate.isActive`'s
-  stated scope (`workspace == .cull && selectedView != .cullGrid`, which
+  stated scope (`lens == .cull && selectedView != .cullGrid`, which
   includes `.abCompare`) and is worth flagging as a real bug, not softened.
 - Step 6: the loupe opens on the exact tile that was pressed, not an
   arbitrary/first asset. **Fails if** the wrong asset opens, or if Return
@@ -154,3 +160,18 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 UNRUN — needs human-present execution per test/scenarios/README.md. The
 G-key monitor-overlap question in Sharp edges is an open verification item,
 not resolved by this draft.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum) — no
+preamble text changed. While verifying this, found and fixed a live stale
+symbol citation the preamble check surfaced adjacent text for:
+`CullingKeyCaptureGate.isActive(workspace:selectedView:)` was renamed to
+`isActive(lens:selectedView:)` by this push's Step 1 rewrite of
+`cull-001-workspace-key-gating.md`, and this card's own Source/Step-5/
+Expected sections still cited the old parameter name and predicate
+(`workspace == .cull && ...`) three times — corrected to `lens ==` throughout,
+re-verified directly against `CullingKeyCaptureView.swift:12-14`. Supersedes
+prior status: no prior run evidence exists on this card at all (still
+UNRUN); the fix only affects what a future runner would read as ground
+truth, not any existing verdict.

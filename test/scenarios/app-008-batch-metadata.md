@@ -3,13 +3,14 @@
 **What this covers**: Jesse tags a whole shoot in one pass. Inventory item 30
 plus the sheet flow: Metadata ▸ Batch Metadata… (⌥⌘M) bumps
 `batchMetadataRequestToken` (`MetadataActionCommands`,
-`Sources/TeststripApp/main.swift:320-333`;
-`AppModel.requestBatchMetadataSheet`, `AppModel.swift:2093-2099`), disabled
+`Sources/TeststripApp/main.swift:335-354`;
+`AppModel.requestBatchMetadataSheet`, `AppModel.swift:2530-2536`), disabled
 while importing or with an empty catalog; the sheet's segmented scope picker
 (selected / visible / current scope via `BatchScopeMode`), the all-catalog
 confirmation gate when the scope is unfiltered, keyword suggestions, and the
 apply writing to the catalog + sidecars
-(`LibraryGridView.batchMetadataPopover`, `LibraryGridView.swift:1062+`).
+(`LibraryGridView.batchMetadataPopover`, `LibraryGridView.swift:1238-1345`,
+`LibraryGridView.swift:3128-3193`, and `LibraryGridView.swift:5345-5362`).
 
 ## Pre-state
 ```bash
@@ -23,7 +24,7 @@ sqlite3 "$DB" "SELECT count(*) FROM assets WHERE metadata_json LIKE '%scenario-k
 ```
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Library).
+1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Grid lens).
 2. **Open via keyboard.** Press ⌥⌘M. `ax_drive.sh wait --contains "Batch
    Metadata"`. Assert the scope picker renders with its segments (Selected /
    Visible / current-scope titles per `BatchScopeMode`) and a count line.
@@ -92,3 +93,16 @@ sqlite3 "$DB" "SELECT count(*) FROM assets WHERE metadata_json LIKE '%scenario-k
   gesture (they write); the *suggestion* chips must not write until clicked.
   If a suggestion appears in step 3, assert it is absent from the catalog
   until explicitly applied.
+
+## Run status
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+preamble pressed ⌘2 for "Library" — the two-workspace `Workspace` enum ⌘2
+opened; that enum is gone, and ⌘2 now selects the Grid lens
+(`LibraryLens.keyEquivalent`, `LibraryLens.swift:44-51`). Retitled to "Grid
+lens"; the rest of the card (the batch-metadata sheet, scope picker, and
+write assertions) is unaffected — this landing view was never load-bearing
+for those steps, only a place to have a selection to act on. Preamble only;
+the assertions were not affected. Supersedes prior status: no prior status
+note existed on this card; there is no earlier evidence to invalidate, but
+any prior unlogged run pressed a key that no longer does anything — needs a
+fresh VM run.

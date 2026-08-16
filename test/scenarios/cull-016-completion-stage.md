@@ -8,13 +8,13 @@ I want to keep working. Covers inventory items 46-51:
 `Sources/TeststripApp/CullCompletionPresentation.swift:88-103`, which
 delegates the action-set build to `.summary` at `:32-76` — the core four
 always, `.savePicksAsSet` appended at `:65-67` only when `picks > 0`),
-`applyCullCompletionReviewPicks` (47 — `AppModel.swift:6854-6861`), the
+`applyCullCompletionReviewPicks` (47 — `AppModel.swift:7225-7232`), the
 `isCullCompletionDismissed` `onChange` guards on
-scope/asset (48 — `LibraryGridView.swift:3924-3925`), the folded
+scope/asset (48 — `LibraryGridView.swift:3837-3838`), the folded
 autopilot + `CullingSessionCompletionSummary` banners inside the stage (49 —
-`LibraryGridView.swift:3974-3987`), `openCullingSessionPicks` (50 —
-`AppModel.swift:5661-5671`), and `cullRemainingSinglesFromCullingCompletion`
-(51 — `AppModel.swift:5728-5753`). Also verified: "Move Rejects…" physically
+`LibraryGridView.swift:3887-3899`), `openCullingSessionPicks` (50 —
+`AppModel.swift:6079-6093`), and `cullRemainingSinglesFromCullingCompletion`
+(51 — `AppModel.swift:6150-6175`). Also verified: "Move Rejects…" physically
 relocates rejected originals on disk, not just in the catalog.
 
 ## Pre-state
@@ -36,7 +36,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    --contains "Nothing left to decide"`. **This card is the authoritative
    post-drop completion action set** (verified directly against
    `Sources/TeststripApp/CullCompletionPresentation.swift:9-16,62-67` and
-   `LibraryGridView.swift:4009-4028` — see `cull-025-run-strip-completion.md`'s
+   `LibraryGridView.swift:3919-3940` — see `cull-025-run-strip-completion.md`'s
    "Rendering the summary" bullet, which cites this card's Step 3 as
    authoritative for the action set and keeps its own copy of the five
    titles in sync with it, rather than deriving them independently):
@@ -50,7 +50,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    .pick : nil)`, seeds several picks among the 24 assets). There is no
    sixth "Continue" *action button* — "Continue culling" is a separate
    plain-style dismiss control below the action row
-   (`LibraryGridView.swift:3993-3997`), not a
+   (`LibraryGridView.swift:3906-3911`), not a
    `CullCompletionPresentation.Action` case; there is likewise no
    "Review AI Suggestions" action — that ceremony was deleted from the
    source entirely by SP-D0 (`cull-025`'s Source, Actions rule).
@@ -119,7 +119,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - **Items 49-51 (folded autopilot/session banners, "View Picks", "Cull
   Remaining Singles") are NOT exercised by this card.** They render only when
   `model.cullingSessionCompletion` (a `CullingSessionCompletionSummary`) is
-  non-nil, which is set at `AppModel.swift:12806` — that path is reached from
+  non-nil, which is set at `AppModel.swift:13342-13349` — that path is reached from
   a stack-cull work-session flow, not from plain bulk-deciding singles via
   P/X in a fresh `--smoke` launch (confirmed by reading the surrounding code:
   it's set when a *work session* of kind stack-cull completes, not on the
@@ -134,8 +134,8 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   `cullRemainingSinglesFromCullingCompletion` (51). Flagging as an open
   question rather than fabricating an untestable step here.
 - The autopilot banner is suppressed above the stage once `completion != nil`
-  (folded into the stage body instead per `LibraryGridView.swift:3865-3867`
-  and `:3975-3977`) — an undismissed banner reappears inside
+  (folded into the stage body instead per `LibraryGridView.swift:3770-3780`
+  and `:3887-3889`) — an undismissed banner reappears inside
   `cullCompletionStage`, still with its own Review/Undo all controls.
 
 ## Run status
@@ -163,3 +163,10 @@ actual (now-confirmed) behavior: an undismissed banner reappears inside the
 completion stage, unaffected by SP-D0. Supersedes prior status: the
 2026-07-10 source read predates both the three-action staleness and the
 ghost-derivation model. Needs a fresh VM run.
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
+`LibraryLens`, same as it selected Cull under the old `Workspace` enum).
+Preamble only; no other stale symbol found in this card. Supersedes prior
+status: no substantive change — the 2026-08-06 reconciliation above is
+unaffected, noted for the record per house style.

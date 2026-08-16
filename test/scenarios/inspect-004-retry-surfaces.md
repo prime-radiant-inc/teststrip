@@ -39,7 +39,7 @@ CREATE TABLE evaluation_failures (
 ## Steps
 
 ### Preview retry (Info tab)
-1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 Library; select `$SRC`; ⌘I
+1. `script/ax_drive.sh wait-vended Teststrip`; ⌘2 (Grid lens); select `$SRC`; ⌘I
    to Info tab.
 2. **Quit the app**, then insert a synthetic failure row so it's present on
    next launch (the running instance's in-memory `assets`/queue state
@@ -54,7 +54,7 @@ CREATE TABLE evaluation_failures (
    `--smoke` mints a *new* isolated dir per README.md). Select `$SRC`, Info
    tab.
 4. Assert the "Preview retry pending" alert renders (`previewFailureStatus`,
-   `InspectorView.swift:748-767`) with the synthetic error text visible, and
+   `InspectorView.swift:794-813`) with the synthetic error text visible, and
    a "Retry" button.
 5. Click Retry (`ax_drive.sh press --role AXButton --label "Retry"` — Info
    tab has only one Retry button unless the sync-pending state is also
@@ -75,12 +75,12 @@ CREATE TABLE evaluation_failures (
    ```
 8. Relaunch; select `$SRC`; ⌥⌘3 for AI tab.
 9. Assert "Analysis retry needed" alert renders (`providerFailureAlert`,
-   `InspectorView.swift:740-746`) with "apple-vision failed: synthetic
+   `InspectorView.swift:787-792, 815-833`) with "apple-vision failed: synthetic
    provider error..." text and a **"Retry apple-vision"** button
    (`InspectorProviderFailurePresentation.actionLabel`,
-   `InspectorView.swift:85-87`).
+   `InspectorView.swift:110-112`).
 10. Click "Retry apple-vision" (`model.retrySelectedProviderFailure(provider:
-    "apple-vision")`, `AppModel.swift:7596-7602`, which calls
+    "apple-vision")`, `AppModel.swift:9982-9987`, which calls
     `requestEvaluation(assetID:provider:)` to re-enqueue the provider run).
 11. Assert on disk the `evaluation_failures` row for
     `('$ASSET_ID','apple-vision')` is gone (cleared on re-enqueue or on the
@@ -92,7 +92,7 @@ CREATE TABLE evaluation_failures (
 ## Expected
 - Step 4: preview-retry alert renders with the synthetic error text and an
   enabled Retry button (`canRetrySelectedPreviewGenerationFailures` true when
-  the original is available, `AppModel.swift:2424`). **Fails if** the alert
+  the original is available, `AppModel.swift:2929-2935`). **Fails if** the alert
   doesn't render for a real queued-failure row, or Retry is disabled with no
   reason.
 - Step 6: the `preview_generation_queue` row is mutated/cleared by the click
@@ -144,15 +144,15 @@ CREATE TABLE evaluation_failures (
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Wiring confirmed
-statically: `Sources/TeststripApp/InspectorView.swift:748-767`
+statically: `Sources/TeststripApp/InspectorView.swift:794-831`
 (`previewFailureStatus`, Retry → `model.retrySelectedPreviewGenerationFailures`),
-`:740-746,769-788` (`providerFailureAlert`/`providerFailureStatus`, Retry
+`:786-831` (`providerFailureAlert`/`providerFailureStatus`, Retry
 `<provider>` → `model.retrySelectedProviderFailure`),
 `:70-88` (`InspectorProviderFailurePresentation`),
-`Sources/TeststripApp/AppModel.swift:7250-7257`
+`Sources/TeststripApp/AppModel.swift:9474-9483`
 (`retrySelectedPreviewGenerationFailures`, re-enqueues via `requestPreview`
-with `.front` placement), `:7596-7601` (`retrySelectedProviderFailure`,
-re-enqueues via `requestEvaluation`), `Sources/TeststripCore/Catalog/CatalogRepository.swift:1522-1567`
+ with `.front` placement), `:9982-9987` (`retrySelectedProviderFailure`,
+re-enqueues via `requestEvaluation`), `Sources/TeststripCore/Catalog/CatalogRepository.swift:2270-2315`
 (`recordEvaluationFailure`, the failures table's insert/delete/query shape).
 Needs a human-present re-run. All SQL and schema in this card were run
 headlessly against a seeded --smoke catalog on 2026-07-10 (schema per
@@ -168,3 +168,14 @@ covered by `CatalogDatabaseTests.testPendingPreviewGenerationItemsDropsRowWithIn
 This card's preview-retry leg still needs a live re-run with the corrected
 `'grid'` fixture to observe the actual retry-surfaces behavior (the crash
 was a fixture-triggered side effect, not what this card set out to test).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
+preamble pressed ⌘2 for "Library" — the two-workspace `Workspace` enum's
+⌘2; that enum is gone and ⌘2 now selects the Grid lens
+(`LibraryLens.keyEquivalent`, `LibraryLens.swift:44-51`). Retitled to "Grid
+lens." Preamble only; the retry-wiring assertions (Info-tab preview retry,
+AI-tab provider retry) don't depend on which lens was active before ⌘I
+opens the inspector — the inspector renders over whichever lens is current.
+Supersedes prior status: no prior status note addressed this line; the
+BLOCKED-CONSOLE/2026-07-11 evidence above is unaffected on its own terms
+(it never reached the AX steps) but still needs a fresh VM run.

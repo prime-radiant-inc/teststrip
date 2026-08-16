@@ -36,6 +36,9 @@ struct ActivityCenterView: View {
             if !presentation.xmpConflicts.isEmpty {
                 conflictsSection(presentation.xmpConflicts)
             }
+            if !presentation.receipts.isEmpty {
+                receiptsSection(presentation.receipts)
+            }
             if isQuiet(presentation) {
                 Text("No active work")
                     .font(.caption)
@@ -259,6 +262,60 @@ struct ActivityCenterView: View {
     private func selectConflict(_ conflict: ConflictRow) {
         do {
             try model.revealConflicts([conflict.assetID])
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Import receipts
+
+    private func receiptsSection(_ receipts: [ImportReceiptRow]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Recent Imports")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(receipts) { receipt in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(receipt.title)
+                        .font(.caption)
+                        .lineLimit(2)
+                    if !receipt.detail.isEmpty {
+                        Text(receipt.detail)
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                            .lineLimit(1)
+                    }
+                    if receipt.issueCount > 0 {
+                        Button("Review issues") {
+                            reviewIssues(receipt)
+                        }
+                        .font(.caption)
+                        .buttonStyle(.link)
+                        .accessibilityLabel("Review issues")
+                    }
+                    if receipt.canStartCulling {
+                        Button("Start culling") {
+                            startCulling(receipt)
+                        }
+                        .font(.caption)
+                        .buttonStyle(.link)
+                        .accessibilityLabel("Start culling")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func reviewIssues(_ receipt: ImportReceiptRow) {
+        model.isActivityCenterPresented = false
+        model.requestImportIssueReview(sessionID: receipt.sessionID)
+    }
+
+    private func startCulling(_ receipt: ImportReceiptRow) {
+        do {
+            try model.startCullingImport(sessionID: receipt.sessionID, title: receipt.title)
+            model.isActivityCenterPresented = false
         } catch {
             model.errorMessage = error.localizedDescription
         }

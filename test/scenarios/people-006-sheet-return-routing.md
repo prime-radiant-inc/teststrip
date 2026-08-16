@@ -16,7 +16,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
 
 ## Steps
-1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘3 for People; wait for
+1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘6 for People; wait for
    grouping suggestions (per `people-confirm-writes-on-return.md`).
 2. Arrow-focus a *cluster* suggestion card (one that routes to naming, not a
    one-tap match) and open its naming sheet
@@ -52,3 +52,11 @@ static trace in `.superpowers/sdd/task-21-report.md` (guards:
 `firstResponder.isTextEditor` is true while typing), mirroring
 `CullingKeyCaptureView`'s existing pattern. Needs a human-present re-run to
 confirm the static trace holds live. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).
+
+**Reconciled 2026-08-09 (Task 13, unified-shell survivor sweep)**: Step 1
+pressed ⌘3 for People, from a build that predates even the "Library
+sub-view" era — under the unified shell, People is one of the six
+top-level `LibraryLens` cases, keyed ⌘6, not ⌘3 (`LibraryLens.keyEquivalent`,
+`LibraryLens.swift:44-51`). Preamble only; the sheet-vs-queue Return-routing
+assertions don't depend on how People was reached. Supersedes prior status:
+no prior run evidence exists to invalidate (still BLOCKED-CONSOLE).
