@@ -6301,6 +6301,26 @@ public final class AppModel {
         return try catalog.repository.session(id: sessionID)
     }
 
+    /// SP-D Task 4: thin convenience over `beginCullingSession(named:)` that
+    /// starts a cull run without a custom name. Switches to the loupe view.
+    @discardableResult
+    public func startCullRun() throws -> WorkSession {
+        try beginCullingSession(named: "Cull")
+    }
+
+    /// SP-D Task 4: batch stats for the ⌘R start card — photo count, multi-
+    /// frame stack count, lens-hidden count, and the auto-advance / land-on-
+    /// recommended toggles.
+    var cullStartCardPresentation: CullStartCardPresentation {
+        let stacks = cullingStacks()
+        return CullStartCardPresentation(
+            photoCount: totalAssetCount,
+            stackCount: stacks.count,
+            autoAdvanceEnabled: cullAutoAdvanceEnabled,
+            landOnRecommended: cullLandOnRecommendedFrame
+        )
+    }
+
     /// Scopes a fresh culling session to the current selection — the
     /// multi-select batch if there is one, else the single loupe/grid
     /// selection — and switches into the Cull lens on it. Exposed as the
