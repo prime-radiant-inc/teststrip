@@ -54,16 +54,40 @@ public struct CullingProgressSummary: Equatable, Sendable {
     public var rejectCount: Int
     public var totalCount: Int
 
+    // SP-D Task 5: loud accounting fields for the scope line's coverage
+    // readout. Defaults of 0 keep existing call sites working.
+    public var viewedCount: Int
+    public var skippedCount: Int
+    public var neverViewedCount: Int
+    public var awaitingReviewCount: Int
+    public var hiddenByLensCount: Int
+
     public var reviewedCount: Int {
         pickCount + rejectCount
     }
 
-    public init(selectedPosition: Int?, positionText: String?, pickCount: Int, rejectCount: Int, totalCount: Int) {
+    public init(
+        selectedPosition: Int?,
+        positionText: String?,
+        pickCount: Int,
+        rejectCount: Int,
+        totalCount: Int,
+        viewedCount: Int = 0,
+        skippedCount: Int = 0,
+        neverViewedCount: Int = 0,
+        awaitingReviewCount: Int = 0,
+        hiddenByLensCount: Int = 0
+    ) {
         self.selectedPosition = selectedPosition
         self.positionText = positionText
         self.pickCount = pickCount
         self.rejectCount = rejectCount
         self.totalCount = totalCount
+        self.viewedCount = viewedCount
+        self.skippedCount = skippedCount
+        self.neverViewedCount = neverViewedCount
+        self.awaitingReviewCount = awaitingReviewCount
+        self.hiddenByLensCount = hiddenByLensCount
     }
 }
 
@@ -2781,12 +2805,27 @@ public final class AppModel {
 
     public var cullingProgressSummary: CullingProgressSummary {
         let decisionCounts = cullingDecisionCounts()
+        // SP-D Task 5: loud accounting fields.
+        let viewedCount = cullRunTracker.viewedAssetIDs.count
+        let decidedAssetIDs = Set(assets.filter { $0.metadata.confirmedProjection.flag != nil }.map(\.id))
+        let skippedCount = cullRunTracker.skippedAssetIDs
+            .intersection(Set(assets.map(\.id)))
+            .subtracting(decidedAssetIDs)
+            .count
+        let neverViewedCount = totalAssetCount - viewedCount
+        let awaitingReviewCount = assets.filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }.count
+        let hiddenByLensCount = totalAssetCount - CullScopeOrdering.filteredAssets(assets, scope: cullScope).count
         return CullingProgressSummary(
             selectedPosition: selectedAssetPosition,
             positionText: selectedAssetPositionText,
             pickCount: decisionCounts.pickCount,
             rejectCount: decisionCounts.rejectCount,
-            totalCount: totalAssetCount
+            totalCount: totalAssetCount,
+            viewedCount: viewedCount,
+            skippedCount: skippedCount,
+            neverViewedCount: neverViewedCount,
+            awaitingReviewCount: awaitingReviewCount,
+            hiddenByLensCount: hiddenByLensCount
         )
     }
 
@@ -3405,13 +3444,18 @@ public final class AppModel {
     /// gate guards against).
     public var scopeLine: ScopeLinePresentation {
         let isCullSessionActive = selectedLens == .cull && activeCullingSessionID != nil
+        let progress = isCullSessionActive ? cullingProgressSummary : nil
         return ScopeLinePresentation.line(
             source: selectedSource,
             lens: selectedLens,
             resultCount: totalAssetCount,
             activeFilterChips: activeLibraryFilterChips,
-            cullProgress: isCullSessionActive ? cullingProgressSummary : nil,
-            stackCount: isCullSessionActive ? cullingStackListEntries().count : 0
+            cullProgress: progress,
+            stackCount: isCullSessionActive ? cullingStackListEntries().count : 0,
+            skippedCount: progress?.skippedCount ?? 0,
+            neverViewedCount: progress?.neverViewedCount ?? 0,
+            awaitingReviewCount: progress?.awaitingReviewCount ?? 0,
+            hiddenByLensCount: progress?.hiddenByLensCount ?? 0
         )
     }
 
