@@ -6251,6 +6251,72 @@ public final class AppModel {
         )
     }
 
+    // MARK: - SP-D Task 6: Mini-run starters from the completion summary.
+    // Each finds the relevant asset IDs from the current `assets` array,
+    // creates a snapshot asset set, applies it, and begins a new culling
+    // session scoped to that subset.
+
+    /// Starts a new culling session scoped to undecided frames (no confirmed
+    /// flag). A tentative AI flag counts as undecided — `confirmedProjection`
+    /// projects it to nil.
+    public func cullUndecidedFromCompletion() throws -> WorkSession {
+        let assetIDs = assets
+            .filter { $0.metadata.confirmedProjection.flag == nil }
+            .map(\.id)
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Undecided")
+    }
+
+    /// Starts a new culling session scoped to frames that were skipped during
+    /// the last run but never decided. A skipped-then-decided frame is excluded.
+    public func cullSkippedFromCompletion() throws -> WorkSession {
+        let decidedAssetIDs = Set(assets.filter { $0.metadata.confirmedProjection.flag != nil }.map(\.id))
+        let assetIDs = cullRunTracker.skippedAssetIDs
+            .intersection(Set(assets.map(\.id)))
+            .subtracting(decidedAssetIDs)
+            .map { $0 }
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Skipped")
+    }
+
+    /// Starts a new culling session scoped to frames that were never viewed
+    /// during the last run.
+    public func cullNeverViewedFromCompletion() throws -> WorkSession {
+        let assetIDs = assets
+            .filter { !cullRunTracker.viewedAssetIDs.contains($0.id) }
+            .map(\.id)
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Never Viewed")
+    }
+
+    /// Starts a new culling session scoped to frames carrying tentative AI
+    /// flags that await user review.
+    public func reviewAIFromCompletion() throws -> WorkSession {
+        let assetIDs = assets
+            .filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }
+            .map(\.id)
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Review ✨")
+    }
+
+    /// Shared helper: creates a snapshot asset set from the given IDs, applies
+    /// it, and begins a new culling session. Throws when the set is empty.
+    private func startScopedMiniRun(assetIDs: [AssetID], title: String) throws -> WorkSession {
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("there are no photos to cull")
+        }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let setID = AssetSetID(rawValue: "work-input-mini-\(UUID().uuidString)")
+        let assetSet = AssetSet(
+            id: setID,
+            name: title,
+            membership: .snapshot(assetIDs)
+        )
+        try catalog.repository.upsert(assetSet)
+        savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
+        try applyAssetSet(id: setID)
+        return try beginCullingSession(named: title)
+    }
+
     // A new cull batch is a fresh run: the viewed/skipped tracker resets, and
     // whatever frame the batch landed on is on stage right now — record it as
     // viewed so the completion summary's neverViewed set can never include

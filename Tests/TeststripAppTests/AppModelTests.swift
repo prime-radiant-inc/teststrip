@@ -191,7 +191,12 @@ final class AppModelTests: XCTestCase {
                 positionText: "Frame 3 of 4",
                 pickCount: 2,
                 rejectCount: 1,
-                totalCount: 4
+                totalCount: 4,
+                viewedCount: 1,
+                skippedCount: 0,
+                neverViewedCount: 3,
+                awaitingReviewCount: 0,
+                hiddenByLensCount: 0
             )
         )
         XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
