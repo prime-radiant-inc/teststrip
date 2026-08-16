@@ -49,6 +49,11 @@ and face embedding over a JSON-lines protocol.
 - `test/scenarios/README.md` — the end-to-end scenario-testing harness: the
   `ax_drive.sh` accessibility driver, the isolated-launch mechanics, and the
   hard-won driving realities. Read it before writing or running any live UI test.
+- `docs/agent-driven-development.md` — how multi-agent pushes run here: the
+  adversarial test-author/implementer split, red proofs and the toothless-test
+  failure mode, model policy (haiku is banned from test work), agent liveness
+  and recovery, and why live scenario runs are a gate. Read it before running
+  or joining a controller/subagent push.
 - `docs/architecture/` — system architecture.
 - `docs/product/narrative-select-reference.md` — the selection/review workflow
   reference product (narrative.so/select).
