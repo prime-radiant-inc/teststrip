@@ -19,12 +19,24 @@ public struct ScopeLinePresentation: Equatable, Sendable {
         resultCount: Int,
         activeFilterChips: [String],
         cullProgress: CullingProgressSummary?,
-        stackCount: Int
+        stackCount: Int,
+        skippedCount: Int = 0,
+        neverViewedCount: Int = 0,
+        awaitingReviewCount: Int = 0,
+        hiddenByLensCount: Int = 0
     ) -> ScopeLinePresentation {
         ScopeLinePresentation(
             sourceTitle: source.title,
             statusText: lens == .cull
-                ? cullStatusText(resultCount: resultCount, cullProgress: cullProgress, stackCount: stackCount)
+                ? cullStatusText(
+                    resultCount: resultCount,
+                    cullProgress: cullProgress,
+                    stackCount: stackCount,
+                    skippedCount: skippedCount,
+                    neverViewedCount: neverViewedCount,
+                    awaitingReviewCount: awaitingReviewCount,
+                    hiddenByLensCount: hiddenByLensCount
+                )
                 : browseStatusText(resultCount: resultCount, activeFilterChips: activeFilterChips)
         )
     }
@@ -39,13 +51,19 @@ public struct ScopeLinePresentation: Equatable, Sendable {
         return "\(count) · \(activeFilterChips.joined(separator: " + "))"
     }
 
-    /// "854 photos · 326 stacks · ✓ 15 · ✕ 5 · 834 left". The stack segment is
-    /// omitted when the run has no multi-frame stacks, and the whole progress
-    /// tail is omitted when no run is under way.
+    /// "854 photos · 326 stacks · ✓ 15 · ✕ 5 · ⊘ 12 skipped · ◌ 3 unviewed ·
+    /// ✨ 96 awaiting · 834 left". The stack segment is omitted when the run has
+    /// no multi-frame stacks, and the whole progress tail is omitted when no
+    /// run is under way. Skipped, unviewed, and awaiting segments are omitted
+    /// when their count is zero.
     private static func cullStatusText(
         resultCount: Int,
         cullProgress: CullingProgressSummary?,
-        stackCount: Int
+        stackCount: Int,
+        skippedCount: Int = 0,
+        neverViewedCount: Int = 0,
+        awaitingReviewCount: Int = 0,
+        hiddenByLensCount: Int = 0
     ) -> String {
         guard let cullProgress else { return photoCountText(resultCount) }
         var segments = [photoCountText(cullProgress.totalCount)]
@@ -54,6 +72,15 @@ public struct ScopeLinePresentation: Equatable, Sendable {
         }
         segments.append("✓ \(cullProgress.pickCount)")
         segments.append("✕ \(cullProgress.rejectCount)")
+        if skippedCount > 0 {
+            segments.append("⊘ \(skippedCount) skipped")
+        }
+        if neverViewedCount > 0 {
+            segments.append("◌ \(neverViewedCount) unviewed")
+        }
+        if awaitingReviewCount > 0 {
+            segments.append("✨ \(awaitingReviewCount) awaiting")
+        }
         segments.append("\(max(cullProgress.totalCount - cullProgress.reviewedCount, 0)) left")
         return segments.joined(separator: " · ")
     }
