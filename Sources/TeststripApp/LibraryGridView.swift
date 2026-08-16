@@ -84,6 +84,9 @@ struct LibraryGridView: View {
         bodyContent.onChange(of: model.importIssueReviewRequestToken) { _, _ in
             presentRequestedImportIssueReview()
         }
+        .onChange(of: model.startCullRunRequestToken) { _, _ in
+            showStartCullingPopover()
+        }
     }
 
     private var bodyContent: some View {
@@ -1654,12 +1657,16 @@ struct LibraryGridView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Start Culling")
                 .font(.headline)
+            Text(model.cullStartCardPresentation.batchDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             TextField("Name", text: $cullingSessionName)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
             TextField("Intent", text: $cullingSessionIntent)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
+            cullStartCardToggles
             HStack {
                 Spacer()
                 Button("Cancel") {
@@ -1673,6 +1680,25 @@ struct LibraryGridView: View {
             }
         }
         .padding(14)
+    }
+
+    private var cullStartCardToggles: some View {
+        HStack {
+            Button {
+                model.toggleCullAutoAdvance()
+            } label: {
+                Label("Auto-advance", systemImage: model.cullAutoAdvanceEnabled ? "checkmark.square" : "square")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            Button {
+                model.toggleCullLandOnRecommendedFrame()
+            } label: {
+                Label("Land on recommended", systemImage: model.cullLandOnRecommendedFrame ? "checkmark.square" : "square")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var importPathSheet: some View {
@@ -3897,6 +3923,18 @@ private struct LoupeView: View {
                     cullCompletionActionButton(action)
                 }
             }
+            if !completion.miniRuns.isEmpty {
+                VStack(spacing: 6) {
+                    Text("One-key mini-runs")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        ForEach(completion.miniRuns, id: \.number) { run in
+                            miniRunButton(run)
+                        }
+                    }
+                }
+            }
             Button("Continue culling") {
                 isCullCompletionDismissed = true
             }
@@ -3933,6 +3971,32 @@ private struct LoupeView: View {
             }
         }
         .controlSize(.regular)
+    }
+
+    private func miniRunButton(_ run: CullCompletionPresentation.MiniRun) -> some View {
+        let isEnabled = !run.assetIDs.isEmpty || run.action == .reviewAI
+        return Button(run.title) {
+            handleMiniRunAction(run.action)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(!isEnabled)
+    }
+
+    private func handleMiniRunAction(_ action: CullCompletionPresentation.Action) {
+        do {
+            switch action {
+            case .cullUndecided: try model.cullUndecidedFromCompletion()
+            case .cullSkipped: try model.cullSkippedFromCompletion()
+            case .cullNeverViewed: try model.cullNeverViewedFromCompletion()
+            case .reviewAI: try model.reviewAIFromCompletion()
+            case .export: beginExport()
+            case .moveRejects: beginMoveRejects()
+            default: break
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func cullCompletionRunDetailText(_ completion: CullCompletionPresentation) -> String {

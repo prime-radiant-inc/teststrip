@@ -176,6 +176,15 @@ private struct LensCommands: Commands {
 
             Divider()
 
+            // SP-D: ⌘R starts a cull run — opens the start card popover with
+            // batch stats and a Begin button. Uses the request-token pattern
+            // (same as File ▸ Import, Export, etc.) so the view owns presentation.
+            Button("Start Cull Run") {
+                model.requestStartCullRun()
+            }
+            .keyboardShortcut("r", modifiers: [.command])
+            .disabled(!model.canBeginCullingSession)
+
             // Menus stay the system of record even though the in-view key
             // captures also reach these routes.
             ForEach(AppMenuCoveragePresentation.cullSubModeMenuModes, id: \.self) { mode in

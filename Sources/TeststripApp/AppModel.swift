@@ -2646,6 +2646,13 @@ public final class AppModel {
         saveSearchRequestToken += 1
     }
 
+    /// SP-D: ⌘R "Start Cull Run" request token. The menu command bumps this;
+    /// LibraryGridView's `.onChange` opens the start card popover.
+    public private(set) var startCullRunRequestToken = 0
+    public func requestStartCullRun() {
+        startCullRunRequestToken += 1
+    }
+
     public private(set) var moveRejectsToTrashRequestToken = 0
     public func requestMoveRejectsToTrash() {
         moveRejectsToTrashRequestToken += 1
