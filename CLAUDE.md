@@ -85,11 +85,5 @@ and face embedding over a JSON-lines protocol.
   frontmost (`ax_drive.sh wait-vended`) on every poll while waiting for the
   worker, and drive promptly after launch. `script/verify_people_clustering.sh`
   is the reference pattern.
-- **Assert durable outcomes against catalog ground truth, not just the render.**
-  The SQLite catalog, sidecar files, and on-disk originals are authoritative.
-  In-flight worker progress is intentionally different: Activity rows and their
-  persisted work-session progress advance together from the latest supervisor
-  queue snapshot on a 0.25-second publication cadence. Poll for that published
-  snapshot instead of expecting SQLite progress to lead the UI. Model decisions
-  use the live supervisor queue, and a pending progress publication must never
-  overwrite terminal cancellation.
+- **Assert against catalog ground truth, not just the render** — the UI can lag;
+  the SQLite catalog, sidecar files, and on-disk originals are authoritative.

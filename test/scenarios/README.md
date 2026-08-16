@@ -104,6 +104,25 @@ keyboard cull, evaluate, import, card-import) is already driven live by
 5. **Clean up idempotently.** `script/reset_isolated_test_data.sh --delete`
    removes the throwaway catalog. Never touch state you didn't create.
 
+### Driving in-flight worker progress
+
+Ground truth stays authoritative for every durable outcome — ratings, flags,
+keywords, relocations, exports, sidecars. One thing behaves differently while
+it is still happening: **in-flight worker progress**.
+
+Activity rows and their persisted work-session progress advance together from
+the latest supervisor queue snapshot, published on a **0.25-second cadence**.
+Neither leads the other, so a card that expects SQLite progress to run ahead of
+the UI will flake. Poll for the published snapshot — take two stable quiet
+samples before asserting a terminal state — rather than racing the cadence.
+Model decisions read the live supervisor queue, and a pending progress
+publication never overwrites a terminal cancellation, so "cancel" is a soft
+request that finalizes at the worker's natural terminal.
+
+This is a note about *how to drive a running worker*, not a relaxation of the
+ground-truth rule above: once the work is done, assert the durable result
+against the catalog, the sidecar, or the file on disk.
+
 ## The confirm-before-write invariant
 
 Teststrip's core promise: machine labels stay provisional until an explicit
