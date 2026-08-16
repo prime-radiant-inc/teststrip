@@ -22,6 +22,14 @@ struct CullCompletionPresentation: Equatable {
     var neverViewed: Int
     var actions: [Action]
 
+    // SP-D Task 3: session-level fields for unification with
+    // CullingSessionCompletionSummary. Populated when the completion fires
+    // from a formal work session; nil/empty for the ad-hoc path.
+    var sessionID: WorkSessionID?
+    var title: String?
+    var picksSetID: AssetSetID?
+    var remainingSingleAssetIDs: [AssetID] = []
+
     /// The run-summary math, ungated: classifies every frame in the scope by
     /// its CONFIRMED flag — a tentative (AI-unconfirmed) flag counts as
     /// undecided and never as a pick/reject (the provenance invariant), so a
