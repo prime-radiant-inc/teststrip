@@ -1251,6 +1251,7 @@ public final class CatalogRepository {
     public func people(assetIDs: [AssetID]? = nil) throws -> [CatalogPerson] {
         guard let assetIDs else {
             return try decodePeople(try database.rows(Self.peopleSQL(scoped: false)))
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         }
         guard !assetIDs.isEmpty else { return [] }
         var seenAssetIDs = Set<AssetID>()
@@ -1290,7 +1291,6 @@ public final class CatalogRepository {
         LEFT JOIN person_assets ON person_assets.person_id = people.id\(scopeClause)
         LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
         GROUP BY people.id, people.name
-        ORDER BY people.name COLLATE NOCASE ASC
         """
     }
 
