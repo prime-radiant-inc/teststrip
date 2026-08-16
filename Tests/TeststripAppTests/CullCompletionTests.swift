@@ -243,24 +243,6 @@ final class CullCompletionTests: XCTestCase {
         XCTAssertTrue(summary.remainingSingleAssetIDs.isEmpty)
     }
 
-    func testSessionLevelFieldsCanBePopulated() {
-        var presentation = CullCompletionPresentation.summary(
-            assets: Self.decidedAssets(picks: 2, rejects: 1),
-            viewedAssetIDs: [],
-            skippedAssetIDs: []
-        )
-        let sessionID = WorkSessionID(rawValue: "session-1")
-        presentation.sessionID = sessionID
-        presentation.title = "Batch 2026"
-        presentation.picksSetID = AssetSetID(rawValue: "picks-1")
-        presentation.remainingSingleAssetIDs = [AssetID(rawValue: "solo-1"), AssetID(rawValue: "solo-2")]
-
-        XCTAssertEqual(presentation.sessionID, sessionID)
-        XCTAssertEqual(presentation.title, "Batch 2026")
-        XCTAssertEqual(presentation.picksSetID, AssetSetID(rawValue: "picks-1"))
-        XCTAssertEqual(presentation.remainingSingleAssetIDs, [AssetID(rawValue: "solo-1"), AssetID(rawValue: "solo-2")])
-    }
-
     // MARK: - Actions
 
     func testActionsAreCoreFourWhenNoPicksAndNoPendingSuggestions() {

@@ -22,6 +22,9 @@ final class CullCompletionMiniRunStartersTests: XCTestCase {
 
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertFalse(session.title.isEmpty)
+        let scopedIDs = try Self.scopedAssetIDs(from: session, model: model)
+        XCTAssertEqual(scopedIDs, Set(assets[2...].map(\.id)),
+                       "session should be scoped to undecided assets only (u1, u2)")
     }
 
     func testCullUndecidedFromCompletionThrowsWhenNoUndecided() throws {
@@ -58,11 +61,15 @@ final class CullCompletionMiniRunStartersTests: XCTestCase {
         try model.applyCullingShortcut(.nextPhoto)
         // The opening frame is now in the skipped set.
         XCTAssertFalse(model.cullRunTracker.skippedAssetIDs.isEmpty)
+        let expectedSkippedIDs = model.cullRunTracker.skippedAssetIDs
 
         let session = try model.cullSkippedFromCompletion()
 
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertFalse(session.title.isEmpty)
+        let scopedIDs = try Self.scopedAssetIDs(from: session, model: model)
+        XCTAssertEqual(scopedIDs, expectedSkippedIDs,
+                       "session should be scoped to skipped assets only")
     }
 
     func testCullSkippedFromCompletionThrowsWhenNoSkipped() throws {
@@ -98,6 +105,9 @@ final class CullCompletionMiniRunStartersTests: XCTestCase {
 
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertFalse(session.title.isEmpty)
+        let scopedIDs = try Self.scopedAssetIDs(from: session, model: model)
+        XCTAssertEqual(scopedIDs, Set(assets.map(\.id)),
+                       "session should be scoped to all assets (none viewed yet)")
     }
 
     func testCullNeverViewedFromCompletionThrowsWhenAllViewed() throws {
@@ -135,6 +145,9 @@ final class CullCompletionMiniRunStartersTests: XCTestCase {
 
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertFalse(session.title.isEmpty)
+        let scopedIDs = try Self.scopedAssetIDs(from: session, model: model)
+        XCTAssertEqual(scopedIDs, Set([assets[0].id, assets[1].id]),
+                       "session should be scoped to tentative-AI-flagged assets only (ai1, ai2)")
     }
 
     func testReviewAIFromCompletionThrowsWhenNoTentativeAI() throws {
@@ -154,6 +167,22 @@ final class CullCompletionMiniRunStartersTests: XCTestCase {
             }
             XCTAssertEqual(message, "there are no photos to cull")
         }
+    }
+
+    // MARK: - Helpers
+
+    /// Resolves the scoped asset IDs from a mini-run session by looking up
+    /// its input set in the model's saved asset sets and extracting the
+    /// snapshot membership.
+    private static func scopedAssetIDs(from session: WorkSession, model: AppModel) throws -> Set<AssetID> {
+        guard let inputSetID = session.inputSetIDs.first,
+              let assetSet = model.savedAssetSets.first(where: { $0.id == inputSetID }) else {
+            throw TeststripError.invalidState("session input set not found in savedAssetSets")
+        }
+        guard case .snapshot(let assetIDs) = assetSet.membership else {
+            throw TeststripError.invalidState("expected snapshot membership for mini-run input set")
+        }
+        return Set(assetIDs)
     }
 
     // MARK: - Fixtures

@@ -63,7 +63,7 @@ public struct CullingProgressSummary: Equatable, Sendable {
     public var hiddenByLensCount: Int
 
     public var reviewedCount: Int {
-        viewedCount + skippedCount
+        viewedCount
     }
 
     public init(
@@ -2818,15 +2818,16 @@ public final class AppModel {
     public var cullingProgressSummary: CullingProgressSummary {
         let decisionCounts = cullingDecisionCounts()
         // SP-D Task 5: loud accounting fields.
-        let viewedCount = cullRunTracker.viewedAssetIDs.count
+        let scopedAssetIDs = Set(CullScopeOrdering.filteredAssets(assets, scope: cullScope).map(\.id))
+        let viewedCount = cullRunTracker.viewedAssetIDs.intersection(scopedAssetIDs).count
         let decidedAssetIDs = Set(assets.filter { $0.metadata.confirmedProjection.flag != nil }.map(\.id))
         let skippedCount = cullRunTracker.skippedAssetIDs
-            .intersection(Set(assets.map(\.id)))
+            .intersection(scopedAssetIDs)
             .subtracting(decidedAssetIDs)
             .count
-        let neverViewedCount = totalAssetCount - viewedCount
+        let neverViewedCount = scopedAssetIDs.count - viewedCount
         let awaitingReviewCount = assets.filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }.count
-        let hiddenByLensCount = totalAssetCount - CullScopeOrdering.filteredAssets(assets, scope: cullScope).count
+        let hiddenByLensCount = totalAssetCount - scopedAssetIDs.count
         return CullingProgressSummary(
             selectedPosition: selectedAssetPosition,
             positionText: selectedAssetPositionText,
@@ -3437,7 +3438,7 @@ public final class AppModel {
     }
 
     public var canBeginCullingSession: Bool {
-        catalog != nil && !assets.isEmpty
+        catalog != nil && !assets.isEmpty && activeCullingSessionID == nil
     }
 
     /// The Cull lens's "Cull these" is unavailable on diagnostic sources —
@@ -6443,9 +6444,11 @@ public final class AppModel {
     /// recommended toggles.
     var cullStartCardPresentation: CullStartCardPresentation {
         let stacks = cullingStacks()
+        let visibleCount = CullScopeOrdering.filteredAssets(assets, scope: cullScope).count
         return CullStartCardPresentation(
             photoCount: totalAssetCount,
             stackCount: stacks.count,
+            lensHiddenCount: totalAssetCount - visibleCount,
             autoAdvanceEnabled: cullAutoAdvanceEnabled,
             landOnRecommended: cullLandOnRecommendedFrame
         )
@@ -13562,7 +13565,8 @@ public final class AppModel {
             var completion = CullCompletionPresentation.summary(
                 assets: assets,
                 viewedAssetIDs: cullRunTracker.viewedAssetIDs,
-                skippedAssetIDs: cullRunTracker.skippedAssetIDs
+                skippedAssetIDs: cullRunTracker.skippedAssetIDs,
+                awaitingReviewCount: assets.filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }.count
             )
             completion.sessionID = session.id
             completion.title = session.title

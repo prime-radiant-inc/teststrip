@@ -3786,11 +3786,13 @@ private struct LoupeView: View {
     // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
+        let awaitingReview = model.assets.filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }.count
         return CullCompletionPresentation.presentation(
             assets: model.assets,
             viewedAssetIDs: model.cullRunTracker.viewedAssetIDs,
             skippedAssetIDs: model.cullRunTracker.skippedAssetIDs,
-            scope: model.cullScope
+            scope: model.cullScope,
+            awaitingReviewCount: awaitingReview
         )
     }
 
@@ -4000,10 +4002,10 @@ private struct LoupeView: View {
     private func handleMiniRunAction(_ action: CullCompletionPresentation.Action) {
         do {
             switch action {
-            case .cullUndecided: try model.cullUndecidedFromCompletion()
-            case .cullSkipped: try model.cullSkippedFromCompletion()
-            case .cullNeverViewed: try model.cullNeverViewedFromCompletion()
-            case .reviewAI: try model.reviewAIFromCompletion()
+            case .cullUndecided: _ = try model.cullUndecidedFromCompletion()
+            case .cullSkipped: _ = try model.cullSkippedFromCompletion()
+            case .cullNeverViewed: _ = try model.cullNeverViewedFromCompletion()
+            case .reviewAI: _ = try model.reviewAIFromCompletion()
             case .export: beginExport()
             case .moveRejects: beginMoveRejects()
             default: break

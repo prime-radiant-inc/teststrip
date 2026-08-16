@@ -155,15 +155,6 @@ final class CullCompletionMiniRunTests: XCTestCase {
         XCTAssertEqual(summary.awaitingReviewCount, 0)
     }
 
-    // MARK: - Action enum includes mini-run starters
-
-    func testActionEnumIncludesMiniRunStarters() {
-        XCTAssertEqual(CullCompletionPresentation.Action.cullUndecided, .cullUndecided)
-        XCTAssertEqual(CullCompletionPresentation.Action.cullSkipped, .cullSkipped)
-        XCTAssertEqual(CullCompletionPresentation.Action.cullNeverViewed, .cullNeverViewed)
-        XCTAssertEqual(CullCompletionPresentation.Action.reviewAI, .reviewAI)
-    }
-
     // MARK: - Helpers
 
     private static func asset(id: String, flag: PickFlag? = nil) -> Asset {

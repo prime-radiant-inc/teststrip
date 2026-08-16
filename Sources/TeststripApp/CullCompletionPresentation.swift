@@ -110,6 +110,7 @@ struct CullCompletionPresentation: Equatable {
             neverViewed: neverViewedCount,
             neverViewedAssetIDs: neverViewedAssetIDs,
             awaitingReview: awaitingReviewCount,
+            awaitingReviewAssetIDs: assets.filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }.map(\.id),
             picksAssetIDs: pickAssetIDs,
             rejectsAssetIDs: rejectAssetIDs
         )
@@ -143,14 +144,16 @@ struct CullCompletionPresentation: Equatable {
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,
         skippedAssetIDs: Set<AssetID>,
-        scope: CullScope
+        scope: CullScope,
+        awaitingReviewCount: Int = 0
     ) -> CullCompletionPresentation? {
         guard scope == .unrated || scope == .all else { return nil }
         guard !assets.isEmpty else { return nil }
         let summary = summary(
             assets: assets,
             viewedAssetIDs: viewedAssetIDs,
-            skippedAssetIDs: skippedAssetIDs
+            skippedAssetIDs: skippedAssetIDs,
+            awaitingReviewCount: awaitingReviewCount
         )
         guard summary.undecided == 0 else { return nil }
         return summary
@@ -167,6 +170,7 @@ struct CullCompletionPresentation: Equatable {
         neverViewed: Int,
         neverViewedAssetIDs: [AssetID],
         awaitingReview: Int,
+        awaitingReviewAssetIDs: [AssetID],
         picksAssetIDs: [AssetID],
         rejectsAssetIDs: [AssetID]
     ) -> [MiniRun] {
@@ -181,7 +185,7 @@ struct CullCompletionPresentation: Equatable {
             runs.append(MiniRun(number: 3, title: "Cull never-viewed", action: .cullNeverViewed, assetIDs: neverViewedAssetIDs))
         }
         if awaitingReview > 0 {
-            runs.append(MiniRun(number: 4, title: "Review ✨", action: .reviewAI, assetIDs: []))
+            runs.append(MiniRun(number: 4, title: "Review ✨", action: .reviewAI, assetIDs: awaitingReviewAssetIDs))
         }
         runs.append(MiniRun(number: 5, title: "Export", action: .export, assetIDs: picksAssetIDs))
         if !rejectsAssetIDs.isEmpty {

@@ -29,7 +29,8 @@ final class CullCompletionSessionFieldsTests: XCTestCase {
         let completion = try XCTUnwrap(model.cullCompletion)
         XCTAssertEqual(completion.sessionID, session.id)
         XCTAssertEqual(completion.title, "Batch 2026")
-        XCTAssertNotNil(completion.picksSetID, "picks set should exist when there are confirmed picks")
+        XCTAssertEqual(completion.picksSetID, AssetSetID(rawValue: "work-output-\(session.id.rawValue)-picks"),
+                       "picks set ID should be the culling output set for this session")
         // Regular (non-stack) cull: no remaining singles.
         XCTAssertTrue(completion.remainingSingleAssetIDs.isEmpty)
         // The run-summary counts should agree with the confirmed flags.

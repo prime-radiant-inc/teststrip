@@ -10889,7 +10889,7 @@ final class AppModelTests: XCTestCase {
 
         let session = try model.beginCullingSession(named: " Ceremony Cull ", intent: " One hero per burst ")
 
-        XCTAssertTrue(model.canBeginCullingSession)
+        XCTAssertFalse(model.canBeginCullingSession)
         XCTAssertEqual(session.kind, .culling)
         XCTAssertEqual(session.status, .running)
         XCTAssertEqual(session.title, "Ceremony Cull")

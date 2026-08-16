@@ -26,9 +26,10 @@ final class CullingProgressSummaryFieldsTests: XCTestCase {
 
         // viewedCount: the tracker records the first selected asset on
         // startCullRunTracking, so at least 1.
-        XCTAssertGreaterThanOrEqual(summary.viewedCount, 1)
-        // neverViewedCount = total - viewed
-        XCTAssertEqual(summary.neverViewedCount, model.totalAssetCount - summary.viewedCount)
+        XCTAssertEqual(summary.viewedCount, 1)
+        // neverViewedCount: 5 total - 1 viewed = 4
+        let expectedNeverViewed = model.totalAssetCount - 1
+        XCTAssertEqual(summary.neverViewedCount, expectedNeverViewed)
         // awaitingReviewCount: one asset with tentative AI flag
         XCTAssertEqual(summary.awaitingReviewCount, 1)
         // hiddenByLensCount: 0 when scope is .all (default)
@@ -97,10 +98,10 @@ final class CullingProgressSummaryFieldsTests: XCTestCase {
 
         XCTAssertEqual(
             summary.reviewedCount,
-            summary.viewedCount + summary.skippedCount,
-            "reviewedCount must be viewed + skipped, not pick + reject"
+            summary.viewedCount,
+            "reviewedCount must equal viewedCount (skipped frames are already viewed)"
         )
-        XCTAssertGreaterThanOrEqual(summary.viewedCount, 3)
+        XCTAssertEqual(summary.viewedCount, 3)
         XCTAssertEqual(summary.skippedCount, 2)
     }
 

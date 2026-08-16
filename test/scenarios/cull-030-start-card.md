@@ -68,10 +68,12 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   available, the card should still render without it (lensDescription = nil).
 
 ## Run status
-PASS — 2026-08-16. VM run via `script/vm_scenario_run.sh`. ⌘R opens start
+PARTIAL PASS — 2026-08-16. VM run via `script/vm_scenario_run.sh`. ⌘R opens start
 card sheet (Cull mode has no toolbar popover anchor, so sheet presentation is
 used). Card shows "24 photos · 0 stacks", Auto-advance and Land on
 recommended toggles both visible. Pressing Return creates a culling session
 ("Catalog Cull", status=running) in the catalog and dismisses the sheet.
-Step 5 (⌘R no-op while cull active) not explicitly tested — `canBeginCullingSession`
-gate is unit-tested.
+Step 5 (⌘R no-op while cull active) was NOT tested in this run — the
+`canBeginCullingSession` guard against re-entry is being added as a separate
+production fix. Do not mark this card as fully PASS until step 5 is verified
+with the guard in place.

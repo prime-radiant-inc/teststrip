@@ -22,7 +22,7 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
             skippedCount: 12
         )
 
-        XCTAssertEqual(line.statusText, "854 photos · 326 stacks · ✓ 15 · ✕ 5 · ⊘ 12 skipped · 834 left")
+        XCTAssertEqual(line.statusText, "854 photos · 326 stacks · ✓ 15 · ✕ 5 · ⊘ 12 skipped · 846 left")
     }
 
     func testUnviewedSegmentAppearsWhenNonZero() {
@@ -90,7 +90,7 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
 
         XCTAssertEqual(
             line.statusText,
-            "854 photos · 326 stacks · ✓ 15 · ✕ 5 · ⊘ 12 skipped · ◌ 3 unviewed · ✨ 96 awaiting · 834 left"
+            "854 photos · 326 stacks · ✓ 15 · ✕ 5 · ⊘ 12 skipped · ◌ 3 unviewed · ✨ 96 awaiting · 846 left"
         )
     }
 
@@ -224,10 +224,10 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
             hiddenByLensCount: 7
         )
 
-        // 854 - 7 (hidden) - 20 (reviewed) = 827 left
+        // 854 - 7 (hidden) - 8 (reviewed = viewed, not viewed+skipped) = 839 left
         XCTAssertEqual(
             line.statusText,
-            "854 photos · 326 stacks · ✓ 15 · ✕ 5 · ⊘ 12 skipped · ◌ 3 unviewed · ✨ 96 awaiting · hidden 7 · 827 left"
+            "854 photos · 326 stacks · ✓ 15 · ✕ 5 · ⊘ 12 skipped · ◌ 3 unviewed · ✨ 96 awaiting · hidden 7 · 839 left"
         )
     }
 }
