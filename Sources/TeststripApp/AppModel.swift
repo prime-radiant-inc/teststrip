@@ -2128,6 +2128,15 @@ public final class AppModel {
     /// when the cull source/batch changes (`startCullRunTracking`), NOT on
     /// `S` scope cycling.
     private(set) var cullRunTracker = CullRunTracker()
+
+    /// The JSON file URL for cull-run-tracker persistence — lives in the
+    /// catalog's app-support root, never the catalog database itself (the
+    /// tracker is UI state, not operational truth). Nil when no catalog is
+    /// loaded.
+    var cullRunTrackerURL: URL? {
+        catalog?.paths.root.appendingPathComponent("cull-run-tracker.json")
+    }
+
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `LensChromePolicy.showsInspector`.
@@ -4807,6 +4816,7 @@ public final class AppModel {
         // the frame the selection lands on has been on stage — record it for
         // the completion summary's neverViewed (scope ∖ viewed) count.
         cullRunTracker.recordViewed(assetID)
+        saveCullRunTracker()
         do {
             try refreshSelectedPreviewGenerationQueueStates(for: assetID)
         } catch {
@@ -6198,6 +6208,29 @@ public final class AppModel {
         if let selectedAssetID {
             cullRunTracker.recordViewed(selectedAssetID)
         }
+        saveCullRunTracker()
+    }
+
+    /// Persists the current cull-run tracker to `cullRunTrackerURL` (a JSON
+    /// file in the catalog's app-support root). Persistence failures are
+    /// swallowed — the tracker is UI state, not operational truth.
+    private func saveCullRunTracker() {
+        guard let url = cullRunTrackerURL else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? CullRunTracker.Persistence.save(cullRunTracker, to: url)
+    }
+
+    /// Loads the cull-run tracker from `cullRunTrackerURL` if the file exists,
+    /// restoring the exact viewed/skipped sets from a prior run. Called during
+    /// `beginCullingSession` after `startCullRunTracking()` so a relaunch picks
+    /// up exactly where the previous run left off.
+    func resumeCullRunIfNeeded() {
+        guard let url = cullRunTrackerURL,
+              let restored = CullRunTracker.Persistence.load(from: url) else { return }
+        cullRunTracker = restored
     }
 
     @discardableResult
@@ -6235,6 +6268,7 @@ public final class AppModel {
             selectedView = .loupe
         }
         startCullRunTracking()
+        resumeCullRunIfNeeded()
         activeCullingSessionID = sessionID
 
         let detail = trimmedIntent.isEmpty ? "Culling \(Self.photoCountDescription(totalUnitCount))" : trimmedIntent
@@ -7056,6 +7090,7 @@ public final class AppModel {
             // decision) is a skip, recorded for the completion summary.
             if let selectedAsset, selectedAsset.metadata.confirmedProjection.flag == nil {
                 cullRunTracker.recordSkipped(selectedAsset.id)
+                saveCullRunTracker()
             }
             try selectNextAssetForCulling()
         case .previousStack:
