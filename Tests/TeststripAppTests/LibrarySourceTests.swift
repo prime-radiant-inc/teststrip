@@ -114,8 +114,10 @@ final class LibrarySourceTests: XCTestCase {
             .evaluationKind(.focus, titled: "Focus")
         ]
 
-        model.selectLens(.timeline)
         for source in sources {
+            // Reset before each iteration so a later source can't pass on
+            // lens state a prior one left behind.
+            model.selectLens(.timeline)
             try model.selectSource(source)
             XCTAssertEqual(model.selectedLens, .timeline, "\(source.title) changed the lens")
             XCTAssertFalse(model.assets.isEmpty, "\(source.title) resolved to an empty source")
@@ -1057,10 +1059,22 @@ final class LibrarySourceTests: XCTestCase {
 
     func testCullTheseSurvivesThePredicatesTheTextSerializerWouldDrop() throws {
         let asset = makeAsset(id: "cull-these-lossy", path: "/Photos/a.jpg")
-        let (model, _) = try makeModelWithCatalogAssets(named: "cull-these-lossy", assets: [asset])
+        let (model, repository) = try makeModelWithCatalogAssets(named: "cull-these-lossy", assets: [asset])
+        // The asset must rank as a potential pick for the scope to be non-empty;
+        // a focus score >= 0.8 (calibrated scale) is a strong read.
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
+        ])
         try model.selectSource(.smartCollection(.potentialPicks))
+        XCTAssertEqual(model.assets.map(\.id), [asset.id], "asset must rank as a potential pick for the scope to be non-empty")
 
-        _ = try? model.cullCurrentResults()
+        // Exercise the reachable path: `cullCurrentResults()` is what the UI
+        // calls. Using `try?` would silently swallow a throw and let the test
+        // pass even if the handoff failed.
+        let session = try model.cullCurrentResults()
+        XCTAssertEqual(session.kind, .culling, "a cull session should have been started")
+        XCTAssertEqual(model.selectedLens, .cull, "the lens should have switched to cull")
 
         guard case .search(let query) = model.selectedSource.kind else {
             return XCTFail("expected a search source")
@@ -1098,6 +1112,40 @@ final class LibrarySourceTests: XCTestCase {
         _ = try model.cullCurrentResults()
 
         XCTAssertEqual(model.scopeLine.sourceTitle, "Pick")
+    }
+
+    /// `cullCurrentResults()` must re-scope BEFORE starting the culling session,
+    /// not after. Inverting the order is worse than a guard failure:
+    /// `applySource`'s `.search` arm calls `clearLibraryQueryFilters()`, which
+    /// sets `activeCullingSessionID = nil` — so the just-started session would
+    /// be immediately forgotten and the scope line would show no progress.
+    /// We verify both halves: the scope is `.search(query)` AND the scope line
+    /// shows cull progress (which requires `activeCullingSessionID != nil`).
+    func testCullCurrentResultsScopesBeforeStartingSession() throws {
+        let pick = makeAsset(id: "re-scope-pick", path: "/Photos/a.jpg")
+        let plain = makeAsset(id: "re-scope-plain", path: "/Photos/b.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(named: "re-scope-before-start", assets: [pick, plain])
+        try repository.updateMetadata(assetID: pick.id) { $0.flag = .pick }
+        try model.selectSource(.smartCollection(.picks))
+        XCTAssertEqual(model.assets.map(\.id), [pick.id])
+
+        let session = try model.cullCurrentResults()
+        XCTAssertEqual(session.kind, .culling, "a cull session should have been started")
+
+        // The scope must be set (re-scoped to .search with the pick predicate).
+        guard case .search(let query) = model.selectedSource.kind else {
+            return XCTFail("expected .search source, got \(model.selectedSource.kind)")
+        }
+        XCTAssertTrue(query.predicates.contains(.flag(.pick)),
+                      "the handed-off scope must carry the pick predicate")
+
+        // The session must still be active — if the order were inverted,
+        // clearLibraryQueryFilters() would nil out activeCullingSessionID and
+        // the scope line would fall back to resultCount (no ✓/left progress).
+        XCTAssertTrue(model.scopeLine.statusText.contains("✓"),
+                      "scope line should show cull progress, got \(model.scopeLine.statusText)")
+        XCTAssertTrue(model.scopeLine.statusText.contains("left"),
+                      "scope line should show remaining count, got \(model.scopeLine.statusText)")
     }
 
     // SP-D0: an unconfirmed AI pick is tentative, not a decision — the Picks

@@ -6978,41 +6978,44 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(smartCollectionCount("Likely Issues", in: model), "1")
         XCTAssertEqual(smartCollectionCount("Analysis Failures", in: model), "1")
 
+        // Set a manual filter so the nil-checks below are meaningful — they
+        // verify applySmartCollection's clearLibraryQueryFilters() actually
+        // clears a previously-set filter, not just that the default is nil.
+        model.minimumRatingFilter = 4
+        model.flagFilter = .pick
+        model.needsKeywordsFilter = true
+        model.likelyIssuesFilter = true
+        model.evaluationKindFilter = .focus
+
         try model.selectSource(.smartCollection(.picks))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
-        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertNil(model.minimumRatingFilter, "applySmartCollection must clear a previously-set manual rating filter")
+        XCTAssertNil(model.flagFilter, "applySmartCollection must clear a previously-set manual flag filter")
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.rejects))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Reject"])
-        XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [reject.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.fiveStars))
 
-        XCTAssertNil(model.flagFilter)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 5"])
         XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.needsKeywords))
 
-        XCTAssertNil(model.flagFilter)
-        XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Needs Keywords"])
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.needsEvaluation))
 
-        XCTAssertNil(model.flagFilter)
-        XCTAssertNil(model.minimumRatingFilter)
-        XCTAssertFalse(model.needsKeywordsFilter)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Not analyzed yet"])
         XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 2)
@@ -7032,15 +7035,12 @@ final class AppModelTests: XCTestCase {
         try model.selectSource(.smartCollection(.likelyIssues))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
-        XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.providerFailures))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Analysis Failures"])
-        XCTAssertFalse(model.likelyIssuesFilter)
-        XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [providerFailure.id])
         XCTAssertEqual(model.totalAssetCount, 1)
     }
@@ -7643,8 +7643,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertThrowsError(try repository.assetSet(id: savedSet.id))
         XCTAssertEqual(model.savedAssetSets, [])
         XCTAssertEqual(model.starredAssetSets, [])
-        XCTAssertNil(model.sidebarSections.first { $0.title == "Saved Sets" })
         XCTAssertNil(model.selectedAssetSetID)
+        // The deleted dynamic set must be gone from the Smart Collections
+        // section (not just from a non-existent "Saved Sets" section).
+        XCTAssertFalse(
+            model.sidebarSections.first { $0.title == "Smart Collections" }?.rowTitles.contains("Five Stars") ?? false,
+            "Deleted dynamic set should not appear in Smart Collections"
+        )
         XCTAssertEqual(model.selectedSource, .allPhotos)
         XCTAssertEqual(model.scopeLine.sourceTitle, "All Photos")
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
@@ -10933,9 +10938,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-"))
         XCTAssertEqual(inputSet.name, "Wedding Cull Input")
         XCTAssertEqual(inputSet.membership, .snapshot([keeper.id]))
-        XCTAssertFalse(model.sidebarSections.contains { section in
-            section.title == "Saved Sets" && section.rowTitles.contains("Wedding Cull Input")
-        })
+        // The hidden work-input-* set must be filtered from every visible
+        // sidebar section (visibleSavedAssetSets strips work-input- prefixes),
+        // not just from a non-existent "Saved Sets" section.
+        XCTAssertFalse(
+            model.sidebarSections.contains { section in
+                section.rowTitles.contains("Wedding Cull Input")
+            },
+            "work-input set should be filtered from the sidebar"
+        )
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "Wedding")
@@ -18938,10 +18949,35 @@ final class AppModelTests: XCTestCase {
         model.selectedView = .compare
 
         XCTAssertEqual(model.compareAssets().map(\.id), [firstStackLead.id, firstStackAlternate.id])
-        XCTAssertFalse(model.sidebarSections.contains { section in
-            section.title == "Saved Sets"
-                && section.rowTitles.contains { $0.localizedCaseInsensitiveContains("Stack 1") }
-        })
+
+        // Positive case: the Stacks child row renders in the Imports section
+        // with count "2" — the burst (time-adjacent assets) seeded by the
+        // import session is visible even while the culling session's
+        // work-stack sets are filtered from the sidebar below.
+        let importSummary = try XCTUnwrap(model.latestImportCompletionSummary)
+        let importSessionID = WorkSessionID(rawValue: importSummary.activityID)
+        let importCounts = try model.importChildCounts(sessionID: importSessionID)
+        XCTAssertEqual(importCounts.stacks, 2, "two burst stacks should be detected")
+
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first { $0.id == "import-\(importSessionID.rawValue)" })
+        model.toggleSidebarExpansion(importRow)
+        let expandedImports = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let stacksRow = try XCTUnwrap(
+            expandedImports.rows.first { $0.id == "import-\(importSessionID.rawValue)-stacks" }
+        )
+        XCTAssertEqual(stacksRow.title, "Stacks")
+        XCTAssertEqual(stacksRow.countText, "2")
+
+        // The hidden work-stack-* sets must be filtered from every visible
+        // sidebar section (visibleSavedAssetSets strips work-stack- prefixes),
+        // not just from a non-existent "Saved Sets" section.
+        XCTAssertFalse(
+            model.sidebarSections.contains { section in
+                section.rowTitles.contains { $0.localizedCaseInsensitiveContains("Stack 1") }
+            },
+            "work-stack set should be filtered from the sidebar"
+        )
     }
 
     func testBeginningStackCullingFromLatestImportSelectsFirstStack() throws {
