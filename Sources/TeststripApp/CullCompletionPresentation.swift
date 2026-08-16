@@ -7,27 +7,24 @@ import TeststripCore
 /// viewed). Purely about the user's decisions — machine suggestions are
 /// ambient and never nag from here.
 struct CullCompletionPresentation: Equatable {
-    enum Action: Equatable, Hashable {
+    enum Action: Equatable, Hashable, Sendable {
         case export
         case moveRejects
         case moveRejectsToTrash
         case reviewPicks
         case savePicksAsSet
+        // Mini-run starters (numbered one-key jumps 1–6)
+        case cullUndecided
+        case cullSkipped
+        case cullNeverViewed
+        case reviewAI
     }
 
     struct MiniRun: Equatable, Sendable {
-        let number: Int    // 1-6, stable (the key the user presses)
-        let label: String  // "Cull undecided", "Cull skipped", etc.
-        let action: MiniRunAction
-
-        enum MiniRunAction: Equatable, Sendable {
-            case cullUndecided
-            case cullSkipped
-            case cullNeverViewed
-            case reviewAI
-            case export
-            case moveRejects
-        }
+        let number: Int       // 1-6, stable (the key the user presses)
+        let title: String     // "Cull undecided", "Cull skipped", etc.
+        let action: Action
+        let assetIDs: [AssetID]
     }
 
     var picks: Int
@@ -65,26 +62,37 @@ struct CullCompletionPresentation: Equatable {
         var undecidedCount = 0
         var neverViewedCount = 0
         var decidedAssetIDs: Set<AssetID> = []
+        var pickAssetIDs: [AssetID] = []
+        var rejectAssetIDs: [AssetID] = []
+        var undecidedAssetIDs: [AssetID] = []
+        var neverViewedAssetIDs: [AssetID] = []
         for asset in assets {
             switch asset.metadata.confirmedProjection.flag {
             case .pick:
                 pickCount += 1
                 decidedAssetIDs.insert(asset.id)
+                pickAssetIDs.append(asset.id)
             case .reject:
                 rejectCount += 1
                 decidedAssetIDs.insert(asset.id)
+                rejectAssetIDs.append(asset.id)
             case nil:
                 undecidedCount += 1
+                undecidedAssetIDs.append(asset.id)
             }
             if !viewedAssetIDs.contains(asset.id) {
                 neverViewedCount += 1
+                neverViewedAssetIDs.append(asset.id)
             }
         }
         let scopeAssetIDs = Set(assets.map(\.id))
-        let skippedCount = skippedAssetIDs
+        let skippedSet = skippedAssetIDs
             .intersection(scopeAssetIDs)
             .subtracting(decidedAssetIDs)
-            .count
+        let skippedCount = skippedSet.count
+        let skippedAssetIDArray = assets
+            .filter { skippedSet.contains($0.id) }
+            .map(\.id)
         // The core four always; Save Picks only when it has work to do — a
         // Save Picks row with no picks would be a dead control.
         var actions: [Action] = [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks]
@@ -93,10 +101,14 @@ struct CullCompletionPresentation: Equatable {
         }
         let miniRuns = buildMiniRuns(
             undecided: undecidedCount,
+            undecidedAssetIDs: undecidedAssetIDs,
             skipped: skippedCount,
+            skippedAssetIDs: skippedAssetIDArray,
             neverViewed: neverViewedCount,
+            neverViewedAssetIDs: neverViewedAssetIDs,
             awaitingReview: awaitingReviewCount,
-            rejects: rejectCount
+            picksAssetIDs: pickAssetIDs,
+            rejectsAssetIDs: rejectAssetIDs
         )
         return CullCompletionPresentation(
             picks: pickCount,
@@ -142,27 +154,31 @@ struct CullCompletionPresentation: Equatable {
     /// Export (5) is always available.
     private static func buildMiniRuns(
         undecided: Int,
+        undecidedAssetIDs: [AssetID],
         skipped: Int,
+        skippedAssetIDs: [AssetID],
         neverViewed: Int,
+        neverViewedAssetIDs: [AssetID],
         awaitingReview: Int,
-        rejects: Int
+        picksAssetIDs: [AssetID],
+        rejectsAssetIDs: [AssetID]
     ) -> [MiniRun] {
         var runs: [MiniRun] = []
         if undecided > 0 {
-            runs.append(MiniRun(number: 1, label: "Cull undecided", action: .cullUndecided))
+            runs.append(MiniRun(number: 1, title: "Cull undecided", action: .cullUndecided, assetIDs: undecidedAssetIDs))
         }
         if skipped > 0 {
-            runs.append(MiniRun(number: 2, label: "Cull skipped", action: .cullSkipped))
+            runs.append(MiniRun(number: 2, title: "Cull skipped", action: .cullSkipped, assetIDs: skippedAssetIDs))
         }
         if neverViewed > 0 {
-            runs.append(MiniRun(number: 3, label: "Cull never-viewed", action: .cullNeverViewed))
+            runs.append(MiniRun(number: 3, title: "Cull never-viewed", action: .cullNeverViewed, assetIDs: neverViewedAssetIDs))
         }
         if awaitingReview > 0 {
-            runs.append(MiniRun(number: 4, label: "Review ✨", action: .reviewAI))
+            runs.append(MiniRun(number: 4, title: "Review ✨", action: .reviewAI, assetIDs: []))
         }
-        runs.append(MiniRun(number: 5, label: "Export", action: .export))
-        if rejects > 0 {
-            runs.append(MiniRun(number: 6, label: "Move rejects", action: .moveRejects))
+        runs.append(MiniRun(number: 5, title: "Export", action: .export, assetIDs: picksAssetIDs))
+        if !rejectsAssetIDs.isEmpty {
+            runs.append(MiniRun(number: 6, title: "Move rejects", action: .moveRejects, assetIDs: rejectsAssetIDs))
         }
         return runs
     }

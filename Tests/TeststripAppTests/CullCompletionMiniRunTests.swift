@@ -5,15 +5,17 @@ import XCTest
 final class CullCompletionMiniRunTests: XCTestCase {
     // MARK: - MiniRun value type
 
-    func testMiniRunHoldsNumberLabelAndAction() {
+    func testMiniRunHoldsNumberTitleActionAndAssetIDs() {
         let run = CullCompletionPresentation.MiniRun(
             number: 1,
-            label: "Cull undecided",
-            action: .cullUndecided
+            title: "Cull undecided",
+            action: .cullUndecided,
+            assetIDs: [AssetID(rawValue: "a1")]
         )
         XCTAssertEqual(run.number, 1)
-        XCTAssertEqual(run.label, "Cull undecided")
+        XCTAssertEqual(run.title, "Cull undecided")
         XCTAssertEqual(run.action, .cullUndecided)
+        XCTAssertEqual(run.assetIDs, [AssetID(rawValue: "a1")])
     }
 
     // MARK: - summary() populates miniRuns with stable numbering
@@ -29,9 +31,9 @@ final class CullCompletionMiniRunTests: XCTestCase {
             skippedAssetIDs: []
         )
         XCTAssertEqual(summary.miniRuns, [
-            CullCompletionPresentation.MiniRun(number: 1, label: "Cull undecided", action: .cullUndecided),
-            CullCompletionPresentation.MiniRun(number: 3, label: "Cull never-viewed", action: .cullNeverViewed),
-            CullCompletionPresentation.MiniRun(number: 5, label: "Export", action: .export),
+            .init(number: 1, title: "Cull undecided", action: .cullUndecided, assetIDs: [assets[1].id]),
+            .init(number: 3, title: "Cull never-viewed", action: .cullNeverViewed, assetIDs: [assets[0].id, assets[1].id]),
+            .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id]),
         ])
     }
 
@@ -47,9 +49,9 @@ final class CullCompletionMiniRunTests: XCTestCase {
         )
         // undecided=1, skipped=1 (a1 is skipped and undecided), neverViewed=0
         XCTAssertEqual(summary.miniRuns, [
-            CullCompletionPresentation.MiniRun(number: 1, label: "Cull undecided", action: .cullUndecided),
-            CullCompletionPresentation.MiniRun(number: 2, label: "Cull skipped", action: .cullSkipped),
-            CullCompletionPresentation.MiniRun(number: 5, label: "Export", action: .export),
+            .init(number: 1, title: "Cull undecided", action: .cullUndecided, assetIDs: [assets[1].id]),
+            .init(number: 2, title: "Cull skipped", action: .cullSkipped, assetIDs: [assets[1].id]),
+            .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id]),
         ])
     }
 
@@ -65,8 +67,8 @@ final class CullCompletionMiniRunTests: XCTestCase {
         )
         // picks=1, rejects=1, undecided=0, skipped=0, neverViewed=0
         XCTAssertEqual(summary.miniRuns, [
-            CullCompletionPresentation.MiniRun(number: 5, label: "Export", action: .export),
-            CullCompletionPresentation.MiniRun(number: 6, label: "Move rejects", action: .moveRejects),
+            .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id]),
+            .init(number: 6, title: "Move rejects", action: .moveRejects, assetIDs: [assets[1].id]),
         ])
     }
 
@@ -84,11 +86,11 @@ final class CullCompletionMiniRunTests: XCTestCase {
         )
         // picks=1, rejects=1, undecided=2, skipped=1 (a2), neverViewed=1 (a3)
         XCTAssertEqual(summary.miniRuns, [
-            CullCompletionPresentation.MiniRun(number: 1, label: "Cull undecided", action: .cullUndecided),
-            CullCompletionPresentation.MiniRun(number: 2, label: "Cull skipped", action: .cullSkipped),
-            CullCompletionPresentation.MiniRun(number: 3, label: "Cull never-viewed", action: .cullNeverViewed),
-            CullCompletionPresentation.MiniRun(number: 5, label: "Export", action: .export),
-            CullCompletionPresentation.MiniRun(number: 6, label: "Move rejects", action: .moveRejects),
+            .init(number: 1, title: "Cull undecided", action: .cullUndecided, assetIDs: [assets[2].id, assets[3].id]),
+            .init(number: 2, title: "Cull skipped", action: .cullSkipped, assetIDs: [assets[2].id]),
+            .init(number: 3, title: "Cull never-viewed", action: .cullNeverViewed, assetIDs: [assets[3].id]),
+            .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id]),
+            .init(number: 6, title: "Move rejects", action: .moveRejects, assetIDs: [assets[1].id]),
         ])
     }
 
@@ -104,7 +106,7 @@ final class CullCompletionMiniRunTests: XCTestCase {
         )
         // All decided, all viewed, no skips, no rejects
         XCTAssertEqual(summary.miniRuns, [
-            CullCompletionPresentation.MiniRun(number: 5, label: "Export", action: .export),
+            .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id, assets[1].id]),
         ])
     }
 
@@ -122,9 +124,9 @@ final class CullCompletionMiniRunTests: XCTestCase {
             awaitingReviewCount: 96
         )
         XCTAssertEqual(summary.miniRuns, [
-            CullCompletionPresentation.MiniRun(number: 4, label: "Review ✨", action: .reviewAI),
-            CullCompletionPresentation.MiniRun(number: 5, label: "Export", action: .export),
-            CullCompletionPresentation.MiniRun(number: 6, label: "Move rejects", action: .moveRejects),
+            .init(number: 4, title: "Review ✨", action: .reviewAI, assetIDs: []),
+            .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id]),
+            .init(number: 6, title: "Move rejects", action: .moveRejects, assetIDs: [assets[1].id]),
         ])
     }
 
@@ -139,7 +141,6 @@ final class CullCompletionMiniRunTests: XCTestCase {
             skippedAssetIDs: [],
             awaitingReviewCount: 0
         )
-        // No "4 Review ✨" entry
         XCTAssertFalse(summary.miniRuns.contains { $0.number == 4 })
     }
 
@@ -153,6 +154,15 @@ final class CullCompletionMiniRunTests: XCTestCase {
             skippedAssetIDs: []
         )
         XCTAssertEqual(summary.awaitingReviewCount, 0)
+    }
+
+    // MARK: - Action enum includes mini-run starters
+
+    func testActionEnumIncludesMiniRunStarters() {
+        XCTAssertEqual(CullCompletionPresentation.Action.cullUndecided, .cullUndecided)
+        XCTAssertEqual(CullCompletionPresentation.Action.cullSkipped, .cullSkipped)
+        XCTAssertEqual(CullCompletionPresentation.Action.cullNeverViewed, .cullNeverViewed)
+        XCTAssertEqual(CullCompletionPresentation.Action.reviewAI, .reviewAI)
     }
 
     // MARK: - Helpers

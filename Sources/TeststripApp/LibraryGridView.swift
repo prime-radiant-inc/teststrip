@@ -3928,6 +3928,8 @@ private struct LoupeView: View {
             case .savePicksAsSet:
                 Button("Save Picks as Set") { savePicksAsSet() }
                     .buttonStyle(.bordered)
+            default:
+                EmptyView()
             }
         }
         .controlSize(.regular)
