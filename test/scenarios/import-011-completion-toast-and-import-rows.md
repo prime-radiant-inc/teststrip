@@ -696,8 +696,13 @@ summary.newPhotoCount > 0` with `newPhotoCount == 0`.
   `✓ 0 · ✕ 0 · 4 left`). Correct per `beginStackCulling`'s no-stacks guard
   (`AppModel.swift:5007-5011`) for a fixture with no time-adjacent frames.
 - **Step 12** — culling the **older** import scoped correctly. CARD1's row
-  selected as source, `Cull these` pressed; the run's `work-input-…` set holds
-  exactly CARD1's 4 originals and **0** CARD2-only frames.
+  selected as source, `Cull these` pressed; the run's `work-input-…` set held
+  exactly 4 photos (`INPUT_COUNT=4`, matching `CARD1_BASELINE`). The join-based
+  `CARD1_INPUT_COUNT`/`CARD2_ONLY_INPUT_COUNT` split was not evidence in this
+  historical run: its `json_each` join was malformed (see the correction
+  below), so both counts read **0** regardless of which frames were actually
+  in scope — the join-free `INPUT_COUNT=4` is the only assertion this run
+  actually supports.
 
 ### Corrections this run found in the card (app is right, assertions stale)
 

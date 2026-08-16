@@ -271,7 +271,8 @@ different catalog and invalidate restore assertions.
     lens is disabled for the reopened source; it used to force the loupe
     unconditionally).
 12. Assert the Sets-only no-selection hint does **not** fire on the Smart
-    Collections header, and positively identify each header's own destination.
+    Collections header, *does* fire on the Sets header in that same
+    no-selection state, and positively identify each header's own destination.
     The Sets header's add button
     (`accessibilityLabel("New Set from Selection")`) is bound to
     `isShowingSavedSetsNoSelectionHint` (`SidebarView.swift:107`); the Smart
@@ -297,6 +298,13 @@ different catalog and invalidate restore assertions.
     ! script/vm_scenario_run.sh ax find --contains "Select photos, then save them as a set"
     script/vm_scenario_run.sh ax press --role AXButton --label "Cancel"
     ! script/vm_scenario_run.sh ax find --contains "New Smart Collection"
+
+    # Still in the zzzznotfound no-selection state: Sets' own "+" must show
+    # the hint (the positive half of the same branch just proven absent above).
+    script/vm_scenario_run.sh ax press --role AXHeading --label "Sets" --help "New Set from Selection…"
+    script/vm_scenario_run.sh ax find --contains "Select photos, then save them as a set"
+    script/vm_scenario_run.sh ax press --role AXButton --label "OK"
+    ! script/vm_scenario_run.sh ax find --contains "Select photos, then save them as a set"
 
     # Restore a nonempty result and select one photo before testing Sets: that
     # header should open its save UI, not the no-selection hint branch.
@@ -357,7 +365,9 @@ different catalog and invalidate restore assertions.
   (Cull lens) instead of leaving Grid selected.
 - Step 12: **fails if** the exact zero-match header never appears, Smart
   Collections fails to open `New Smart Collection`, the Sets-only hint leaks
-  into that popover, the Smart popover remains open after Cancel, or Sets with
+  into that popover, the Smart popover remains open after Cancel, the Sets
+  header fails to show the `"Select photos, then save them as a set"` hint
+  in the same no-selection state, that hint survives pressing OK, or Sets with
   a selected photo fails to open `Save Selection`.
 
 ## Cleanup
