@@ -67,5 +67,15 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - `--smoke` has no stacks, so the stack segment is omitted (stackCount == 0).
 
 ## Run status
-UNRUN — scenario card authored for SP-D Task 5. Awaits implementation
-completion and VM run.
+PASS (2026-08-16) — Driven in Tart VM. Verified via `entire contents of window 1`
+AX dump (Unicode symbols don't match with `ax find --contains`).
+
+- Step 2: scope line shows "24 photos · ✓ 6 · ✕ 5 · ◌ 22 unviewed · 22 left" ✓
+- Step 3: after Space on an undecided frame (smoke-1), scope line shows
+  "⊘ 1 skipped · ◌ 21 unviewed · 20 left" ✓ (smoke-0 is pre-seeded reject,
+  correctly NOT recorded as skip)
+- Step 4: pick/reject counts unchanged (6/5) since no new P/X pressed, but
+  unviewed/left counts decremented correctly as frames were viewed ✓
+- Step 5: cycling scope (S) to "Unrated" shows "hidden 11" (6 picks + 5 rejects
+  hidden by the unrated filter), "9 left" ✓
+- Step 6: cycling back to "All" hides the hidden segment ✓
