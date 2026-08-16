@@ -138,6 +138,42 @@ final class CullRunTrackerTests: XCTestCase {
         )
     }
 
+    // MARK: - Codable + file persistence (SP-D Task 1)
+
+    func testTrackerCodableRoundTrip() throws {
+        var tracker = CullRunTracker()
+        tracker.recordViewed(AssetID(rawValue: "a1"))
+        tracker.recordViewed(AssetID(rawValue: "a2"))
+        tracker.recordSkipped(AssetID(rawValue: "a3"))
+
+        let data = try JSONEncoder().encode(tracker)
+        let restored = try JSONDecoder().decode(CullRunTracker.self, from: data)
+
+        XCTAssertEqual(restored, tracker)
+    }
+
+    func testPersistenceSaveAndLoad() throws {
+        var tracker = CullRunTracker()
+        tracker.recordViewed(AssetID(rawValue: "v1"))
+        tracker.recordSkipped(AssetID(rawValue: "s1"))
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cull-run-tracker-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try CullRunTracker.Persistence.save(tracker, to: url)
+        let loaded = CullRunTracker.Persistence.load(from: url)
+
+        XCTAssertEqual(loaded, tracker)
+    }
+
+    func testPersistenceLoadReturnsNilWhenFileDoesNotExist() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nonexistent-\(UUID().uuidString).json")
+
+        XCTAssertNil(CullRunTracker.Persistence.load(from: url))
+    }
+
     // MARK: - Fixtures
 
     private static func asset(
