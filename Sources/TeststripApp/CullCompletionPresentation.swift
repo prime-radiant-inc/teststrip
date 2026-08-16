@@ -15,12 +15,29 @@ struct CullCompletionPresentation: Equatable {
         case savePicksAsSet
     }
 
+    struct MiniRun: Equatable, Sendable {
+        let number: Int    // 1-6, stable (the key the user presses)
+        let label: String  // "Cull undecided", "Cull skipped", etc.
+        let action: MiniRunAction
+
+        enum MiniRunAction: Equatable, Sendable {
+            case cullUndecided
+            case cullSkipped
+            case cullNeverViewed
+            case reviewAI
+            case export
+            case moveRejects
+        }
+    }
+
     var picks: Int
     var rejects: Int
     var undecided: Int
     var skipped: Int
     var neverViewed: Int
     var actions: [Action]
+    var awaitingReviewCount: Int = 0
+    var miniRuns: [MiniRun] = []
 
     // SP-D Task 3: session-level fields for unification with
     // CullingSessionCompletionSummary. Populated when the completion fires
@@ -40,7 +57,8 @@ struct CullCompletionPresentation: Equatable {
     static func summary(
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,
-        skippedAssetIDs: Set<AssetID>
+        skippedAssetIDs: Set<AssetID>,
+        awaitingReviewCount: Int = 0
     ) -> CullCompletionPresentation {
         var pickCount = 0
         var rejectCount = 0
@@ -73,13 +91,22 @@ struct CullCompletionPresentation: Equatable {
         if pickCount > 0 {
             actions.append(.savePicksAsSet)
         }
+        let miniRuns = buildMiniRuns(
+            undecided: undecidedCount,
+            skipped: skippedCount,
+            neverViewed: neverViewedCount,
+            awaitingReview: awaitingReviewCount,
+            rejects: rejectCount
+        )
         return CullCompletionPresentation(
             picks: pickCount,
             rejects: rejectCount,
             undecided: undecidedCount,
             skipped: skippedCount,
             neverViewed: neverViewedCount,
-            actions: actions
+            actions: actions,
+            awaitingReviewCount: awaitingReviewCount,
+            miniRuns: miniRuns
         )
     }
 
@@ -108,5 +135,35 @@ struct CullCompletionPresentation: Equatable {
         )
         guard summary.undecided == 0 else { return nil }
         return summary
+    }
+
+    /// Numbered one-key jumps for scoped mini-runs. Numbers are stable (1–6);
+    /// entries with a zero count are omitted but the numbers never renumber.
+    /// Export (5) is always available.
+    private static func buildMiniRuns(
+        undecided: Int,
+        skipped: Int,
+        neverViewed: Int,
+        awaitingReview: Int,
+        rejects: Int
+    ) -> [MiniRun] {
+        var runs: [MiniRun] = []
+        if undecided > 0 {
+            runs.append(MiniRun(number: 1, label: "Cull undecided", action: .cullUndecided))
+        }
+        if skipped > 0 {
+            runs.append(MiniRun(number: 2, label: "Cull skipped", action: .cullSkipped))
+        }
+        if neverViewed > 0 {
+            runs.append(MiniRun(number: 3, label: "Cull never-viewed", action: .cullNeverViewed))
+        }
+        if awaitingReview > 0 {
+            runs.append(MiniRun(number: 4, label: "Review ✨", action: .reviewAI))
+        }
+        runs.append(MiniRun(number: 5, label: "Export", action: .export))
+        if rejects > 0 {
+            runs.append(MiniRun(number: 6, label: "Move rejects", action: .moveRejects))
+        }
+        return runs
     }
 }
