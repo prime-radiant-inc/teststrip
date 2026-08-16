@@ -6332,13 +6332,14 @@ public final class AppModel {
         if let selectedAssetID {
             cullRunTracker.recordViewed(selectedAssetID)
         }
-        saveCullRunTracker()
+        saveCullRunTracker(force: true)
     }
 
     /// Persists the current cull-run tracker to `cullRunTrackerURL` (a JSON
     /// file in the catalog's app-support root). Persistence failures are
     /// swallowed — the tracker is UI state, not operational truth.
-    private func saveCullRunTracker() {
+    private func saveCullRunTracker(force: Bool = false) {
+        guard force || activeCullingSessionID != nil else { return }
         guard let url = cullRunTrackerURL else { return }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
