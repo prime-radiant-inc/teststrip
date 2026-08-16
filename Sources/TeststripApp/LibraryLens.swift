@@ -28,17 +28,6 @@ public enum LibraryLens: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    public var systemImage: String {
-        switch self {
-        case .cull: return "checkmark.seal"
-        case .grid: return "square.grid.2x2"
-        case .loupe: return "photo"
-        case .timeline: return "calendar"
-        case .map: return "map"
-        case .people: return "person.2"
-        }
-    }
-
     /// ⌘1–⌘6 in declaration order. Modifier-bearing on purpose: a bare menu
     /// key equivalent fires through AppKit's performKeyEquivalent path
     /// independently of the in-view NSEvent monitors, so one keypress

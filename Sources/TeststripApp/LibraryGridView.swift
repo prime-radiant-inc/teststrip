@@ -87,7 +87,8 @@ struct LibraryGridView: View {
     }
 
     private var bodyContent: some View {
-        Group {
+        let toast = model.importCompletionToast
+        return Group {
             if model.selectedView == .people {
                 PeopleView(model: model)
             } else if model.selectedView == .timeline {
@@ -244,15 +245,15 @@ struct LibraryGridView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if let toast = model.importCompletionToast,
+            if let toast = toast,
                toast.summaryID != dismissedToastSummaryID,
                isToastVisible {
                 importCompletionToast(toast)
                     .transition(.opacity)
             }
         }
-        .task(id: model.importCompletionToast?.summaryID) {
-            guard let toast = model.importCompletionToast, toast.summaryID != dismissedToastSummaryID else {
+        .task(id: toast?.summaryID) {
+            guard let toast = toast, toast.summaryID != dismissedToastSummaryID else {
                 isToastVisible = false
                 return
             }
@@ -738,13 +739,6 @@ struct LibraryGridView: View {
         ("source: / signal: / xmp:", "By availability, AI signal, or sync state")
     ]
 
-    // Cull and People have no import button (LensChromePolicy), so
-    // libraryTopBar would otherwise render an empty 52pt gradient bar with
-    // nothing in it.
-    private var hasVisibleLibraryTopBarContent: Bool {
-        LensChromePolicy.showsImportButton(model.selectedView)
-    }
-
     /// Persistent in every lens: what you are looking at, and lens-appropriate
     /// status about it.
     private var scopeLineBar: some View {
@@ -846,7 +840,7 @@ struct LibraryGridView: View {
     @ViewBuilder
     private var topInsetContent: some View {
         VStack(spacing: 0) {
-            if hasVisibleLibraryTopBarContent {
+            if LensChromePolicy.showsBrowseChrome(model.selectedView) {
                 libraryTopBar
             }
             scopeLineBar

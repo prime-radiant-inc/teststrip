@@ -2028,7 +2028,7 @@ public final class AppModel {
 
     /// One sidebar, every lens. Sources are nouns; lenses are verbs; the
     /// sidebar lists nouns, so it does not vary with the lens.
-    public func buildSidebarSections() -> [SidebarSection] {
+    func buildSidebarSections() -> [SidebarSection] {
         UnifiedSidebarPresentation.sections(
             totalAssetCount: totalAssetCount,
             importSummaries: importSourceSummaries,
@@ -4899,6 +4899,7 @@ public final class AppModel {
         if case .workSession(let sessionID)? = row.target?.kind {
             if expandedImportSessionIDs.contains(sessionID.rawValue) {
                 expandedImportSessionIDs.remove(sessionID.rawValue)
+                importChildCountsBySessionID.removeValue(forKey: sessionID.rawValue)
             } else {
                 expandedImportSessionIDs.insert(sessionID.rawValue)
                 importChildCountsBySessionID[sessionID.rawValue] =
@@ -4914,13 +4915,25 @@ public final class AppModel {
                 // same deadlock the top `recentImportRowLimit` rows had
                 // before `refreshImportSourceSummaries` primed their counts:
                 // an unexpanded row with no counts on file renders `.none`
-                // and its chevron never appears. Priming here is bounded by
-                // however many imports this explicit click just chose to
-                // render, not by the catalog's full import history.
-                for summary in importSourceSummaries where summary.producedOutputSet {
+                // and its chevron never appears. Prime only the overflow
+                // entries being revealed — the first `recentImportRowLimit`
+                // were already primed by `primeVisibleImportChildCounts`.
+                for summary in importSourceSummaries
+                    .filter(\.producedOutputSet)
+                    .dropFirst(UnifiedSidebarPresentation.recentImportRowLimit) {
                     guard importChildCountsBySessionID[summary.sessionID.rawValue] == nil else { continue }
                     importChildCountsBySessionID[summary.sessionID.rawValue] =
                         (try? importChildCounts(sessionID: summary.sessionID)) ?? ImportChildCounts()
+                }
+            } else {
+                // Evict overflow rows' counts so the next "All imports…"
+                // reveal fetches fresh counts, mirroring the per-row
+                // eviction on individual collapse. Expanded overflow rows
+                // are re-fetched by the projection's expanded-ID refresh.
+                for summary in importSourceSummaries
+                    .filter(\.producedOutputSet)
+                    .dropFirst(UnifiedSidebarPresentation.recentImportRowLimit) {
+                    importChildCountsBySessionID.removeValue(forKey: summary.sessionID.rawValue)
                 }
             }
             rebuildSidebarSections()
@@ -5124,7 +5137,7 @@ public final class AppModel {
         let stackAssetIDs: [AssetID]
         switch child {
         case .stacks:
-            stackAssetIDs = try latestImportStacks(
+            stackAssetIDs = try latestImportMultiFrameStacks(
                 activityID: sessionID.rawValue,
                 repository: catalog.repository
             ).flatMap(\.assetIDs)
@@ -5215,7 +5228,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let activityID = importSessionID.rawValue
-        let stacks = try latestImportStacks(activityID: activityID, repository: catalog.repository)
+        let stacks = try latestImportMultiFrameStacks(activityID: activityID, repository: catalog.repository)
         // "latest import" only when it actually is — a sidebar "Cull stacks"
         // context action reaches this for any past import (see the doc
         // comment above), and the recorded intent must not claim currency
@@ -5669,7 +5682,7 @@ public final class AppModel {
                 refreshedCount
             }
         }
-        completedImports = sessions.map(AppWorkActivity.init)
+        completedImports = sessions.prefix(ImportReceiptRow.retentionLimit).map(AppWorkActivity.init)
         importSourceSummaries = sessions.map { session in
             ImportSidebarSummary(
                 sessionID: session.id,
@@ -5721,8 +5734,9 @@ public final class AppModel {
         let repository = catalog.repository
         let session = try repository.session(id: sessionID)
         let assetIDs = try latestImportOutputAssetIDs(activityID: sessionID.rawValue, repository: repository)
+        let stackGroups = try latestImportStackGroups(assetIDs: assetIDs, repository: repository)
         return ImportChildCounts(
-            stacks: try latestImportStacks(activityID: sessionID.rawValue, repository: repository).count,
+            stacks: stackGroups.multiFrameStacks.count,
             skippedFiles: session.issues.filter { $0.kind == .skippedSourceFile }.count,
             previewFailed: try repository.previewGenerationFailureAssetIDs(assetIDs: assetIDs).count,
             likelyIssues: try repository.assetCount(
@@ -5958,7 +5972,7 @@ public final class AppModel {
         ) { _, refreshedCount in
             refreshedCount
         }
-        let completedImports = importSessions.map(AppWorkActivity.init)
+        let completedImports = importSessions.prefix(ImportReceiptRow.retentionLimit).map(AppWorkActivity.init)
         let importSourceSummaries = importSessions.map { session in
             ImportSidebarSummary(
                 sessionID: session.id,
@@ -13590,6 +13604,10 @@ public final class AppModel {
 
     private func latestImportStackGroups(activityID: String, repository: CatalogRepository) throws -> LatestImportStackGroups {
         let assetIDs = try latestImportOutputAssetIDs(activityID: activityID, repository: repository)
+        return try latestImportStackGroups(assetIDs: assetIDs, repository: repository)
+    }
+
+    private func latestImportStackGroups(assetIDs: [AssetID], repository: CatalogRepository) throws -> LatestImportStackGroups {
         let importAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
         let allStacks = stackBuilder()
             .stacks(
@@ -13602,7 +13620,7 @@ public final class AppModel {
         )
     }
 
-    private func latestImportStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
+    private func latestImportMultiFrameStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
         try latestImportStackGroups(activityID: activityID, repository: repository).multiFrameStacks
     }
 
@@ -13928,12 +13946,9 @@ public final class AppModel {
             do {
                 let output = try await task.value
                 guard let self, self.activeWork?.id == activityID else { return }
-                self.replaceAssets(
-                    output.assets,
+                try self.loadCatalogPage(
                     preferredSelection: output.result.importedAssets.first?.id
                 )
-                self.totalAssetCount = output.totalAssetCount
-                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -14064,12 +14079,9 @@ public final class AppModel {
             do {
                 let output = try await task.value
                 guard let self, self.activeWork?.id == activityID else { return }
-                self.replaceAssets(
-                    output.assets,
+                try self.loadCatalogPage(
                     preferredSelection: output.result.importedAssets.first?.id
                 )
-                self.totalAssetCount = output.totalAssetCount
-                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
