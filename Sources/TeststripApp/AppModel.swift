@@ -3148,6 +3148,14 @@ public final class AppModel {
     /// The unfiltered People scope uses this global fact; narrowed People
     /// scopes derive the same status only from their intersecting sources.
     public var hasUnavailableSourceRoots: Bool {
+        Self.sourceRootsUnavailable(sourceRoots)
+    }
+
+    /// The shared predicate behind `hasUnavailableSourceRoots` and the
+    /// nil-scope branch of `peopleScopeHasUnavailableSources`, which needs to
+    /// evaluate it over a passed-in `sourceRoots` snapshot rather than
+    /// `self.sourceRoots`.
+    private static func sourceRootsUnavailable(_ sourceRoots: [CatalogSourceRoot]) -> Bool {
         sourceRoots.contains { root in
             root.unavailableAssetCount > 0 || !FileManager.default.fileExists(atPath: root.path)
         }
@@ -3787,9 +3795,7 @@ public final class AppModel {
         repository: CatalogRepository
     ) throws -> Bool {
         guard let assetIDs else {
-            return sourceRoots.contains { root in
-                root.unavailableAssetCount > 0 || !FileManager.default.fileExists(atPath: root.path)
-            }
+            return Self.sourceRootsUnavailable(sourceRoots)
         }
         guard !assetIDs.isEmpty else { return false }
         let scopedAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
