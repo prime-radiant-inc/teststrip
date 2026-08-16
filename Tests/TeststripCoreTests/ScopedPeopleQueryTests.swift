@@ -250,7 +250,11 @@ final class ScopedPeopleQueryTests: XCTestCase {
 
         XCTAssertEqual(
             try repository.evaluationKindSummaries(assetIDs: nil),
-            try repository.evaluationKindSummaries()
+            [
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 2),
+                CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 2),
+                CatalogEvaluationKindSummary(kind: .object, assetCount: 1)
+            ]
         )
         XCTAssertEqual(try repository.evaluationKindSummaries(assetIDs: []), [])
         XCTAssertEqual(
