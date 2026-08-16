@@ -3993,6 +3993,8 @@ private struct LoupeView: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .disabled(!isEnabled)
+        .accessibilityLabel("\(run.number) \(run.title)")
+        .keyboardShortcut(KeyEquivalent(Character("\(run.number)")), modifiers: [])
     }
 
     private func handleMiniRunAction(_ action: CullCompletionPresentation.Action) {

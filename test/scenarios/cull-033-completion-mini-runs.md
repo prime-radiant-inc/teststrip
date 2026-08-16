@@ -78,5 +78,12 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   the "2 Cull skipped" entry.
 
 ## Run status
-UNRUN — scenario card authored for SP-D Task 6. Awaits implementation
-completion and VM run.
+PASS (2026-08-16) — VM run via `script/vm_scenario_run.sh`. Drove through
+all 24 frames (Space to skip 13 undecided, advance through 11 pre-decided);
+completion stage appeared with "End of set" / "Nothing left to decide" /
+"One-key mini-runs". Mini-run buttons accessible via `ax_drive.sh find`
+(e.g. "5 Export"). Clicked "Cull skipped" via AXPress → new culling session
+scoped to 13 skipped frames. Decided all 13 with P → completion reappeared
+with "0 skipped · 0 never viewed". Catalog: 0 nil-flagged assets, 2 culling
+sessions (1 completed + 1 running). Added `.accessibilityLabel` and
+`.keyboardShortcut` to mini-run buttons for testability.
