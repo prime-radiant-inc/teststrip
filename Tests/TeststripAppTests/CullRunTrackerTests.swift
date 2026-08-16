@@ -124,10 +124,15 @@ final class CullRunTrackerTests: XCTestCase {
             Self.asset(id: "batch-\(index)")
         }
         let (model, _) = try makeModelWithCatalogAssets(named: "run-tracker-session-reset", assets: assets)
+        // Start a cull run so the tracker is initialized and culling keys are
+        // valid (mirrors real usage where shortcuts only fire inside a run).
+        _ = try model.beginCullingSession(named: "First Batch")
         try model.applyCullingShortcut(.nextPhoto)
         XCTAssertFalse(model.cullRunTracker.skippedAssetIDs.isEmpty)
 
-        try model.beginCullingSession(named: "Fresh Batch")
+        // A second beginCullingSession on the same instance must reset, not
+        // resume, because cullRunResumeConsumed is already true.
+        _ = try model.beginCullingSession(named: "Fresh Batch")
 
         XCTAssertEqual(model.cullRunTracker.skippedAssetIDs, [])
         // The frame the new batch landed on is on stage now — it is viewed,

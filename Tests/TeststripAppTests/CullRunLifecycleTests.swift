@@ -53,6 +53,53 @@ final class CullRunLifecycleTests: XCTestCase {
         _ = repository  // keep alive
     }
 
+    // The real resume path: beginCullingSession must load the prior tracker
+    // BEFORE startCullRunTracking overwrites the file with a fresh one.
+    func testBeginCullingSessionResumesTrackerFromPriorRun() throws {
+        let assets = (0..<4).map { index in
+            Self.asset(id: "resume-flow-\(index)")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-tests-cull-resume-flow-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let appSupport = directory.appendingPathComponent("app-support", isDirectory: true)
+
+        // First instance: start cull, record viewed + skipped.
+        let (model1, repository) = try makeModelWithCatalogAssets(
+            appSupport: appSupport,
+            named: "resume-flow-first",
+            assets: assets
+        )
+        try model1.beginCullingSession(named: "Batch")
+        try model1.applyCullingShortcut(.nextPhoto)  // skip asset[0]
+        try model1.applyCullingShortcut(.nextPhoto)  // skip asset[1]
+        let savedViewed = model1.cullRunTracker.viewedAssetIDs
+        let savedSkipped = model1.cullRunTracker.skippedAssetIDs
+        XCTAssertFalse(savedViewed.isEmpty)
+        XCTAssertFalse(savedSkipped.isEmpty)
+
+        // Second instance: fresh AppModel over the same catalog directory.
+        let (model2, _) = try makeModelWithCatalogAssets(
+            appSupport: appSupport,
+            named: "resume-flow-second",
+            assets: assets
+        )
+        // Verify the tracker file exists before resume.
+        let trackerFile = appSupport
+            .appendingPathComponent("Teststrip", isDirectory: true)
+            .appendingPathComponent("cull-run-tracker.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: trackerFile.path),
+                      "tracker file should exist at \(trackerFile.path)")
+        // The real entry point — beginCullingSession must resume the tracker.
+        _ = try model2.beginCullingSession(named: "Batch")
+
+        XCTAssertEqual(model2.cullRunTracker.viewedAssetIDs, savedViewed,
+                       "beginCullingSession must restore the prior tracker, not overwrite it")
+        XCTAssertEqual(model2.cullRunTracker.skippedAssetIDs, savedSkipped,
+                       "beginCullingSession must restore the prior skipped set, not overwrite it")
+        _ = repository
+    }
+
     func testResumeIsNoOpWhenNoTrackerFileExists() throws {
         let assets = (0..<2).map { index in
             Self.asset(id: "noresume-\(index)")

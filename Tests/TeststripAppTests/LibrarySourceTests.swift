@@ -1179,7 +1179,7 @@ final class LibrarySourceTests: XCTestCase {
         // build its own progress from raw asset flags without any test
         // noticing. Full-string equality rather than `contains("✓ 1")`,
         // which would also match "✓ 10".
-        XCTAssertEqual(model.scopeLine.statusText, "2 photos · ✓ 1 · ✕ 0 · 1 left")
+        XCTAssertEqual(model.scopeLine.statusText, "2 photos · ✓ 1 · ✕ 0 · ◌ 1 unviewed · ✨ 1 awaiting · 1 left")
     }
 
     // SP: Task 7's fix gates `scopeLine`'s two cull-only catalog reads

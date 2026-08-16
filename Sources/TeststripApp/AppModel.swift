@@ -2153,6 +2153,11 @@ public final class AppModel {
     /// `S` scope cycling.
     private(set) var cullRunTracker = CullRunTracker()
 
+    /// Guards `resumeCullRunIfNeeded` so it only fires once per model
+    /// instance — the first `beginCullingSession` after a relaunch resumes
+    /// the prior tracker; subsequent calls start fresh.
+    private var cullRunResumeConsumed = false
+
     /// The JSON file URL for cull-run-tracker persistence — lives in the
     /// catalog's app-support root, never the catalog database itself (the
     /// tracker is UI state, not operational truth). Nil when no catalog is
@@ -6344,12 +6349,18 @@ public final class AppModel {
 
     /// Loads the cull-run tracker from `cullRunTrackerURL` if the file exists,
     /// restoring the exact viewed/skipped sets from a prior run. Called during
-    /// `beginCullingSession` after `startCullRunTracking()` so a relaunch picks
-    /// up exactly where the previous run left off.
-    func resumeCullRunIfNeeded() {
+    /// `beginCullingSession` BEFORE `startCullRunTracking()` so a relaunch picks
+    /// up exactly where the previous run left off. Returns `true` when a prior
+    /// tracker was restored (so `beginCullingSession` can skip the fresh-start
+    /// reset).
+    @discardableResult
+    func resumeCullRunIfNeeded() -> Bool {
+        guard !cullRunResumeConsumed else { return false }
+        cullRunResumeConsumed = true
         guard let url = cullRunTrackerURL,
-              let restored = CullRunTracker.Persistence.load(from: url) else { return }
+              let restored = CullRunTracker.Persistence.load(from: url) else { return false }
         cullRunTracker = restored
+        return true
     }
 
     @discardableResult
@@ -6387,8 +6398,9 @@ public final class AppModel {
             }
             selectedView = .loupe
         }
-        startCullRunTracking()
-        resumeCullRunIfNeeded()
+        if !resumeCullRunIfNeeded() {
+            startCullRunTracking()
+        }
         activeCullingSessionID = sessionID
 
         let detail = trimmedIntent.isEmpty ? "Culling \(Self.photoCountDescription(totalUnitCount))" : trimmedIntent
