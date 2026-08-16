@@ -63,7 +63,7 @@ public struct CullingProgressSummary: Equatable, Sendable {
     public var hiddenByLensCount: Int
 
     public var reviewedCount: Int {
-        pickCount + rejectCount
+        viewedCount + skippedCount
     }
 
     public init(

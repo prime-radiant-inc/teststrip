@@ -81,6 +81,29 @@ final class CullingProgressSummaryFieldsTests: XCTestCase {
         XCTAssertEqual(summary.hiddenByLensCount, 2)
     }
 
+    func testReviewedCountIsViewedPlusSkipped() throws {
+        let assets = (0..<4).map { Self.asset(id: "rev-\($0)") }
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "progress-reviewed",
+            assets: assets
+        )
+        try model.beginCullingSession(named: "Test")
+        // startCullRunTracking records the landing frame as viewed (1 viewed).
+        // Two .nextPhoto skips on undecided frames add 2 skipped + 2 viewed.
+        try model.applyCullingShortcut(.nextPhoto)
+        try model.applyCullingShortcut(.nextPhoto)
+
+        let summary = model.cullingProgressSummary
+
+        XCTAssertEqual(
+            summary.reviewedCount,
+            summary.viewedCount + summary.skippedCount,
+            "reviewedCount must be viewed + skipped, not pick + reject"
+        )
+        XCTAssertGreaterThanOrEqual(summary.viewedCount, 3)
+        XCTAssertEqual(summary.skippedCount, 2)
+    }
+
     // MARK: - Fixtures
 
     private static func asset(id: String, flag: PickFlag? = nil, tentative: Bool = false) -> Asset {

@@ -45,7 +45,8 @@ final class ScopeLinePresentationTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 326
         )
@@ -65,7 +66,8 @@ final class ScopeLinePresentationTests: XCTestCase {
                 positionText: "1 of 4",
                 pickCount: 1,
                 rejectCount: 1,
-                totalCount: 4
+                totalCount: 4,
+                viewedCount: 2
             ),
             stackCount: 0
         )

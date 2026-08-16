@@ -199,7 +199,7 @@ final class AppModelTests: XCTestCase {
                 hiddenByLensCount: 0
             )
         )
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 1)
     }
 
     // A tentative AI `.reject` (unconfirmed autopilot proposal) must not
@@ -264,7 +264,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 125)
         XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
         XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 0)
     }
 
     func testCullingProgressSummaryCountsCurrentFilteredScope() throws {
@@ -296,7 +296,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 125)
         XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
         XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 0)
     }
 
     func testCullingProgressSummaryCountsExplicitSavedSetScope() throws {
@@ -343,7 +343,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 125)
         XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
         XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 0)
     }
 
     // `navigateBack`/`navigateForward` route through `applySource`, so a

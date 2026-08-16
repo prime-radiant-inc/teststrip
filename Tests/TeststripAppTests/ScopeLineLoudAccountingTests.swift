@@ -14,7 +14,9 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 8,
+                skippedCount: 12
             ),
             stackCount: 326,
             skippedCount: 12
@@ -34,7 +36,8 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 0,
             neverViewedCount: 3
@@ -54,7 +57,8 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 0,
             awaitingReviewCount: 96
@@ -74,7 +78,9 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 8,
+                skippedCount: 12
             ),
             stackCount: 326,
             skippedCount: 12,
@@ -99,7 +105,8 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 326,
             skippedCount: 0,
@@ -121,7 +128,8 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 326
         )
@@ -140,7 +148,8 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 0,
             hiddenByLensCount: 7
@@ -161,7 +170,8 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 0,
             hiddenByLensCount: 100
@@ -182,7 +192,8 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 0,
             hiddenByLensCount: 0
@@ -202,7 +213,9 @@ final class ScopeLineLoudAccountingTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 8,
+                skippedCount: 12
             ),
             stackCount: 326,
             skippedCount: 12,
