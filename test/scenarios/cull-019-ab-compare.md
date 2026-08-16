@@ -19,14 +19,14 @@ inventory items 63-68:
   override: `abFilmstripTile`, `LibraryGridView.swift:7003-7031`
   (`model.selectABContender(asset.id)` / `selectABContender(nil)`).
 - Item 66 — `AppModel.keepABFrame(keeping:over:)`,
-  `AppModel.swift:5993-6004`, delegating to `applyCompareFlags`
-  (`AppModel.swift:6082-6125`): kept frame → `flag = .pick`, rejected frame →
+  `AppModel.swift:6377-6388`, delegating to `applyCompareFlags`
+  (`AppModel.swift:6466-6510`): kept frame → `flag = .pick`, rejected frame →
   `flag = .reject`, both under one `recordMetadataChangeGroup` undo entry.
 - Item 67 — the <2-frames notice: `singleFrameNotice`,
   `LibraryGridView.swift:6950-6959` ("Load at least two frames to compare
   A/B"), shown whenever `presentation.canCompare` is false.
 - Item 68 — synced zoom: both panes render `LoupeZoomStageView` reading the
-  single shared `model.loupeZoomFocus` (`AppModel.swift:2035`,
+  single shared `model.loupeZoomFocus` (`AppModel.swift:2083`,
   `toggleLoupeZoom` at `:6850-6853`) — sync is structural (one source of
   truth), not mirrored state.
 
@@ -91,7 +91,7 @@ BASELINE=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadat
    Expect exactly `pick` for A and `reject` for B, and the total flagged
    count = the step-6 value + 2 (both chosen frames were unflagged). Also
    assert one status message appeared: `ax_drive.sh find --contains "Kept"`
-   ("Kept <name>; rejected the alternate", `AppModel.swift:6003`).
+   ("Kept <name>; rejected the alternate", `AppModel.swift:6387`).
 8. **One-gesture undo check.** Press ⌘Z once and assert BOTH flags return to
    NULL (the pick and the reject were grouped into a single
    `recordMetadataChangeGroup` entry). Re-run the step-7 query. Then redo

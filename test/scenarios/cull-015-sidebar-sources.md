@@ -35,7 +35,7 @@ section (`sections(...)`, `UnifiedSidebarPresentation.swift:168-194`):
   `"AI Suggestions"`, `LibrarySource.swift:89`) is appended **after** the 10,
   present only while `autopilotGhostCount > 0`
   (`UnifiedSidebarPresentation.swift:179-186` — the parameter is
-  `autopilotGhostAssetIDs.count`, passed in from `AppModel.swift:1993`).
+  `autopilotGhostAssetIDs.count`, passed in from `AppModel.swift:2040`).
   There is no zero-count disabled state for this row either.
 - Every **saved dynamic set** (`AssetSet.isDynamic`, i.e. a saved search)
   joins the section last, one row per set
@@ -50,15 +50,15 @@ section (`sections(...)`, `UnifiedSidebarPresentation.swift:168-194`):
   finds zero hits); the section simply does not render.
 
 **Activation.** Clicking a row calls `AppModel.selectSidebarRow(_:)`
-(`AppModel.swift:4698-4708`) → `selectSource(_:)`/`applySource(_:)`
+(`AppModel.swift:4867-4877`) → `selectSource(_:)`/`applySource(_:)`
 (`:4761-4764`,`:4855`), which switches on `LibrarySource.kind`:
 `.smartCollection(let collection)` → `applySmartCollection(collection)`
-(`AppModel.swift:11106-11116` — installs the collection's `query.predicates` as detached
+(`AppModel.swift:11560-11570` — installs the collection's `query.predicates` as detached
 filters and reloads); `.autopilotSuggestions` → `applyAutopilotSuggestionsScope()`
-(`AppModel.swift:9826-9851`). The grid loads `assetIDsWithAutopilotGhost()`
-directly in `loadAutopilotSuggestionsScope` (`AppModel.swift:9839-9851`),
+(`AppModel.swift:10213-10238`). The grid loads `assetIDsWithAutopilotGhost()`
+directly in `loadAutopilotSuggestionsScope` (`AppModel.swift:10226-10238`),
 while the Map lens reuses that exact derived inventory through
-`SetQuery.assetIDs` (`AppModel.swift:9828-9833`; `SetQuery.swift:47-48`,
+`SetQuery.assetIDs` (`AppModel.swift:10215-10220`; `SetQuery.swift:47-48`,
 compiled by `CatalogRepository.swift:3383-3391`); neither path materializes a
 saved `AssetSet`. `applySource` then re-resolves the active lens
 (`LensRules.resolvedLens`, `LibraryLens.swift:137-144`): selecting

@@ -9,15 +9,15 @@ undoable with ⌘Z — not batched with neighboring keystrokes. Covers:
   (`CullingShortcut.init(key:)` — `0`-`5` rate, `6`=red, `7`=yellow,
   `8`=green, `9`=blue, `v`=purple, `-`=clear label, `p`=pick, `x`=reject,
   `u`=clearFlag).
-- Dispatch + auto-advance: `applyCullingShortcut` (`:6615-6722`) routes each
-  through `applyCullingCommandAndAdvance` (`:6898-6928`), which snapshots
+- Dispatch + auto-advance: `applyCullingShortcut` (`:6999-7106`) routes each
+  through `applyCullingCommandAndAdvance` (`:7282-7312`), which snapshots
   `lastCullingMetadataDecision` from the *pre-change* asset, applies the
   change, and advances to the next asset only if the selection didn't already
   move (it doesn't, for rating/label/flag commands).
 - Per-keystroke writes and undo grouping: `setRatingForSelectedAsset`
-  (`:7325-7337`, label `"Rating"`), `setColorLabelForSelectedAsset`
-  (`:7389-7393`, label `"Color label"`), `setFlagForSelectedAsset`
-  (`:7339-7367`, label `"Flag"`) — each calls `updateSelectedAssetMetadata`
+  (`:7709-7721`, label `"Rating"`), `setColorLabelForSelectedAsset`
+  (`:7773-7777`, label `"Color label"`), `setFlagForSelectedAsset`
+  (`:7723-7751`, label `"Flag"`) — each calls `updateSelectedAssetMetadata`
   for a *single* asset, so each keystroke is its own one-asset undo group
   (distinct from the multi-asset `setFlagForSelectedAssets`/stack-decision
   paths used elsewhere).
@@ -27,7 +27,7 @@ undoable with ⌘Z — not batched with neighboring keystrokes. Covers:
   it after a 2s `Task.sleep` (`Sources/TeststripApp/
   LibraryGridView.swift:4447-4462`, `showDecisionToastThenFade`).
   Decision text strings: `cullingMetadataDecisionText`
-  (`AppModel.swift:6946-6960`) — `"Rated N"`/`"Cleared rating"`,
+  (`AppModel.swift:7330-7344`) — `"Rated N"`/`"Cleared rating"`,
   `"<Color> label"`/`"Cleared label"`, `"Picked"`/`"Rejected"`/`"Cleared
   flag"`.
 

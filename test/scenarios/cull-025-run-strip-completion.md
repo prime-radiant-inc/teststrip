@@ -74,7 +74,7 @@ card):
   rendered `Text`) still holds unchanged; only assertions that read the
   now-gone suggestion segment (removed from this card below) are affected.
   A click routes through `AppModel.selectStackLanding(for:)`
-  (`AppModel.swift:7303-7308`, via `:7292-7295`) — the same preference-gated
+  (`AppModel.swift:7687-7692`, via `:7676-7679`) — the same preference-gated
   recommended-or-first landing helper `←`/`→`/`H`/`L` use (see
   `cull-022-flow-grammar-walk.md`'s T7.5 citation) — so a stop click never
   disagrees with keyboard arrival.
@@ -90,7 +90,7 @@ card):
 - **User-origin-only progress**: `runStripStatusBar`
   (`LibraryGridView.swift:4525-4549`) computes `progressFraction =
   reviewedCount / totalCount` from `model.cullingProgressSummary`
-  (`AppModel.swift:2692-2727`), whose `pickCount`/`rejectCount` come from
+  (`AppModel.swift:2768-2777`), whose `pickCount`/`rejectCount` come from
   `cullingDecisionCount(flag:repository:)` →
   `CatalogRepository.assetCount(ids:confirmedFlag:)` — **confirmed flags
   only** (`cull-026-tentative-never-commits.md`'s citation of this exact
@@ -143,13 +143,13 @@ card):
   Step 3 rather than re-derived independently; if the two ever disagree,
   `cull-016` wins. `"Save Picks as
   Set"` calls
-  `model.saveCullingPicksAsSet()` (`AppModel.swift:5724-5750`): with **no**
+  `model.saveCullingPicksAsSet()` (`AppModel.swift:6108-6134`): with **no**
   active persisted culling session (burst seeds directly, bypassing
   `IngestService` — same gap `cull-021-stack-rail-nav.md` documents), it
-  takes the ad-hoc branch (`:5739-5749`) — snapshots
+  takes the ad-hoc branch (`:6123-6133`) — snapshots
   `assets.filter { confirmedProjection.flag == .pick }.map(\.id)` into a
   **new** `AssetSet(membership: .snapshot(...))`, named via
-  `suggestedPicksSetName` (`:5752-5760`: `"Catalog Picks"` absent an active
+  `suggestedPicksSetName` (`:6136-6144`: `"Catalog Picks"` absent an active
   set/search context). Persisted at `asset_sets.membership_json`; a
   `.snapshot([AssetID])` encodes at JSON path `$.snapshot._0`, each element
   `{"rawValue": "<id>"}` (`CatalogRepository
@@ -173,7 +173,7 @@ card):
   step is needed for the grid-tile badges (`AutopilotGhost.kind(in:)` reads
   the asset's own metadata directly — cull-029's Source); at launch,
   `AppModel.load(catalog:)` also calls `refreshAutopilotGhostAssetIDs()`
-  (`AppModel.swift:4477`) to populate the sidebar's cached
+  (`AppModel.swift:4646`) to populate the sidebar's cached
   `autopilotGhostAssetIDs`/count from `assetIDsWithAutopilotGhost()` — the
   SP-D0 replacement for the deleted `reconstructAutopilotStateAfterLoad()`.
   Unlike that deleted function, this hand-seeded ghost does **not** set
@@ -364,7 +364,7 @@ later card in the same session that needs the pristine baseline.
    shown, but **completely absent**, because Steps 4/6 decided `smoke-4`/
    `smoke-16` directly via `P`, and `setFlagForSelectedAsset` unconditionally
    clears `aiUnconfirmedFields` the instant any direct flag decision lands
-   (`AppModel.swift:7356-7362`) — regardless of whether the new value agrees
+   (`AppModel.swift:7740-7746`) — regardless of whether the new value agrees
    with the old tentative one:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"   # 0 — both ghosts cleared by Steps 4/6's direct decisions, not by a commit/dismiss gesture
@@ -527,7 +527,7 @@ Run once per leg (separate launches); quit each instance before the next.
   `cull-017-autopilot-review.md`'s territory regardless, not re-driven
   here.
 - **`saveCullingPicksAsSet()`'s ad-hoc branch calls `saveAndSelect(...)`
-  (`AppModel.swift:5676-5692`, called at `:5745`), which immediately applies the new set as the
+  (`AppModel.swift:5876-5888`, called at `:6129`), which immediately applies the new set as the
   active library scope/selection** — the very next render is that new set's
   *own* freshly-recomputed completion state (a different, smaller
   population), not the original session's. Confirmed live: a screenshot

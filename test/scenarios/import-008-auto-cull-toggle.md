@@ -55,7 +55,7 @@ fixture needed.)
    (evaluation) pass and the armed autopilot run to resolve. The armed run
    fires once every imported asset's evaluations have resolved — no earlier
    (`runImportAutopilotIfArmedAndResolved`,
-   `Sources/TeststripApp/AppModel.swift:10061-10069`) — then disarms itself, so
+   `Sources/TeststripApp/AppModel.swift:10505-10513`) — then disarms itself, so
    poll until a `.recognition` work session tied to the import is
    `completed` and the imported set's ghost count has stabilized (no live
    table to poll any more — see Step 6's ghost query):
@@ -81,7 +81,7 @@ fixture needed.)
    Assert every row's `metadata_json` still reads `"flag":null` (or absent)
    and `"rating":0` — `commitAutopilotProposals` is the only place that
    writes `updatedMetadata.flag`
-   (`Sources/TeststripApp/AppModel.swift:7784-7838`, write at :7809-7812), and
+   (`Sources/TeststripApp/AppModel.swift:10252-10284`, write at :10268-10271), and
    it only runs from an explicit commit gesture (Autopilot Review → Commit),
    never automatically post-import.
 8. Assert every ghost from this run is still unconfirmed
@@ -122,11 +122,11 @@ Quit the launched instance.
 
 ## Sharp edges
 - The armed run guards on **both** "no pending evaluation" and "no in-flight
-  evaluation" (`Sources/TeststripApp/AppModel.swift:10062-10065`) before firing
+  evaluation" (`Sources/TeststripApp/AppModel.swift:10506-10509`) before firing
   once, then disarms (`armedAutopilotImportAssetIDs = nil`,
-  `autopilotArmedForActiveImport = false`, :10065-10066). If a second import is
+  `autopilotArmedForActiveImport = false`, :10510-10511). If a second import is
   armed while the first is still resolving, the two asset-ID sets union
-  (`.union`, :10051) — a card that imports twice in quick succession with
+  (`.union`, :10496) — a card that imports twice in quick succession with
   the toggle on both times would see one combined autopilot run over both
   imports' assets, not two separate runs. This card only exercises a single
   import, so it doesn't hit that path, but a future card should if the union
@@ -154,11 +154,11 @@ Quit the launched instance.
   Step 8 asserts those ghosts' `aiUnconfirmedFields` still contains `flag`,
   and Step 9 commits "the ghosts for the imported set". Reading the source
   directly confirms the ghost side: `runArmedImportAutopilot`
-  (`Sources/TeststripApp/AppModel.swift:10070-10081`) calls `runAutopilot`
-  (`:9593-9641`), which calls `applyTentativeAutopilotProposals`
-  (`:9643-9701`) — that function writes `updatedMetadata.flag` and inserts
-  `.flag` into `aiUnconfirmedFields` (`:9675-9677`) via
-  `catalog.repository.updateMetadata` (`:9690`) **immediately**, for any
+  (`Sources/TeststripApp/AppModel.swift:10515-10526`) calls `runAutopilot`
+  (`:10025-10073`), which calls `applyTentativeAutopilotProposals`
+  (`:10086-10133`) — that function writes `updatedMetadata.flag` and inserts
+  `.flag` into `aiUnconfirmedFields` (`:10107-10108`) via
+  `catalog.repository.updateMetadata` (`:10122`) **immediately**, for any
   qualifying proposal, matching `CLAUDE.md`'s auto-apply-with-provenance
   invariant (machine labels land at once, tagged `origin`/unconfirmed, and
   only an explicit gesture confirms them — auto-apply is not the same as

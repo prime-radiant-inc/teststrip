@@ -9,7 +9,7 @@ dimensions/GPS/capture date, without opening the inspector. Covers item 24.
 Source:
 - `Sources/TeststripApp/AppModel.swift:431-442` — `ExifOverlayLevel` (`.off`,
   `.exposureLine`, `.full`), cycled by `.next()`.
-- `Sources/TeststripApp/AppModel.swift:6698-6699` — the `I` shortcut
+- `Sources/TeststripApp/AppModel.swift:7082-7083` — the `I` shortcut
   (`CullingShortcut.cycleExifOverlay`, keyed at `:231`) calls
   `exifOverlayLevel = exifOverlayLevel.next()`.
 - `Sources/TeststripApp/LibraryGridView.swift:5035-5043` — the loupe metadata

@@ -18,7 +18,7 @@ into manual culling. Covers inventory items 55-62:
   `static let contenderCount = 3`.
 - Item 57 — "Evaluate Compare" button (`:7163-7172`, help "Runs evaluation
   for compare frames with cached previews"), gated by
-  `model.canRequestCompareAssetEvaluations` (`AppModel.swift:3080-3082`) =
+  `model.canRequestCompareAssetEvaluations` (`AppModel.swift:3164-3166`) =
   worker alive AND at least one compare asset has a cached preview — NOT an
   N-selected-frames gate.
 - Item 58 — tile chrome: `CompareSurveyActionPresentation`
@@ -31,10 +31,10 @@ into manual culling. Covers inventory items 55-62:
   DYNAMIC ("Keep primary" or "Keep primary · reject N", `:5713-5731`) —
   match by help: "Marks the current compare primary as Pick and the visible
   alternates as Reject". Calls
-  `model.keepComparePrimaryAndRejectAlternates()` (`AppModel.swift:5972-5981`).
+  `model.keepComparePrimaryAndRejectAlternates()` (`AppModel.swift:6356-6365`).
 - Item 60 — "Choose manually" button (`:7366-7373`, fixed title, help "Open
   this compare set in stack-aware manual culling") →
-  `model.beginManualCullingFromCompareSet()` (`AppModel.swift:5082-5127`), which
+  `model.beginManualCullingFromCompareSet()` (`AppModel.swift:5272-5330`), which
   creates a manual-culling `WorkSession` and switches to loupe.
 - Item 61 — `focusCullingSurface()` is called before the model write in
   every compare action handler (`applyCompareGroupChoice`
@@ -43,7 +43,7 @@ into manual culling. Covers inventory items 55-62:
   management, not a write gate.
 - Item 62 — reject-refill: `CompareRefillOrdering.afterReject`
   (`AppModel.swift:354-372`), invoked from `setFlagForSelectedAsset` via
-  `refillCompareSetAfterReject` (`AppModel.swift:7339-7387`) only when
+  `refillCompareSetAfterReject` (`AppModel.swift:7723-7771`) only when
   `selectedView == .compare`; refill pool = undecided members of the
   candidate stack.
 - Plus the previously flagged **compare-monitor ambiguity**, resolved by
@@ -51,9 +51,9 @@ into manual culling. Covers inventory items 55-62:
 
 **Data-source note (drives Pre-state)**: `CompareView` does NOT consume a
 multi-select. It calls `model.compareAssets()` (`LibraryGridView.swift:7068`
-→ `AppModel.swift:5928-5944`), resolving in priority order: persisted work
+→ `AppModel.swift:6312-6328`), resolving in priority order: persisted work
 stack anchored on the selection → internal `compareAssetIDs` (auto-built on
-entering `.compare`, `AppModel.swift:6228-6235`) → visual-similarity
+entering `.compare`, `AppModel.swift:6612-6619`) → visual-similarity
 candidate stack → plain window of neighbors around the selection. With
 `--smoke` (no persisted stacks), selecting one tile and pressing the Compare
 mode key is sufficient — the set self-populates from stack/window fallbacks.
@@ -148,11 +148,11 @@ sqlite3 "$DB" "SELECT id, original_path FROM assets WHERE json_extract(metadata_
    `lens == .cull && selectedView != .cullGrid`). So `P` fires
    grid-cull pick semantics on `selectedAssetID` via
    `applyCullingShortcut(.pick)` → `applyCullingCommandAndAdvance`
-   (`AppModel.swift:6898-6928`). Assert the selected asset's flag becomes
+   (`AppModel.swift:7282-7312`). Assert the selected asset's flag becomes
    `pick` in the catalog. ⌘Z to revert.
 9. **PROBE — Return in Compare.** Press Return. Finding from source: Return
    maps to `.promoteAndRejectSiblings` →
-   `promoteCurrentFrameAndRejectSiblings()` (`AppModel.swift:6370-6426`),
+   `promoteCurrentFrameAndRejectSiblings()` (`AppModel.swift:6754-6810`),
    which is a DIFFERENT write path from the item-59 button and **silently
    no-ops** unless the selected asset is in a persisted work stack or a
    `cullingStacks()` entry. In `--smoke` (no persisted stacks) the expected

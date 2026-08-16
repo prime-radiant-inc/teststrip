@@ -1,7 +1,7 @@
 # lib-002-saved-set-context-menus: sidebar row context menus expose the correct per-row-type actions and write on confirm
 
 **What this covers**: `SidebarView`'s per-row `.contextMenu` (built from
-`AppModel.sidebarContextActions(for:)`, `AppModel.swift:5161-5233`) — plain
+`AppModel.sidebarContextActions(for:)`, `AppModel.swift:5351-5423`) — plain
 rows (All Photographs, folders, review queues, etc.) get an empty menu; a
 saved-set row gets Rename/Duplicate/Freeze Snapshot (dynamic sets
 only)/Star/Delete; an eligible ordinary work-session row gets a star toggle,
@@ -44,16 +44,16 @@ BLOCKED-TOOLING status.
 2. Right-click (or use the context-menu AX action on) a plain row with no
    actions, e.g. "All Photographs". Per
    `AppModel.sidebarContextActions(for:)`'s `default: return []`
-   (`AppModel.swift:5230-5231`), assert the menu has zero items —
+   (`AppModel.swift:5420-5421`), assert the menu has zero items —
    `SidebarView.swift:342-350`'s `ForEach` over an empty array renders no
    `Button`s, so a context-menu invocation should show nothing (or macOS may
    show no menu at all).
 3. Right-click the manual saved-set row. Assert the menu contains, in order:
    "Rename Set" (pencil), "Duplicate Set..." (plus.square.on.square),
    **no** "Freeze Snapshot..." (manual sets aren't dynamic —
-   `AppModel.swift:5180-5185` gates it on `case .dynamic`), "Star Set" (star,
+   `AppModel.swift:5370-5376` gates it on `case .dynamic`), "Star Set" (star,
    since unstarred by default), "Delete Set..." (trash) —
-   `AppModel.swift:5168-5199`.
+   `AppModel.swift:5353-5389`.
 4. Right-click the dynamic saved-set row. Assert the menu additionally
    contains "Freeze Snapshot..." (camera.aperture) between Duplicate and
    Star.
@@ -61,7 +61,7 @@ BLOCKED-TOOLING status.
    seeded by the smoke import). Assert the menu contains, in order: "Star
    Work" (or "Remove Star" if already starred), "Cull stacks", "Evaluate
    import", and "Manual Compare over the import" —
-   `AppModel.swift:5200-5229`. Separately right-click an eligible ordinary
+   `AppModel.swift:5390-5419`. Separately right-click an eligible ordinary
    non-import work-session row and assert it contains only the star toggle.
    Neither row has a separate remove/unpin action; see Sharp edges.
 6. Click "Rename Set" on the manual set. Assert a sheet titled "Rename Set"
@@ -76,14 +76,14 @@ BLOCKED-TOOLING status.
    the name field defaults to `"Copy of <original title>"`
    (`SidebarView.swift:358-362`). Confirm; assert a **new** `asset_sets` row
    appears with that name and the same `membership` as the source
-   (`AppModel.swift:5341-5356`), and the new set becomes selected
-   (`saveAndSelect`, `AppModel.swift:5676-5693`).
+   (`AppModel.swift:5534-5550`), and the new set becomes selected
+   (`saveAndSelect`, `AppModel.swift:5876-5888`).
 8. Click "Freeze Snapshot..." on the dynamic set. Assert the sheet is titled
    "Freeze Snapshot" with action "Freeze Snapshot" (`SidebarView.swift:76-85`),
    and the name field defaults to `"<original title> Snapshot"`
    (`SidebarView.swift:364-368`). Confirm; assert a new `asset_sets` row appears
    with `membership` of kind `snapshot` containing the asset IDs the dynamic
-   query matched *at freeze time* (`AppModel.swift:5360-5382` resolves the
+   query matched *at freeze time* (`AppModel.swift:5553-5576` resolves the
    query to a fixed ID list) — cross-check against
    `SELECT count(*) FROM assets WHERE <the same query predicate>` at the time
    of freezing.
@@ -113,7 +113,7 @@ BLOCKED-TOOLING status.
   stacks, Evaluate import, and Manual Compare over the import; the eligible
   ordinary non-import row has only the star toggle. Neither has a distinct
   remove/unpin action. **Fails if** either action set or the import action
-  order differs from `AppModel.swift:5200-5229`.
+  order differs from `AppModel.swift:5390-5419`.
 - Step 6: blank name disables Rename; confirmed rename persists to
   `asset_sets.name`. **Fails if** the button is enabled while blank, or the
   catalog value doesn't change.
@@ -147,11 +147,11 @@ color-sampling on the row's icon glyph rather than an AX attribute, or treat
 this sub-check as screenshot-evidence-only in the Run.
 
 Also confirm direct-call equivalence (useful when AX menu driving is flaky):
-`AppModel.performSidebarContextAction(_:)` (`AppModel.swift:5235-5261`) is a
+`AppModel.performSidebarContextAction(_:)` (`AppModel.swift:5425-5451`) is a
 `throws` dispatcher over `SidebarRowContextActionKind` — every menu action
 except Rename can be invoked directly through it (Rename is intentionally
 excluded, throwing `TeststripError.invalidState` per
-`AppModel.swift:5237-5238`, because it needs the sheet's new-name text, not
+`AppModel.swift:5427-5428`, because it needs the sheet's new-name text, not
 just the action). This is documentation, not a separate falsifiable step —
 a card driving the app can't call Swift methods directly; note it only if a
 future unit-level regression test wants the equivalent coverage.
@@ -164,7 +164,7 @@ future unit-level regression test wants the equivalent coverage.
 ## Sharp edges
 - **No separate remove/unpin action for work sessions exists in the model.**
   `AppModel.sidebarContextActions(for:)`'s `.workSession` case
-  (`AppModel.swift:5200-5229`) adds the star toggle for an eligible work
+  (`AppModel.swift:5390-5419`) adds the star toggle for an eligible work
   session, then adds Cull stacks, Evaluate import, and Manual Compare only
   when that row is an import. An ordinary non-import row ends after the star
   toggle; "Remove Star" is the starred toggle label, not a row-removal action.

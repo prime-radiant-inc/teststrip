@@ -7,7 +7,7 @@ pre-fills it. Inventory item 49: the Settings scene (⌘,) hosts
 (`Sources/TeststripApp/PreferencesView.swift`;
 `Sources/TeststripApp/main.swift:81-84`), persisted to defaults under
 `AppModel.defaultCreator`/`AppModel.defaultCopyright`
-(`AppModel.swift:2416-2430`) — pre-fill only, never auto-written to a photo.
+(`AppModel.swift:2492-2506`) — pre-fill only, never auto-written to a photo.
 
 ## Pre-state
 Run in the Tart VM (relaunch cycle + defaults inspection):

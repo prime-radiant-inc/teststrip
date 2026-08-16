@@ -255,7 +255,7 @@ well past the stated 3-attempt cap, and CPU visibly spiked to 12-20% during
 each such burst before settling back to idle. Root cause (read from the exact
 deployed source, `.worktrees/cull012-bugs` @ `af4d104c`):
 `AppModel.requestVisibleLoupeAssetPreview`/`prefetchLoupeNeighborLargePreviews`
-(`AppModel.swift:9283-9315`) are a separate dispatch path from the one the
+(`AppModel.swift:9776-9813`) are a separate dispatch path from the one the
 kata #15 fix covers (`CatalogRepository.pendingPreviewGenerationItems`/
 `enqueuePendingPreviewGeneration`). They gate only on `.offline`/`.missing`
 (`refreshAvailability`, `:9291`) and `requiresCachedPreviewOnly`

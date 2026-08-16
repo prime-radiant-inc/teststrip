@@ -6,9 +6,9 @@ run manually on a machine with network access.**
 
 **What this covers**: the geocode pipeline processes GPS-tagged assets in
 throttled batches of 50
-(`AppModel.geocodeBatchSize`, `Sources/TeststripApp/AppModel.swift:9159`,
+(`AppModel.geocodeBatchSize`, `Sources/TeststripApp/AppModel.swift:9546`,
 scan-limited to 500 pending coordinates per enqueue pass,
-`geocodeEnqueueScanLimit`, `AppModel.swift:9160`), results land in
+`geocodeEnqueueScanLimit`, `AppModel.swift:9547`), results land in
 `place_cache`
 (`Sources/TeststripCore/Catalog/CatalogMigrations.swift:209-216`), assets
 with no resolvable location get a **nil-cached negative result** rather than
@@ -44,7 +44,7 @@ sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_valid(technical_metadata_j
    sqlite3 "$DB" "SELECT count(*) FROM place_cache;"
    ```
 2. **Trigger the geocode pass.** `AppModel.enqueuePendingGeocoding`
-   (`AppModel.swift:9162-9185`) scans up to 500 pending coordinates and
+   (`AppModel.swift:9549-9574`) scans up to 500 pending coordinates and
    dispatches a `geocode-batch` work item under a single `WorkSessionID`
    that re-dispatches under the same ID until the queue drains — confirm the
    live trigger (an automatic scan on launch, or an explicit action) against

@@ -62,18 +62,18 @@ a human place name, cross-checked against the `place_cache` table.
 6. **Assert the map is query-scoped, not whole-catalog** (per commit
    `62e0a31`, "fix: scope Library Map geo queries to the current filtered
    result set" — `AppModel.refreshPlaceData`
-   (`AppModel.swift:11023-11039`) now obtains `currentMapQuery()`
-   (`AppModel.swift:11041-11057`) and passes that query through to
+   (`AppModel.swift:11452-11487`) now obtains `currentMapQuery()`
+   (`AppModel.swift:11495-11511`) and passes that query through to
    `CatalogRepository.placeClusters(bounds:cellSize:matching:)`,
    `.topLocations(limit:matching:)`, and `.geotaggedCoverage(matching:)`,
    which push the shared `SetQuery` WHERE-building into the geo SQL
    (`CatalogRepository.swift:680-704, 739-758, 944-954`) instead of
    materializing filtered asset IDs). For ordinary sources,
    `currentMapQuery()` preserves the library predicates assembled by
-   `currentLibraryQuery()` (`AppModel.swift:11696-11773`). An explicit scope
+   `currentLibraryQuery()` (`AppModel.swift:12148-12225`). An explicit scope
    backed by a saved set adds `.assetSet`; a non-set derived scope such as AI
    Suggestions adds its exact IDs through `.assetIDs` instead (the explicit
-   source split is `AppModel.swift:12638-12649`). Those predicates
+   source split is `AppModel.swift:11503-11509`). Those predicates
    are defined at `SetQuery.swift:17-49` (the two membership cases at `:43-48`)
    and compiled by `CatalogRepository.compileClauses`
    (`CatalogRepository.swift:3082-3396`, membership arms `:3380-3391`). An

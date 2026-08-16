@@ -5,7 +5,7 @@ browser-style back/forward. Inventory items 27-28: the Go menu's Back (⇧⌘[)
 and Forward (⇧⌘]) gated by `canNavigateBack`/`canNavigateForward`
 (`NavigationCommands`, `Sources/TeststripApp/main.swift:299-333`); history is
 a pair of `LibrarySource` stacks (`navigationBackStack`/`navigationForwardStack`,
-`Sources/TeststripApp/AppModel.swift:2021-2022`), and a new navigation clears
+`Sources/TeststripApp/AppModel.swift:2069-2070`), and a new navigation clears
 the forward stack.
 
 ## Pre-state
@@ -67,7 +67,7 @@ the forward stack.
 card cited `SidebarRowTarget`, which no longer exists anywhere in `Sources/`
 (`grep -rn "SidebarRowTarget" Sources/` → nothing) — the navigation-history
 stacks are now `[LibrarySource]` (`navigationBackStack`/
-`navigationForwardStack`, `AppModel.swift:2021-2022`), and the field name
+`navigationForwardStack`, `AppModel.swift:2069-2070`), and the field name
 itself had drifted (`forwardStack` → `navigationForwardStack`). Also fixed
 Step 3's example row: `Places` no longer exists as a sidebar source (it was
 a lens masquerading as a source, per `LibrarySource.swift`'s own doc

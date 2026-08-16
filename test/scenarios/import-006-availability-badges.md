@@ -5,7 +5,7 @@
 each rendering a distinct badge (`AssetSourceStatusPresentation.presentation(for:)`,
 `Sources/TeststripApp/LibraryGridView.swift:8916-8945`, tint at :8946-8953); and the
 invariant that a non-`online` source gates the UI to cached-preview-only
-(`SourceAvailability.requiresCachedPreviewOnly`, `Sources/TeststripApp/AppModel.swift:14416-14424`).
+(`SourceAvailability.requiresCachedPreviewOnly`, `Sources/TeststripApp/AppModel.swift:14920-14928`).
 The load-bearing scenario: rename a source's on-disk directory out from under a
 running, already-imported catalog and assert the badge transitions once the
 rescan runs.
@@ -30,7 +30,7 @@ starts in any of the four non-online states).
    `arrow.clockwise` icon button, AXHelp exactly `"Refresh source status"`
    (`Sources/TeststripApp/LibraryGridView.swift:892-899`). Assert `.disabled` is
    false: `model.canRefreshVisibleAssetAvailability` gates it
-   (`Sources/TeststripApp/AppModel.swift:3084-3086`).
+   (`Sources/TeststripApp/AppModel.swift:3168-3170`).
 3. **Rename the source directory out from under the running app** (the
    catalog still believes it's online — nothing watches the filesystem):
    ```bash
@@ -47,8 +47,8 @@ starts in any of the four non-online states).
    calls `AppModel.refreshVisibleAssetAvailability()`, which (with a worker
    configured) batches the visible asset IDs by `volumeIdentifier` and enqueues
    `.refreshAvailabilityBatch` commands as `.sourceScan` work items
-   (`Sources/TeststripApp/AppModel.swift:11126-11139`, batching at
-   :11222-11272).
+   (`Sources/TeststripApp/AppModel.swift:11580-11593`, batching at
+   :11674-11724).
    The worker process executes each batch via
    `SourceAvailabilityProbe().availability(for:)`
    (`Sources/TeststripCore/Worker/WorkerCommandExecutor.swift:307-323`) and
@@ -71,7 +71,7 @@ starts in any of the four non-online states).
 8. **Gate assertion**: open the inspector (⌘I) on a now-missing asset; assert
    full-res/export actions are disabled or show the cached-preview-only
    messaging — `requiresCachedPreviewOnly` is `true` for `.missing`
-   (`Sources/TeststripApp/AppModel.swift:14419`), matching the inspector's
+   (`Sources/TeststripApp/AppModel.swift:14923`), matching the inspector's
    `availabilityText` (`Sources/TeststripApp/InspectorView.swift:34-36`).
 
 ## Expected
@@ -115,7 +115,7 @@ Quit the launched instance.
   refreshed only by explicit UI action (this card's toolbar button, or the
   Activity popover's "Refresh source availability", `Sources/TeststripApp/ActivityCenterView.swift:191-198`)
   or by `refreshSelectedAssetAvailability()` on selection
-  (`Sources/TeststripApp/AppModel.swift:11118-11124`). A card that assumes a
+  (`Sources/TeststripApp/AppModel.swift:11572-11578`). A card that assumes a
   passive background scan will hang forever waiting for a badge that never
   appears on its own.
 

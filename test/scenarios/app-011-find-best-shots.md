@@ -2,7 +2,7 @@
 
 **What this covers**: Jesse's one-button "show me the keepers". Inventory
 item 38: `Culling ▸ Find Best Shots` (⇧⌘B) is read-only and routes via
-`FindBestShotsRouter.plan` (`Sources/TeststripApp/AppModel.swift:697-727`):
+`FindBestShotsRouter.plan` (`Sources/TeststripApp/AppModel.swift:697-725`):
 (a) potential picks exist → Potential Picks queue; (b) none but
 committed picks exist → Picks queue; (c) nothing ranks and nothing left to
 evaluate → status message "These look too distinct to auto-rank — rate a few

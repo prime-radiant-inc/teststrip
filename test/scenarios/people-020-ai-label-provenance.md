@@ -15,7 +15,7 @@ mock.
 
 Source (current working tree, `feat/unified-shell`):
 - **Promotion** (auto-apply): `AppModel.promoteMetadataLabels(for:)`
-  (`Sources/TeststripApp/AppModel.swift:8294-8321`, floor
+  (`Sources/TeststripApp/AppModel.swift:8678-8705`, floor
   `objectKeywordConfidenceFloor = 0.5` at `:8285` — an `.object` evaluation
   signal at/above this confidence adds each label to `keywords` +
   `aiUnconfirmedKeywords`) and `AppModel.promoteFaceMatches(for:)` (`:3772-3795`,
@@ -40,12 +40,12 @@ Source (current working tree, `feat/unified-shell`):
   are dropped before anything reaches disk, regardless of which write path
   fires.
 - **Autopilot fold-in**: `AppModel.runAutopilotOnCurrentScope()`
-  (`AppModel.swift:9759-9770`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
+  (`AppModel.swift:10146-10158`, on-demand — Culling ▸ **Run Autopilot**, item 39 of
   `app-012-autopilot-evaluate-commands.md`) → `runAutopilot(scope:)` →
-  `applyTentativeAutopilotProposals(_:)` (`AppModel.swift:9699-9746`) writes each
+  `applyTentativeAutopilotProposals(_:)` (`AppModel.swift:10086-10133`) writes each
   `.pick`/`.reject` proposal into `metadata.flag` **immediately**, marked
   `aiUnconfirmedFields = [.flag]`, unless the asset already carries a
-  **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:9715-9718`) — this is the
+  **confirmed** flag (`hasConfirmedFlag` guard, `AppModel.swift:10102-10105`) — this is the
   headline behavior change from the pre-provenance model: the tentative
   write itself (the "ghost," `AutopilotGhost.kind(in:)`) lands in
   `metadata_json` immediately; SP-D0 later dropped the `autopilot_proposals`
@@ -53,8 +53,8 @@ Source (current working tree, `feat/unified-shell`):
   the ghost sitting in the asset's own metadata is the whole record, and the
   catalog write never waited for a Commit in the first place.
 - **Tentative-flag exclusion (safety-critical)**: `rejectRelocationScope`
-  (`AppModel.swift:12078-12121`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
-  (`AppModel.swift:12100-12102`) before it can ever reach a `RejectRelocationPlan` — a tentative
+  (`AppModel.swift:12561-12605`) skips any candidate whose `aiUnconfirmedFields.contains(.flag)`
+  (`AppModel.swift:12583-12585`) before it can ever reach a `RejectRelocationPlan` — a tentative
   AI reject can never be included in Move Rejects (folder) or Move Rejects to
   Trash, which share this one scope function. `RejectRelocationPreflight.moveCount`
   (`Sources/TeststripApp/AppModel.swift:1444`) and `confirmationText`
@@ -162,7 +162,7 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    `--role AXMenuItem` usage for "Scan for Faces"). This calls
    `requestVisibleAssetEvaluations(providers: defaultEvaluationProviderNames)`
    = `["local-image-metrics", "apple-vision", "core-image-faces"]`
-   (`AppModel.swift:2607`) — **apple-vision is in this list**, so this
+   (`AppModel.swift:2683`) — **apple-vision is in this list**, so this
    one pass also produces `face_observations` (the same code path
    `People ▸ Scan for Faces` uses, per `people-009-scan.md`) and gives
    autopilot richer signals than a face-only scan would. Keep the app warm

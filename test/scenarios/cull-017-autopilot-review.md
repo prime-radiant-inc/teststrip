@@ -130,15 +130,15 @@ duplicate.)
    ghosts themselves) untouched, so the sidebar's "AI Suggestions" row
    (`LibrarySource.autopilotSuggestions`, `LibrarySource.swift:48,89`) stays
    present and clickable — pressing it drives `selectSidebarRow(_:)`
-   (`AppModel.swift:4698-4708`) → `selectSource(_:)` (`AppModel.swift:4761-4764`) →
+   (`AppModel.swift:4867-4877`) → `selectSource(_:)` (`AppModel.swift:4930-4933`) →
    `applySource`'s `.autopilotSuggestions` case →
-   `applyAutopilotSuggestionsScope()` (`AppModel.swift:9826-9851`), which sets
+   `applyAutopilotSuggestionsScope()` (`AppModel.swift:10213-10238`), which sets
    `isAutopilotReviewActive = true` and narrows the grid to the ghost-
    carrying assets without touching the lens — a banner Dismiss is **not**
    a one-way door to Review; it is simply one of three independent entry
    points into that review state (the standalone banner's own "Review"
    button and `cullCompletionStage`'s folded banner both instead call
-   `beginAutopilotReview()`, `AppModel.swift:9817-9820`, which additionally
+   `beginAutopilotReview()`, `AppModel.swift:10204-10207`, which additionally
    switches to the Grid lens; neither is re-driven here). ⌘1 for Cull,
    then click the sidebar row: `script/ax_drive.sh press --contains
    "AI Suggestions"`; then `script/ax_drive.sh wait --role
@@ -244,12 +244,12 @@ Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
 - **Resolved (step 6): Review stays reachable after the banner's Dismiss.**
   There are three independent paths into review state — the standalone
   banner's Review button and `cullCompletionStage`'s folded banner both
-  call `beginAutopilotReview()` (`AppModel.swift:9817-9820`, which additionally
+  call `beginAutopilotReview()` (`AppModel.swift:10204-10207`, which additionally
   switches to the Grid lens); the sidebar's "AI Suggestions" row
   (`LibrarySource.autopilotSuggestions`, `LibrarySource.swift:48,89`) is
   the third, reaching the same review state via `selectSidebarRow(_:)` →
   `selectSource(_:)` → `applyAutopilotSuggestionsScope()`
-  (`AppModel.swift:4698-4708,4761-4764,9826-9851`) without touching the lens. Dismissing
+  (`AppModel.swift:4867-4877,4930-4933,10213-10238`) without touching the lens. Dismissing
   the banner only clears `model.autopilotRunSummary`
   (`dismissAutopilotRunSummary`) — it never touches `autopilotGhostAssetIDs`
   or any ghost, so the sidebar row (present whenever `autopilotGhostCount >
@@ -328,11 +328,11 @@ UI has not rendered since before this push's base commit — the row is titled
 **"AI Suggestions"** (`LibrarySource.autopilotSuggestions`,
 `LibrarySource.swift:48,89`). Rewrote Step 6 and the Sharp-edges note to cite
 the real chain: the sidebar row presses through `selectSidebarRow(_:)`
-(`AppModel.swift:4701`) → `selectSource(_:)` (`AppModel.swift:4764`) →
+(`AppModel.swift:4867`) → `selectSource(_:)` (`AppModel.swift:4930`) →
 `applySource`'s `.autopilotSuggestions` case →
-`applyAutopilotSuggestionsScope()` (`AppModel.swift:9782`), a second,
+`applyAutopilotSuggestionsScope()` (`AppModel.swift:10213`), a second,
 independent path into review state alongside `beginAutopilotReview()`
-(`AppModel.swift:9773`, the banner Review button's and
+(`AppModel.swift:10204`, the banner Review button's and
 `cullCompletionStage`'s path) — the sidebar route sets
 `isAutopilotReviewActive` without touching the lens, per
 `applyAutopilotSuggestionsScope()`'s own doc comment. `--contains "AI

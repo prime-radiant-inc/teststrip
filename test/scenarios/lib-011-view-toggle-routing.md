@@ -15,7 +15,7 @@ now transient Cull-lens sub-modes reached by g/c/b in-view key monitors, not
 switcher tags — `.libraryLoupe` is the Loupe lens's own route, distinct from
 `.loupe` (the Cull lens's loupe). Picking a lens calls
 `AppModel.selectLens(_:)`, which only ever writes `selectedView` — it never
-touches `selectedSource` (`AppModel.swift:4769-4772`).
+touches `selectedSource` (`AppModel.swift:4938-4941`).
 
 The `body` switch's priority order is unchanged from the prior revision of
 this card: `.people` first, then `.timeline`, then `.map`, then (if

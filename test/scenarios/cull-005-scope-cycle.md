@@ -6,19 +6,19 @@ Rejects, All — narrowing what I see each time, and when the currently-
 focused photo falls outside the new scope, land me on the nearest in-scope
 photo rather than a blank loupe. Covers:
 - Cycle order and matching predicate: `CullScope`
-  (`Sources/TeststripApp/AppModel.swift:270-299`) — `next()` walks
+  (`Sources/TeststripApp/AppModel.swift:247-287`) — `next()` walks
   `CaseIterable`'s declared order `unrated, picks, rejects, all` and wraps
-  (`:276-280`); `matches(_:)` (`:282-289`) — `.unrated` matches `flag ==
+  (`:253-257`); `matches(_:)` (`:270-277`) — `.unrated` matches `flag ==
   nil`, `.picks` matches `flag == .pick`, `.rejects` matches `flag ==
   .reject`, `.all` matches everything unconditionally.
 - The `S` keystroke: `CullingShortcut.init(key:)` maps `"s"` to `.cycleScope`
-  (`:257`), dispatched to `cycleCullScope()` (`:5449-5450`, `:5460-5467`),
+  (`:232`), dispatched to `cycleCullScope()` (`:7146-7147`, `:7157-7164`),
   which advances `cullScope` and immediately reselects via
   `CullScopeOrdering.selectionAfterScopeChange`.
 - Nearest-match reselection: `CullScopeOrdering.selectionAfterScopeChange`
-  (`:315-342`) — if the current selection still matches the new scope, keep
+  (`:303-330`) — if the current selection still matches the new scope, keep
   it; otherwise walk forward and backward from its old index in lockstep
-  (`forward`/`backward` incrementing together, `:329-339`) and land on
+  (`forward`/`backward` incrementing together, `:317-327`) and land on
   whichever in-scope asset is found first; if none exists in either
   direction, return `nil` (empty scope, no crash).
 
@@ -35,7 +35,7 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘1 for Cull, landing in
    the loupe. Confirm the scope chip initially reads "All" — `AppModel`'s
    `cullScope` property defaults to `.all`, not the enum's first
-   `CaseIterable` case (`AppModel.swift:1846`: `public private(set) var
+   `CaseIterable` case (`AppModel.swift:2109`: `public private(set) var
    cullScope: CullScope = .all`). So the very first `S` press cycles
    `All -> Unrated`, not `Unrated -> Picks`.
 2. Ground truth per scope, from `--smoke`'s baseline (11/24 flagged, split
@@ -94,7 +94,7 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
   matches) — selection is provably unchanged from step 6's landing asset.
   **Fails if** selection moved anyway (a spurious reselect on `.all` would
   indicate `selectionAfterScopeChange` isn't short-circuiting on the
-  already-matches branch, `AppModel.swift:320-324`).
+  already-matches branch, `AppModel.swift:308-312`).
 - Step 8: cycling a full loop back to the same scope reproduces the same
   visible set (assuming no writes happened in between, which this card
   doesn't perform). **Fails if** the counts drift between the two visits to
@@ -113,7 +113,7 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
 - The reselection assertions in steps 4-6 only assert "landed on some
   correctly-scoped asset," not a specific expected id —
   `selectionAfterScopeChange`'s forward/backward lockstep walk
-  (`AppModel.swift:329-339`) means the nearest match could be either side of
+  (`AppModel.swift:317-327`) means the nearest match could be either side of
   the old index. If that proves too weak in practice (e.g. it'd pass even
   for a wrong-but-plausible reselect), tighten it by computing the expected
   id directly from the `assets` order via a parallel SQL `ORDER BY rowid`

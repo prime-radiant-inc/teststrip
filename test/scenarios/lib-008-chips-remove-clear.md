@@ -12,7 +12,7 @@ carries a "Not a filter — matching file names and photo text" subtitle
 (`ActiveLibraryFilterRow.subtitle`, `AppModel.swift:998-1002`), rendered by
 `filterChip(title:subtitle:remove:)` (`LibraryGridView.swift:1201-1235`): the
 backing `isPlainSearchFallback` is set `true` exactly once, in
-`AppModel.swift:3190-3195`, for the row titled
+`AppModel.swift:3275-3280`, for the row titled
 `"Search: \(residualSearch)"` — i.e. whatever free text is left over after
 `LibrarySearchIntent.parse` strips out every structured token it recognizes.
 Removing a structured chip calls `LibraryQueryToken.remove(token, from:
@@ -20,7 +20,7 @@ model)`, which (per `LibraryQueryTokenField.swift`) clears exactly that
 token's one backing property and leaves siblings untouched. The "Clear
 filters" (xmark-circle) button only renders when `hasActiveFilters` is true
 (`LibraryGridView.swift:901-909`, backed by `model.hasActiveLibraryFilters` at
-`AppModel.swift:3161-3163`, itself `selectedAssetSetID != nil ||
+`AppModel.swift:3245-3247`, itself `selectedAssetSetID != nil ||
 currentLibraryQuery() != nil`).
 
 ## Pre-state
@@ -88,13 +88,13 @@ Confirmed against a seeded `--smoke` catalog 2026-07-10: `TOTAL=24`,
 ```
 
 ## Sharp edges
-`hasActiveLibraryFilters` (`AppModel.swift:3161-3163`) is defined as
+`hasActiveLibraryFilters` (`AppModel.swift:3245-3247`) is defined as
 `selectedAssetSetID != nil || currentLibraryQuery() != nil` — it does
 **not** directly reference any of the 13 structured filter properties
 (`minimumRatingFilter`, `flagFilter`, etc.) or `librarySearchText`. Whether
 "Clear filters" appears is therefore contingent on `currentLibraryQuery()`
 returning non-nil whenever any structured filter or search text is set — a
-separate function (`AppModel.swift:11696-11773`) not read in full for this card.
+separate function (`AppModel.swift:12148-12225`) not read in full for this card.
 If that function's notion of "active" ever drifts from what
 `activeFilterChips` actually renders (e.g. a filter chip shows but
 `currentLibraryQuery()` returns nil for it), the Clear button could
@@ -106,9 +106,9 @@ directly.
 ## Run status
 NOT RUN — GUI/AX driving was not attempted this session. Chip/dedup/removal
 logic confirmed by reading `Sources/TeststripApp/LibraryGridView.swift:1173-1235`
-and `AppModel.swift:2732-2845` (`hasActiveLibraryFilters`,
+and `AppModel.swift:3245-3364` (`hasActiveLibraryFilters`,
 `activeLibraryFilterRows`, the `isPlainSearchFallback: true` site at line
-2758) in full, plus the `LibraryQueryTokenField.swift` summary of
+3277) in full, plus the `LibraryQueryTokenField.swift` summary of
 `legacyRows(_:notCoveredBy:)` and `remove(_:from:)`. SQL dry-run headlessly
 against a fresh `--smoke` catalog on 2026-07-10 (`TOTAL=24`,
 `RATING3PLUS=12`, `PICKS=6`); the AND-intersection count in step 5 was not
@@ -119,7 +119,7 @@ dry-run this session and should be computed fresh at run time. Schema per
 Source section cited chip-identity as "title AND `SidebarRowTarget`" —
 `SidebarRowTarget` no longer exists anywhere in `Sources/` (`grep -rn
 "SidebarRowTarget" Sources/` → nothing). `ActiveLibraryFilterRow.target` is
-`LibrarySource?` (`AppModel.swift:989-1004`), and `legacyRows(_:notCoveredBy:)`
+`LibrarySource?` (`AppModel.swift:989-1009`), and `legacyRows(_:notCoveredBy:)`
 (`LibraryQueryTokenField.swift:398-409`) dedupes against it directly —
 fixed the citation. No step or assertion in this card depended on the old
 name. Supersedes prior status: no substantive change to any assertion — the

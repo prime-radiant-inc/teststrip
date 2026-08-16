@@ -6,8 +6,8 @@ observations for a re-processed asset rather than appending duplicates
 provider/model/version/settings_hash, `Sources/TeststripCore/Catalog/CatalogRepository.swift:1354-1373`),
 and `FaceSuggestionBuilder` batches up to 2000 unassigned observations into
 face-group suggestions
-(`AppModel.maximumFaceSuggestionInputCount`, `Sources/TeststripApp/AppModel.swift:3608`,
-consumed at `AppModel.refreshPeopleFaceSuggestions`, `AppModel.swift:3643-3647`).
+(`AppModel.maximumFaceSuggestionInputCount`, `Sources/TeststripApp/AppModel.swift:3692`,
+consumed at `AppModel.refreshPeopleFaceSuggestions`, `AppModel.swift:3730-3743`).
 
 ## Pre-state
 ```bash
@@ -53,7 +53,7 @@ suggestions, by design.
    call site: `AppModel.refreshPeopleFaceSuggestions` passes `limit:
    Self.maximumFaceSuggestionInputCount` (2000) to
    `catalog.repository.unassignedFaceObservations(provenance:limit:)`
-   (`AppModel.swift:3643-3647`; repository query at
+   (`AppModel.swift:3730-3743`; repository query at
    `CatalogRepository.swift:1461-1496`, with SQL/LIMIT at `:1514-1548`). Confirm the SQL actually applies a LIMIT:
    ```bash
    sqlite3 "$DB" "EXPLAIN QUERY PLAN SELECT * FROM face_observations LIMIT 2000;"

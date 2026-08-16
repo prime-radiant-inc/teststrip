@@ -57,8 +57,8 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
    `metadata_json.caption == "A quiet dock at dusk"`.
 9. Clear the Caption field entirely (select-all, delete) and press Return.
    Assert `metadata_json` has **no** `"caption"` key (nil, not `""`) —
-   `Self.portableText(from:)` (`AppModel.swift:8492-8495`,
-   `setCaptionForSelectedAsset`, `:7941-7948`) is expected to map empty string to nil;
+   `Self.portableText(from:)` (`AppModel.swift:8876-8879`,
+   `setCaptionForSelectedAsset`, `:8325-8332`) is expected to map empty string to nil;
    confirm the exact nil-vs-empty-string serialization in the JSON dump.
 10. Repeat for Creator and Copyright: type a value, submit, confirm it's
     stored; clear and submit, confirm the key is absent/null rather than

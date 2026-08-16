@@ -8,13 +8,13 @@ I want to keep working. Covers inventory items 46-51:
 `Sources/TeststripApp/CullCompletionPresentation.swift:88-103`, which
 delegates the action-set build to `.summary` at `:32-76` — the core four
 always, `.savePicksAsSet` appended at `:65-67` only when `picks > 0`),
-`applyCullCompletionReviewPicks` (47 — `AppModel.swift:6841-6848`), the
+`applyCullCompletionReviewPicks` (47 — `AppModel.swift:7225-7232`), the
 `isCullCompletionDismissed` `onChange` guards on
 scope/asset (48 — `LibraryGridView.swift:3837-3838`), the folded
 autopilot + `CullingSessionCompletionSummary` banners inside the stage (49 —
 `LibraryGridView.swift:3887-3899`), `openCullingSessionPicks` (50 —
-`AppModel.swift:5695-5709`), and `cullRemainingSinglesFromCullingCompletion`
-(51 — `AppModel.swift:5766-5791`). Also verified: "Move Rejects…" physically
+`AppModel.swift:6079-6093`), and `cullRemainingSinglesFromCullingCompletion`
+(51 — `AppModel.swift:6150-6175`). Also verified: "Move Rejects…" physically
 relocates rejected originals on disk, not just in the catalog.
 
 ## Pre-state
@@ -119,7 +119,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - **Items 49-51 (folded autopilot/session banners, "View Picks", "Cull
   Remaining Singles") are NOT exercised by this card.** They render only when
   `model.cullingSessionCompletion` (a `CullingSessionCompletionSummary`) is
-  non-nil, which is set at `AppModel.swift:12859-12866` — that path is reached from
+  non-nil, which is set at `AppModel.swift:13342-13349` — that path is reached from
   a stack-cull work-session flow, not from plain bulk-deciding singles via
   P/X in a fresh `--smoke` launch (confirmed by reading the surrounding code:
   it's set when a *work session* of kind stack-cull completes, not on the

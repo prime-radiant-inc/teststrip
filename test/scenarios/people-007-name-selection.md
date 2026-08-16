@@ -7,7 +7,7 @@ writes `people`/`person_assets`. The button is disabled until
 `canConfirmSelectedPerson` is true; its candidate asset IDs are the batch
 selection if one exists, else the single `selectedAssetID`
 (`AppModel.selectedPeopleCandidateAssetIDs`,
-`Sources/TeststripApp/AppModel.swift:3511-3517`). Also covers "Dismiss face
+`Sources/TeststripApp/AppModel.swift:3595-3601`). Also covers "Dismiss face
 review," which removes assets from the review queues
 (`dismissed_face_assets`) without ever touching `people`/`person_assets`.
 
@@ -69,7 +69,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    with a distinct name ("Test Person Two"); assert the resulting
    `person_assets` row count equals the batch size, not 1 — proving
    `selectedPeopleCandidateAssetIDs` preferred the batch over any stale single
-   selection (`AppModel.swift:3511-3516`: `selectedBatchAssetIDsInCatalogOrder`
+   selection (`AppModel.swift:3595-3600`: `selectedBatchAssetIDsInCatalogOrder`
    wins when non-empty).
 10. **Dismiss face review, no write.** Select a photo that still carries an
     unnamed/undismissed face signal (not one just confirmed above). Press
@@ -133,7 +133,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Confirm-before-write
-wiring confirmed by static read of `Sources/TeststripApp/AppModel.swift:3501-3568`
+wiring confirmed by static read of `Sources/TeststripApp/AppModel.swift:3580-3648`
 (`canConfirmSelectedPerson`, `selectedPeopleCandidateAssetIDs`,
 `confirmSelectedAssetsAsPerson`) and `PeopleView.swift:261-291` (sheet).
 Needs a human-present re-run. All SQL in this card was run headlessly against

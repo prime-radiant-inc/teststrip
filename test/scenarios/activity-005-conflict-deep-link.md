@@ -1,6 +1,6 @@
 # activity-005-conflict-deep-link: clicking a conflict row deep-links into the Grid lens; ⌘⇧0 only toggles the popover
 
-**What this covers**: `AppModel.revealConflicts(_:)` (`AppModel.swift:2961-2982`),
+**What this covers**: `AppModel.revealConflicts(_:)` (`AppModel.swift:3037-3058`),
 invoked when a conflict row in the Activity popover is clicked
 (`ActivityCenterView.selectConflict`, `ActivityCenterView.swift:262-267`) —
 the exact sequence of state mutations it performs to land the user on the
@@ -25,35 +25,35 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    next sync scan (see Sharp edges — no UI trigger; may need relaunch).
    Note `$SRC`, the conflicted asset's `original_path` / id.
 3. Open the Activity popover, click the conflict row. Per
-   `revealConflicts` (`AppModel.swift:2961-2982`), assert **all** of the
+   `revealConflicts` (`AppModel.swift:3037-3058`), assert **all** of the
    following in order:
    - `selectedView == .grid` and `selectedSource.kind == .metadataSyncConflicts`
      — the app switched to the Grid lens and to the Metadata Sync Conflicts
      source regardless of which lens/source was active before the click. (A
      deep link with an explicit destination, not a plain source selection —
-     the source comment at `AppModel.swift:2963-2965` states this lands in
+     the source comment at `AppModel.swift:3039-3041` states this lands in
      Grid "regardless of the current lens.")
    - `selectedAssetID == $SRC`'s asset id.
    - Any active Library query/filter text field is empty
-     (`clearLibraryQueryFilters()`, `AppModel.swift:11775-11798`, zeroes
+     (`clearLibraryQueryFilters()`, `AppModel.swift:12227-12250`, zeroes
      every filter: search text, keyword/folder/camera/lens text, rating,
      flag, color label, ISO, date range, geo bounds, availability, saved
      evaluation-kind filters, and `metadataSyncConflictFilter` itself before
      re-setting it in the next line below).
    - `metadataSyncConflictFilter == true` — the grid is scoped to
-     conflicted assets only (`AppModel.swift:2971`, applied *after*
+     conflicted assets only (`AppModel.swift:3047`, applied *after*
      `clearLibraryQueryFilters()` clears it, so the net effect is "only this
      filter active").
    - The grid's batch selection contains exactly `$SRC` (and every id passed
      to `revealConflicts`, which is `[conflict.assetID]` — a single id from
      the popover row click): `clearBatchSelection()` then
      `setBatchSelection(assetID, isSelected: true)` for each
-     (`AppModel.swift:2973-2976`). With a single conflicted asset this reads
+     (`AppModel.swift:3049-3052`). With a single conflicted asset this reads
      as an ordinary single selection, not multi-select "batch mode" — the
      card should not assert a batch-mode UI affordance appears, since one
      selected id doesn't visually differ from a normal single selection.
    - `isInspectorVisible == true` and the inspector is scrolled to the Info
-     section (`scrollInspector(to: .info)`, `AppModel.swift:2980-2981`) — the
+     section (`scrollInspector(to: .info)`, `AppModel.swift:3056-3057`) — the
      stacked-sections inspector (see `inspect-001-toggle-tabs.md`) renders
      Info/Describe/AI/People all at once now, so this is a scroll target, not
      a tab switch; the Info section shows `$SRC`'s metadata/conflict detail.
@@ -108,12 +108,12 @@ Quit the launched instance.
   id. If a future UI adds multi-select-conflict-rows, this card's step 3
   batch-selection assertion should be extended to cover N > 1.
 - The function name is `revealConflicts`, confirmed exact
-  (`AppModel.swift:2961`) — the task brief's "or equivalent" hedge wasn't
+  (`AppModel.swift:3037`) — the task brief's "or equivalent" hedge wasn't
   needed; this is the real name.
 
 ## Run status
 NOT RUN — no host GUI available in this session. All wiring in this card is
-confirmed by direct source citation (`Sources/TeststripApp/AppModel.swift:2963-2980`,
+confirmed by direct source citation (`Sources/TeststripApp/AppModel.swift:3039-3056`,
 `Sources/TeststripApp/ActivityCenterView.swift:262-267`,
 `Sources/TeststripApp/main.swift:572-584`), not by driving the UI or
 querying a live catalog beyond the shared XMP-conflict-seeding technique
@@ -125,7 +125,7 @@ selection/inspector state matches the model-level assertions above.
 assertion was built on the deleted `Workspace` enum and `selectedWorkspace`
 property — `revealConflicts` no longer switches a workspace at all; it sets
 `selectedView = .grid` and `selectedSource = .metadataSyncConflicts`
-(`AppModel.swift:2961-2982`, re-read and re-cited line-for-line above,
+(`AppModel.swift:3037-3058`, re-read and re-cited line-for-line above,
 correcting drift from the old `:2531-2547` range) regardless of which lens
 was active. The stale ⌘3 preamble (People was ⌘3 under the old three-case
 `Workspace`; People is ⌘6 under `LibraryLens`) is fixed. `inspectorTab ==

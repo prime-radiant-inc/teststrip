@@ -39,7 +39,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 5. `script/ax_drive.sh press --role AXButton --help "Review faces"` (or the
    card's button, matched by its `suggestedActionTitle` help text) — assert
    the app navigates via `model.selectSource(_:)` (`PeopleView.swift:560-566`,
-   `AppModel.swift:4761-4764`) to the card's `target: LibrarySource?`
+   `AppModel.swift:4930-4933`) to the card's `target: LibrarySource?`
    (`PeopleView.swift:900`): "Unnamed faces" routes to
    `.smartCollection(.facesFound)` when `faceSignalKind == .faceCount`, else
    `.evaluationKind(faceSignalKind, titled:)`; "Face quality checks" routes
@@ -106,7 +106,7 @@ switcher's "People" segment). Also, `selectSidebarTarget` no longer exists
 anywhere in `Sources/` (`grep -rn "selectSidebarTarget" Sources/` → nothing)
 — the review cards' tap handler is `selectPeopleReviewCard`
 (`PeopleView.swift:560-566`), which calls `model.selectSource(_:)`
-(`AppModel.swift:4744`) on the card's `target: LibrarySource?`
+(`AppModel.swift:4930`) on the card's `target: LibrarySource?`
 (`PeopleView.swift:900`), itself built from `.smartCollection(.facesFound)`/
 `.evaluationKind(_:titled:)` (`PeopleView.swift:762-786`), not a
 `.reviewQueue`/`.evaluationKind` sidebar-target enum. Rewrote Step 5

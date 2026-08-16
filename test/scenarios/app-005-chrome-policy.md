@@ -74,7 +74,7 @@ user on a bare "0 keepers".
    ⌘I **does** open the inspector in place, without leaving Cull —
    `showsInspector` is unconditionally `true` and `AppModel.toggleInspector()`
    is a bare `isInspectorVisible.toggle()` with no lens-switching side
-   effect (`AppModel.swift:4795-4799`). Press ⌘6 (People): assert the browse
+   effect (`AppModel.swift:4964-4968`). Press ⌘6 (People): assert the browse
    chrome (search field, Import ▾, Export, footer) is absent
    (`showsBrowseChrome(.people) == false`) and ⌘I opens the inspector here
    too.
@@ -135,7 +135,7 @@ Deleted the false `:59-60` claim that "⌘I does not open an inspector column
 inside Cull — it switches to Library first": read directly,
 `LensChromePolicy.showsInspector` (`LibraryGridView.swift:8289-8293`)
 returns `true` unconditionally for every `LibraryViewMode`, and
-`AppModel.toggleInspector()` (`AppModel.swift:4766-4768`) is
+`AppModel.toggleInspector()` (`AppModel.swift:4966-4968`) is
 `isInspectorVisible.toggle()` with no branch on lens at all — there is no
 code path left (if there ever was one on this branch) that redirects to
 Library on ⌘I. Replaced it with the true contract: ⌘I toggles the inspector

@@ -112,7 +112,7 @@ Source (re-verified against the working tree on this branch):
   one-thumb rail entry (dogfood fix), just none of that multi-frame chrome.
   `--smoke`'s 900-second seed spacing (`SmokeCatalogSeeder.swift:136`) is
   outside the default 2-second `model.burstIntervalSeconds` (a persisted
-  Settings preference, `AppModel.swift:2447`), so `--smoke` produces **no
+  Settings preference, `AppModel.swift:2523`), so `--smoke` produces **no
   auto-stacks and no persisted `work-stack-` sets** — this card uses the
   `burst` seed variant (`TeststripBench seed-burst-catalog`), whose capture
   times are 1s apart within each group, guaranteeing 4 multi-frame
@@ -162,7 +162,7 @@ script/vm_scenario_run.sh ax wait-vended
    one — i.e. it applied `keepSelectedAndRejectAlternates` semantics on the
    currently-focused asset. **A silent no-op is a hard failure** — the
    rail renders `model.selectedCullingStackScope`'s own resolved stack
-   (`AppModel.swift:7121-7143`), the same membership
+   (`AppModel.swift:7505-7527`), the same membership
    `promoteCurrentFrameAndRejectSiblings` writes, so a visible Keep button
    must always write. Also assert the frames written are exactly the
    rail's displayed membership — the button title's "cut M" count must

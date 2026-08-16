@@ -10,7 +10,7 @@ switch) and item 30 (grid Return/Space → loupe, G/Esc → back to grid),
 
 Source — **the G-key ambiguity is real but is two separate, non-conflicting
 key monitors, not one context-sensitive branch**:
-- `Sources/TeststripApp/AppModel.swift:6615-6621, 6703-6714, 4790-4792` — while the **culling
+- `Sources/TeststripApp/AppModel.swift:6999-7005, 7089-7098, 4959-4962` — while the **culling
   shortcut monitor** is active (loupe/culling context; `CullingShortcut.showCullGrid`,
   keyed `"g"` at `AppModel.swift:233`), pressing `g` routes through
   `selectCullSubMode(.cullGrid)` — loupe → grid. `selectCullSubMode`
@@ -25,9 +25,9 @@ key monitors, not one context-sensitive branch**:
   `.switchCullSubView(.loupe)` in this branch (`:46-47`), so **G and Esc are
   synonyms while in the grid subview**. `c`/`b` in this same branch jump
   straight to `.compare`/`.abCompare` (`:51-52`), skipping the loupe.
-  `AppModel.applyGridKeyCommand` (`AppModel.swift:6309-6352`) rejects these
-  switches when Cull is unavailable (`:6325-6327`) and otherwise dispatches
-  them through `selectCullSubMode` (`:6350-6351`).
+  `AppModel.applyGridKeyCommand` (`AppModel.swift:6693-6737`) rejects these
+  switches when Cull is unavailable (`:6709-6712`) and otherwise dispatches
+  them through `selectCullSubMode` (`:6734-6735`).
 - **Resolution — confirmed by the explicit gate, not just by inference**:
   `CullingKeyCaptureGate.isActive(lens:selectedView:)`
   (`Sources/TeststripApp/CullingKeyCaptureView.swift:12-14`) returns
@@ -58,10 +58,10 @@ key monitors, not one context-sensitive branch**:
   subtle enough to spot-check live.
 - `Sources/TeststripApp/GridKeyCaptureView.swift:74-77` — plain grid mode
   (not `.cullGrid`): Return/Space → `.openLoupe`; Escape → `.returnToGrid`.
-- `Sources/TeststripApp/AppModel.swift:6309-6353` (`applyGridKeyCommand`) —
+- `Sources/TeststripApp/AppModel.swift:6693-6737` (`applyGridKeyCommand`) —
   `.openLoupe` in `.cullGrid` selects the asset and sets `selectedView =
-  .loupe` (`:6340-6347`); in plain `.grid` it calls
-  `openAssetInLibraryLoupe` instead (`:6348-6353`, the separate Loupe lens —
+  .loupe` (`:6724-6728`); in plain `.grid` it calls
+  `openAssetInLibraryLoupe` instead (`:6729-6731`, the separate Loupe lens —
   out of scope here, see `library-loupe-no-cull-chrome.md`).
 
 ## Pre-state

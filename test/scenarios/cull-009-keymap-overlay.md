@@ -22,7 +22,7 @@ keymap, so I don't have to memorize it from documentation. Covers item 26
 (`?` toggles the overlay).
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:6700-6702` — `.showKeyMap` toggles
+- `Sources/TeststripApp/AppModel.swift:7084-7086` — `.showKeyMap` toggles
   `isKeyMapOverlayVisible` (`?`, keyed via the exact-case `.character("?")`
   match at `:203-204` in the static key-based mapping, and via the shifted
   `"/"` branch at `CullingKeyCaptureView.swift:145-147` in the live event
@@ -50,7 +50,7 @@ Source:
   `CullingCommandMenuPresentation.sections`, the single source of truth for
   what the overlay lists. Real section titles: `"Navigation"`, `"Ratings"`,
   `"Color Labels"`, `"Flags"`, `"Loupe"`, `"Filter"`, `"Compare"`. The
-  **Navigation** section (`:505-510`) now lists exactly: `"Previous Frame in
+  **Navigation** section (`:507-511`) now lists exactly: `"Previous Frame in
   Stack"` (key `↑`), `"Next Frame in Stack"` (key `↓`), `"Previous Stack"`
   (key `←`), `"Next Stack"` (key `→`), `"Promote Frame & Reject Siblings"`
   (key `Return`) — five plain items, none flagged `isMonitorOnly` (the field
@@ -112,11 +112,11 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    visible, `applyCullingShortcut` intercepts `.previousCandidateInStack`/
    `.nextCandidateInStack` (↑/↓) and routes them to `scrollKeyMapOverlay`
    instead of moving the underlying selection
-   (`Sources/TeststripApp/AppModel.swift:6633-6648`; PgUp/PgDn
+   (`Sources/TeststripApp/AppModel.swift:7017-7033`; PgUp/PgDn
    (`.keyMapPageUp`/`.keyMapPageDown`) scroll the same way while the overlay
    is visible, by 3 sections per press instead of 1 —
-   `KeyMapOverlayScrolling.nextIndex`, `:566-580` — but are a genuine no-op
-   outside overlay mode, `:6719-6720`; this step only drives ↑/↓, per the
+   `KeyMapOverlayScrolling.nextIndex`, `:568-582` — but are a genuine no-op
+   outside overlay mode, `:7103-7104`; this step only drives ↑/↓, per the
    task). Record the current selected asset id, then press `Down`
    repeatedly (the section list has 7 sections, so up to 6 presses)
    until the last section's heading is visible:

@@ -4,7 +4,7 @@
 plus the sheet flow: Metadata ▸ Batch Metadata… (⌥⌘M) bumps
 `batchMetadataRequestToken` (`MetadataActionCommands`,
 `Sources/TeststripApp/main.swift:335-354`;
-`AppModel.requestBatchMetadataSheet`, `AppModel.swift:2454-2460`), disabled
+`AppModel.requestBatchMetadataSheet`, `AppModel.swift:2530-2536`), disabled
 while importing or with an empty catalog; the sheet's segmented scope picker
 (selected / visible / current scope via `BatchScopeMode`), the all-catalog
 confirmation gate when the scope is unfiltered, keyword suggestions, and the

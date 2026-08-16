@@ -98,7 +98,7 @@ over from any older card):
   (`:94-96`); there is no special-cased Option-arrow branch anywhere in this
   file anymore (the old monitor-only mechanism cited by prior cards is
   gone).
-- **Dispatch**: `applyCullingShortcut`, `AppModel.swift:6615-6722` (stale
+- **Dispatch**: `applyCullingShortcut`, `AppModel.swift:6999-7106` (stale
   line numbers from an earlier verification pass corrected 2026-07-28 —
   ~700-800 lines were added to this file above this point since; see Run
   status) — `.previousCandidateInStack`/`.nextCandidateInStack` call
@@ -134,7 +134,7 @@ over from any older card):
   assuming "first tied leader" always equals "stack's first frame."
 - **`?` overlay scroll**: while `isKeyMapOverlayVisible`,
   `.previousCandidateInStack`/`.nextCandidateInStack` (↑/↓) are intercepted
-  first and scroll the overlay instead (`AppModel.swift:6633-6648`,
+  first and scroll the overlay instead (`AppModel.swift:7108-7114`,
   `scrollKeyMapOverlay(.up)`/`.down`) — not exercised by this card (see
   `cull-009-keymap-overlay.md`), noted here only so a driver doesn't confuse
   ↑/↓'s dual role if the overlay happens to be open.
@@ -182,7 +182,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
 4. **Trigger evaluation** so the recommendation/badge legs mean something:
    Culling ▸ "Evaluate Visible" (⇧⌘E) evaluates every loaded asset with a
    cached preview (`requestVisibleAssetEvaluations`,
-   `AppModel.swift:9611-9624`) — wait for previews first if needed
+   `AppModel.swift:9998-10011`) — wait for previews first if needed
    (`worker-001-preview-lifecycle.md`'s pattern), then poll:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT count(DISTINCT asset_id) FROM evaluation_signals;"
@@ -226,7 +226,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
 8. **↓ at the last frame is a no-op**: repeat `Down` until on the stack's
    last frame, then press `Down` once more. Assert the selection does not
    move (`moveSelectionWithinCurrentCullingStack`'s target-index guard,
-   `AppModel.swift:7185-7187` — no wrap to frame 1, no crossing into the
+   `AppModel.swift:7570-7572` — no wrap to frame 1, no crossing into the
    next stack).
 9. **↑ mirrors ↓**: press `Up` from the last frame; assert it steps back one
    frame at a time, also stopping (no wrap) at frame 1.
@@ -250,7 +250,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
     its accessibility value and the main loupe stage now shows that same
     asset (filename/preview changes to match) — `model.select(_:)` only
     changes selection (`LibraryGridView.swift:4475`,
-    `AppModel.swift:4572-4576, 4622-4655`, corrected 2026-07-28); assert it did **not**
+    `AppModel.swift:4741-4745, 4791-4825`, corrected 2026-07-28); assert it did **not**
     write any *new* flag/rating/keyword/caption value (the clicked frame's
     decision overlay stays absent/undecided) — see step 13's caveat below
     for why "did a sidecar appear" is not, by itself, a usable proxy for
@@ -260,7 +260,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
     files appearing from pure arrow-key/click navigation with zero pick/
     reject/rating gestures — traced to source, not a guess): every
     `selectAssetID(_:)` call unconditionally enqueues a metadata-sync check
-    for the newly-selected asset (`AppModel.swift:4622-4655`, trigger at
+    for the newly-selected asset (`AppModel.swift:4791-4825`, trigger at
     `:4651-4653`), and `MetadataSyncPlanner.decision`
     (`Sources/TeststripCore/Metadata/MetadataSyncPlanner.swift:20-26`)
     writes an `.xmp` for any asset whose `confirmedProjection` already has a
@@ -403,7 +403,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
   back) — there is no AX-textual shortcut for this leg.
 - **Return's post-promote advance is unconditional, not gated by "Toggle
   Auto-Advance (a)".** `promoteCurrentFrameAndRejectSiblings` →
-  `applyCullingStackDecision` (`AppModel.swift:6557-6606`) always calls
+  `applyCullingStackDecision` (`AppModel.swift:6941-6990`) always calls
   `selectAssetID` on the next stop after committing (`:6593-6605`) — this is
   a separate code path from `applyCullingCommandAndAdvance` (which the `a`
   toggle actually governs, for plain P/X/rating commands). Confirmed live:
@@ -473,7 +473,7 @@ Per-step tally:
 - Step 13: **card bug found, now fixed** — the literal "0 `.xmp` files"
   assertion failed (4 appeared) purely from arrow-key/click navigation, with
   zero pick/reject/rating gestures. Root-caused to source (not guessed):
-  `AppModel.swift:4860`'s unconditional `enqueueMetadataSyncCheck` on every
+  `AppModel.swift:4821`'s unconditional `enqueueMetadataSyncCheck` on every
   selection, syncing `burst`'s seeded (no-`aiUnconfirmedFields`-marker)
   baseline metadata the first time each asset is viewed. The actual
   origin-tracking invariant held throughout (verified: every touched

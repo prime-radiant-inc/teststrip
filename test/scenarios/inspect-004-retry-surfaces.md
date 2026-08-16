@@ -80,7 +80,7 @@ CREATE TABLE evaluation_failures (
    (`InspectorProviderFailurePresentation.actionLabel`,
    `InspectorView.swift:110-112`).
 10. Click "Retry apple-vision" (`model.retrySelectedProviderFailure(provider:
-    "apple-vision")`, `AppModel.swift:9595-9600`, which calls
+    "apple-vision")`, `AppModel.swift:9982-9987`, which calls
     `requestEvaluation(assetID:provider:)` to re-enqueue the provider run).
 11. Assert on disk the `evaluation_failures` row for
     `('$ASSET_ID','apple-vision')` is gone (cleared on re-enqueue or on the
@@ -92,7 +92,7 @@ CREATE TABLE evaluation_failures (
 ## Expected
 - Step 4: preview-retry alert renders with the synthetic error text and an
   enabled Retry button (`canRetrySelectedPreviewGenerationFailures` true when
-  the original is available, `AppModel.swift:2853-2858`). **Fails if** the alert
+  the original is available, `AppModel.swift:2929-2935`). **Fails if** the alert
   doesn't render for a real queued-failure row, or Retry is disabled with no
   reason.
 - Step 6: the `preview_generation_queue` row is mutated/cleared by the click
@@ -149,9 +149,9 @@ statically: `Sources/TeststripApp/InspectorView.swift:794-831`
 `:786-831` (`providerFailureAlert`/`providerFailureStatus`, Retry
 `<provider>` → `model.retrySelectedProviderFailure`),
 `:70-88` (`InspectorProviderFailurePresentation`),
-`Sources/TeststripApp/AppModel.swift:9042-9050`
+`Sources/TeststripApp/AppModel.swift:9474-9483`
 (`retrySelectedPreviewGenerationFailures`, re-enqueues via `requestPreview`
- with `.front` placement), `:9550-9555` (`retrySelectedProviderFailure`,
+ with `.front` placement), `:9982-9987` (`retrySelectedProviderFailure`,
 re-enqueues via `requestEvaluation`), `Sources/TeststripCore/Catalog/CatalogRepository.swift:2270-2315`
 (`recordEvaluationFailure`, the failures table's insert/delete/query shape).
 Needs a human-present re-run. All SQL and schema in this card were run

@@ -71,7 +71,7 @@ No seeding needed beyond `--smoke`. Confirmed against a seeded catalog
 
 7. **⌘F focus (persona-3 item 2).** From the Cull lens, press ⌘F.
    Assert the app switches to the Grid lens (`AppModel
-   .requestFocusSearch` calls `selectLens(.grid)`, `AppModel.swift:2467-2472`,
+   .requestFocusSearch` calls `selectLens(.grid)`, `AppModel.swift:2543-2548`,
    only when the current lens doesn't already show the search field, before
    bumping `focusSearchRequestToken`) and the query text field gains keyboard
    focus (`ax_drive.sh find --role AXTextField --contains "Search photos"`
@@ -115,7 +115,7 @@ SQL in Pre-state was dry-run headlessly against a fresh `--smoke` catalog on
 described the deleted `Workspace` enum. Fixed the ⌘2 preamble to "Grid
 lens," and rewrote Step 7's mechanism citation: `requestFocusSearch()` no
 longer calls a deleted `selectWorkspace(.library)` — it calls
-`selectLens(.grid)` (`AppModel.swift:2467-2472`), only when the current lens
+`selectLens(.grid)` (`AppModel.swift:2543-2548`), only when the current lens
 doesn't already show the search field. Step 8's `CullingKeyCaptureGate`
 citation was reworded from "workspace `.cull`" to "lens `.cull`" (the
 predicate itself is unchanged, `lens == .cull && selectedView !=

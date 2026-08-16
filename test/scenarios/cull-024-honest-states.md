@@ -197,7 +197,7 @@ script/vm_scenario_run.sh ax wait-vended
 
 ## Steps
 1. `ax wait-vended`; ⌘1 for Cull. **Do not press `S`.** A fresh `burst`
-   launch's `cullScope` already defaults to `.all` (`AppModel.swift:2061`,
+   launch's `cullScope` already defaults to `.all` (`AppModel.swift:2109`,
    the same finding `cull-021` established and confirmed live again this
    run) — the "Cull filter" chip only renders when
    `CullHUDPresentation.showsScopeChip` is true (`scope != .all`,
@@ -210,7 +210,7 @@ script/vm_scenario_run.sh ax wait-vended
    "Cull filter: Unrated," per `CullScope`'s cycle order,
    `AppModel.swift:247-257`) — this card's prior wording had the cycle
    direction backwards. Harmless to this card's own assertions
-   (`requestVisibleAssetEvaluations`, `AppModel.swift:9611-9624`, iterates
+   (`requestVisibleAssetEvaluations`, `AppModel.swift:9998-10011`, iterates
    the loaded `assets` list directly, not the cull-scope-filtered queue, so
    Step 3's 18/18 evaluation coverage was unaffected when this run hit the
    mistake) but confusing and unnecessary — leave scope alone. Select a
@@ -237,7 +237,7 @@ script/vm_scenario_run.sh ax wait-vended
    about: `ax find --contains "too close to call"` must fail to match.
 3. **Trigger evaluation** so the rest of this card means something: Culling
    ▸ "Evaluate Visible" (⇧⌘E, `requestVisibleAssetEvaluations`,
-   `AppModel.swift:9611-9624`) — wait for cached previews first if needed, then
+   `AppModel.swift:9998-10011`) — wait for cached previews first if needed, then
    poll (staying frontmost via `wait-vended` each poll, per
    `test/scenarios/README.md`'s idle-wedge caution):
    ```bash
@@ -634,7 +634,7 @@ card's own "don't manufacture it" guidance. Not a bug.
   no app-behavior claim was wrong):
   1. **Step 1's `S`-to-cycle-scope instruction was backwards.** A fresh
      `burst` launch already defaults to `cullScope = .all`
-     (`AppModel.swift:2189`) — `cull-021` established this and it reproduced
+     (`AppModel.swift:2109`) — `cull-021` established this and it reproduced
      live again here: pressing `S` moved scope *to* "Unrated," not to "All
      frames." Confirmed harmless to this run's results
      (`requestVisibleAssetEvaluations` iterates the loaded `assets` list

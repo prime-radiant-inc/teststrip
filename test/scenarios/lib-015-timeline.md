@@ -11,7 +11,7 @@ calls
 `AppModel.selectTimelineYear`, clicking a month calls `selectTimelineMonth`,
 clicking a day calls `selectTimelineDay` — each narrows
 `captureDateStartFilter`/`captureDateEndFilter` and reloads
-(`AppModel.swift:10902-10927`), which should scroll the body to the new focus
+(`AppModel.swift:11412-11437`), which should scroll the body to the new focus
 target without a manual scroll gesture.
 
 ## Pre-state

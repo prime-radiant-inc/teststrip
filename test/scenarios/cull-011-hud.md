@@ -37,7 +37,7 @@ and `isRatingEchoActive` in `Sources/TeststripApp/LibraryGridView.swift`;
 `CullHUDPresentation` (`showsScopeChip`/`showsRating`/`showsLabelDot`/
 `sessionClusterText`) in `Sources/TeststripApp/CullHUDPresentation.swift`;
 `CullingProgressSummary` at `Sources/TeststripApp/AppModel.swift:50-68` +
-`cullingProgressSummary` at `:2697-2706` (line numbers drift as the file grows;
+`cullingProgressSummary` at `:2768-2777` (line numbers drift as the file grows;
 re-grep `struct CullingProgressSummary`/`var cullingProgressSummary` if these
 are stale again); and the decision-toast timing state
 (`isDecisionToastVisible`, `lastCullingMetadataDecision`) that the rating

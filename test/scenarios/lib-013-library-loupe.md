@@ -8,7 +8,7 @@ Cull lens's own `.loupe` sub-mode. `LoupePresentation(mode:)`
 == .loupe` — true only for the Cull lens's route, false for
 `.libraryLoupe`. Unlike the old two-workspace model, the Loupe lens **is**
 session-restorable: it is one of the five non-Cull `LibraryLens` cases, and
-`isRestorableLens` (`AppModel.swift:11927-11929`) is `lens != .cull` — the
+`isRestorableLens` (`AppModel.swift:12403-12405`) is `lens != .cull` — the
 Loupe lens survives a quit/relaunch like Grid/Timeline/Map/People do.
 
 ## Pre-state
@@ -60,7 +60,7 @@ throughout, and the entry-key preamble from ⌘2 to ⌘3
 (`LibraryLens.keyEquivalent`, `LibraryLens.swift:46-55`: `.loupe`'s key is
 `"3"`; ⌘2 is now the Grid lens). Added Step 5, a new session-restore leg —
 the Loupe lens is one of the five lenses `isRestorableLens` keeps
-restorable (`AppModel.swift:11770-11772`, `lens != .cull`), a fact worth
+restorable (`AppModel.swift:12403-12405`, `lens != .cull`), a fact worth
 asserting here rather than only in `app-006-session-restore.md`/
 `app-019-lens-shell.md`, since this is the card that already owns the
 Loupe-lens-specific chrome contract. `LoupePresentation.showsCullChrome`'s

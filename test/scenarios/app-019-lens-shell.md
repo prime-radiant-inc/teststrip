@@ -17,12 +17,12 @@ Source: `Sources/TeststripApp/LibraryGridView.swift` (`lensSwitcher`
 subtitle install `:140`), `Sources/TeststripApp/LibraryLens.swift`
 (`LibraryLens` enum/title `:10-29`, `keyEquivalent` `:46-55`, `defaultViewMode`
 `:58-67`, `LensRules.availability`/`.availabilities`/`.resolvedLens`
-`:106-145`), `Sources/TeststripApp/AppModel.swift` (`selectLens` `:4769-4772`,
-`lensAvailabilities` `:4784-4786`, `applySource`'s resolved-lens fallback
-`:4852-4917`, `cullCurrentResults`/`cullTheseSourceTitle` `:5901-5914`,
-`SessionRestoreState` restore `:11849-11923` — `isRestorableLens` `:11925-
-11929`, `currentMapQuery` `:11041-11057`, `timelinePresentation` `:3324-3325`,
-`peopleInCurrentSource` `:2296,3669`), `Sources/TeststripApp/SidebarView.swift`
+`:106-145`), `Sources/TeststripApp/AppModel.swift` (`selectLens` `:4938-4941`,
+`lensAvailabilities` `:4954-4956`, `applySource`'s resolved-lens fallback
+`:5083-5090`, `cullCurrentResults`/`cullTheseSourceTitle` `:6285-6298`,
+`SessionRestoreState` restore `:12314-12399` — `isRestorableLens` `:12401-
+12405`, `currentMapQuery` `:11495-11511`, `timelinePresentation` `:3408-3410`,
+`peopleInCurrentSource` `:2359,3776`), `Sources/TeststripApp/SidebarView.swift`
 (Stacks gating `:46-55`, `sectionHeader`/`headerWithAddButton`/`addButton`
 `:99-169`), `Sources/TeststripApp/main.swift` (`LensCommands` `:164-196`,
 with the ⌘1-⌘6 shortcut block at `:168-174`, `InspectorCommands` ⌥⌘1-3
@@ -44,14 +44,14 @@ task-12 report for the grep evidence):
   **different controls that cull different things** — the header button
   culls the current result set (`cullCurrentResults()`), the context-menu
   item culls the current selection (`cullCurrentSelection()`,
-  `AppModel.swift:5867`). Match the header button by **exact-case label**
+  `AppModel.swift:6251`). Match the header button by **exact-case label**
   (`script/vm_scenario_run.sh ax find --label "Cull these"`, not
   `--contains`, and never case-insensitively) — a loosened match will silently
   hit the wrong control and cull the wrong set.
 - Reading `LibraryLens.defaultViewMode` (`:58-67`) directly: the Cull lens's
   *default* sub-mode is `.loupe`, not a grid. Pressing ⌘1 on a lens the app
   has not visited yet in this session lands straight in the culling loupe
-  (`lastCullViewMode` defaults to `.loupe`, `AppModel.swift:2011`), and both
+  (`lastCullViewMode` defaults to `.loupe`, `AppModel.swift:2059`), and both
   that route and the Loupe lens's `.libraryLoupe` route render the window
   subtitle `"Loupe"` (`LibraryGridView.swift:8377`). This is a known,
   already-flagged UX quirk (see `app-003-workspace-switching.md`'s note:
@@ -59,7 +59,7 @@ task-12 report for the grep evidence):
   subtitle alone cannot disambiguate Cull-lens-in-loupe from Loupe-lens; Step
   4 below accounts for it.
 - Session restore does not special-case "mid-cull" — reading
-  `isRestorableLens` (`AppModel.swift:11925-11929`) directly, **every** quit
+  `isRestorableLens` (`AppModel.swift:12401-12405`) directly, **every** quit
   while the Cull lens is selected relaunches on Grid, whether or not a
   culling run was active; the other five lenses always restore as-is. Step 9
   below asserts the actual (simpler, unconditional) rule rather than the
@@ -117,9 +117,9 @@ different catalog and invalidate restore assertions.
    predicate set), note its title in the scope line, then cycle ⌘1–⌘6 again
    and assert the scope line's source title still names that source after
    **every** switch — the ⌘1–⌘6 orthogonality contract
-   (`applySource`'s lens-preserving fallback, `AppModel.swift:4908-4916`;
+   (`applySource`'s lens-preserving fallback, `AppModel.swift:5083-5090`;
    `selectLens` only ever changes `selectedView`, never `selectedSource`,
-   `AppModel.swift:4769-4772`).
+   `AppModel.swift:4938-4941`).
 6. Assert the sidebar's non-Stacks sections are identical across all six
    lenses. Then use a distinct, real stack-bearing VM leg to prove that
    **Stacks · Auto-Grouped is Cull-only** in both directions. An empty/smoke
@@ -186,7 +186,7 @@ different catalog and invalidate restore assertions.
    ```
 8. Reset Step 7's diagnostic source to the exact `All Photos` sidebar row
    before entering a token search (`rating:5`). The `.allPhotos` source arm
-   calls `clearLibraryFilters()` (`AppModel.swift:4865-4867,11045-11054`),
+   calls `clearLibraryFilters()` (`AppModel.swift:5039-5041,11524-11533`),
    removing the provider-failure predicate so the nonempty rating search can
    enable the result-header **"Cull these"** button. Press that button with an
    exact-case match (see the correction above:
@@ -195,7 +195,7 @@ different catalog and invalidate restore assertions.
    `--contains`), and assert the scope line names the search
    (the chip text, since `cullTheseSourceTitle()` prefers
    `activeLibraryFilterChips` over the raw source title,
-   `AppModel.swift:5911-5914`) and the catalog gained a `culling` work
+   `AppModel.swift:6295-6298`) and the catalog gained a `culling` work
    session:
    ```bash
    script/vm_scenario_run.sh ax press --role AXButton --label "All Photos"
@@ -212,7 +212,7 @@ different catalog and invalidate restore assertions.
    (`SessionRestoreState` v2, `SessionRestoreState.swift:15`) **for every
    lens except Cull**; and that quitting while the Cull lens was selected —
    regardless of whether a culling run was active — relaunches on the same
-   source in **Grid**, per `isRestorableLens` (`AppModel.swift:11925-11929`,
+   source in **Grid**, per `isRestorableLens` (`AppModel.swift:12401-12405`,
    `lens != .cull`, unconditional). The reusable matrix is:
    ```bash
    SOURCE_TITLE="Rating >= 5" # the source established in Step 8
@@ -248,7 +248,7 @@ different catalog and invalidate restore assertions.
     multi-asset selection first if none exists), press ⌘5 (Map) and assert
     the coverage badge (`model.geotaggedCoverage`, `LibraryGridView.swift:
     7591-7596,7665-7674`) counts the **set**, not the catalog (behaviour change 11,
-    `currentMapQuery()`, `AppModel.swift:11041-11057`, which ANDs in
+    `currentMapQuery()`, `AppModel.swift:11495-11511`, which ANDs in
     `.assetSet(selectedAssetSetID)` for explicit-ID sources):
     ```bash
     script/vm_scenario_run.sh sql smoke "SELECT COUNT(*) FROM json_each((SELECT json_extract(membership_json,'\$.manual._0') FROM asset_sets WHERE name='<set name>'));"
@@ -259,13 +259,13 @@ different catalog and invalidate restore assertions.
     synthesized Codable shape — not guessed here.)
     Then press ⌘4 (Timeline) and assert the year ribbon's total matches the
     same number (behaviour change 7, `timelinePresentation`,
-    `AppModel.swift:3324-3325`, source-scoped via `model.assets`), and ⌘6
+    `AppModel.swift:3408-3410`, source-scoped via `model.assets`), and ⌘6
     (People) and assert the people list (`model.peopleInCurrentSource`,
-    `AppModel.swift:2296,3669`, populated via `catalog.repository.people
+    `AppModel.swift:2359,3776`, populated via `catalog.repository.people
     (assetIDs: scopeAssetIDs)`) holds only people present in the set.
 11. Reopen a culling session from the sidebar's Recent Work section
     (`applySource`'s `.workSession` case → `applyWorkSession`,
-    `AppModel.swift:4901-4902,4919-4936`) while in the Grid lens. Assert the lens
+    `AppModel.swift:5075-5076,5096-5114`) while in the Grid lens. Assert the lens
     is **still Grid** (behaviour change 10 — `applySource`'s resolved-lens
     fallback at `:4908-4916` only forces a lens change when the *current*
     lens is disabled for the reopened source; it used to force the loupe
@@ -284,7 +284,7 @@ different catalog and invalidate restore assertions.
     `zzzznotfound`, wait for the result header's exact live text `No matches for
     “zzzznotfound”` (`LibraryResultHeaderPresentation.swift:80-86`), and do
     not batch-select anything; this establishes the actual no-selection branch
-    (`canSaveSelectedAssetAsManualSet`, `AppModel.swift:3282-3284`). SwiftUI
+    (`canSaveSelectedAssetAsManualSet`, `AppModel.swift:3366-3368`). SwiftUI
     vends each header/button pair as one `AXHeading`, with the button's exact
     U+2026-ellipsis help string on that heading, so drive the live-proven
     heading/help routes rather than the discarded button labels:
@@ -493,7 +493,7 @@ Two corrections the live run found in the then-current driving instructions
 - **Step 12's "with no selection" precondition needed manufacturing on
   `--smoke` in the version driven.**
   `canSaveSelectedAssetAsManualSet` reads the current manual-selection IDs
-  (`AppModel.swift:3282-3284`), which remain nonempty on an ordinary nonempty
+  (`AppModel.swift:3366-3368`), which remain nonempty on an ordinary nonempty
   scope. Reaching the hint branch required a zero-result scope; that run used
   `zzzznotfound` on top of `5 Stars`. The executable step above now establishes
   that state explicitly. This reconciliation does not change the recorded
@@ -509,7 +509,7 @@ Not verified, and why:
   and proves little. The positive half is **not reachable by hand-seeding**:
   `cullingStackListEntries()` needs `selectedAssetSetID` to sit inside an
   active culling session whose `inputSetIDs` carry the `work-stack-` prefix
-  (`AppModel.swift:6960-6983`, `:12535-12558`), and
+  (`AppModel.swift:7443-7466`, `:12535-12558`), and
   `visibleSavedAssetSets` explicitly filters `work-stack-` sets out of the
   Sets section (`UnifiedSidebarPresentation.swift:116`), so no UI gesture can
   select one. The right fixture is the **`burst` seed variant** (four

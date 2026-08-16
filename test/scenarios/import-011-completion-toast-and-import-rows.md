@@ -27,12 +27,12 @@ view `:771-824`, `dismissToast`/`showToastThenFade` `:826-844`),
 `:14-51`, `ImportChildCounts` `:61-87`, `importSectionRows`/`runningImportRow`/
 `childRows` `:248-323`), `Sources/TeststripApp/LibrarySource.swift`
 (`ImportChildKind` `:5-39`), `Sources/TeststripApp/AppModel.swift`
-(`isCurrentSessionActivity` `:13918-13924`, `applyImportChild` `:4939-4983`,
-`requestImportIssueReview` `:2543-2546`, `sidebarContextActions(for:)`
-`:5161-5233`, with the work-session star toggle
-at `:5202-5207` and import verbs at `:5212-5227`, `beginStackCulling`
-`:5019-5041`, `startCullingImport` `:5011-5017`, `cullingInputSetID`
-`:13165-13189`), `Sources/TeststripApp/LibraryGridView.swift`
+(`isCurrentSessionActivity` `:14401-14407`, `applyImportChild` `:5120-5173`,
+`requestImportIssueReview` `:2619-2622`, `sidebarContextActions(for:)`
+`:5351-5423`, with the work-session star toggle
+at `:5392-5397` and import verbs at `:5402-5418`, `beginStackCulling`
+`:5212-5269`, `startCullingImport` `:5201-5207`, `cullingInputSetID`
+`:13648-13673`), `Sources/TeststripApp/LibraryGridView.swift`
 (`ImportIssueReview` `:8801-8810`, `importIssueReviewSheet` `:1904-1955`,
 `importIssueTitle` `:1957-1962`, `presentRequestedImportIssueReview`
 `:3117-3126`),
@@ -135,7 +135,7 @@ reproducible).
    ```
    The second check is a **canvas** absence only — no context menu is open
    at this point in the flow, so it cannot collide with the identical-text
-   `Cull stacks` sidebar **context-menu item** (`AppModel.swift:5212-5217`,
+   `Cull stacks` sidebar **context-menu item** (`AppModel.swift:5402-5407`,
    exercised in Step 10) that legitimately exists but only renders inside an
    open `AXMenu`, never as loose canvas text.
 4. Let ~10s elapse (`ImportCompletionToastPresentation.visibleDuration`,
@@ -172,8 +172,8 @@ reproducible).
    Loupe sub-mode on the new `work-input-<session>` snapshot source (with no
    browse-only search field), and give that exact run all four CARD1 assets
    and nothing else (`startCullingImport`,
-   `AppModel.swift:5011-5017`; `beginCullingSession`, `:5806-5859`;
-   `cullingInputSetID`, `:13165-13189`; `applyAssetSet`, `:5389-5410`;
+   `AppModel.swift:5201-5207`; `beginCullingSession`, `:6190-6244`;
+   `cullingInputSetID`, `:13648-13673`; `applyAssetSet`, `:5586-5608`;
    `scopeLineBar`, `LibraryGridView.swift:748-768`). Return to Grid afterward
    so the same-session and relaunch probes can continue:
    ```bash
@@ -234,7 +234,7 @@ reproducible).
    unit layer can pin either, so this card is the only gate for both.
 6. Quit and relaunch the **same VM catalog** (do not call `launch` again; that
    would create a new run directory). Assert the toast does **not** reappear
-   (the `isCurrentSessionActivity` guard, `AppModel.swift:13918-13924` —
+   (the `isCurrentSessionActivity` guard, `AppModel.swift:14401-14407` —
    persona-7's zombie panel, which `app-006-session-restore.md` also tests
    for a different surface) while the receipt and the sidebar's Imports row
    survive:
@@ -263,7 +263,7 @@ reproducible).
 
 ### Part B — the import row's children
 7. Expand the newest import row (CARD1's): click its disclosure triangle
-   (`toggleSidebarExpansion`, `AppModel.swift:4722-4739`,
+   (`toggleSidebarExpansion`, `AppModel.swift:4894-4928`,
    accessibility label `"Expand <row title>"`, `SidebarView.swift:287`).
    Assert its children and their counts against the catalog. Get CARD1's
    session ID first:
@@ -283,7 +283,7 @@ reproducible).
    For `.likelyIssues`/`.facesFound`, the count is each smart source's own
    `SetQuery` ANDed with `.importBatch(sessionID)`
    (`UnifiedSidebarPresentation.swift`'s doc comment on `ImportChildCounts`,
-   `:54-60`; `AppModel.swift:5511-5534`) — cross-check via the app's own
+   `:54-60`; `AppModel.swift:5711-5735`) — cross-check via the app's own
    `Likely Issues`/`Faces Found` smart-collection predicates
    (`SmartCollection.likelyIssues`/`.facesFound`, `AppModel.swift`) scoped to
    CARD1's asset IDs:
@@ -305,7 +305,7 @@ reproducible).
    ```
 9. Click `⚠ Skipped files`. Assert it opens the issue-review sheet
    (`ImportIssueReview`, `LibraryGridView.swift:8801`, presented via
-   `requestImportIssueReview`, `AppModel.swift:2543`) rather than an empty
+   `requestImportIssueReview`, `AppModel.swift:2619`) rather than an empty
    grid — skipped files are not in the catalog at all
    (`ImportChildKind.isDiagnostic`'s doc comment, `LibrarySource.swift:32-38`):
    ```bash
@@ -334,9 +334,9 @@ reproducible).
     Assert the menu offers exactly four current items: the star toggle
     (`Star Work` when unstarred, `Remove Star` when starred), `Cull stacks`,
     `Evaluate import`, and `Manual Compare over the import` — with no extras
-    (`AppModel.sidebarContextActions(for:)`, `AppModel.swift:5161-5233`,
-    specifically the star toggle at `:5202-5207` and the three import verbs at
-    `:5212-5227`). Press `Cull stacks` (`beginStackCulling`, `:5019-5041`) and
+    (`AppModel.sidebarContextActions(for:)`, `AppModel.swift:5351-5423`,
+    specifically the star toggle at `:5392-5397` and the three import verbs at
+    `:5402-5418`). Press `Cull stacks` (`beginStackCulling`, `:5212-5269`) and
     assert per-stack
     `work-stack-` sets exist if CARD1's frames landed within the stack
     builder's time-adjacency threshold, per Sharp edges below:
@@ -347,7 +347,7 @@ reproducible).
     If the count is 0, confirm (before reporting a defect) that
     `beginStackCulling`'s no-stacks fallback fired instead — a plain culling
     session over CARD1 with `statusMessage` reading `"...; no time-adjacent
-    stacks found"` (`AppModel.swift:5037-5041`) — and record that as the
+    stacks found"` (`AppModel.swift:5230`) — and record that as the
     honest, source-grounded outcome for this fixture rather than a failure.
 11. Import CARD2 (same typed-path route, through the VM wrapper) —
     the same 4 frames as CARD1 plus 2 new ones, so this is **not** the "same
@@ -380,8 +380,8 @@ reproducible).
     from its sidebar row rather than the
     newest (CARD2): click CARD1's row to select it as the source
     (`selectSidebarRow`/`applySource`'s `.workSession` case,
-    `AppModel.swift:4698-4708,4852-4917`; `applyWorkSession` sets
-    `selectedAssetSetID = nil` at `:4919-4936`),
+    `AppModel.swift:4867-4877,5024-5094`; `applyWorkSession` sets
+    `selectedAssetSetID = nil` at `:5096-5114`),
     then press the result-header **"Cull these"** button (exact-case label,
     same disambiguation `app-019-lens-shell.md` documents against the grid's
     "Cull These" context-menu item — do not batch-select assets first and
@@ -522,10 +522,10 @@ script/vm_scenario_run.sh shell 'rm -rf /Users/admin/teststrip-vm/fixtures/impor
   insurance.
 - Step 12's discriminator query reads the `.snapshot` JSON path, not
   `.manual`. Traced directly: scoping to CARD1 via its `.workSession` source
-  sets `selectedAssetSetID = nil` (`applyWorkSession`, `AppModel.swift:4919-4936`),
-  so `cullingInputSetID` (`:13165-13189`) takes its `else` branch and writes
+  sets `selectedAssetSetID = nil` (`applyWorkSession`, `AppModel.swift:5096-5114`),
+  so `cullingInputSetID` (`:13648-13673`) takes its `else` branch and writes
   a **fresh `work-input-<sessionID>` set with `.snapshot(inputAssetIDs)`
-  membership** (`:13178-13184`), not `.manual`. The `.manual._0`/`.snapshot
+  membership** (`:13661-13667`), not `.manual`. The `.manual._0`/`.snapshot
   ._0` JSON-path pattern itself is the same synthesized-Codable shape
   already verified live in `cull-020-pass-scope-and-undo.md:58`
   (`.manual._0`, for a stack-rail set) and `cull-025-run-strip-completion.md:
@@ -581,9 +581,9 @@ chicken-and-egg deadlock in the model, not a rendering glitch:
   (`UnifiedSidebarPresentation.swift:271`).
 - `counts` comes from `importChildCountsBySessionID`, which is only ever
   written for session IDs already present in `expandedImportSessionIDs` —
-  inside `toggleSidebarExpansion`'s expand branch (`AppModel.swift:4731-4733`)
+  inside `toggleSidebarExpansion`'s expand branch (`AppModel.swift:4903-4905`)
   and in `refreshCatalogSidebarCounts`'s `for sessionID in
-  expandedImportSessionIDs` loop (`:13093-13095`). Those are the only two
+  expandedImportSessionIDs` loop (`:13740-13743`). Those are the only two
   writers (`grep expandedImportSessionIDs Sources/TeststripApp/*.swift`).
 - `expandedImportSessionIDs` starts empty and is only ever inserted into by
   `toggleSidebarExpansion`, which is reachable **only** from
@@ -644,7 +644,7 @@ Root cause: `isExistingOnly` is `newPhotoCount == 0 && existingPhotoCount > 0`
 `max(importedPhotoCount - newPhotoCount, 0)` where
 `importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount`
 and `newPhotoCount = activity.completedUnitCount`
-(`AppModel.swift:3367-3376`). On every ingest session the catalog writes
+(`AppModel.swift:3450-3464`). On every ingest session the catalog writes
 `total_unit_count == completed_unit_count`, so `existingPhotoCount` is
 **always 0** and `isExistingOnly` is **always false** — the branch is dead:
 ```
@@ -694,7 +694,7 @@ summary.newPhotoCount > 0` with `newPhotoCount == 0`.
   (`culling|Aug 9 · Imported 4 photos from card1 (2 files skipped)|running`
   with a single `work-input-…` set of 4 photos, Cull lens in loupe reading
   `✓ 0 · ✕ 0 · 4 left`). Correct per `beginStackCulling`'s no-stacks guard
-  (`AppModel.swift:5007-5011`) for a fixture with no time-adjacent frames.
+  (`AppModel.swift:5227-5231`) for a fixture with no time-adjacent frames.
 - **Step 12** — culling the **older** import scoped correctly. CARD1's row
   selected as source, `Cull these` pressed; the run's `work-input-…` set held
   exactly 4 photos (`INPUT_COUNT=4`, matching `CARD1_BASELINE`). The join-based

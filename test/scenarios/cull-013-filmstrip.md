@@ -34,7 +34,7 @@ filmstrip's stacks come from `model.allCullingStacks(for: scopedAssets)` —
 the in-memory `AssetStackBuilder` clustering by capture-time proximity
 (`model.burstIntervalSeconds`, a persisted Settings preference — default
 `AssetStackBuilder.defaultMaximumCaptureGap = 2` seconds,
-`AppModel.swift:2447`), the same builder that backs the sidebar's
+`AppModel.swift:2523`), the same builder that backs the sidebar's
 "Stacks · Auto-Grouped" section (`SidebarView.swift:46-53`, Cull-lens-only).
 This is a
 **different mechanism** from the `work-stack-` `asset_sets` rows used by the

@@ -21,14 +21,14 @@ Every surface this card drives reads that one field, never a status row:
   (`json_extract(metadata_json,'$.flag') IS NOT NULL AND EXISTS (... WHERE
   json_each.value = 'flag')`), used for the review queue and sidebar count
   so neither silently shrinks to whatever the grid happens to have loaded.
-- `AppModel.beginAutopilotReview()` (`Sources/TeststripApp/AppModel.swift:9817-9820`,
+- `AppModel.beginAutopilotReview()` (`Sources/TeststripApp/AppModel.swift:10204-10207`,
   reconciled 2026-08-09) narrows the grid to exactly
-  `autopilotGhostAssetIDs` (declared `:2159`, refreshed from
+  `autopilotGhostAssetIDs` (declared `:2215`, refreshed from
   `assetIDsWithAutopilotGhost()` by `refreshAutopilotGhostAssetIDs()`
-  at `:13264-13266`, itself called from `refreshCatalogSidebarCounts()` and — for
+  at `:13747-13749`, itself called from `refreshCatalogSidebarCounts()` and — for
   the relaunch leg below — unconditionally from `AppModel.load(catalog:)`
-  at `:4477`). `buildSidebarSections()` (`:1984-2005`, reconciled 2026-08-09)
-  passes `autopilotGhostCount: autopilotGhostAssetIDs.count` (`:1993`) into
+  at `:4646`). `buildSidebarSections()` (`:2031-2053`, reconciled 2026-08-09)
+  passes `autopilotGhostCount: autopilotGhostAssetIDs.count` (`:2040`) into
   `UnifiedSidebarPresentation.sections(...)`, which appends the sidebar's
   "AI Suggestions" row only `if autopilotGhostCount > 0`
   (`UnifiedSidebarPresentation.swift:179-187`), with
@@ -71,23 +71,23 @@ Every surface this card drives reads that one field, never a status row:
   `Sources/TeststripApp/`, 2026-08-06). The detail helper is exactly
   `"\(skipped) skipped · \(neverViewed) never viewed"` (`:3942-3944`).
 - **Gone is gone, precisely**: `AppModel.setFlagForSelectedAsset(_:)`
-  (`AppModel.swift:7339-7367`) routes a `U` (`.clearFlag`, key mapped
+  (`AppModel.swift:7723-7751`) routes a `U` (`.clearFlag`, key mapped
   `AppModel.swift:227`) two different ways depending on whether the flag is
-  *still tentative* at the moment `U` lands (`:7349-7353`): if
+  *still tentative* at the moment `U` lands (`:7733-7738`): if
   `aiUnconfirmedFields` still contains `.flag`, `U` is the **reject**
-  gesture — it calls `removeAIField(.flag, for:)` (`:8378-8407`), which
+  gesture — it calls `removeAIField(.flag, for:)` (`:8762-8791`), which
   clears the flag **and** unconditionally records the rejected value in
   `removed_ai_labels` (`asset_id, field, value, created_at` —
   `Sources/TeststripCore/Catalog/CatalogMigrations.swift:231-238`) at
-  `AppModel.swift:8400`. `applyTentativeAutopilotProposals` (`:9699-9746`)
+  `AppModel.swift:8784`. `applyTentativeAutopilotProposals` (`:10086-10133`)
   checks exactly that table before re-proposing the same value on a later
-  run (`:9706`, `:9715-9718`, `:9724-9727`) — this is the entire resurrection-prevention
+  run (`:10093`, `:10102-10105`, `:10111-10114`) — this is the entire resurrection-prevention
   mechanism, pinned live by
   `testClearingATentativeGhostRecordsItsRemovalAndSuppressesTheNextRun`
   (`Tests/TeststripAppTests/AppModelTests.swift:5935-5963`). If instead the
   flag was already **confirmed** (a prior `P`/`X` already ran — confirming
   unconditionally removes `.flag` from `aiUnconfirmedFields` per the same
-  function's doc comment, `AppModel.swift:7356-7362`), `U` takes the
+  function's doc comment, `AppModel.swift:7740-7746`), `U` takes the
   plain-clear branch instead (`updateSelectedAssetMetadata`, no
   `removeAIField` call, no `removed_ai_labels` row) — the frame returns to
   genuinely neutral undecided, not "rejected," so nothing blocks a later run
@@ -216,7 +216,7 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
    virtualized, README) before re-reading its accessibility value:
    ```bash
    script/vm_scenario_run.sh ax find --contains "Autopilot proposes"      # expect FOUND — $G1's ghost badge, untouched since Step 3, must survive the relaunch natively
-   script/vm_scenario_run.sh ax find --contains "Autopilot reviewed"      # expect NOT-FOUND (the run-time-only banner; AutopilotBannerPresentation, LibraryGridView.swift:3533-3554, set only by runAutopilot's in-memory autopilotRunSummary, AppModel.swift:9682, never reloaded by `load(catalog:)`)
+   script/vm_scenario_run.sh ax find --contains "Autopilot reviewed"      # expect NOT-FOUND (the run-time-only banner; AutopilotBannerPresentation, LibraryGridView.swift:3533-3554, set only by runAutopilot's in-memory autopilotRunSummary, AppModel.swift:10069, never reloaded by `load(catalog:)`)
    ```
 6. **Reject a ghost directly — gone is gone, and nothing resurrects (P0).**
    On `$G1` (still tentative — do not press `P`/`X` first; see Source's
@@ -307,7 +307,7 @@ GHOST0=$(script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets WHERE 
   `testClearingATentativeGhostRecordsItsRemovalAndSuppressesTheNextRun` —
   this leg's `removed_ai_labels == 0` expectation is a source-derived
   inference from the plain-clear branch's code path
-  (`AppModel.swift:7349-7353`, no `removeAIField` call), not itself pinned
+  (`AppModel.swift:7740-7746`, no `removeAIField` call), not itself pinned
   by `testDirectFlagThenClearLeavesNoGhostAnywhere` (which asserts
   ghost/queue absence, not this count): **fails if** `$G2`'s
   `removed_ai_labels` count is nonzero after confirm-then-clear — that

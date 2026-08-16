@@ -10,14 +10,14 @@ detections the Close-Ups panel shows, so the two features never disagree
 about "what counts as a face").
 
 Source:
-- `Sources/TeststripApp/AppModel.swift:6850-6853` — `toggleLoupeZoom()`, the
+- `Sources/TeststripApp/AppModel.swift:7234-7237` — `toggleLoupeZoom()`, the
   `z` shortcut (`CullingShortcut.toggleZoom`, keyed at `:230`).
-- `Sources/TeststripApp/AppModel.swift:6879-6896` — `zoomToNearestFaceOrCycleFace()`,
+- `Sources/TeststripApp/AppModel.swift:7263-7280` — `zoomToNearestFaceOrCycleFace()`,
   the `Z` (shift-z, exact-case) shortcut (`CullingShortcut.zoomToNearestFace`,
   keyed at `:199-202`): first press zooms to the face nearest the current
   focus (or center); a repeated press while still face-zoomed cycles to the
   next face, wrapping (`LoupeFaceZoomTargeting.wrappedIndex`, `:419-422`);
-  falls back to a plain centered 1:1 zoom if no faces were detected (`:6880-6883`).
+  falls back to a plain centered 1:1 zoom if no faces were detected (`:7264-7267`).
 - `Sources/TeststripApp/LibraryGridView.swift:4200-4252` (`refreshCloseUps`) —
   **verified same-detections claim**: this is the single call site that both
   populates the Close-Ups panel crops (`closeUpCrops`) and calls

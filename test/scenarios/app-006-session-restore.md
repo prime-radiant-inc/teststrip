@@ -20,8 +20,8 @@ SessionRestoreState.currentVersion` or `nil`).
 **Culling is never restored, and the rule is simpler than "mid-cull"
 suggests.** `applyRestoredSessionState` calls `selectLens(Self
 .isRestorableLens(state.lens) ? state.lens : .grid)`
-(`AppModel.swift:11894`). `isRestorableLens` (`AppModel.swift:11925-
-11929`) is `lens != .cull` — **unconditional**. Its own doc comment reads
+(`AppModel.swift:12370`). `isRestorableLens` (`AppModel.swift:12401-
+12405`) is `lens != .cull` — **unconditional**. Its own doc comment reads
 "Every lens survives a relaunch except Cull: a mid-cull quit relaunches on
 the same source in Grid, because the run itself is not resumed here" — but
 the check itself does not look at whether a culling run was actually active;
@@ -40,14 +40,14 @@ successor is `ImportCompletionToastPresentation.toast(for:
 isCurrentSessionActivity:isImporting:)` (`ImportCompletionToastPresentation
 .swift:40-58`), which returns `nil` whenever `isCurrentSessionActivity` is
 `false` — and `AppModel.isCurrentSessionActivity(id:)`
-(`AppModel.swift:13918-13924`) is scoped to activities recorded in the
+(`AppModel.swift:14401-14407`) is scoped to activities recorded in the
 *current* process's lifetime, so a relaunch can never satisfy it for
 anything from the prior run. The persisted work session and its sidebar
 Imports row are unaffected by this and remain reachable.
 
 Item 26 (`autopilotEnabled`/`defaultCreator`/`defaultCopyright` persist
 under their own keys, separate from `SessionRestoreState`) is unchanged by
-this push (`AppModel.swift:2411-2430`, `:4485-4488`) and still worth a
+this push (`AppModel.swift:2485-2506`, `:4485-4488`) and still worth a
 spot-check.
 
 ## Pre-state
@@ -160,7 +160,7 @@ rewritten for `SessionRestoreState` v2. Replaced the deleted
 `ImportCompletionToastPresentation.toast(for:isCurrentSessionActivity:
 isImporting:)` (verified: the old symbol has zero remaining references in
 `Sources/`, and `isCurrentSessionActivity` still lives at
-`AppModel.swift:13750-13752`, unmoved by this push). Re-specified what
+`AppModel.swift:14405-14407`, unmoved by this push). Re-specified what
 persists: lens + source (not a raw `selectedView` route), with no
 per-field/rawValue migration left — v1→v2 is a hard cutover, the whole blob
 discards on any version mismatch, confirmed by reading
@@ -173,7 +173,7 @@ malformed-JSON step, which between them cover the same "best-effort,
 all-or-nothing discard" invariant the deleted mechanism used to exercise
 two different ways. Rewrote item 19/20's Cull-never-restores step to assert
 the rule's actual unconditional shape (`isRestorableLens` is `lens != .cull`,
-full stop — not "unless mid-cull") per `AppModel.swift:11768-11772`, and
+full stop — not "unless mid-cull") per `AppModel.swift:12401-12405`, and
 noted this is independent coverage of the same rule `app-019-lens-shell
 .md`'s Step 9 also drives, not a duplicate. Supersedes prior status: the
 prior revision's `SessionRestoreState` v1 field list (`selectedView`, no

@@ -11,7 +11,7 @@ eager `Updater.shared` start; the catalog path and its
 `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` override
 (`Sources/TeststripApp/AppCatalog.swift:31-36,60-70`); and the window title =
 `catalogDisplayName` with the "Local Catalog" fallback
-(`AppModel.catalogDisplayName`, `Sources/TeststripApp/AppModel.swift:2801-2804`;
+(`AppModel.catalogDisplayName`, `Sources/TeststripApp/AppModel.swift:2877-2880`;
 `LibraryGridView.swift:139`).
 
 ## Pre-state

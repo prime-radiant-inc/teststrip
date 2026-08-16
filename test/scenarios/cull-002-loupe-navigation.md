@@ -23,14 +23,14 @@ stack, and — once Space reaches the end of the `.all` scope with more
 assets on disk than are loaded — the loupe to page in more rather than
 dead-ending. Covers:
 - **Space (linear advance) and toast-clearing**:
-  `Sources/TeststripApp/AppModel.swift:5853-5855` (`.nextPhoto` calls
+  `Sources/TeststripApp/AppModel.swift:7038-7046` (`.nextPhoto` calls
   `clearCullingMetadataDecisionFeedback()` before
-  `selectNextAssetForCulling()`, `:6085-6107`, pagination branch at
+  `selectNextAssetForCulling()`, `:7346-7359`, pagination branch at
   `:6095-6103` — unchanged by this branch's remap). Space
   (`CullingKeyCaptureView.swift:158-159`) is the *only* Cull-loupe key that
   still reaches `.nextPhoto`. `.previousPhoto`
-  (`AppModel.swift:5850-5852`, → `selectPreviousAssetForCulling`,
-  `:6449-6471`, pagination branch at `:6459-6467`) is **not** bound to any
+  (`AppModel.swift:7035-7037`, → `selectPreviousAssetForCulling`,
+  `:7694-7707`, pagination branch at `:6459-6467`) is **not** bound to any
   key in the Cull loupe any more — it is dispatched only by the Library
   loupe's chevron buttons (`LibraryGridView.swift:4683-4691`
   `CullingNavDirection.shortcut`, wired into `libraryLoupeNavBar`,
@@ -41,17 +41,17 @@ dead-ending. Covers:
   `upArrow`/`downArrow` → `.previousCandidateInStack`/`.nextCandidateInStack`
   (`Sources/TeststripApp/CullingKeyCaptureView.swift:149-157`; the static
   key-based mapping used for the `?`/menu advertisement agrees,
-  `AppModel.swift:238-245`). Dispatch: `applyCullingShortcut`,
-  `AppModel.swift:5856-5867` — `.previousStack`/`.nextStack` resolve through
+  `AppModel.swift:189-196`). Dispatch: `applyCullingShortcut`,
+  `AppModel.swift:7047-7058` — `.previousStack`/`.nextStack` resolve through
   `selectPreviousStackForCulling`/`selectNextStackForCulling`
-  (`:6258-6270`, preferring a persisted stack-cull session
+  (`:7529-7541`, preferring a persisted stack-cull session
   (`selectPersistedCullingStack`) and falling back to the in-memory
   `AssetStackBuilder`-derived `cullingStacks()`, landing on
   `recommendedStackLandingAssetID` — the new stack's ranked-recommended
-  frame, or its first frame if nothing is ranked, `:6442-6447`).
+  frame, or its first frame if nothing is ranked, `:7676-7679`).
   `.previousCandidateInStack`/`.nextCandidateInStack` resolve through
   `selectPreviousCandidateInStack`/`selectNextCandidateInStack`
-  (`:6276-6295`, moving within `selectedCullingStackScope.assetIDs`, no
+  (`:7547-7574`, moving within `selectedCullingStackScope.assetIDs`, no
   wrap).
 - **⌥←/⌥→ removed, not merely relabeled**: there is no Option-arrow branch
   left anywhere in the key-capture path. `CullingShortcut.init(event:)`
@@ -62,7 +62,7 @@ dead-ending. Covers:
   `handleLocalKeyDown` passes the raw event straight through unhandled
   (`:94-96`, `return event`). There is also no `isMonitorOnly` menu entry
   for it any more: `CullingCommandMenuPresentation.sections`'s Navigation
-  section (`AppModel.swift:511-516`) lists only "Previous/Next Frame in
+  section (`AppModel.swift:506-512`) lists only "Previous/Next Frame in
   Stack" (↑/↓) and "Previous/Next Stack" (←/→) — no Option-arrow row, no
   `isMonitorOnly` flag on any entry (see `cull-009-keymap-overlay.md`'s
   parallel reconciliation).
@@ -102,14 +102,14 @@ calls below.
    one was showing from a prior step) is cleared —
    `applyCullingShortcut(.nextPhoto)` calls
    `clearCullingMetadataDecisionFeedback()` unconditionally before moving
-   (`AppModel.swift:5853-5855`). This is the linear-scope probe for this
+   (`AppModel.swift:7038-7046`). This is the linear-scope probe for this
    card now; Left/Right no longer perform this move (see step 4).
 4. **Right — stack nav (remapped).** Press `Right`. Per
    `CullingShortcut.init(event:)` (`CullingKeyCaptureView.swift:152-153`),
    `Right` dispatches `.nextStack` → `selectNextStackForCulling()`
-   (`AppModel.swift:5859-5861`, `:6258-6262`), which on a catalog with real
+   (`AppModel.swift:7050-7052`, `:7529-7534`), which on a catalog with real
    multi-frame stacks lands on the next stack's
-   `recommendedStackLandingAssetID` (`:6442-6447`: the ranked winner, or
+   `recommendedStackLandingAssetID` (`:7676-7679`: the ranked winner, or
    the stack's first frame if nothing is ranked). **On `--smoke` this is a
    designed no-op**: the seeder assigns `capturedAt` 900 seconds (15
    minutes) apart per asset
@@ -118,9 +118,9 @@ calls below.
    `maximumCaptureGap`, and there is no persisted `work-stack-` session in a
    fresh `--smoke` catalog (per README) — so `cullingStacks()` partitions
    all 24 assets into 24 **singleton** stacks
-   (`.filter { $0.assetIDs.count > 1 }`, `AppModel.swift:6143-6145`) and
+   (`.filter { $0.assetIDs.count > 1 }`, `AppModel.swift:7395-7397`) and
    `selectCullingStack(_:)`'s `indexedStacks` jump list is empty, so its
-   guard returns before moving anything (`:6398-6407`). The toast still
+   guard returns before moving anything (`:7623-7632`). The toast still
    clears — `clearCullingMetadataDecisionFeedback()` runs unconditionally
    before the guarded call. Assert: the selected asset does **not** change,
    no crash/error alert, and the toast (if any) clears. Genuine
@@ -130,7 +130,7 @@ calls below.
 5. **Left — mirrors Right.** Press `Left`. Per `CullingShortcut.init(event:)`
    (`CullingKeyCaptureView.swift:150-151`), `Left` dispatches
    `.previousStack` → `selectPreviousStackForCulling()`
-   (`AppModel.swift:5856-5858`, `:6265-6269`) — assert the identical
+   (`AppModel.swift:7047-7049`, `:7536-7541`) — assert the identical
    no-op/toast-clear behavior as step 4, for the same singleton-stack
    reason.
 6. **Up/Down — within-stack nav (remapped), same singleton caveat.** Press
@@ -138,10 +138,10 @@ calls below.
    (`--smoke`'s all-singleton catalog), both are a **designed no-op** via a
    different code path: `selectedCullingStackScope` returns `nil` when the
    selected asset's stack has only one member (`cullingStacks()` filters to
-   `$0.assetIDs.count > 1`, `AppModel.swift:6143-6145`), so
-   `moveSelectionWithinCurrentCullingStack` (`:6284-6295`) guard-fails at
-   its first `guard` (`:6285-6289`) and the selection does not move. Toast
-   clearing still applies (`:5862-5867`). This does *not* exercise genuine
+   `$0.assetIDs.count > 1`, `AppModel.swift:7395-7397`), so
+   `moveSelectionWithinCurrentCullingStack` (`:7555-7574`) guard-fails at
+   its first `guard` (`:7556-7568`) and the selection does not move. Toast
+   clearing still applies (`:7053-7058`). This does *not* exercise genuine
    multi-frame within-stack candidate movement or stack-to-stack
    landing-on-recommended behavior — see Sharp edges and
    `cull-021-stack-rail-nav.md` for that coverage on the `burst` fixture.

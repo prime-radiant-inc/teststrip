@@ -9,8 +9,8 @@ tree indent and an independently-tappable disclosure chevron distinct from
 row selection; a placeholder row renders disabled; and a matched-work query
 replaces the merged Recent+Starred Work rows with `work-matched-*` rows.
 
-Ground truth for the row model is `AppModel.defaultSidebarSections`
-(`AppModel.swift:11576-11645`) and `SidebarView.swift:17-30,142-186` for how
+Ground truth for the row model is `AppModel.buildSidebarSections()`
+(`AppModel.swift:2031-2054`) and `SidebarView.swift:17-30,142-186` for how
 each row/disclosure renders.
 
 ## Pre-state
@@ -71,7 +71,7 @@ substring of its detail text.
    session, and that clearing the query restores `work-recent-*` rows.
 8. Assert a disabled/placeholder row (if any renders — e.g. an empty Recent
    Import slot before any import has happened) is not AX-pressable: `disabled`
-   per `row.isSelectable` (`AppModel.swift:919-921`, `SidebarRowButton`
+   per `row.isSelectable` (`AppModel.swift:978-980`, `SidebarRowButton`
    `.disabled(!row.isSelectable)` at `SidebarView.swift:165`). If `--smoke`'s
    seeding import always produces a Recent Import row, this sub-check may be
    unrunnable against this fixture — note that rather than fabricating one.
