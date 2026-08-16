@@ -77,6 +77,9 @@ struct CullCompletionPresentation: Equatable {
                 decidedAssetIDs.insert(asset.id)
                 rejectAssetIDs.append(asset.id)
             case nil:
+                if skippedAssetIDs.contains(asset.id) {
+                    break // skipped frames are tallied in skippedSet, not undecided
+                }
                 undecidedCount += 1
                 undecidedAssetIDs.append(asset.id)
             }
@@ -127,11 +130,15 @@ struct CullCompletionPresentation: Equatable {
     ///
     /// `assets` is the session universe (the same in-memory array
     /// `CullScopeOrdering` navigates — see `AppModel.cullUndecidedCount`);
-    /// undecided is counted session-wide from it. The `.picks`/`.rejects`
-    /// scopes are review scopes, not deciding scopes: they exclude unflagged
-    /// frames by definition, so completion is suppressed there — otherwise
-    /// switching to them (including via the ReviewPicks action itself) would
-    /// show "Nothing left to decide" instead of the frames being reviewed.
+    /// undecided is counted session-wide from it. Skipped frames (Space
+    /// without P/X) are NOT undecided — they're a separate category tallied
+    /// in `skippedSet`, so the completion stage appears when all non-skipped
+    /// frames are decided, and the "Cull skipped" mini-run lets the user
+    /// revisit them. The `.picks`/`.rejects` scopes are review scopes, not
+    /// deciding scopes: they exclude unflagged frames by definition, so
+    /// completion is suppressed there — otherwise switching to them
+    /// (including via the ReviewPicks action itself) would show "Nothing
+    /// left to decide" instead of the frames being reviewed.
     static func presentation(
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,

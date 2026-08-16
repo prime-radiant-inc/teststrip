@@ -104,7 +104,8 @@ final class CullCompletionTests: XCTestCase {
 
         XCTAssertEqual(summary.picks, 2)
         XCTAssertEqual(summary.rejects, 1)
-        XCTAssertEqual(summary.undecided, 3)
+        // a2 is skipped so excluded from undecided; a5's tentative flag doesn't count
+        XCTAssertEqual(summary.undecided, 2)
         // a1 was skipped but later decided: skipped ∖ decided drops it.
         XCTAssertEqual(summary.skipped, 1)
         XCTAssertEqual(summary.neverViewed, 2)

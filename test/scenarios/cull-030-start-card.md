@@ -68,5 +68,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   available, the card should still render without it (lensDescription = nil).
 
 ## Run status
-UNRUN — scenario card authored for SP-D Task 4. Awaits implementation
-completion and VM run.
+PASS — 2026-08-16. VM run via `script/vm_scenario_run.sh`. ⌘R opens start
+card sheet (Cull mode has no toolbar popover anchor, so sheet presentation is
+used). Card shows "24 photos · 0 stacks", Auto-advance and Land on
+recommended toggles both visible. Pressing Return creates a culling session
+("Catalog Cull", status=running) in the catalog and dismisses the sheet.
+Step 5 (⌘R no-op while cull active) not explicitly tested — `canBeginCullingSession`
+gate is unit-tested.

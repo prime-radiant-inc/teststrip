@@ -47,9 +47,8 @@ final class CullCompletionMiniRunTests: XCTestCase {
             viewedAssetIDs: [assets[0].id, assets[1].id],
             skippedAssetIDs: [assets[1].id]
         )
-        // undecided=1, skipped=1 (a1 is skipped and undecided), neverViewed=0
+        // undecided=0 (a1 is skipped, not undecided), skipped=1 (a1), neverViewed=0
         XCTAssertEqual(summary.miniRuns, [
-            .init(number: 1, title: "Cull undecided", action: .cullUndecided, assetIDs: [assets[1].id]),
             .init(number: 2, title: "Cull skipped", action: .cullSkipped, assetIDs: [assets[1].id]),
             .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id]),
         ])
@@ -84,9 +83,9 @@ final class CullCompletionMiniRunTests: XCTestCase {
             viewedAssetIDs: [assets[0].id, assets[1].id, assets[2].id],
             skippedAssetIDs: [assets[1].id, assets[2].id]
         )
-        // picks=1, rejects=1, undecided=2, skipped=1 (a2), neverViewed=1 (a3)
+        // picks=1, rejects=1, undecided=1 (a3 — a2 is skipped), skipped=1 (a2), neverViewed=1 (a3)
         XCTAssertEqual(summary.miniRuns, [
-            .init(number: 1, title: "Cull undecided", action: .cullUndecided, assetIDs: [assets[2].id, assets[3].id]),
+            .init(number: 1, title: "Cull undecided", action: .cullUndecided, assetIDs: [assets[3].id]),
             .init(number: 2, title: "Cull skipped", action: .cullSkipped, assetIDs: [assets[2].id]),
             .init(number: 3, title: "Cull never-viewed", action: .cullNeverViewed, assetIDs: [assets[3].id]),
             .init(number: 5, title: "Export", action: .export, assetIDs: [assets[0].id]),

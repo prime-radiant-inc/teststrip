@@ -70,5 +70,19 @@ TRACKER="$ISOLATED/Teststrip/cull-run-tracker.json"
   are respected: the run counts them and walks to what's still undecided.
 
 ## Run status
-UNRUN — scenario card authored for SP-D Task 2. Awaits implementation
-completion and VM run.
+PASS (2026-08-16) — Driven in Tart VM. Resume via ⌘R → Start (which calls
+`beginCullingSession` → `resumeCullRunIfNeeded()`).
+
+Pre-quit state: Frame 6 of 24, smoke-5.jpg, scope line "24 photos · ✓ 6 · ✕ 5
+· ⊘ 1 skipped · ◌ 19 unviewed · 18 left". Tracker JSON contains 5 viewed
+asset IDs and 1 skipped asset ID (smoke-1).
+
+Post-relaunch state (after ⌘1 → ⌘R → Return): Frame 6 of 24, smoke-5.jpg,
+scope line "24 photos · ✓ 6 · ✕ 5 · ⊘ 1 skipped · ◌ 19 unviewed · 18 left" —
+exact match.
+
+Note: pressing ⌘1 alone switches to the Cull lens but does NOT resume the
+session (`activeCullingSessionID` is nil). The user must press ⌘R → Start to
+trigger `beginCullingSession` which calls `resumeCullRunIfNeeded()` to load
+the tracker and restore the position + viewed/skipped state. The start card
+sheet always appears on ⌘R (even when resuming) — this is the expected UX.
