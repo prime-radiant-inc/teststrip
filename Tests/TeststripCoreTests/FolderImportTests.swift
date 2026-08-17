@@ -1254,6 +1254,10 @@ final class FolderImportTests: XCTestCase {
         let microURL = PreviewCache(root: previewRoot).url(for: PreviewCacheKey(assetID: asset.id, level: .micro))
         XCTAssertTrue(FileManager.default.fileExists(atPath: microURL.path), "micro preview should exist from promotion")
 
+        let promotedData = try Data(contentsOf: microURL)
+        XCTAssertEqual(promotedData, thumbnailData,
+            "micro preview should be the promoted thumbnail bytes, not a fresh render")
+
         let pendingItems = try repository.pendingPreviewGenerationItems()
         let microPending = pendingItems.filter { $0.assetID == asset.id && $0.level == .micro }
         XCTAssertTrue(microPending.isEmpty, "micro preview should be marked as generated")

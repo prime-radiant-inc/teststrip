@@ -389,16 +389,20 @@ public struct LibraryImportService: Sendable {
                item.level == .micro,
                cache.thumbnailExists(for: asset.originalURL) {
                 let destURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .micro))
-                try cache.promote(from: asset.originalURL, to: destURL)
-                try repository.markPreviewGenerated(assetID: asset.id, level: .micro)
-                generatedCount += 1
-                let completedCount = index + 1
-                progress?(LibraryImportProgress(
-                    completedUnitCount: completedCount,
-                    totalUnitCount: items.count,
-                    detail: "Generated \(completedCount) of \(items.count) previews"
-                ))
-                continue
+                do {
+                    try cache.promote(from: asset.originalURL, to: destURL)
+                    try repository.markPreviewGenerated(assetID: asset.id, level: .micro)
+                    generatedCount += 1
+                    let completedCount = index + 1
+                    progress?(LibraryImportProgress(
+                        completedUnitCount: completedCount,
+                        totalUnitCount: items.count,
+                        detail: "Generated \(completedCount) of \(items.count) previews"
+                    ))
+                    continue
+                } catch {
+                    // Fall through to normal render path
+                }
             }
             if !failedAssetIDs.contains(asset.id) {
                 do {
