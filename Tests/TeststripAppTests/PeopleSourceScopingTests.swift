@@ -518,6 +518,24 @@ final class PeopleSourceScopingTests: XCTestCase {
         )
     }
 
+    /// Issue #6: after clicking through to a person's photos, the scope line
+    /// and `selectedSource` must name the person, not whatever source you
+    /// came from. Starting from All Photos, the scope line must change from
+    /// "All Photos" to the person's name.
+    func testShowingPersonPhotosUpdatesSelectedSourceAndScopeLineFromAllPhotos() throws {
+        let fixture = try makePersonDrillFixture(named: "people-person-scope-line")
+        XCTAssertEqual(fixture.model.selectedSource, .allPhotos)
+        XCTAssertEqual(fixture.model.scopeLine.sourceTitle, "All Photos")
+
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        XCTAssertEqual(
+            fixture.model.selectedSource,
+            .search(SetQuery(predicates: [.person("Ada")]), titled: "Ada")
+        )
+        XCTAssertEqual(fixture.model.scopeLine.sourceTitle, "Ada")
+    }
+
     func testModelPresentationScopesFaceSignalSummariesToFolderAndAllPhotos() throws {
         let fixture = try makeFaceSignalFixture(named: "people-presentation-folder")
         let globalSummaries = faceSignalSummaries(assetCount: 2)
