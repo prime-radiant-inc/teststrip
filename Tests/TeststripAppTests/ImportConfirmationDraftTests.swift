@@ -665,4 +665,47 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertTrue(draft.primaryActionTitle.contains("2"), "title should reflect selected count, got: \(draft.primaryActionTitle)")
     }
 
+    func testPrimaryActionTitleShowsReachedLimitSuffixWhenUnselected() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        draft.sourceSummary = ImportSourceSummary(
+            sourceURL: URL(fileURLWithPath: "/tmp/photos"),
+            photoCount: 100,
+            byteCount: 500_000_000,
+            reachedLimit: true,
+            reachedEntryLimit: false,
+            scannedEntryCount: 100,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        XCTAssertNil(draft.selectedFiles)
+        XCTAssertTrue(draft.primaryActionTitle.contains("+"), "title should show \"+\" when reachedLimit and no selection, got: \(draft.primaryActionTitle)")
+    }
+
+    func testPrimaryActionTitleSuppressesReachedLimitSuffixWhenSelected() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        draft.sourceSummary = ImportSourceSummary(
+            sourceURL: URL(fileURLWithPath: "/tmp/photos"),
+            photoCount: 100,
+            byteCount: 500_000_000,
+            reachedLimit: true,
+            reachedEntryLimit: false,
+            scannedEntryCount: 100,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        draft.selectedFiles = Set([
+            URL(fileURLWithPath: "/tmp/photos/a.jpg"),
+            URL(fileURLWithPath: "/tmp/photos/b.jpg")
+        ])
+        XCTAssertFalse(draft.primaryActionTitle.contains("+"), "title should not show \"+\" when selection is set, got: \(draft.primaryActionTitle)")
+    }
+
 }

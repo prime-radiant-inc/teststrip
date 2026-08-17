@@ -486,7 +486,9 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     // scanned photo is processed (already-cataloged ones re-import in place),
     // so the button counts them all instead of promising "Import 0 Photos"
     // for an all-duplicate source. When `selectedFiles` is set, the count
-    // reflects only the user's selection.
+    // reflects only the user's exact selection and the scan-limit "+" suffix
+    // is suppressed (a selection is never capped); when nil the count is
+    // scan-derived and may be capped, so the suffix still applies.
     var primaryActionTitle: String {
         let count: Int
         if let selectedCount, selectedCount > 0 {
@@ -496,7 +498,17 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         } else {
             count = sourceSummary.photoCount
         }
-        return count == 1 ? "Import 1 Photo" : "Import \(count) Photos"
+        let suffix: String
+        if selectedFiles == nil {
+            let reachedLimit = importNewOnly
+                ? (dedupPreview?.reachedLimit ?? sourceSummary.reachedLimit)
+                : sourceSummary.reachedLimit
+            suffix = reachedLimit ? "+" : ""
+        } else {
+            suffix = ""
+        }
+        let noun = count == 1 ? "Photo" : "Photos"
+        return "Import \(count)\(suffix) \(noun)"
     }
 
     var canStartImport: Bool {
