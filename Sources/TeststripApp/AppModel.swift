@@ -13454,7 +13454,7 @@ public final class AppModel {
             // assets(ids:)/assetCount(ids:) already resolve ghosts away —
             // otherwise a batch op here hits notFound and aborts entirely.
             guard !explicitAssetIDs.isEmpty else { return [] }
-            return try repository.assets(ids: explicitAssetIDs, limit: explicitAssetIDs.count).map(\.id)
+            return try repository.assetIDs(ids: explicitAssetIDs)
         }
         if let query = currentLibraryQuery() {
             return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
