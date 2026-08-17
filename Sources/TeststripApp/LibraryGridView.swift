@@ -2636,11 +2636,15 @@ struct LibraryGridView: View {
         let folderURLs = FolderSelectionPanel.chooseImportFolders()
         guard !folderURLs.isEmpty else { return }
         let allURLs = folderURLs
-        let draft = ImportConfirmationDraft.folder(
-            allURLs[0],
-            additionalFolderURLs: Array(allURLs.dropFirst())
-        )
-        presentImportConfirmation(draft)
+        Task { @MainActor in
+            let draft = await Task.detached(priority: .userInitiated) {
+                ImportConfirmationDraft.folder(
+                    allURLs[0],
+                    additionalFolderURLs: Array(allURLs.dropFirst())
+                )
+            }.value
+            presentImportConfirmation(draft)
+        }
     }
 
     // Seeds the draft's Autopilot-after-import toggle from the persisted app
@@ -2684,10 +2688,20 @@ struct LibraryGridView: View {
         guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
         switch LibraryGridChromePolicy.cardDestinationResolution(savedDefault: model.defaultCardImportDestination) {
         case .useSaved(let destinationRoot):
-            presentImportConfirmation(.card(source: source, destinationRoot: destinationRoot))
+            Task { @MainActor in
+                let draft = await Task.detached(priority: .userInitiated) {
+                    ImportConfirmationDraft.card(source: source, destinationRoot: destinationRoot)
+                }.value
+                presentImportConfirmation(draft)
+            }
         case .promptPanel:
             guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
-            presentImportConfirmation(.card(source: source, destinationRoot: destinationRoot))
+            Task { @MainActor in
+                let draft = await Task.detached(priority: .userInitiated) {
+                    ImportConfirmationDraft.card(source: source, destinationRoot: destinationRoot)
+                }.value
+                presentImportConfirmation(draft)
+            }
         }
     }
 
@@ -2696,8 +2710,12 @@ struct LibraryGridView: View {
             let folderURL = try importPathDraft.resolveFolderURL()
             isReviewingImportPath = false
             isShowingImportPathSheet = false
-            let draft = ImportConfirmationDraft.folder(folderURL)
-            presentImportConfirmation(draft)
+            Task { @MainActor in
+                let draft = await Task.detached(priority: .userInitiated) {
+                    ImportConfirmationDraft.folder(folderURL)
+                }.value
+                presentImportConfirmation(draft)
+            }
         } catch {
             importPathReviewID = nil
             isReviewingImportPath = false
@@ -2711,13 +2729,17 @@ struct LibraryGridView: View {
             let destinationPolicy = importCardPathDraft.destinationPolicy
             isReviewingImportCardPath = false
             isShowingImportCardPathSheet = false
-            let draft = ImportConfirmationDraft.card(
-                source: roots.source,
-                destinationRoot: roots.destinationRoot,
-                destinationPolicy: destinationPolicy,
-                secondCopyRootURL: roots.secondCopyRoot
-            )
-            presentImportConfirmation(draft)
+            Task { @MainActor in
+                let draft = await Task.detached(priority: .userInitiated) {
+                    ImportConfirmationDraft.card(
+                        source: roots.source,
+                        destinationRoot: roots.destinationRoot,
+                        destinationPolicy: destinationPolicy,
+                        secondCopyRootURL: roots.secondCopyRoot
+                    )
+                }.value
+                presentImportConfirmation(draft)
+            }
         } catch {
             importCardPathReviewID = nil
             isReviewingImportCardPath = false

@@ -10889,10 +10889,36 @@ public final class AppModel {
 
     private func flushBackgroundWorkPublication() {
         let queue = currentBackgroundWorkQueue
-        clearPreviewLookupCaches()
-        backgroundWorkQueue = queue
+        let generationsChanged = currentPreviewCacheGenerationsByAssetID != previewCacheGenerationsByAssetID
+        if generationsChanged {
+            // Only clear cache entries for assets whose generation actually changed,
+            // not the entire cache — clearing all entries forces every visible grid
+            // cell to re-stat the filesystem via FileManager.fileExists.
+            let changedAssetIDs = Set(currentPreviewCacheGenerationsByAssetID.keys)
+                .intersection(previewCacheGenerationsByAssetID.keys)
+                .filter {
+                    currentPreviewCacheGenerationsByAssetID[$0] != previewCacheGenerationsByAssetID[$0]
+                }
+            // Newly added keys (first preview generated) plus changed keys
+            let allChangedIDs = changedAssetIDs.union(
+                Set(currentPreviewCacheGenerationsByAssetID.keys).subtracting(previewCacheGenerationsByAssetID.keys)
+            )
+            for assetID in allChangedIDs {
+                gridPreviewURLCacheByAssetID.removeValue(forKey: assetID)
+                gridPreviewStatusCacheByAssetID.removeValue(forKey: assetID)
+                faceReportPreviewSourceCacheByAssetID.removeValue(forKey: assetID)
+            }
+        }
+        // Guard: @Observable notifies on assignment, not on change.
+        // Only assign when the value actually differs to avoid re-rendering
+        // every visible grid cell every 0.25s.
+        if queue != backgroundWorkQueue {
+            backgroundWorkQueue = queue
+        }
         recordPersistedActiveBackgroundWorkActivities(in: queue)
-        previewCacheGenerationsByAssetID = currentPreviewCacheGenerationsByAssetID
+        if generationsChanged {
+            previewCacheGenerationsByAssetID = currentPreviewCacheGenerationsByAssetID
+        }
         if pendingPreviewGenerationQueueStatesRefresh {
             pendingPreviewGenerationQueueStatesRefresh = false
             try? refreshPreviewGenerationQueueStates()
