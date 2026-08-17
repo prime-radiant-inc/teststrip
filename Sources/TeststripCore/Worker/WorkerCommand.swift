@@ -7,13 +7,20 @@ public enum WorkerControlKind: String, Codable, Equatable, Sendable {
 }
 
 public enum WorkerCommand: Equatable, Sendable {
-    case importFolder(root: URL, duplicateHandling: DuplicateHandling)
+    case importFolder(
+        root: URL,
+        duplicateHandling: DuplicateHandling,
+        selectedFiles: Set<URL>?,
+        preIngestThumbnails: URL?
+    )
     case importCard(
         source: URL,
         destinationRoot: URL,
         destinationPolicy: ImportDestinationPolicy,
         secondCopyDestination: URL?,
-        duplicateHandling: DuplicateHandling
+        duplicateHandling: DuplicateHandling,
+        selectedFiles: Set<URL>?,
+        preIngestThumbnails: URL?
     )
     case generatePreview(assetID: AssetID, level: PreviewLevel)
     case syncMetadata(assetID: AssetID)
@@ -51,9 +58,9 @@ public enum WorkerCommand: Equatable, Sendable {
 
     public var operationDescription: String {
         switch self {
-        case .importFolder(let root, _):
+        case .importFolder(let root, _, _, _):
             return "import folder \(root.lastPathComponent)"
-        case .importCard(let source, let destinationRoot, _, _, _):
+        case .importCard(let source, let destinationRoot, _, _, _, _, _):
             return "import card \(source.lastPathComponent) to \(destinationRoot.lastPathComponent)"
         case .generatePreview(let assetID, let level):
             return "generate \(level.rawValue) preview for \(assetID.rawValue)"

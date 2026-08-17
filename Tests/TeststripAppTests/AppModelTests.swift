@@ -15429,7 +15429,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(importItem.kind, .ingest)
         XCTAssertEqual(importItem.title, "Import photos")
         XCTAssertEqual(importItem.detail, "Importing from photos")
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
 
         let importedAsset = Asset(
             id: AssetID(rawValue: "worker-imported"),
@@ -15461,7 +15461,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.status, .completed)
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil),
             .generatePreview(assetID: importedAsset.id, level: .micro)
         ])
     }
@@ -16161,7 +16161,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Another import is already running")
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
     }
 
     @MainActor
@@ -16187,7 +16187,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Another import is already running")
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
     }
 
     @MainActor
@@ -16220,7 +16220,7 @@ final class AppModelTests: XCTestCase {
         scheduler.fireScheduledActions()
 
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .ingest }.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
     }
 
     @MainActor
@@ -16867,7 +16867,9 @@ final class AppModelTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .capturedDate,
             secondCopyDestination: secondCopy,
-            duplicateHandling: .skipCatalogedContent
+            duplicateHandling: .skipCatalogedContent,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         )])
     }
 
@@ -17510,7 +17512,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.first?.status, .cancelled)
         XCTAssertEqual(model.statusMessage, "Cancelled import")
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil),
             .cancelAll
         ])
 
@@ -17553,7 +17555,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.item(id: importItem.id)?.status, .running)
         XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItem.id)?.status, .queued)
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)
         ])
 
         // The worker's import terminal finalizes the cancelled import, records the
@@ -17573,7 +17575,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isImporting)
         XCTAssertEqual(transport.terminateCount, 0)
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil),
             previewCommand
         ])
         XCTAssertEqual(model.recentWork.first?.id, importItem.id.rawValue)
@@ -17610,7 +17612,9 @@ final class AppModelTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .flat,
             secondCopyDestination: nil,
-            duplicateHandling: .skipCatalogedContent
+            duplicateHandling: .skipCatalogedContent,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         )])
 
         let destinationImage = destinationRoot.appendingPathComponent("one.png")

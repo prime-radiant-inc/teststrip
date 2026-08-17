@@ -62,7 +62,7 @@ final class WorkerProtocolTests: XCTestCase {
 
     func testImportFolderCommandRoundTripsThroughJSONLine() throws {
         let root = URL(fileURLWithPath: "/Volumes/Card/DCIM", isDirectory: true)
-        let command = WorkerCommand.importFolder(root: root, duplicateHandling: .skipCatalogedContent)
+        let command = WorkerCommand.importFolder(root: root, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)
 
         let line = try WorkerProtocolEncoder.encode(command)
         let decoded = try WorkerProtocolEncoder.decode(line)
@@ -83,7 +83,9 @@ final class WorkerProtocolTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .flat,
             secondCopyDestination: nil,
-            duplicateHandling: .importAll
+            duplicateHandling: .importAll,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         )
 
         let line = try WorkerProtocolEncoder.encode(command)
@@ -109,7 +111,9 @@ final class WorkerProtocolTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .capturedDate,
             secondCopyDestination: secondCopyDestination,
-            duplicateHandling: .skipCatalogedContent
+            duplicateHandling: .skipCatalogedContent,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         )
 
         let line = try WorkerProtocolEncoder.encode(command)
@@ -136,7 +140,9 @@ final class WorkerProtocolTests: XCTestCase {
             destinationRoot: URL(fileURLWithPath: "/Photos/Ingested", isDirectory: true),
             destinationPolicy: .flat,
             secondCopyDestination: nil,
-            duplicateHandling: .importAll
+            duplicateHandling: .importAll,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         ))
     }
 
@@ -260,5 +266,39 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.pause)).controlKind, .pause)
         XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.resume)).controlKind, .resume)
         XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.cancelAll)).controlKind, .cancelAll)
+    }
+
+    func testImportFolderWithSelectedFilesRoundTrips() throws {
+        let selected: Set<URL> = [
+            URL(fileURLWithPath: "/tmp/photos/a.jpg"),
+            URL(fileURLWithPath: "/tmp/photos/b.jpg")
+        ]
+        let thumbDir = URL(fileURLWithPath: "/tmp/thumbnails")
+        let command = WorkerCommand.importFolder(
+            root: URL(fileURLWithPath: "/tmp/photos", isDirectory: true),
+            duplicateHandling: .importAll,
+            selectedFiles: selected,
+            preIngestThumbnails: thumbDir
+        )
+        let envelope = try WorkerProtocolEncoder.encode(command)
+        let decoded = try WorkerProtocolEncoder.decode(envelope)
+        XCTAssertEqual(decoded, command)
+    }
+
+    func testImportCardWithSelectedFilesRoundTrips() throws {
+        let selected: Set<URL> = [URL(fileURLWithPath: "/tmp/card/IMG_0001.jpg")]
+        let thumbDir = URL(fileURLWithPath: "/tmp/thumbnails")
+        let command = WorkerCommand.importCard(
+            source: URL(fileURLWithPath: "/Volumes/SD", isDirectory: true),
+            destinationRoot: URL(fileURLWithPath: "/tmp/dest", isDirectory: true),
+            destinationPolicy: .flat,
+            secondCopyDestination: nil,
+            duplicateHandling: .importAll,
+            selectedFiles: selected,
+            preIngestThumbnails: thumbDir
+        )
+        let envelope = try WorkerProtocolEncoder.encode(command)
+        let decoded = try WorkerProtocolEncoder.decode(envelope)
+        XCTAssertEqual(decoded, command)
     }
 }

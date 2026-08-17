@@ -18,7 +18,7 @@ final class WorkerEntrypointTests: XCTestCase {
                 "--preview-cache",
                 previewCacheRoot.path
             ],
-            input: Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll)).utf8)
+            input: Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil)).utf8)
         )
         XCTAssertEqual(stderr, "")
         let database = try CatalogDatabase.open(at: catalogURL)
@@ -59,7 +59,7 @@ final class WorkerEntrypointTests: XCTestCase {
                 "--preview-cache",
                 previewCacheRoot.path
             ],
-            input: Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll), itemID: itemID).utf8)
+            input: Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil), itemID: itemID).utf8)
         )
         XCTAssertEqual(stderr, "")
         let events = try stdout

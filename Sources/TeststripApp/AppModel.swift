@@ -14316,7 +14316,7 @@ public final class AppModel {
             enqueueWorkerImport(
                 source: folderURL,
                 destinationRoot: nil,
-                command: .importFolder(root: folderURL, duplicateHandling: duplicateHandling)
+                command: .importFolder(root: folderURL, duplicateHandling: duplicateHandling, selectedFiles: nil, preIngestThumbnails: nil)
             )
             return
         }
@@ -14424,7 +14424,9 @@ public final class AppModel {
                     destinationRoot: destinationRoot,
                     destinationPolicy: destinationPolicy,
                     secondCopyDestination: secondCopyDestination,
-                    duplicateHandling: duplicateHandling
+                    duplicateHandling: duplicateHandling,
+                    selectedFiles: nil,
+                    preIngestThumbnails: nil
                 )
             )
             return
