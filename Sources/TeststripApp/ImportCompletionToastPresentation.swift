@@ -99,6 +99,10 @@ public struct ImportReceiptRow: Equatable, Identifiable, Sendable {
     public var issueCount: Int
     public var canStartCulling: Bool
 
+    public var cullingSessionName: String {
+        "\(title) Cull"
+    }
+
     public init(
         id: String,
         sessionID: WorkSessionID,

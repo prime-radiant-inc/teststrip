@@ -314,7 +314,7 @@ struct ActivityCenterView: View {
 
     private func startCulling(_ receipt: ImportReceiptRow) {
         do {
-            try model.startCullingImport(sessionID: receipt.sessionID, title: receipt.title)
+            try model.startCullingImport(sessionID: receipt.sessionID, title: receipt.cullingSessionName)
             model.isActivityCenterPresented = false
         } catch {
             model.errorMessage = error.localizedDescription

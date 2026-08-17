@@ -7,13 +7,13 @@ Every lens is source-scoped, and switching lenses must never change the
 selected source. This card is the **only gate** on: the switcher's six
 buttons and their disabled state/tooltip, the Stacks sidebar section's
 Cull-only gating, the Sets "+" hint popover not leaking onto the Smart
-Collections header, the "Cull these" result-header button (case-sensitive,
+Collections header, the "Cull These" result-header button (case-sensitive,
 distinct from the grid's "Cull These" context-menu item), session-restore's
 lens handling, and Recent Work's reopen-keeps-lens behavior. No unit test can
 reach any of this — the repo has no SwiftUI view-inspection library.
 
 Source: `Sources/TeststripApp/LibraryGridView.swift` (`lensSwitcher`
-`:499-526`, `libraryResultHeader`'s "Cull these" button `:964-970`, window
+`:499-526`, `libraryResultHeader`'s "Cull These" button `:964-970`, window
 subtitle install `:140`), `Sources/TeststripApp/LibraryLens.swift`
 (`LibraryLens` enum/title `:10-29`, `keyEquivalent` `:46-55`, `defaultViewMode`
 `:58-67`, `LensRules.availability`/`.availabilities`/`.resolvedLens`
@@ -38,14 +38,14 @@ task-12 report for the grep evidence):
   off every other lens's view body. Every other section (`Library`,
   `Imports`, `Smart Collections`, `Sets`, `Folders`, `Recent Work`,
   `Selection`) renders identically regardless of lens.
-- The "Cull these" result-header button (`LibraryGridView.swift:964`,
+- The "Cull These" result-header button (`LibraryGridView.swift:964`,
   lowercase *t*) and the grid's "Cull These" context-menu item
   (`AssetGridCellContextMenuPresentation.swift:35`, capital *T*) are
   **different controls that cull different things** — the header button
   culls the current result set (`cullCurrentResults()`), the context-menu
   item culls the current selection (`cullCurrentSelection()`,
   `AppModel.swift:6251`). Match the header button by **exact-case label**
-  (`script/vm_scenario_run.sh ax find --label "Cull these"`, not
+  (`script/vm_scenario_run.sh ax find --label "Cull These"`, not
   `--contains`, and never case-insensitively) — a loosened match will silently
   hit the wrong control and cull the wrong set.
 - Reading `LibraryLens.defaultViewMode` (`:58-67`) directly: the Cull lens's
@@ -188,10 +188,10 @@ different catalog and invalidate restore assertions.
    before entering a token search (`rating:5`). The `.allPhotos` source arm
    calls `clearLibraryFilters()` (`AppModel.swift:5039-5041,11524-11533`),
    removing the provider-failure predicate so the nonempty rating search can
-   enable the result-header **"Cull these"** button. Press that button with an
+   enable the result-header **"Cull These"** button. Press that button with an
    exact-case match (see the correction above:
-   `script/vm_scenario_run.sh ax find --label "Cull these"` then
-   `script/vm_scenario_run.sh ax press --label "Cull these"`, never
+   `script/vm_scenario_run.sh ax find --label "Cull These"` then
+   `script/vm_scenario_run.sh ax press --label "Cull These"`, never
    `--contains`), and assert the scope line names the search
    (the chip text, since `cullTheseSourceTitle()` prefers
    `activeLibraryFilterChips` over the raw source title,
@@ -202,8 +202,8 @@ different catalog and invalidate restore assertions.
    script/vm_scenario_run.sh ax find --label "Scope" --contains "All Photos"
    script/vm_scenario_run.sh ax type --role AXTextField --label "Search Catalog" --text "rating:5"
    script/vm_scenario_run.sh key 'key code 36'
-   script/vm_scenario_run.sh ax find --role AXButton --label "Cull these"
-   script/vm_scenario_run.sh ax press --role AXButton --label "Cull these"
+   script/vm_scenario_run.sh ax find --role AXButton --label "Cull These"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Cull These"
    CULL_ROW=$(script/vm_scenario_run.sh sql smoke "SELECT kind || '|' || title FROM work_sessions WHERE kind='culling' ORDER BY rowid DESC LIMIT 1;")
    test "$CULL_ROW" = "culling|Rating >= 5"
    ```
@@ -348,7 +348,7 @@ different catalog and invalidate restore assertions.
   is selected, if the AXHelp text doesn't read exactly `"Nothing here is
   cullable"`, or if the app doesn't fall back to Grid.
 - Step 8: **fails if** the Step 7 diagnostic source is not first reset to
-  `All Photos`, if `find --label "Cull these"` matches the grid's "Cull These"
+  `All Photos`, if `find --label "Cull These"` matches the grid's "Cull These"
   context-menu item instead (case mismatch would indicate the AX driver's
   match is not case-sensitive — flag immediately, don't loosen the card), if
   the exact button remains disabled, if the scope line doesn't name the
@@ -454,7 +454,7 @@ What passed, with the evidence:
   (`AXWindow title="Teststrip – Grid"`, `Grid value="Selected"`) and the Cull
   segment rendered `AXButton desc="Cull" value="Not selected" help="Nothing
   here is cullable" enabled=false` — exact-match on the specified help text.
-- **Step 8** — `find --label "Cull these"` matched; `find --label "Cull These"`
+- **Step 8** — `find --label "Cull These"` matched; `find --label "Cull These"`
   (capital T) did **not** match anywhere on the canvas, so the driver's
   matching is genuinely case-sensitive. Pressing it entered the Cull lens with
   scope `Rating >= 5, 4 photos · ✓ 0 · ✕ 1 · 3 left` (the chip text, per

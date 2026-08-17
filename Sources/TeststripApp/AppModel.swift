@@ -3441,7 +3441,7 @@ public final class AppModel {
         catalog != nil && !assets.isEmpty && activeCullingSessionID == nil
     }
 
-    /// The Cull lens's "Cull these" is unavailable on diagnostic sources —
+    /// The Cull lens's "Cull These" is unavailable on diagnostic sources —
     /// nothing there is cullable — and on an empty scope.
     public var canCullCurrentResults: Bool {
         canBeginCullingSession && !selectedSource.isDiagnostic
@@ -6478,7 +6478,7 @@ public final class AppModel {
         return try beginCullingSession(named: "Cull These")
     }
 
-    /// "Cull these": hands the current result set to the Cull lens as its
+    /// "Cull These": hands the current result set to the Cull lens as its
     /// source. The handoff travels as a `SetQuery`, never through the text
     /// serializer — `searchTextToken(for:)` returns nil for `.likelyPick`,
     /// `.likelyIssue`, `.evaluationFailure`, and `.withinGeoBounds`, so a
@@ -11446,7 +11446,7 @@ public final class AppModel {
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         // reload() is the single funnel after bulk mutations (trash, move
         // back, relocation, deletes), so every count surface refreshes here
-        // together — otherwise the sidebar keeps stale review-queue/folder
+        // together — otherwise the sidebar keeps stale smart-collection/folder
         // counts while the HUD and catalog already tell the new story
         // (persona-7's "three surfaces, three stories").
         try refreshCatalogSidebarCounts()

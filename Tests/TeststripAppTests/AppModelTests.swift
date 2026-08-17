@@ -6547,7 +6547,7 @@ final class AppModelTests: XCTestCase {
         let evaluated = makeAsset(id: "evaluated-target", path: "/Photos/Target/evaluated.jpg", rating: 0)
         let unevaluated = makeAsset(id: "unevaluated-target", path: "/Photos/Target/unevaluated.jpg", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(
-            named: "sidebar-target-review-queue",
+            named: "sidebar-target-smart-collection",
             assets: [evaluated, unevaluated]
         )
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
@@ -6933,7 +6933,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testLoadExposesSmartCollectionsAndSelectingQueueAppliesFilter() throws {
-        let directory = try makeTemporaryDirectory(named: "app-model-review-queue-sidebar")
+        let directory = try makeTemporaryDirectory(named: "app-model-smart-collection-sidebar")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
@@ -10480,7 +10480,7 @@ final class AppModelTests: XCTestCase {
             keywords: ["tagged"]
         )
         let (model, repository) = try makeModelWithCatalogAssets(
-            named: "smart-collection-review-queue-phrases",
+            named: "smart-collection-phrases",
             assets: [faceIssue, faceOnly, issueOnly]
         )
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
@@ -19835,7 +19835,7 @@ final class AppModelTests: XCTestCase {
     // Persona-7 count drift: after trashing rejects the sidebar still said
     // "Rejects 40" / "Not analyzed yet 130" while HUD and catalog said
     // otherwise. Every bulk mutation funnels through reload(), so reload()
-    // must refresh the sidebar's review-queue/set/folder counts too.
+    // must refresh the sidebar's smart-collection/set/folder counts too.
     func testMoveRejectsToTrashRefreshesSidebarCounts() throws {
         let directory = try makeTemporaryDirectory(named: "trash-sidebar-counts")
         let shoot = directory.appendingPathComponent("shoot", isDirectory: true)

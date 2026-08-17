@@ -68,7 +68,7 @@ final class AutopilotGhostQueryTests: XCTestCase {
     }
 
     // Display-facing listing: a bonded JPEG secondary must never surface as its
-    // own review-queue row, same rule the other id listings follow.
+    // own smart-collection row, same rule the other id listings follow.
     func testBondedSecondaryIsExcluded() throws {
         let repository = try makeRepository(named: "ghost-query-bonded")
         let primary = asset(path: "/Photos/frame.cr2", metadata: AssetMetadata(flag: .pick, aiUnconfirmedFields: [.flag]))

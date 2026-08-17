@@ -47,7 +47,7 @@ final class LibrarySourceTests: XCTestCase {
 
     // The predicates the text serializer loses (.likelyPick, .likelyIssue,
     // .evaluationFailure, .withinGeoBounds) must survive a source round trip,
-    // because a search source is exactly how "Cull these" travels.
+    // because a search source is exactly how "Cull These" travels.
     func testASearchSourcePreservesThePredicatesTheTextSerializerDrops() throws {
         let query = SetQuery(predicates: [
             .likelyPick,
@@ -1032,7 +1032,7 @@ final class LibrarySourceTests: XCTestCase {
         )
     }
 
-    // MARK: - Cull these
+    // MARK: - Cull These
 
     // The handoff travels as a SetQuery. The text serializer silently drops
     // .likelyPick, .likelyIssue, .evaluationFailure, and .withinGeoBounds — a
@@ -1150,7 +1150,7 @@ final class LibrarySourceTests: XCTestCase {
 
     // SP-D0: an unconfirmed AI pick is tentative, not a decision — the Picks
     // source still shows it (unconfirmed labels are visible, just marked),
-    // but "Cull these" must not let it masquerade as an already-reviewed
+    // but "Cull These" must not let it masquerade as an already-reviewed
     // frame in the handed-off session. `cullCurrentResults()` only re-scopes
     // (it snapshots asset ids, never touches metadata), so this pins the
     // read side: the confirmed-only decision count survives the handoff.

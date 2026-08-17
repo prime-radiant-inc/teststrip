@@ -319,7 +319,7 @@ final class LibraryQueryTokenTests: XCTestCase {
 
     // MARK: - Legacy chip rows deduplicate against tokens by filter identity
 
-    /// `.faceCount`/`.ocrText` legacy rows carry the review-queue title
+    /// `.faceCount`/`.ocrText` legacy rows carry the smart-collection title
     /// ("Faces Found"/"Text Found"), not the token's plain-predicate display, so
     /// a title-only dedupe would render two chips for one filter.
     func testEvaluationKindFilterRendersExactlyOneChip() {

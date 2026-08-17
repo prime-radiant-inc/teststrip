@@ -187,7 +187,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         XCTAssertEqual(Set(model.assets.map(\.id)), Set([five.id, four.id]))
     }
 
-    // A "Cull From" review-queue source is a filter-field scope (applySmartCollection
+    // A "Cull From" smart-collection source is a filter-field scope (applySmartCollection
     // installs the collection's query predicates as detached library filter
     // predicates, not a snapshot set), so culling from it keeps that filter
     // live and it persists back to Library — the same single-scope behavior the
@@ -197,7 +197,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         let pick = makeAsset(id: "pick", path: "/Photos/pick.jpg", rating: 5, flag: .pick)
         let unflagged = makeAsset(id: "unflagged", path: "/Photos/unflagged.jpg", rating: 3)
         let (model, _) = try makeModelWithCatalogAssets(
-            named: "cull-source-review-queue-persists-filter",
+            named: "cull-source-smart-collection-persists-filter",
             assets: [pick, unflagged]
         )
 
