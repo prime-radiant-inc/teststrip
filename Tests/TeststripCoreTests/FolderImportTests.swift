@@ -1184,6 +1184,82 @@ final class FolderImportTests: XCTestCase {
         }
         XCTAssertEqual(try String(contentsOf: destinationFile, encoding: .utf8), "existing")
     }
+
+    func testSelectedFilesFiltersIngest() throws {
+        let dir = try TestDirectories.makeTemporaryDirectory(named: "select-files-filter")
+        let photo1 = dir.appendingPathComponent("keep.jpg")
+        let photo2 = dir.appendingPathComponent("skip.jpg")
+        let photo3 = dir.appendingPathComponent("keep2.jpg")
+        try Data("jpg one".utf8).write(to: photo1)
+        try Data("jpg two".utf8).write(to: photo2)
+        try Data("jpg three".utf8).write(to: photo3)
+
+        let catalogDir = try TestDirectories.makeTemporaryDirectory(named: "select-files-filter-catalog")
+        let database = try CatalogDatabase.open(at: catalogDir.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg", "png"]))
+        let previewCacheDir = try TestDirectories.makeTemporaryDirectory(named: "select-files-filter-preview")
+        let importService = LibraryImportService(
+            ingestService: service,
+            previewCache: PreviewCache(root: previewCacheDir)
+        )
+
+        let selectedFiles: Set<URL> = [photo1, photo3]
+        let result = try importService.addFolderInPlace(
+            dir,
+            repository: repository,
+            previewPolicy: .deferGeneration,
+            selectedFiles: selectedFiles
+        )
+
+        XCTAssertEqual(result.importedAssets.count, 2)
+        let importedURLs = Set(result.importedAssets.map(\.originalURL))
+        XCTAssertTrue(importedURLs.contains(photo1))
+        XCTAssertTrue(importedURLs.contains(photo3))
+        XCTAssertFalse(importedURLs.contains(photo2))
+    }
+
+    func testThumbnailPromotionSkipsMicroRender() throws {
+        let dir = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion")
+        let photo = dir.appendingPathComponent("photo.jpg")
+        try TestDirectories.writeTestJPEG(to: photo, width: 8, height: 8)
+
+        let preIngestCacheDir = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion-cache")
+        let preIngestCache = PreIngestThumbnailCache(directoryURL: preIngestCacheDir)
+        let thumbnailData = Data([0xFF, 0xD8, 0xFF, 0xE0])
+        try preIngestCache.storeThumbnail(thumbnailData, for: photo)
+
+        let previewRoot = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion-preview")
+        let catalogDir = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion-catalog")
+        let database = try CatalogDatabase.open(at: catalogDir.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg", "png"]))
+        let importService = LibraryImportService(
+            ingestService: service,
+            previewCache: PreviewCache(root: previewRoot)
+        )
+
+        let result = try importService.addFolderInPlace(
+            dir,
+            repository: repository,
+            previewPolicy: .generateImmediately,
+            preIngestThumbnailCache: preIngestCache
+        )
+
+        XCTAssertEqual(result.importedAssets.count, 1)
+        let asset = result.importedAssets[0]
+
+        let microURL = PreviewCache(root: previewRoot).url(for: PreviewCacheKey(assetID: asset.id, level: .micro))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: microURL.path), "micro preview should exist from promotion")
+
+        let pendingItems = try repository.pendingPreviewGenerationItems()
+        let microPending = pendingItems.filter { $0.assetID == asset.id && $0.level == .micro }
+        XCTAssertTrue(microPending.isEmpty, "micro preview should be marked as generated")
+
+        preIngestCache.cleanup()
+    }
 }
 
 private final class FolderScanSkippedFileRecorder: @unchecked Sendable {

@@ -134,6 +134,8 @@ public struct LibraryImportService: Sendable {
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
         duplicateHandling: DuplicateHandling = .importAll,
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try importAssets(
@@ -144,6 +146,8 @@ public struct LibraryImportService: Sendable {
             catalogedDetail: { "Cataloged \(Self.photoCountDescription($0))" },
             repository: repository,
             previewPolicy: previewPolicy,
+            selectedFiles: selectedFiles,
+            preIngestThumbnailCache: preIngestThumbnailCache,
             progress: progress
         )
     }
@@ -156,6 +160,8 @@ public struct LibraryImportService: Sendable {
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
         duplicateHandling: DuplicateHandling = .importAll,
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try importAssets(
@@ -172,6 +178,8 @@ public struct LibraryImportService: Sendable {
             catalogedDetail: { "Copied \(Self.photoCountDescription($0)) to \(destinationRoot.lastPathComponent)" },
             repository: repository,
             previewPolicy: previewPolicy,
+            selectedFiles: selectedFiles,
+            preIngestThumbnailCache: preIngestThumbnailCache,
             progress: progress
         )
     }
@@ -184,6 +192,8 @@ public struct LibraryImportService: Sendable {
         catalogedDetail: (Int) -> String,
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler?
     ) throws -> LibraryImportResult {
         try Task.checkCancellation()
@@ -213,6 +223,9 @@ public struct LibraryImportService: Sendable {
             }
         )
         let sourceFiles = scannedSourceFiles.filter { !isPreviewCacheFile($0) }
+        let filteredFiles = selectedFiles.map { selected in
+            sourceFiles.filter { selected.contains($0) }
+        } ?? sourceFiles
         var skippedSourceFiles = scanSkippedFiles
             .filter { !isPreviewCacheFile($0.url) }
             .sorted { first, second in
@@ -238,8 +251,8 @@ public struct LibraryImportService: Sendable {
         )
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
-            totalUnitCount: sourceFiles.count,
-            detail: catalogingDetail(sourceFiles.count)
+            totalUnitCount: filteredFiles.count,
+            detail: catalogingDetail(filteredFiles.count)
         ))
         let ingestProgressCoalescer = IngestProgressCoalescer(
             interval: Self.ingestProgressInterval,
@@ -267,7 +280,7 @@ public struct LibraryImportService: Sendable {
         // skipped-file list.
         var alreadyInCatalogCount = 0
         let assets = try ingestService.ingest(
-            files: sourceFiles,
+            files: filteredFiles,
             plan: plan,
             repository: repository,
             skippedSourceFile: skippedSourceFileHandler,
@@ -327,7 +340,12 @@ public struct LibraryImportService: Sendable {
             detail: "Generating previews"
         ))
 
-        let previewResult = try generatePreviews(for: previewItems, repository: repository, progress: progress)
+        let previewResult = try generatePreviews(
+            for: previewItems,
+            repository: repository,
+            preIngestThumbnailCache: preIngestThumbnailCache,
+            progress: progress
+        )
         return LibraryImportResult(
             importedAssets: assets,
             previewFailures: previewResult.previewFailures,
@@ -357,6 +375,7 @@ public struct LibraryImportService: Sendable {
     private func generatePreviews(
         for items: [PreviewGenerationItem],
         repository: CatalogRepository,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler?
     ) throws -> LibraryPreviewGenerationResult {
         var generatedCount = 0
@@ -366,6 +385,21 @@ public struct LibraryImportService: Sendable {
         for (index, item) in items.enumerated() {
             try Task.checkCancellation()
             let asset = try repository.asset(id: item.assetID)
+            if let cache = preIngestThumbnailCache,
+               item.level == .micro,
+               cache.thumbnailExists(for: asset.originalURL) {
+                let destURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .micro))
+                try cache.promote(from: asset.originalURL, to: destURL)
+                try repository.markPreviewGenerated(assetID: asset.id, level: .micro)
+                generatedCount += 1
+                let completedCount = index + 1
+                progress?(LibraryImportProgress(
+                    completedUnitCount: completedCount,
+                    totalUnitCount: items.count,
+                    detail: "Generated \(completedCount) of \(items.count) previews"
+                ))
+                continue
+            }
             if !failedAssetIDs.contains(asset.id) {
                 do {
                     try renderer.render(
