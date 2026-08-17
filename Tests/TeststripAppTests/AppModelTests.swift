@@ -1,10 +1,19 @@
 import CoreGraphics
+import Foundation
 import ImageIO
 import Observation
 import UniformTypeIdentifiers
 import XCTest
 @testable import TeststripCore
 @testable import TeststripApp
+
+/// Safety-net timeout for condition-based waits. The poll loops below exit
+/// the instant their condition holds, so this deadline only guards against
+/// hangs — it is never the primary wait mechanism. The generous value (vs.
+/// the prior fixed 100-iteration / ~100ms budget) absorbs scheduler latency
+/// under concurrent machine load without slowing passing runs, which still
+/// return in milliseconds.
+private let waitConditionTimeoutSeconds: TimeInterval = 10
 
 final class AppModelTests: XCTestCase {
     func testAppModelStartsWithStudioLayoutSections() {
@@ -6703,6 +6712,59 @@ final class AppModelTests: XCTestCase {
             ActiveLibraryFilterRow(title: "OCR Found", target: LibrarySource.smartCollection(.ocrFound))
         ])
         XCTAssertEqual(model.suggestedSavedSearchName, "OCR Found")
+    }
+
+    /// Issue #7: the smart-collection predicate collapse made
+    /// `suggestedSavedSearchName` derive its proposal from filter chip titles,
+    /// so saving over Five Stars proposed "Rating >= 5" instead of "5+ Stars".
+    /// The chip title stays "Rating >= 5" (it is a removable filter chip); only
+    /// the proposed saved-search name uses the friendlier spelling. This test
+    /// pins the wording so it cannot drift back to the technical chip title.
+    func testSuggestedSavedSearchNameUsesFriendlierRatingWording() throws {
+        let fiveStar = makeAsset(id: "five", path: "/Photos/five.jpg", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "saved-search-rating-wording",
+            assets: [fiveStar]
+        )
+
+        // The exact scenario from the issue: saving over the Five Stars
+        // smart collection. The chip reads "Rating >= 5"; the name reads "5+ Stars".
+        try model.selectSource(.smartCollection(.fiveStars))
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 5"])
+        XCTAssertEqual(model.suggestedSavedSearchName, "5+ Stars")
+
+        // The friendlier spelling covers every rating threshold, not just five.
+        for rating in 1...5 {
+            try model.selectSource(.search(
+                SetQuery(predicates: [.ratingAtLeast(rating)]),
+                titled: "\(rating)+ Stars"
+            ))
+            XCTAssertEqual(
+                model.suggestedSavedSearchName, "\(rating)+ Stars",
+                "rating \(rating) should spell as \(rating)+ Stars"
+            )
+        }
+
+        // Other technical chip titles get the same friendlier treatment so a
+        // saved-search name never reads like a raw predicate.
+        try model.selectSource(.search(
+            SetQuery(predicates: [.isoAtLeast(800)]),
+            titled: "ISO 800+"
+        ))
+        XCTAssertEqual(model.suggestedSavedSearchName, "ISO 800+")
+
+        try model.selectSource(.search(
+            SetQuery(predicates: [.camera("Canon")]),
+            titled: "Canon"
+        ))
+        XCTAssertEqual(model.suggestedSavedSearchName, "Canon")
+
+        // Multiple chips combine with the friendlier spellings.
+        try model.selectSource(.search(
+            SetQuery(predicates: [.ratingAtLeast(5), .flag(.pick)]),
+            titled: "5+ Stars Pick"
+        ))
+        XCTAssertEqual(model.suggestedSavedSearchName, "5+ Stars Pick")
     }
 
     func testActiveLibraryFilterRowsExposeSelectedDynamicSetRules() {
@@ -19296,6 +19358,7 @@ final class AppModelTests: XCTestCase {
             availability: .online,
             metadata: AssetMetadata()
         )
+        let importGate = ImportTaskGate()
         let model = try AppModel.load(
             catalog: catalog,
             importTaskFactory: { paths, _, _, progress in
@@ -19308,7 +19371,7 @@ final class AppModelTests: XCTestCase {
                         detail: "Cataloged 1 photo",
                         catalogedAssetIDs: [importedAsset.id]
                     ))
-                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    try await importGate.wait()
                     return AppImportOutput(
                         result: LibraryImportResult(importedAssets: [importedAsset], previewFailures: []),
                         assets: try backgroundCatalog.repository.allAssets(limit: 500),
@@ -19356,6 +19419,8 @@ final class AppModelTests: XCTestCase {
             availability: .online,
             metadata: AssetMetadata()
         )
+        let firstProgressGate = ImportTaskGate()
+        let completionGate = ImportTaskGate()
         let model = try AppModel.load(
             catalog: catalog,
             importTaskFactory: { paths, _, _, progress in
@@ -19368,7 +19433,7 @@ final class AppModelTests: XCTestCase {
                         detail: "Cataloging 1 of 2 photos",
                         catalogedAssetIDs: [firstAsset.id]
                     ))
-                    try await Task.sleep(nanoseconds: 20_000_000)
+                    try await firstProgressGate.wait()
                     try backgroundCatalog.repository.upsert(secondAsset)
                     progress(LibraryImportProgress(
                         completedUnitCount: 2,
@@ -19376,7 +19441,7 @@ final class AppModelTests: XCTestCase {
                         detail: "Cataloging 2 of 2 photos",
                         catalogedAssetIDs: [secondAsset.id]
                     ))
-                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    try await completionGate.wait()
                     return AppImportOutput(
                         result: LibraryImportResult(importedAssets: [firstAsset, secondAsset], previewFailures: []),
                         assets: try backgroundCatalog.repository.allAssets(limit: 500),
@@ -19389,6 +19454,7 @@ final class AppModelTests: XCTestCase {
         model.beginImportFolder(photoFolder)
 
         try await waitForSelectedAsset(firstAsset.id, in: model)
+        firstProgressGate.release()
         try await waitForActiveWorkProgress(
             completedUnitCount: 2,
             totalUnitCount: 2,
@@ -20990,24 +21056,103 @@ final class AppModelTests: XCTestCase {
         return (result.model, result.previewCache, first, second)
     }
 
+    // MARK: - Condition-based wait helpers
+
+    /// Polls `condition` every ~1ms until it returns `true` or `timeoutSeconds`
+    /// elapses, exiting early as soon as the condition holds. The timeout is a
+    /// safety net, not the wait duration.
+    @MainActor
+    private func waitUntil(
+        _ condition: @MainActor @escaping () -> Bool,
+        timeoutSeconds: TimeInterval = waitConditionTimeoutSeconds
+    ) async throws -> Bool {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            if condition() { return true }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        return condition()
+    }
+
+    /// Like `waitUntil`, but returns the first non-`nil` value from `condition`.
+    @MainActor
+    private func waitUntilValue<T>(
+        _ condition: @MainActor @escaping () -> T?,
+        timeoutSeconds: TimeInterval = waitConditionTimeoutSeconds
+    ) async throws -> T? {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            if let value = condition() { return value }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        return condition()
+    }
+
+    /// A cancellation-aware gate for import-task test fixtures. `wait()` blocks a
+    /// background task until `release()` is called or the enclosing task is
+    /// cancelled, in which case `wait()` throws `CancellationError` — matching
+    /// `Task.sleep` under cancellation. It replaces the fixed "keep the work
+    /// alive" sleeps in import tests so ordering and liveness depend on a real
+    /// signal, not a guessed wall-clock duration.
+    private final class ImportTaskGate: @unchecked Sendable {
+        private var continuation: CheckedContinuation<Void, any Error>?
+        private var resolved = false
+        private var cancelled = false
+        private let lock = NSLock()
+
+        func wait() async throws {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                    lock.lock()
+                    if cancelled {
+                        lock.unlock()
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    if resolved {
+                        lock.unlock()
+                        continuation.resume()
+                        return
+                    }
+                    self.continuation = continuation
+                    lock.unlock()
+                }
+            } onCancel: {
+                self.cancel()
+            }
+        }
+
+        func release() {
+            lock.lock()
+            let cont = continuation
+            continuation = nil
+            resolved = true
+            lock.unlock()
+            cont?.resume()
+        }
+
+        private func cancel() {
+            lock.lock()
+            let cont = continuation
+            continuation = nil
+            cancelled = true
+            lock.unlock()
+            cont?.resume(throwing: CancellationError())
+        }
+    }
+
     @MainActor
     private func waitForActivityStatus(_ status: WorkSessionStatus, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.recentWork.first?.status == status {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.recentWork.first?.status == status }) {
+            return
         }
         XCTFail("timed out waiting for activity status \(status.rawValue)")
     }
 
     @MainActor
     private func waitForVisibleWorkStatus(_ status: WorkSessionStatus, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.visibleWorkActivity?.status == status {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.visibleWorkActivity?.status == status }) {
+            return
         }
         XCTFail("timed out waiting for visible work status \(status.rawValue)")
     }
@@ -21018,22 +21163,16 @@ final class AppModelTests: XCTestCase {
         itemID: WorkSessionID,
         in model: AppModel
     ) async throws {
-        for _ in 0..<100 {
-            if model.backgroundWorkQueue.item(id: itemID)?.status == status {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.backgroundWorkQueue.item(id: itemID)?.status == status }) {
+            return
         }
         XCTFail("timed out waiting for background work status \(status.rawValue)")
     }
 
     @MainActor
     private func waitForVisibleWorkDetail(_ detail: String, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.visibleWorkActivity?.detail == detail {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.visibleWorkActivity?.detail == detail }) {
+            return
         }
         XCTFail("timed out waiting for visible work detail \(detail)")
     }
@@ -21044,77 +21183,56 @@ final class AppModelTests: XCTestCase {
         itemID: WorkSessionID,
         repository: CatalogRepository
     ) async throws {
-        for _ in 0..<100 {
-            if try repository.session(id: itemID).detail == detail {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ (try? repository.session(id: itemID).detail) == detail }) {
+            return
         }
         XCTFail("timed out waiting for persisted work detail \(detail)")
     }
 
     @MainActor
     private func waitForSelectedAsset(_ assetID: AssetID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.selectedAssetID == assetID {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.selectedAssetID == assetID }) {
+            return
         }
         XCTFail("timed out waiting for selected asset \(assetID.rawValue)")
     }
 
     @MainActor
     private func waitForCompletedBackgroundWorkItem(id itemID: WorkSessionID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.backgroundWorkQueue.item(id: itemID)?.status == .completed {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.backgroundWorkQueue.item(id: itemID)?.status == .completed }) {
+            return
         }
         XCTFail("timed out waiting for completed work item \(itemID.rawValue)")
     }
 
     @MainActor
     private func waitForRecognitionItemCount(_ count: Int, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.backgroundWorkQueue.items.filter({ $0.kind == .recognition }).count >= count {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.backgroundWorkQueue.items.filter({ $0.kind == .recognition }).count >= count }) {
+            return
         }
         XCTFail("timed out waiting for \(count) recognition work items")
     }
 
     @MainActor
     private func waitForFirstAsset(in model: AppModel) async throws -> AssetID {
-        for _ in 0..<100 {
-            if let assetID = model.assets.first?.id {
-                return assetID
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        guard let assetID = try await waitUntilValue({ model.assets.first?.id }) else {
+            throw TeststripError.invalidState("timed out waiting for first asset")
         }
-        throw TeststripError.invalidState("timed out waiting for first asset")
+        return assetID
     }
 
     @MainActor
     private func waitForGridPreview(assetID: AssetID, in model: AppModel) async throws -> URL {
-        for _ in 0..<100 {
-            if let previewURL = model.gridPreviewURL(for: assetID) {
-                return previewURL
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        guard let previewURL = try await waitUntilValue({ model.gridPreviewURL(for: assetID) }) else {
+            throw TeststripError.invalidState("timed out waiting for grid preview")
         }
-        throw TeststripError.invalidState("timed out waiting for grid preview")
+        return previewURL
     }
 
     @MainActor
     private func waitForStatusMessage(_ statusMessage: String, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.statusMessage == statusMessage {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.statusMessage == statusMessage }) {
+            return
         }
         throw TeststripError.invalidState("timed out waiting for status \(statusMessage)")
     }
@@ -21126,13 +21244,12 @@ final class AppModelTests: XCTestCase {
         detail: String,
         in model: AppModel
     ) async throws {
-        for _ in 0..<1_000 {
-            if model.activeWork?.completedUnitCount == completedUnitCount,
-               model.activeWork?.totalUnitCount == totalUnitCount,
-               model.activeWork?.detail == detail {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({
+            model.activeWork?.completedUnitCount == completedUnitCount
+                && model.activeWork?.totalUnitCount == totalUnitCount
+                && model.activeWork?.detail == detail
+        }) {
+            return
         }
         XCTFail("timed out waiting for active import progress")
     }
@@ -21188,22 +21305,16 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     private func waitForPreviewCacheGeneration(_ generation: Int, for assetID: AssetID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.previewCacheGeneration(for: assetID) == generation {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.previewCacheGeneration(for: assetID) == generation }) {
+            return
         }
         XCTFail("timed out waiting for preview cache generation \(generation)")
     }
 
     @MainActor
     private func waitForEvaluationSignalGeneration(_ generation: Int, for assetID: AssetID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.evaluationSignalGeneration(for: assetID) == generation {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.evaluationSignalGeneration(for: assetID) == generation }) {
+            return
         }
         XCTFail("timed out waiting for evaluation signal generation \(generation)")
     }

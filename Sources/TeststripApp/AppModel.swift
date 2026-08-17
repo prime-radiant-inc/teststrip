@@ -2098,6 +2098,7 @@ public final class AppModel {
         didSet {
             if oldValue != selectedAssetID {
                 abContenderAssetID = nil
+                invalidateCullingStackScopeCache()
             }
             persistSessionState()
         }
@@ -2131,6 +2132,12 @@ public final class AppModel {
     /// The subset of frames the loupe/filmstrip/grid navigate through while
     /// culling. `.all` means unfiltered. Cycled with the `s` shortcut.
     public private(set) var cullScope: CullScope = .all
+    /// Cached result of `selectedCullingStackScope`; nil = dirty/invalid.
+    /// Set on cache miss, cleared by `invalidateCullingStackScopeCache()`.
+    private var _cachedCullingStackScope: CullingStackScope?
+    /// Test hook: counts cache misses (recomputations) in
+    /// `selectedCullingStackScope`. Incremented only on cache miss.
+    internal var _cullingStackScopeRecomputeCount = 0
     /// Whether a P/X/rating/color-label decision auto-advances the selection
     /// afterward (to the next undecided stack frame, or the next stack's
     /// landing frame). Toggled with the `a` shortcut; default on.
@@ -3543,7 +3550,10 @@ public final class AppModel {
         // chips already use, not a second title spelling.
         for predicate in detachedLibraryFilterPredicates {
             guard let title = Self.activeLibraryFilterRow(for: predicate)?.title else { continue }
-            Self.append(title, to: &parts)
+            // Chip titles ("Rating >= 5") are fine as removable chips but read
+            // as technical copy in a proposed name; map them back to the wording
+            // the old boolean-branch spellings produced ("5+ Stars"). See #7.
+            Self.append(Self.friendlierSavedSearchPart(forChipTitle: title), to: &parts)
         }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
@@ -7357,6 +7367,7 @@ public final class AppModel {
 
     public func cycleCullScope() {
         cullScope = cullScope.next()
+        invalidateCullingStackScopeCache()
         selectAssetID(CullScopeOrdering.selectionAfterScopeChange(
             assets: assets,
             scope: cullScope,
@@ -7436,6 +7447,7 @@ public final class AppModel {
     /// The `.reviewPicks` action from `CullCompletionPresentation`.
     public func applyCullCompletionReviewPicks() {
         cullScope = .picks
+        invalidateCullingStackScopeCache()
         selectAssetID(CullScopeOrdering.selectionAfterScopeChange(
             assets: assets,
             scope: cullScope,
@@ -7715,6 +7727,16 @@ public final class AppModel {
     // from partial inputs and display a membership promote won't write —
     // that made the rail's Keep button a silent no-op (cull-004/cull-014).
     public var selectedCullingStackScope: CullingStackScope? {
+        if let cached = _cachedCullingStackScope {
+            return cached
+        }
+        let computed = computeSelectedCullingStackScope()
+        _cachedCullingStackScope = computed
+        _cullingStackScopeRecomputeCount += 1
+        return computed
+    }
+
+    private func computeSelectedCullingStackScope() -> CullingStackScope? {
         if let selectedWorkStackAssetIDs {
             let position = try? selectedPersistedCullingStackPosition()
             return CullingStackScope(
@@ -7736,6 +7758,14 @@ public final class AppModel {
             stackCount: stacks.count,
             rationaleText: stack.rationale
         )
+    }
+
+    /// Clears the cached `selectedCullingStackScope` so the next access
+    /// recomputes from current state. Called after any state change that
+    /// could affect the partition: flag/rating writes, scope changes,
+    /// asset reloads, and selection changes.
+    private func invalidateCullingStackScopeCache() {
+        _cachedCullingStackScope = nil
     }
 
     private func selectNextStackForCulling() throws {
@@ -9028,6 +9058,7 @@ public final class AppModel {
         if let index = assets.firstIndex(where: { $0.id == assetID }) {
             assets[index] = updatedAsset
         }
+        invalidateCullingStackScopeCache()
     }
 
     private static func objectLabels(from signal: EvaluationSignal) -> [String] {
@@ -9111,6 +9142,7 @@ public final class AppModel {
             return
         }
         assets[index] = updatedAsset
+        invalidateCullingStackScopeCache()
     }
 
     private func syncMetadataSidecar(for asset: Asset) throws {
@@ -11441,6 +11473,7 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        invalidateCullingStackScopeCache()
         isAutopilotReviewActive = false
         try refreshProposedAssets()
         try refreshWorkHistorySearchResults(repository: catalog.repository)
@@ -11971,6 +12004,7 @@ public final class AppModel {
 
         let previousSelection = selectedAssetID
         assets = loadedAssets
+        invalidateCullingStackScopeCache()
         if let preferredSelection, assets.contains(where: { $0.id == preferredSelection }) {
             selectedAssetID = preferredSelection
         } else if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
@@ -12036,6 +12070,31 @@ public final class AppModel {
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    /// Friendlier wording for a detached filter-predicate chip title when it
+    /// appears in a proposed saved-search name. Chip titles ("Rating >= 5")
+    /// are fine as removable chips but read as technical copy in a name; this
+    /// restores the wording the old boolean-branch spellings produced
+    /// ("5+ Stars"). Only the proposed name changes — the chips themselves
+    /// keep their technical titles. See issue #7.
+    private static func friendlierSavedSearchPart(forChipTitle title: String) -> String {
+        let ratingPrefix = "Rating >= "
+        if title.hasPrefix(ratingPrefix) {
+            return "\(title.dropFirst(ratingPrefix.count))+ Stars"
+        }
+        let isoPrefix = "ISO >= "
+        if title.hasPrefix(isoPrefix) {
+            return "ISO \(title.dropFirst(isoPrefix.count))+"
+        }
+        // Prefix-labelled chips collapse to their value, matching the old
+        // boolean-filter spellings (e.g. "Camera: Canon" → "Canon").
+        for prefix in ["Source: ", "Camera: ", "Lens: ", "Keyword: ", "Search: ", "Folder: "] {
+            if title.hasPrefix(prefix) {
+                return String(title.dropFirst(prefix.count))
+            }
+        }
+        return title
     }
 
     private static func activeLibraryFilterRow(for predicate: SetQuery.Predicate) -> ActiveLibraryFilterRow? {

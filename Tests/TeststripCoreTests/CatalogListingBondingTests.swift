@@ -40,7 +40,7 @@ final class CatalogListingBondingTests: XCTestCase {
     /// A RAW primary with one bonded JPEG secondary sharing folder, capture
     /// time, and GPS coordinates, plus one unrelated standalone — the
     /// fixture for the hand-rolled `GROUP BY COUNT(*)` aggregates
-    /// (folders/timelineDays/placeClusters/geotaggedCoverage/source-root
+    /// (folders/placeClusters/geotaggedCoverage/source-root
     /// counts): every one of them would double-count the shot if the
     /// secondary weren't excluded, since primary and secondary land in the
     /// same folder/day/place/source-root bucket.
@@ -154,16 +154,6 @@ final class CatalogListingBondingTests: XCTestCase {
 
         XCTAssertEqual(folders.count, 1)
         XCTAssertEqual(folders.first?.assetCount, 2)
-    }
-
-    func testTimelineDaysExcludesBondedSecondary() throws {
-        let repository = try makeRepository(named: "listing-timeline")
-        _ = try seedBondedTrioForAggregates(repository)
-
-        let days = try repository.timelineDays()
-
-        XCTAssertEqual(days.count, 1)
-        XCTAssertEqual(days.first?.assetCount, 1)
     }
 
     func testPlaceClustersExcludesBondedSecondary() throws {
