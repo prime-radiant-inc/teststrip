@@ -534,42 +534,6 @@ struct LibraryGridView: View {
         .accessibilityLabel("Grid Density")
     }
 
-    private var libraryTopBar: some View {
-        HStack(spacing: 12) {
-            Spacer(minLength: 12)
-            if LensChromePolicy.showsImportButton(model.selectedView) {
-                Button {
-                    showImportFolderPanel()
-                } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(.orange)
-                .disabled(isImporting)
-                .help("Import folder")
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 52)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(nsColor: .controlBackgroundColor).opacity(0.92),
-                    Color.black.opacity(0.28)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.white.opacity(0.07))
-                .frame(height: 1)
-        }
-        .liveMockupPlaceholder(.topChrome)
-    }
-
     /// The token query field: one text field that both free-text searches and,
     /// via `LibraryQueryToken`, writes recognized filter tokens (rating:,
     /// camera:, etc.) into AppModel's structured filter properties. Replaces
@@ -794,9 +758,6 @@ struct LibraryGridView: View {
     @ViewBuilder
     private var topInsetContent: some View {
         VStack(spacing: 0) {
-            if LensChromePolicy.showsBrowseChrome(model.selectedView) {
-                libraryTopBar
-            }
             scopeLineBar
             if LensChromePolicy.showsFilterTokens(model.selectedView) {
                 libraryQueryBar
@@ -8489,10 +8450,6 @@ enum LensChromePolicy {
     }
 
     static func showsFilterTokens(_ view: LibraryViewMode) -> Bool {
-        showsBrowseChrome(view)
-    }
-
-    static func showsImportButton(_ view: LibraryViewMode) -> Bool {
         showsBrowseChrome(view)
     }
 
