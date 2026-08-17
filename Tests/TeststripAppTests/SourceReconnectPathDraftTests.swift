@@ -62,10 +62,4 @@ final class SourceReconnectPathDraftTests: XCTestCase {
         XCTAssertNil(draft.errorMessage)
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-source-reconnect-draft-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
 }

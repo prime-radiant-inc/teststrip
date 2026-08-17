@@ -242,33 +242,4 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         )
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
-        return (model, repository)
-    }
-
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-tests-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
 }

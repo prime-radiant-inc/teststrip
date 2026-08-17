@@ -139,12 +139,4 @@ final class SidecarRescanAppTests: XCTestCase {
         return (model, repository, sidecarURL, assetID)
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-app-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
 }

@@ -116,15 +116,6 @@ final class PhotoFaceEditTests: XCTestCase {
         return (model, repository, database)
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-photo-face-edit-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
     private func makeAsset(id: String, path: String) -> Asset {
         Asset(
             id: AssetID(rawValue: id),

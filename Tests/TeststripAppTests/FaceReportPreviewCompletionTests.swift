@@ -275,57 +275,6 @@ final class FaceReportPreviewCompletionTests: XCTestCase {
         )
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-app-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    private func makeModelWithCatalogAssetsAndPreviewCache(
-        named name: String,
-        assets: [Asset],
-        workerSupervisor: WorkerSupervisor? = nil,
-        seedsLargePreviews: Bool = true,
-        backgroundWorkPublicationInterval: TimeInterval? = nil,
-        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
-    ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
-        let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        if seedsLargePreviews {
-            for asset in assets {
-                try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
-            }
-        }
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(
-            catalog: catalog,
-            workerSupervisor: workerSupervisor,
-            backgroundWorkPublicationInterval: backgroundWorkPublicationInterval,
-            backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler
-        )
-        return (model, repository, previewCache)
-    }
-
-    private func writePreviewPlaceholder(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("preview".utf8).write(to: url)
-    }
-
     @MainActor
     private func waitForBackgroundWorkStatus(
         _ status: WorkSessionStatus,

@@ -20103,63 +20103,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(Set(try repository.assetIDs(personID: "person-1")), [kept.id, trashed.id])
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-app-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    private func writeTestPNG(to url: URL) throws {
-        let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
-        try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
-    }
-
-    // `writeTestPNG` always writes the same fixed bytes, which is fine when a
-    // test only ever re-imports the same path — dedup keys off content hash
-    // (`ContentHash.compute`, whole-file for anything this small), so two
-    // `writeTestPNG` files at *different* paths hash identically and collide
-    // as "already cataloged" duplicates of one another. Use this instead
-    // whenever a test needs several files in one folder that must each
-    // register as their own distinct asset (e.g. a real mixed new+existing
-    // reimport): the fill color varies with `tag`, so the encoded bytes do
-    // too.
-    private func writeDistinctTestPNG(to url: URL, tag: Int) throws {
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil,
-            width: 2,
-            height: 2,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            throw TeststripError.io("could not create test bitmap context")
-        }
-        let component = CGFloat(tag % 256) / 255
-        context.setFillColor(CGColor(red: component, green: 0.4, blue: 0.8, alpha: 1.0))
-        context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
-        guard let image = context.makeImage(),
-              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-            throw TeststripError.io("could not create distinct test png")
-        }
-        CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else {
-            throw TeststripError.io("could not write distinct test png")
-        }
-    }
-
     private func imageProperties(of url: URL) throws -> [CFString: Any] {
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
         return try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
-    }
-
-    private func writePreviewPlaceholder(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("preview".utf8).write(to: url)
     }
 
     // Task 7's render gate requires the staged frame's `.large` preview to
@@ -20821,21 +20767,6 @@ final class AppModelTests: XCTestCase {
         return (try AppModel.load(catalog: catalog), repository, asset, originalURL, sidecarURL)
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset],
-        configureRepository: (CatalogRepository) throws -> Void = { _ in },
-        workerSupervisor: WorkerSupervisor? = nil
-    ) throws -> (AppModel, CatalogRepository) {
-        let result = try makeModelWithCatalogAssetsAndPreviewCache(
-            named: name,
-            assets: assets,
-            configureRepository: configureRepository,
-            workerSupervisor: workerSupervisor
-        )
-        return (result.model, result.repository)
-    }
-
     // SP-D0 shared fixture: two evaluated near-dup frames run through
     // autopilot, so `alternate` carries a `.pick` ghost and `lead` a
     // `.reject` ghost.
@@ -20865,39 +20796,6 @@ final class AppModelTests: XCTestCase {
         try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         return (model, repository, lead.id, alternate.id)
-    }
-
-    private func makeModelWithCatalogAssetsAndPreviewCache(
-        named name: String,
-        assets: [Asset],
-        configureRepository: (CatalogRepository) throws -> Void = { _ in },
-        workerSupervisor: WorkerSupervisor? = nil,
-        backgroundWorkPublicationInterval: TimeInterval? = nil,
-        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
-    ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
-        let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        try configureRepository(repository)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(
-            catalog: catalog,
-            workerSupervisor: workerSupervisor,
-            backgroundWorkPublicationInterval: backgroundWorkPublicationInterval,
-            backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler
-        )
-        return (model, repository, previewCache)
     }
 
     /// Starts a stack cull over the model's newest completed import, the way

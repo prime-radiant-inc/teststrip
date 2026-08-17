@@ -44,15 +44,6 @@ final class PreviewImageLoaderTests: XCTestCase {
         XCTAssertNil(image)
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
     private func writeSolidPNG(to url: URL, width: Int, height: Int) throws {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(

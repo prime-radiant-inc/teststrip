@@ -234,35 +234,4 @@ final class TimelinePresentationTests: XCTestCase {
         )
     }
 
-    // Plan-mandated duplication (task-10A brief, Step "Add the two fixtures
-    // this file needs"): copied verbatim from
-    // `Tests/TeststripAppTests/LibrarySourceTests.swift`. This ~28-line
-    // catalog-bootstrap fixture is already duplicated across most of this
-    // test target (open findings M18, M36). Not refactored here — extracting
-    // a shared helper is a real cross-file refactor and out of scope for a
-    // test-only task.
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-timeline-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
-        return (model, repository)
-    }
 }

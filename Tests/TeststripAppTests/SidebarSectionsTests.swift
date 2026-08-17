@@ -77,40 +77,6 @@ final class SidebarSectionsTests: XCTestCase {
         XCTAssertTrue(actions.contains { $0.kind == .deleteAssetSet(savedSet.id) })
     }
 
-    // MARK: - Test support
-
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog)
-        return (model, repository)
-    }
-
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-sidebar-sections-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
     private func makeAsset(id: String, path: String, rating: Int) -> Asset {
         Asset(
             id: AssetID(rawValue: id),

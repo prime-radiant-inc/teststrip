@@ -1047,30 +1047,4 @@ final class PeopleSourceScopingTests: XCTestCase {
         XCTAssertEqual(Set(model.proposedPhotos.map(\.asset.id)), Set(proposedAssetIDs), file: file, line: line)
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset],
-        configureRepository: (CatalogRepository) throws -> Void = { _ in }
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-people-scoping-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        try configureRepository(repository)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
-        return (model, repository)
-    }
 }

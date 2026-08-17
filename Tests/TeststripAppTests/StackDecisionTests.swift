@@ -37,7 +37,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-stack",
-            assets: [frame1, frame2, frame3, frame4, outsideStack]
+            assets: [frame1, frame2, frame3, frame4, outsideStack],
+            seedsLargePreviews: true
         )
         model.select(frame2.id)
 
@@ -75,7 +76,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "return-shortcut-promotes",
-            assets: [frame1, frame2]
+            assets: [frame1, frame2],
+            seedsLargePreviews: true
         )
         model.select(frame1.id)
 
@@ -109,7 +111,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, _) = try makeModelWithCatalogAssets(
             named: "promote-stack-toast",
-            assets: [frame1, frame2, frame3]
+            assets: [frame1, frame2, frame3],
+            seedsLargePreviews: true
         )
         model.select(frame1.id)
 
@@ -136,7 +139,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, _) = try makeModelWithCatalogAssets(
             named: "promote-stack-toast-singular",
-            assets: [frame1, frame2]
+            assets: [frame1, frame2],
+            seedsLargePreviews: true
         )
         model.select(frame1.id)
 
@@ -176,7 +180,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-protects-pick",
-            assets: [frameA, frameB, frameC, frameD]
+            assets: [frameA, frameB, frameC, frameD],
+            seedsLargePreviews: true
         )
         model.select(frameB.id)
 
@@ -230,7 +235,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-protects-picks-plural",
-            assets: [frameA, frameB, frameC, frameD]
+            assets: [frameA, frameB, frameC, frameD],
+            seedsLargePreviews: true
         )
         model.select(frameC.id)
 
@@ -263,7 +269,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-rejects-rejected",
-            assets: [frameA, frameB]
+            assets: [frameA, frameB],
+            seedsLargePreviews: true
         )
         model.select(frameB.id)
 
@@ -293,7 +300,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-single-frame",
-            assets: [lonely, farAway]
+            assets: [lonely, farAway],
+            seedsLargePreviews: true
         )
         model.select(lonely.id)
 
@@ -341,7 +349,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "auto-stack-scope",
-            assets: [frame1, frame2, frame3, single]
+            assets: [frame1, frame2, frame3, single],
+            seedsLargePreviews: true
         )
         model.select(frame1.id)
 
@@ -736,7 +745,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-force-flip",
-            assets: [frame1, frame2]
+            assets: [frame1, frame2],
+            seedsLargePreviews: true
         )
         model.select(frame1.id)
 
@@ -778,7 +788,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-tentative-reject",
-            assets: [frame1, frame2]
+            assets: [frame1, frame2],
+            seedsLargePreviews: true
         )
         model.select(frame1.id)
 
@@ -819,7 +830,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-advance-landing",
-            assets: [frame1, frame2, secondStackLead, secondStackBest]
+            assets: [frame1, frame2, secondStackLead, secondStackBest],
+            seedsLargePreviews: true
         )
         let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
@@ -864,7 +876,8 @@ final class StackDecisionTests: XCTestCase {
         )
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "promote-advance-landing-pref-off",
-            assets: [frame1, frame2, secondStackLead, secondStackBest]
+            assets: [frame1, frame2, secondStackLead, secondStackBest],
+            seedsLargePreviews: true
         )
         let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
@@ -908,63 +921,6 @@ final class StackDecisionTests: XCTestCase {
             capturedAt: capturedAt,
             provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
         )
-    }
-
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-app-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let result = try makeModelWithCatalogAssetsAndPreviewCache(named: name, assets: assets)
-        return (result.model, result.repository)
-    }
-
-    // Every test in this file drives `promoteCurrentFrameAndRejectSiblings`,
-    // which force-commits only once the staged frame's `.large` preview is
-    // cached (Task 7's render gate) — so this seeds a placeholder for every
-    // asset by default. The armed-commit tests withhold one via
-    // `seedsLargePreviews: false` and the returned preview cache.
-    private func makeModelWithCatalogAssetsAndPreviewCache(
-        named name: String,
-        assets: [Asset],
-        workerSupervisor: WorkerSupervisor? = nil,
-        seedsLargePreviews: Bool = true
-    ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
-        let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        if seedsLargePreviews {
-            for asset in assets {
-                try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
-            }
-        }
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor)
-        return (model, repository, previewCache)
-    }
-
-    private func writePreviewPlaceholder(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("preview".utf8).write(to: url)
     }
 
     @MainActor

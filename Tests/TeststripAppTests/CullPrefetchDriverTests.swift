@@ -319,20 +319,6 @@ final class CullPrefetchDriverTests: XCTestCase {
         )
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-app-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    private func writePreviewPlaceholder(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("preview".utf8).write(to: url)
-    }
-
     // Mirrors AppModelTests' private helper of the same name: a fingerprint
     // computed from a file that actually exists on disk, so an asset backed
     // by it stays `.online` through `SourceAvailabilityProbe` instead of
