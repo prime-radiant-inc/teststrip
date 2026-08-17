@@ -39,7 +39,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
     public var onCommandCompleted: ((WorkerEvent) -> Void)?
 
     private let transport: WorkerTransport
-    private let commandTimeout: TimeInterval?
+    private let defaultCommandTimeout: TimeInterval?
     private let timeoutScheduler: any WorkerTimeoutScheduling
     private let maxDispatchedCommandCount: Int
     private var commandsByItemID: [WorkSessionID: WorkerCommand]
@@ -51,14 +51,14 @@ public final class WorkerSupervisor: @unchecked Sendable {
     public init(
         queue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         transport: WorkerTransport,
-        commandTimeout: TimeInterval? = 120,
+        commandTimeout: TimeInterval? = nil,
         timeoutScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler(),
         maxDispatchedCommandCount: Int = 1
     ) {
         precondition(maxDispatchedCommandCount > 0, "maxDispatchedCommandCount must be positive")
         self.queue = queue
         self.transport = transport
-        self.commandTimeout = commandTimeout
+        self.defaultCommandTimeout = commandTimeout
         self.timeoutScheduler = timeoutScheduler
         self.maxDispatchedCommandCount = maxDispatchedCommandCount
         self.commandsByItemID = [:]
@@ -358,10 +358,18 @@ public final class WorkerSupervisor: @unchecked Sendable {
     }
 
     private func scheduleTimeout(for itemID: WorkSessionID) {
-        guard let commandTimeout else { return }
+        let perCommand = commandsByItemID[itemID]?.silenceTimeout ?? 120
+        // An explicit commandTimeout (non-nil) acts as a ceiling — useful for
+        // tests that want fast timeouts. nil means defer to per-command defaults.
+        let timeout: TimeInterval
+        if let defaultCommandTimeout {
+            timeout = min(perCommand, defaultCommandTimeout)
+        } else {
+            timeout = perCommand
+        }
         cancelTimeout(for: itemID)
-        timeoutsByItemID[itemID] = timeoutScheduler.schedule(after: commandTimeout) { [weak self] in
-            self?.handleCommandTimeout(itemID: itemID, timeout: commandTimeout)
+        timeoutsByItemID[itemID] = timeoutScheduler.schedule(after: timeout) { [weak self] in
+            self?.handleCommandTimeout(itemID: itemID, timeout: timeout)
         }
     }
 
