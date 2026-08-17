@@ -1976,6 +1976,13 @@ public enum MetadataSyncConflictSidecarMetadataState: Equatable {
     case unreadable
 }
 
+struct PendingImportFolder: Sendable {
+    let url: URL
+    let evaluateAfterImport: Bool
+    let importNewOnly: Bool
+    let autopilotAfterImport: Bool
+}
+
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
@@ -2517,6 +2524,10 @@ public final class AppModel {
 
     @ObservationIgnored
     private var activeImportTask: Task<AppImportOutput, Error>?
+
+    // Folders queued for sequential import when the user selects multiple directories.
+    @ObservationIgnored
+    private var pendingImportFolders: [PendingImportFolder] = []
 
     @ObservationIgnored
     private var displayedLocalImportCatalogedAssetID: AssetID?
@@ -14179,6 +14190,31 @@ public final class AppModel {
     }
 
     @MainActor
+    public func beginImportFolders(
+        _ folderURLs: [URL],
+        evaluateAfterImport: Bool = true,
+        importNewOnly: Bool = true,
+        autopilotAfterImport: Bool = false
+    ) {
+        guard let firstFolder = folderURLs.first else { return }
+        let rest = Array(folderURLs.dropFirst())
+        pendingImportFolders = rest.map {
+            PendingImportFolder(
+                url: $0,
+                evaluateAfterImport: evaluateAfterImport,
+                importNewOnly: importNewOnly,
+                autopilotAfterImport: autopilotAfterImport
+            )
+        }
+        beginImportFolder(
+            firstFolder,
+            evaluateAfterImport: evaluateAfterImport,
+            importNewOnly: importNewOnly,
+            autopilotAfterImport: autopilotAfterImport
+        )
+    }
+
+    @MainActor
     public func beginImportFolder(
         _ folderURL: URL,
         evaluateAfterImport: Bool = true,
@@ -14252,12 +14288,14 @@ public final class AppModel {
                 guard let self, self.activeWork?.id == activityID else { return }
                 self.cancelImportActivity(folderURL: folderURL)
                 self.activeImportTask = nil
+                self.pendingImportFolders = []
             } catch {
                 guard let self, self.activeWork?.id == activityID else { return }
                 self.statusMessage = nil
                 self.errorMessage = error.localizedDescription
                 self.failImportActivity(folderURL: folderURL, error: error)
                 self.activeImportTask = nil
+                self.pendingImportFolders = []
             }
         }
     }
@@ -14476,6 +14514,18 @@ public final class AppModel {
             folderURL: folderURL,
             destinationRoot: destinationRoot,
             error: TeststripError.invalidState(reason)
+        )
+    }
+
+    @MainActor
+    public func drainPendingImportFolder() {
+        guard !pendingImportFolders.isEmpty, !isImporting else { return }
+        let next = pendingImportFolders.removeFirst()
+        beginImportFolder(
+            next.url,
+            evaluateAfterImport: next.evaluateAfterImport,
+            importNewOnly: next.importNewOnly,
+            autopilotAfterImport: next.autopilotAfterImport
         )
     }
 

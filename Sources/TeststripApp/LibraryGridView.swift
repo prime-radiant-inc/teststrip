@@ -89,6 +89,11 @@ struct LibraryGridView: View {
         .onChange(of: model.startCullRunRequestToken) { _, _ in
             showStartCullingPopover()
         }
+        .onChange(of: model.isImporting) { _, isNowImporting in
+            if !isNowImporting {
+                model.drainPendingImportFolder()
+            }
+        }
         .sheet(isPresented: $isStartingCullRunSheet) {
             cullingSessionPopover
         }
@@ -2628,8 +2633,34 @@ struct LibraryGridView: View {
     }
 
     private func showImportFolderPanel() {
-        guard let folderURL = FolderSelectionPanel.chooseImportFolder() else { return }
-        presentImportConfirmation(.folder(folderURL))
+        let folderURLs = FolderSelectionPanel.chooseImportFolders()
+        guard !folderURLs.isEmpty else { return }
+        let reviewID = UUID()
+        importPathReviewID = reviewID
+        isReviewingImportPath = true
+        let catalogPaths = model.catalogPaths
+        let allURLs = folderURLs
+        Task {
+            let confirmationDraft = await Task.detached(priority: .userInitiated) {
+                var draft = ImportConfirmationDraft.folder(
+                    allURLs[0],
+                    additionalFolderURLs: Array(allURLs.dropFirst())
+                )
+                var dedup = Self.dedupPreview(for: allURLs[0], catalogPaths: catalogPaths)
+                for additionalURL in allURLs.dropFirst() {
+                    let additional = Self.dedupPreview(for: additionalURL, catalogPaths: catalogPaths)
+                    dedup = ImportDedupPreview.merging(dedup, additional)
+                }
+                draft.dedupPreview = dedup
+                return draft
+            }.value
+            await MainActor.run {
+                guard importPathReviewID == reviewID else { return }
+                importPathReviewID = nil
+                isReviewingImportPath = false
+                presentImportConfirmation(confirmationDraft)
+            }
+        }
     }
 
     // Seeds the draft's Autopilot-after-import toggle from the persisted app
@@ -2747,8 +2778,9 @@ struct LibraryGridView: View {
         switch draft.mode {
         case .folder:
             FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
-            importFolder(
-                draft.sourceURL,
+            let allURLs = [draft.sourceURL] + draft.additionalFolderURLs
+            importFolders(
+                allURLs,
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
                 autopilotAfterImport: draft.autopilotAfterImport
@@ -2802,6 +2834,20 @@ struct LibraryGridView: View {
             sourceReconnectDraft.recordError(error.localizedDescription)
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func importFolders(
+        _ folderURLs: [URL],
+        evaluateAfterImport: Bool = true,
+        importNewOnly: Bool = true,
+        autopilotAfterImport: Bool = false
+    ) {
+        model.beginImportFolders(
+            folderURLs,
+            evaluateAfterImport: evaluateAfterImport,
+            importNewOnly: importNewOnly,
+            autopilotAfterImport: autopilotAfterImport
+        )
     }
 
     private func importFolder(

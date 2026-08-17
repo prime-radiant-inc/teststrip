@@ -174,6 +174,19 @@ struct ImportSourceSummary: Equatable {
         let sourceName = sourceURL.lastPathComponent.isEmpty ? sourceURL.path : sourceURL.lastPathComponent
         return "Ready to catalog from \(sourceName)"
     }
+
+    func merging(_ other: ImportSourceSummary) -> ImportSourceSummary {
+        ImportSourceSummary(
+            sourceURL: sourceURL,
+            photoCount: photoCount + other.photoCount,
+            byteCount: byteCount + other.byteCount,
+            reachedLimit: reachedLimit || other.reachedLimit,
+            reachedEntryLimit: reachedEntryLimit || other.reachedEntryLimit,
+            scannedEntryCount: scannedEntryCount + other.scannedEntryCount,
+            unavailableReason: unavailableReason ?? other.unavailableReason,
+            blocksImport: blocksImport || other.blocksImport
+        )
+    }
 }
 
 // A bounded preview of how a source folder splits into content the catalog has
@@ -247,6 +260,19 @@ struct ImportDedupPreview: Equatable {
             reachedLimit: reachedLimit
         )
     }
+
+    static func merging(_ a: ImportDedupPreview?, _ b: ImportDedupPreview?) -> ImportDedupPreview? {
+        switch (a, b) {
+        case (nil, nil): return nil
+        case (let a?, nil), (nil, let a?): return a
+        case (let a?, let b?):
+            return ImportDedupPreview(
+                newContentCount: a.newContentCount + b.newContentCount,
+                existingContentCount: a.existingContentCount + b.existingContentCount,
+                reachedLimit: a.reachedLimit || b.reachedLimit
+            )
+        }
+    }
 }
 
 struct ImportConfirmationDraft: Equatable, Identifiable {
@@ -257,6 +283,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
 
     var mode: Mode
     var sourceURL: URL
+    var additionalFolderURLs: [URL]
     var destinationRootURL: URL?
     var destinationUnavailableReason: String?
     var destinationPolicy: ImportDestinationPolicy = .flat
@@ -279,14 +306,21 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
 
     static func folder(
         _ sourceURL: URL,
+        additionalFolderURLs: [URL] = [],
         supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions
     ) -> ImportConfirmationDraft {
-        ImportConfirmationDraft(
+        var summary = ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
+        for additionalURL in additionalFolderURLs {
+            let additional = ImportSourceSummary.scan(sourceURL: additionalURL, supportedExtensions: supportedExtensions)
+            summary = summary.merging(additional)
+        }
+        return ImportConfirmationDraft(
             mode: .folder,
             sourceURL: sourceURL,
+            additionalFolderURLs: additionalFolderURLs,
             destinationRootURL: nil,
             destinationUnavailableReason: nil,
-            sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
+            sourceSummary: summary
         )
     }
 
@@ -302,6 +336,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         ImportConfirmationDraft(
             mode: .card,
             sourceURL: sourceURL,
+            additionalFolderURLs: [],
             destinationRootURL: destinationRootURL,
             destinationUnavailableReason: CardImportDestinationPreflight.blockingReason(
                 source: sourceURL,
@@ -372,7 +407,11 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     }
 
     var sourceName: String {
-        sourceURL.lastPathComponent
+        if additionalFolderURLs.isEmpty {
+            return sourceURL.lastPathComponent
+        }
+        let count = 1 + additionalFolderURLs.count
+        return "\(count) folders"
     }
 
     // "2,310 new · 418 already in catalog" — the new count alone when nothing is

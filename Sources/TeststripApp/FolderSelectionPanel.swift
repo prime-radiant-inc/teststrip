@@ -10,6 +10,21 @@ enum FolderSelectionPanel {
     private static let exportDestinationParentKey = "FolderSelectionPanel.exportDestinationParent"
     private static let rejectDestinationParentKey = "FolderSelectionPanel.rejectDestinationParent"
 
+    static func chooseImportFolders(defaults: UserDefaults = .standard) -> [URL] {
+        let panel = NSOpenPanel()
+        configureImportFolderPanel(
+            panel,
+            startingDirectory: defaultStartingDirectory(),
+            rememberedDirectory: rememberedDirectory(for: importFolderParentKey, defaults: defaults)
+        )
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return [] }
+        if let firstURL = panel.urls.first {
+            rememberImportFolder(firstURL, defaults: defaults)
+        }
+        return panel.urls
+    }
+
     static func chooseImportFolder(defaults: UserDefaults = .standard) -> URL? {
         let panel = NSOpenPanel()
         configureImportFolderPanel(
