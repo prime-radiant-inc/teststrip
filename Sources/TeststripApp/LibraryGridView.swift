@@ -89,6 +89,11 @@ struct LibraryGridView: View {
         .onChange(of: model.startCullRunRequestToken) { _, _ in
             showStartCullingPopover()
         }
+        .onChange(of: model.isImporting) { _, isNowImporting in
+            if !isNowImporting {
+                model.drainPendingImportFolder()
+            }
+        }
         .sheet(isPresented: $isStartingCullRunSheet) {
             cullingSessionPopover
         }
@@ -2628,8 +2633,34 @@ struct LibraryGridView: View {
     }
 
     private func showImportFolderPanel() {
-        guard let folderURL = FolderSelectionPanel.chooseImportFolder() else { return }
-        presentImportConfirmation(.folder(folderURL))
+        let folderURLs = FolderSelectionPanel.chooseImportFolders()
+        guard !folderURLs.isEmpty else { return }
+        let reviewID = UUID()
+        importPathReviewID = reviewID
+        isReviewingImportPath = true
+        let catalogPaths = model.catalogPaths
+        let allURLs = folderURLs
+        Task {
+            let confirmationDraft = await Task.detached(priority: .userInitiated) {
+                var draft = ImportConfirmationDraft.folder(
+                    allURLs[0],
+                    additionalFolderURLs: Array(allURLs.dropFirst())
+                )
+                var dedup = Self.dedupPreview(for: allURLs[0], catalogPaths: catalogPaths)
+                for additionalURL in allURLs.dropFirst() {
+                    let additional = Self.dedupPreview(for: additionalURL, catalogPaths: catalogPaths)
+                    dedup = ImportDedupPreview.merging(dedup, additional)
+                }
+                draft.dedupPreview = dedup
+                return draft
+            }.value
+            await MainActor.run {
+                guard importPathReviewID == reviewID else { return }
+                importPathReviewID = nil
+                isReviewingImportPath = false
+                presentImportConfirmation(confirmationDraft)
+            }
+        }
     }
 
     // Seeds the draft's Autopilot-after-import toggle from the persisted app
@@ -2747,8 +2778,9 @@ struct LibraryGridView: View {
         switch draft.mode {
         case .folder:
             FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
-            importFolder(
-                draft.sourceURL,
+            let allURLs = [draft.sourceURL] + draft.additionalFolderURLs
+            importFolders(
+                allURLs,
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
                 autopilotAfterImport: draft.autopilotAfterImport
@@ -2802,6 +2834,20 @@ struct LibraryGridView: View {
             sourceReconnectDraft.recordError(error.localizedDescription)
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func importFolders(
+        _ folderURLs: [URL],
+        evaluateAfterImport: Bool = true,
+        importNewOnly: Bool = true,
+        autopilotAfterImport: Bool = false
+    ) {
+        model.beginImportFolders(
+            folderURLs,
+            evaluateAfterImport: evaluateAfterImport,
+            importNewOnly: importNewOnly,
+            autopilotAfterImport: autopilotAfterImport
+        )
     }
 
     private func importFolder(
@@ -5127,7 +5173,8 @@ private struct LoupeView: View {
             selectedAssetID: model.selectedAssetID,
             evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
             explicitStackScope: model.selectedCullingStackScope,
-            stackBuilder: model.stackBuilder()
+            stackBuilder: model.stackBuilder(),
+            precomputedAllStacks: model.cachedAllCullingStacksForPresentation()
         )
     }
 
@@ -6549,7 +6596,8 @@ struct CullingStackRailPresentation: Equatable {
         selectedAssetID: AssetID?,
         evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]] = [:],
         explicitStackScope: CullingStackScope? = nil,
-        stackBuilder: AssetStackBuilder = AssetStackBuilder()
+        stackBuilder: AssetStackBuilder = AssetStackBuilder(),
+        precomputedAllStacks: [AssetStack]? = nil
     ) {
         guard let selectedAssetID else {
             items = []
@@ -6567,6 +6615,26 @@ struct CullingStackRailPresentation: Equatable {
         if let explicitStackScope,
            explicitStackScope.assetIDs.contains(selectedAssetID) {
             stackScope = explicitStackScope
+        } else if let precomputedAllStacks {
+            // Use pre-computed stacks (cached) instead of recomputing.
+            guard let stackIndex = precomputedAllStacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+                items = []
+                titleText = ""
+                positionText = ""
+                rationaleText = nil
+                keepActionTitle = ""
+                keepActionHelp = ""
+                actions = []
+                tooCloseBanner = nil
+                return
+            }
+            let stack = precomputedAllStacks[stackIndex]
+            stackScope = CullingStackScope(
+                assetIDs: stack.assetIDs,
+                stackIndex: stackIndex + 1,
+                stackCount: precomputedAllStacks.count,
+                rationaleText: stack.rationale
+            )
         } else {
             let stacks = stackBuilder.stacks(
                 from: assets,
