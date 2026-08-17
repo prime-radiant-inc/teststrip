@@ -2636,7 +2636,7 @@ struct LibraryGridView: View {
         let folderURLs = FolderSelectionPanel.chooseImportFolders()
         guard !folderURLs.isEmpty else { return }
         let allURLs = folderURLs
-        var draft = ImportConfirmationDraft.folder(
+        let draft = ImportConfirmationDraft.folder(
             allURLs[0],
             additionalFolderURLs: Array(allURLs.dropFirst())
         )
@@ -2696,7 +2696,7 @@ struct LibraryGridView: View {
             let folderURL = try importPathDraft.resolveFolderURL()
             isReviewingImportPath = false
             isShowingImportPathSheet = false
-            var draft = ImportConfirmationDraft.folder(folderURL)
+            let draft = ImportConfirmationDraft.folder(folderURL)
             presentImportConfirmation(draft)
         } catch {
             importPathReviewID = nil

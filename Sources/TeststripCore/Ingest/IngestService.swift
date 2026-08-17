@@ -33,6 +33,16 @@ public struct IngestSkippedSourceFile: Equatable, Sendable {
 
 public typealias IngestSkippedSourceFileHandler = (IngestSkippedSourceFile) -> Void
 
+/// Per-file I/O results pre-computed in parallel before the serial ingest
+/// loop.  Each field is nil when not applicable (e.g. copy imports don't
+/// pre-compute sidecar/metadata, or pre-computation was skipped for a
+/// single-file import).
+private struct PrecomputedFileIO: Sendable {
+    var contentHashResult: Result<String, any Error>?
+    var existingSidecarURL: URL?
+    var technicalMetadata: AssetTechnicalMetadata?
+}
+
 public struct IngestService: Sendable {
     private static let eagerCatalogPersistenceLimit = 10
     private static let catalogPersistenceBatchSize = 500
@@ -101,6 +111,45 @@ public struct IngestService: Sendable {
         // one card collapses even before the first copy is flushed to catalog.
         var acceptedContentSources: [String: URL] = [:]
         let sidecarStore = XMPSidecarStore()
+
+        // Pre-compute I/O-bound per-file work in parallel.  For in-place imports
+        // (the common folder-import case) the original URL equals the source
+        // URL, so sidecar existence and technical metadata can be read from the
+        // source.  For copy imports only the content hash is pre-computable
+        // (the destination does not exist until the copy completes).  Each of
+        // the three operations — content hash (128 KB read), sidecar stat, and
+        // ImageIO metadata decode — is independent per file, so they parallelize
+        // cleanly.  On an 18-core M5 Max this turns a sequential per-file I/O
+        // chain into ~18× concurrent reads.
+        let shouldPrecomputeHash = plan.duplicateHandling == .skipCatalogedContent
+        let isInPlace = plan.mode == .addInPlace
+        let didPrecompute = sourceFiles.count > 1
+        var precomputed = Array(
+            repeating: PrecomputedFileIO(), count: sourceFiles.count)
+        if didPrecompute {
+            precomputed.withUnsafeMutableBufferPointer { buffer in
+                DispatchQueue.concurrentPerform(
+                    iterations: sourceFiles.count
+                ) { index in
+                    let sourceFile = sourceFiles[index]
+                    if shouldPrecomputeHash {
+                        do {
+                            buffer[index].contentHashResult = .success(
+                                try contentHash(for: sourceFile))
+                        } catch {
+                            buffer[index].contentHashResult = .failure(error)
+                        }
+                    }
+                    if isInPlace {
+                        buffer[index].existingSidecarURL =
+                            sidecarStore.existingSidecarURL(forOriginalAt: sourceFile)
+                        buffer[index].technicalMetadata =
+                            technicalMetadata(for: sourceFile)
+                    }
+                }
+            }
+        }
+
         for (sourceIndex, sourceFile) in sourceFiles.enumerated() {
             try Task.checkCancellation()
             do {
@@ -110,7 +159,12 @@ public struct IngestService: Sendable {
                 // fingerprint hash the finished original instead.
                 var sourceContentHash: String?
                 if plan.duplicateHandling == .skipCatalogedContent {
-                    let hash = try contentHash(for: sourceFile)
+                    let hash: String
+                    if didPrecompute, let result = precomputed[sourceIndex].contentHashResult {
+                        hash = try result.get()
+                    } else {
+                        hash = try contentHash(for: sourceFile)
+                    }
                     sourceContentHash = hash
                     if try isAlreadyInCatalog(
                         sourceFile: sourceFile,
@@ -144,8 +198,13 @@ public struct IngestService: Sendable {
                 }
                 let fingerprint = try fingerprint(for: originalURL, precomputedContentHash: sourceContentHash)
                 var metadata = existingAsset?.metadata ?? AssetMetadata()
-                let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
-                if FileManager.default.fileExists(atPath: sidecarURL.path) {
+                let existingSidecar: URL?
+                if isInPlace && didPrecompute {
+                    existingSidecar = precomputed[sourceIndex].existingSidecarURL
+                } else {
+                    existingSidecar = sidecarStore.existingSidecarURL(forOriginalAt: originalURL)
+                }
+                if let sidecarURL = existingSidecar {
                     let sidecarData = try Data(contentsOf: sidecarURL)
                     let sidecarModificationDate = try sidecarStore.modificationDate(forSidecarAt: sidecarURL)
                     let catalogGeneration: Int
@@ -204,7 +263,9 @@ public struct IngestService: Sendable {
                     fingerprint: fingerprint,
                     availability: .online,
                     metadata: metadata,
-                    technicalMetadata: technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
+                    technicalMetadata: isInPlace && didPrecompute
+                        ? precomputed[sourceIndex].technicalMetadata ?? existingAsset?.technicalMetadata
+                        : technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
                 )
                 assets.append(asset)
                 pendingCatalogAssets.append(asset)
