@@ -127,6 +127,7 @@ public struct IngestService: Sendable {
         var precomputed = Array(
             repeating: PrecomputedFileIO(), count: sourceFiles.count)
         if didPrecompute {
+            try Task.checkCancellation()
             precomputed.withUnsafeMutableBufferPointer { buffer in
                 DispatchQueue.concurrentPerform(
                     iterations: sourceFiles.count
