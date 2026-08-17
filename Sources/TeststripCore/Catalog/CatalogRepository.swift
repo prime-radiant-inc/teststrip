@@ -264,7 +264,7 @@ public final class CatalogRepository {
         guard let id = row["id"], let path = row["original_path"] else {
             throw CatalogError.sqlite("asset row is missing required columns")
         }
-        return AssetBondPlanner.BondInput(id: AssetID(rawValue: id), originalURL: URL(fileURLWithPath: path))
+        return AssetBondPlanner.BondInput(id: AssetID(rawValue: id), originalURL: URL(filePath: path, directoryHint: .notDirectory))
     }
 
     /// Assets (id + originalURL) presently cataloged under `folderPath` or any
@@ -415,6 +415,24 @@ public final class CatalogRepository {
             bindings: compiledQuery.bindings
         )
         return try rows.map(decodeAssetID)
+    }
+
+    /// Lightweight existence check: returns only the IDs from `ids` that
+    /// exist in the catalog, without decoding full Asset rows (which would
+    /// construct URLs and call `lstat` per row).  Used on hot paths like the
+    /// toolbar's evaluate-button guard where only the IDs are needed.
+    public func assetIDs(ids: [AssetID]) throws -> [AssetID] {
+        guard !ids.isEmpty else { return [] }
+        var existingIDs: [AssetID] = []
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                "SELECT id FROM assets WHERE id IN (\(placeholders)) ORDER BY rowid ASC",
+                bindings: chunk.map(\.rawValue)
+            )
+            existingIDs.append(contentsOf: try rows.map(decodeAssetID))
+        }
+        return existingIDs
     }
 
     public func assetIDs(ids: [AssetID], matching query: SetQuery) throws -> [AssetID] {
@@ -2886,7 +2904,7 @@ public final class CatalogRepository {
 
         return Asset(
             id: AssetID(rawValue: id),
-            originalURL: URL(fileURLWithPath: path),
+            originalURL: URL(filePath: path, directoryHint: .notDirectory),
             volumeIdentifier: row["volume_identifier"].flatMap { $0.isEmpty ? nil : $0 },
             fingerprint: try decode(FileFingerprint.self, from: fingerprintJSON),
             availability: availability,
