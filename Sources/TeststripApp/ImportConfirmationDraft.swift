@@ -315,6 +315,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var importNewOnly = true
     var dedupPreview: ImportDedupPreview?
     var autopilotAfterImport = false
+    var selectedFiles: Set<URL>? = nil
 
     var id: String {
         [
@@ -471,21 +472,31 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         secondCopyRootURL?.lastPathComponent
     }
 
+    var hasSelectionFilter: Bool {
+        selectedFiles != nil
+    }
+
+    var selectedCount: Int? {
+        selectedFiles?.count
+    }
+
     // Verb + object + count per spec §2c ("Import 240 Photos"), matching the
     // count the body already shows in `sourceSummary.countText`. The new-only
     // count applies only while the dedupe toggle is on; with it off every
     // scanned photo is processed (already-cataloged ones re-import in place),
     // so the button counts them all instead of promising "Import 0 Photos"
-    // for an all-duplicate source.
+    // for an all-duplicate source. When `selectedFiles` is set, the count
+    // reflects only the user's selection.
     var primaryActionTitle: String {
-        let count = importNewOnly
-            ? (dedupPreview?.newContentCount ?? sourceSummary.photoCount)
-            : sourceSummary.photoCount
-        let suffix = importNewOnly
-            ? ((dedupPreview?.reachedLimit ?? sourceSummary.reachedLimit) ? "+" : "")
-            : (sourceSummary.reachedLimit ? "+" : "")
-        let noun = count == 1 ? "Photo" : "Photos"
-        return "Import \(count)\(suffix) \(noun)"
+        let count: Int
+        if let selectedCount, selectedCount > 0 {
+            count = selectedCount
+        } else if importNewOnly, let dedup = dedupPreview {
+            count = dedup.newContentCount
+        } else {
+            count = sourceSummary.photoCount
+        }
+        return count == 1 ? "Import 1 Photo" : "Import \(count) Photos"
     }
 
     var canStartImport: Bool {

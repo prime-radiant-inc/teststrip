@@ -618,4 +618,51 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(dedup?.existingContentCount, 1)
     }
 
+    func testSelectedFilesDefaultNil() {
+        let draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        XCTAssertNil(draft.selectedFiles)
+        XCTAssertFalse(draft.hasSelectionFilter)
+        XCTAssertNil(draft.selectedCount)
+    }
+
+    func testSelectedFilesSet() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        let urls = Set([
+            URL(fileURLWithPath: "/tmp/photos/a.jpg"),
+            URL(fileURLWithPath: "/tmp/photos/b.jpg")
+        ])
+        draft.selectedFiles = urls
+        XCTAssertTrue(draft.hasSelectionFilter)
+        XCTAssertEqual(draft.selectedCount, 2)
+    }
+
+    func testPrimaryActionTitleWithSelection() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        draft.sourceSummary = ImportSourceSummary(
+            sourceURL: URL(fileURLWithPath: "/tmp/photos"),
+            photoCount: 100,
+            byteCount: 500_000_000,
+            reachedLimit: false,
+            reachedEntryLimit: false,
+            scannedEntryCount: 100,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        draft.selectedFiles = Set([
+            URL(fileURLWithPath: "/tmp/photos/a.jpg"),
+            URL(fileURLWithPath: "/tmp/photos/b.jpg")
+        ])
+        XCTAssertTrue(draft.primaryActionTitle.contains("2"), "title should reflect selected count, got: \(draft.primaryActionTitle)")
+    }
+
 }
