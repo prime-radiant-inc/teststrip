@@ -10447,6 +10447,7 @@ public final class AppModel {
         replaceAssets(loadedAssets, preferredSelection: preferredSelection)
         totalAssetCount = try catalog.repository.assetCount(ids: autopilotGhostAssetIDs)
         isAutopilotReviewActive = true
+        persistSessionState()
     }
 
     /// Confirms the ghosts on the given assets: each one's tentative
@@ -11461,6 +11462,7 @@ public final class AppModel {
             if sourceBeingApplied == nil, selectedView == .people {
                 refreshPeopleFaceSuggestions()
             }
+            persistSessionState()
             return
         }
         if let explicitAssetIDs = selectedExplicitAssetIDs {
@@ -11476,6 +11478,7 @@ public final class AppModel {
             if sourceBeingApplied == nil, selectedView == .people {
                 refreshPeopleFaceSuggestions()
             }
+            persistSessionState()
             return
         }
         let loadedAssets: [Asset]
@@ -11501,6 +11504,7 @@ public final class AppModel {
         if sourceBeingApplied == nil, selectedView == .people {
             refreshPeopleFaceSuggestions()
         }
+        persistSessionState()
     }
 
     /// A person's PROPOSED photos — shown as a separate section below the
@@ -11958,6 +11962,13 @@ public final class AppModel {
         _ loadedAssets: [Asset],
         preferredSelection: AssetID? = nil
     ) {
+        // Suppress selectedAssetID.didSet → persistSessionState() during this
+        // call.  Callers that need persistence call persistSessionState()
+        // explicitly.  This prevents replaceAssets from masking
+        // persistence-trigger regressions on session-restore fields (issue #14).
+        sessionPersistenceDeferralDepth += 1
+        defer { sessionPersistenceDeferralDepth -= 1 }
+
         let previousSelection = selectedAssetID
         assets = loadedAssets
         if let preferredSelection, assets.contains(where: { $0.id == preferredSelection }) {
@@ -12002,6 +12013,7 @@ public final class AppModel {
         replaceAssets(contents.assets, preferredSelection: preferredSelection)
         totalAssetCount = contents.totalAssetCount
         refreshAssetIDsWithBondedSecondaries()
+        persistSessionState()
     }
 
     private static func append(_ predicate: SetQuery.Predicate, to predicates: inout [SetQuery.Predicate]) {
@@ -12535,6 +12547,13 @@ public final class AppModel {
     // longer exist are silently dropped rather than surfaced as errors, and routes
     // or scopes that belong to an in-progress culling session are never restored.
     private func applyRestoredSessionState(_ state: SessionRestoreState, catalog: AppCatalog) throws {
+        // Suppress all didSet → persistSessionState() fires during restore.
+        // This is restoring saved state — it should NOT save.  Without this
+        // guard, ~20 property didSets each trigger a redundant save that just
+        // rewrites the state that was just read (issue #14).
+        sessionPersistenceDeferralDepth += 1
+        defer { sessionPersistenceDeferralDepth -= 1 }
+
         librarySortOption = state.sortOption
         librarySearchText = state.librarySearchText
         keywordFilterText = state.keywordFilterText
@@ -14038,6 +14057,7 @@ public final class AppModel {
             )
             totalAssetCount = output.totalAssetCount
             refreshAssetIDsWithBondedSecondaries()
+            persistSessionState()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -14086,6 +14106,7 @@ public final class AppModel {
             )
             totalAssetCount = output.totalAssetCount
             refreshAssetIDsWithBondedSecondaries()
+            persistSessionState()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
