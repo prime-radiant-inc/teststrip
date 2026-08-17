@@ -23,7 +23,8 @@ public struct PreviewRenderer: Sendable {
         // resolution so the loupe's 1:1 pixel zoom has real pixels to show.
         var options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCache: false
         ]
         if let maxDimension = level.maxPixelDimension {
             options[kCGImageSourceThumbnailMaxPixelSize] = maxDimension

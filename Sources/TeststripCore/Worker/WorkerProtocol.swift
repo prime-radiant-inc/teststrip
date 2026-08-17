@@ -56,7 +56,7 @@ public enum WorkerProtocolEncoder {
         let envelope: WorkerCommandEnvelope
 
         switch command {
-        case .importFolder(let root, let duplicateHandling):
+        case .importFolder(let root, let duplicateHandling, let selectedFiles, let preIngestThumbnails):
             envelope = WorkerCommandEnvelope(
                 command: "importFolder",
                 assetID: nil,
@@ -66,9 +66,11 @@ public enum WorkerProtocolEncoder {
                 sourceURL: nil,
                 destinationRootURL: nil,
                 itemID: itemID?.rawValue,
-                duplicateHandling: duplicateHandling.rawValue
+                duplicateHandling: duplicateHandling.rawValue,
+                selectedFiles: selectedFiles?.map(\.path).sorted(),
+                preIngestThumbnails: preIngestThumbnails?.path
             )
-        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination, let duplicateHandling):
+        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination, let duplicateHandling, let selectedFiles, let preIngestThumbnails):
             envelope = WorkerCommandEnvelope(
                 command: "importCard",
                 assetID: nil,
@@ -80,7 +82,9 @@ public enum WorkerProtocolEncoder {
                 itemID: itemID?.rawValue,
                 destinationPolicy: destinationPolicy.rawValue,
                 secondCopyDestinationRootURL: secondCopyDestination?.path,
-                duplicateHandling: duplicateHandling.rawValue
+                duplicateHandling: duplicateHandling.rawValue,
+                selectedFiles: selectedFiles?.map(\.path).sorted(),
+                preIngestThumbnails: preIngestThumbnails?.path
             )
         case .generatePreview(let assetID, let level):
             envelope = WorkerCommandEnvelope(
@@ -258,7 +262,9 @@ public enum WorkerProtocolEncoder {
         case "importFolder":
             command = .importFolder(
                 root: try envelope.requiredRootURL(),
-                duplicateHandling: try envelope.duplicateHandlingValue()
+                duplicateHandling: try envelope.duplicateHandlingValue(),
+                selectedFiles: envelope.selectedFiles.map { Set($0.map { URL(fileURLWithPath: $0) }) },
+                preIngestThumbnails: envelope.preIngestThumbnails.map { URL(fileURLWithPath: $0) }
             )
         case "importCard":
             command = .importCard(
@@ -266,7 +272,9 @@ public enum WorkerProtocolEncoder {
                 destinationRoot: try envelope.requiredDestinationRootURL(),
                 destinationPolicy: try envelope.importDestinationPolicy(),
                 secondCopyDestination: envelope.secondCopyDestinationURL(),
-                duplicateHandling: try envelope.duplicateHandlingValue()
+                duplicateHandling: try envelope.duplicateHandlingValue(),
+                selectedFiles: envelope.selectedFiles.map { Set($0.map { URL(fileURLWithPath: $0) }) },
+                preIngestThumbnails: envelope.preIngestThumbnails.map { URL(fileURLWithPath: $0) }
             )
         case "generatePreview":
             let assetID = try envelope.requiredAssetID()
@@ -358,6 +366,8 @@ public enum WorkerProtocolEncoder {
         var assetIDs: [String]? = nil
         var duplicateHandling: String? = nil
         var limit: Int? = nil
+        var selectedFiles: [String]? = nil
+        var preIngestThumbnails: String? = nil
 
         func requiredAssetID() throws -> AssetID {
             AssetID(rawValue: try requiredField(assetID, key: .assetID))

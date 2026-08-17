@@ -1691,6 +1691,8 @@ public typealias AppImportTaskFactory = @Sendable (
     AppCatalogPaths,
     URL,
     DuplicateHandling,
+    Set<URL>?,
+    PreIngestThumbnailCache?,
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
@@ -1701,6 +1703,8 @@ public typealias AppCardImportTaskFactory = @Sendable (
     ImportDestinationPolicy,
     URL?,
     DuplicateHandling,
+    Set<URL>?,
+    PreIngestThumbnailCache?,
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
@@ -1981,6 +1985,8 @@ struct PendingImportFolder: Sendable {
     let evaluateAfterImport: Bool
     let importNewOnly: Bool
     let autopilotAfterImport: Bool
+    let selectedFiles: Set<URL>?
+    let preIngestThumbnailCache: PreIngestThumbnailCache?
 }
 
 @Observable
@@ -4505,16 +4511,18 @@ public final class AppModel {
         // User-selected file grants are process-scoped, so local imports must render
         // their first previews before releasing a required security-scoped folder.
         let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil || !resolvedWorkerImportsEnabled ? .generateImmediately : .deferGeneration
-        self.importTaskFactory = importTaskFactory ?? { paths, folderURL, duplicateHandling, progress in
+        self.importTaskFactory = importTaskFactory ?? { paths, folderURL, duplicateHandling, selectedFiles, preIngestThumbnailCache, progress in
             Self.defaultImportTask(
                 paths: paths,
                 folderURL: folderURL,
                 previewPolicy: importPreviewPolicy,
                 duplicateHandling: duplicateHandling,
+                selectedFiles: selectedFiles,
+                preIngestThumbnailCache: preIngestThumbnailCache,
                 progress: progress
             )
         }
-        self.cardImportTaskFactory = cardImportTaskFactory ?? { paths, source, destinationRoot, destinationPolicy, secondCopyDestination, duplicateHandling, progress in
+        self.cardImportTaskFactory = cardImportTaskFactory ?? { paths, source, destinationRoot, destinationPolicy, secondCopyDestination, duplicateHandling, selectedFiles, preIngestThumbnailCache, progress in
             Self.defaultCardImportTask(
                 paths: paths,
                 source: source,
@@ -4523,6 +4531,8 @@ public final class AppModel {
                 secondCopyDestination: secondCopyDestination,
                 previewPolicy: importPreviewPolicy,
                 duplicateHandling: duplicateHandling,
+                selectedFiles: selectedFiles,
+                preIngestThumbnailCache: preIngestThumbnailCache,
                 progress: progress
             )
         }
@@ -14191,6 +14201,8 @@ public final class AppModel {
                 paths,
                 folderURL,
                 importNewOnly ? .skipCatalogedContent : .importAll,
+                nil,
+                nil,
                 importProgressHandler(activityID: activityID)
             ).value
             replaceAssets(
@@ -14240,6 +14252,8 @@ public final class AppModel {
                 destinationPolicy,
                 secondCopyDestination,
                 importNewOnly ? .skipCatalogedContent : .importAll,
+                nil,
+                nil,
                 importProgressHandler(activityID: activityID)
             ).value
             replaceAssets(
@@ -14266,7 +14280,9 @@ public final class AppModel {
         _ folderURLs: [URL],
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
-        autopilotAfterImport: Bool = false
+        autopilotAfterImport: Bool = false,
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil
     ) {
         guard let firstFolder = folderURLs.first else { return }
         let rest = Array(folderURLs.dropFirst())
@@ -14275,14 +14291,18 @@ public final class AppModel {
                 url: $0,
                 evaluateAfterImport: evaluateAfterImport,
                 importNewOnly: importNewOnly,
-                autopilotAfterImport: autopilotAfterImport
+                autopilotAfterImport: autopilotAfterImport,
+                selectedFiles: selectedFiles,
+                preIngestThumbnailCache: preIngestThumbnailCache
             )
         }
         beginImportFolder(
             firstFolder,
             evaluateAfterImport: evaluateAfterImport,
             importNewOnly: importNewOnly,
-            autopilotAfterImport: autopilotAfterImport
+            autopilotAfterImport: autopilotAfterImport,
+            selectedFiles: selectedFiles,
+            preIngestThumbnailCache: preIngestThumbnailCache
         )
     }
 
@@ -14291,7 +14311,9 @@ public final class AppModel {
         _ folderURL: URL,
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
-        autopilotAfterImport: Bool = false
+        autopilotAfterImport: Bool = false,
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil
     ) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
@@ -14316,7 +14338,12 @@ public final class AppModel {
             enqueueWorkerImport(
                 source: folderURL,
                 destinationRoot: nil,
-                command: .importFolder(root: folderURL, duplicateHandling: duplicateHandling)
+                command: .importFolder(
+                    root: folderURL,
+                    duplicateHandling: duplicateHandling,
+                    selectedFiles: selectedFiles,
+                    preIngestThumbnails: preIngestThumbnailCache?.directoryURL
+                )
             )
             return
         }
@@ -14337,6 +14364,8 @@ public final class AppModel {
             catalog.paths,
             folderURL,
             duplicateHandling,
+            selectedFiles,
+            preIngestThumbnailCache,
             importProgressHandler(activityID: activityID)
         )
         activeImportTask = task
@@ -14380,7 +14409,9 @@ public final class AppModel {
         secondCopyDestination: URL? = nil,
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
-        autopilotAfterImport: Bool = false
+        autopilotAfterImport: Bool = false,
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil
     ) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
@@ -14416,16 +14447,18 @@ public final class AppModel {
         statusMessage = "Importing \(source.lastPathComponent)..."
         if workerSupervisor != nil && workerImportsEnabled {
             enqueueWorkerImport(
-                source: source,
-                destinationRoot: destinationRoot,
-                secondCopyDestination: secondCopyDestination,
-                command: .importCard(
-                    source: source,
-                    destinationRoot: destinationRoot,
-                    destinationPolicy: destinationPolicy,
-                    secondCopyDestination: secondCopyDestination,
-                    duplicateHandling: duplicateHandling
-                )
+               source: source,
+               destinationRoot: destinationRoot,
+               secondCopyDestination: secondCopyDestination,
+               command: .importCard(
+                   source: source,
+                   destinationRoot: destinationRoot,
+                   destinationPolicy: destinationPolicy,
+                   secondCopyDestination: secondCopyDestination,
+                   duplicateHandling: duplicateHandling,
+                   selectedFiles: selectedFiles,
+                   preIngestThumbnails: preIngestThumbnailCache?.directoryURL
+               )
             )
             return
         }
@@ -14468,6 +14501,8 @@ public final class AppModel {
             destinationPolicy,
             secondCopyDestination,
             duplicateHandling,
+            selectedFiles,
+            preIngestThumbnailCache,
             importProgressHandler(activityID: activityID)
         )
         activeImportTask = task
@@ -14597,7 +14632,21 @@ public final class AppModel {
             next.url,
             evaluateAfterImport: next.evaluateAfterImport,
             importNewOnly: next.importNewOnly,
-            autopilotAfterImport: next.autopilotAfterImport
+            autopilotAfterImport: next.autopilotAfterImport,
+            selectedFiles: next.selectedFiles,
+            preIngestThumbnailCache: next.preIngestThumbnailCache
+        )
+    }
+
+    func scanDedupPreview(
+        sourceURL: URL,
+        supportedExtensions: Set<String>
+    ) async -> ImportDedupPreview? {
+        guard let repo = catalog?.repository else { return nil }
+        return ImportDedupPreview.scan(
+            sourceURL: sourceURL,
+            supportedExtensions: supportedExtensions,
+            repository: repo
         )
     }
 
@@ -14890,6 +14939,8 @@ public final class AppModel {
         folderURL: URL,
         previewPolicy: LibraryImportPreviewPolicy,
         duplicateHandling: DuplicateHandling,
+        selectedFiles: Set<URL>?,
+        preIngestThumbnailCache: PreIngestThumbnailCache?,
         progress: @escaping LibraryImportProgressHandler
     ) -> Task<AppImportOutput, Error> {
         Task.detached(priority: .userInitiated) {
@@ -14900,6 +14951,8 @@ public final class AppModel {
                 repository: backgroundCatalog.repository,
                 previewPolicy: previewPolicy,
                 duplicateHandling: duplicateHandling,
+                selectedFiles: selectedFiles,
+                preIngestThumbnailCache: preIngestThumbnailCache,
                 progress: progress
             )
             try Task.checkCancellation()
@@ -14923,6 +14976,8 @@ public final class AppModel {
         secondCopyDestination: URL?,
         previewPolicy: LibraryImportPreviewPolicy,
         duplicateHandling: DuplicateHandling,
+        selectedFiles: Set<URL>?,
+        preIngestThumbnailCache: PreIngestThumbnailCache?,
         progress: @escaping LibraryImportProgressHandler
     ) -> Task<AppImportOutput, Error> {
         Task.detached(priority: .userInitiated) {
@@ -14936,6 +14991,8 @@ public final class AppModel {
                 repository: backgroundCatalog.repository,
                 previewPolicy: previewPolicy,
                 duplicateHandling: duplicateHandling,
+                selectedFiles: selectedFiles,
+                preIngestThumbnailCache: preIngestThumbnailCache,
                 progress: progress
             )
             try Task.checkCancellation()

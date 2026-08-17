@@ -51,6 +51,7 @@ struct ImportSourceSummary: Equatable {
     var scannedEntryCount: Int
     var unavailableReason: String?
     var blocksImport: Bool
+    var fileURLs: [URL]
 
     static func scan(
         sourceURL: URL,
@@ -84,6 +85,7 @@ struct ImportSourceSummary: Equatable {
         var reachedLimit = false
         var reachedEntryLimit = false
         var scannedEntryCount = 0
+        var fileURLs: [URL] = []
         for case let fileURL as URL in enumerator {
             if now().timeIntervalSince(startTime) > budget {
                 reachedLimit = true
@@ -103,6 +105,7 @@ struct ImportSourceSummary: Equatable {
             }
             photoCount += 1
             byteCount += Int64(values?.fileSize ?? 0)
+            fileURLs.append(fileURL)
         }
 
         return ImportSourceSummary(
@@ -113,7 +116,8 @@ struct ImportSourceSummary: Equatable {
             reachedEntryLimit: reachedEntryLimit,
             scannedEntryCount: scannedEntryCount,
             unavailableReason: nil,
-            blocksImport: false
+            blocksImport: false,
+            fileURLs: fileURLs
         )
     }
 
@@ -126,7 +130,8 @@ struct ImportSourceSummary: Equatable {
             reachedEntryLimit: false,
             scannedEntryCount: 0,
             unavailableReason: reason,
-            blocksImport: blocksImport
+            blocksImport: blocksImport,
+            fileURLs: []
         )
     }
 
@@ -184,7 +189,8 @@ struct ImportSourceSummary: Equatable {
             reachedEntryLimit: reachedEntryLimit || other.reachedEntryLimit,
             scannedEntryCount: scannedEntryCount + other.scannedEntryCount,
             unavailableReason: unavailableReason ?? other.unavailableReason,
-            blocksImport: blocksImport || other.blocksImport
+            blocksImport: blocksImport || other.blocksImport,
+            fileURLs: fileURLs + other.fileURLs
         )
     }
 }
@@ -198,6 +204,7 @@ struct ImportDedupPreview: Equatable {
     var newContentCount: Int
     var existingContentCount: Int
     var reachedLimit: Bool
+    var duplicateURLs: Set<URL>
 
     static func scan(
         sourceURL: URL,
@@ -221,7 +228,8 @@ struct ImportDedupPreview: Equatable {
 
         let startTime = now()
         var scannedPhotoCount = 0
-        var contentHashes: [String] = []
+        var hashedFiles: [(url: URL, hash: String)] = []
+        var duplicateURLs: Set<URL> = []
         var scannedEntryCount = 0
         var reachedLimit = false
         for case let fileURL as URL in enumerator {
@@ -251,20 +259,25 @@ struct ImportDedupPreview: Equatable {
             // user imported with — check both spellings.
             if (try? repository.asset(originalURL: fileURL)) != nil
                 || (try? repository.asset(originalURL: fileURL.resolvingSymlinksInPath())) != nil {
+                duplicateURLs.insert(fileURL)
                 continue
             }
             if let hash = try? ContentHash.compute(forFileAt: fileURL) {
-                contentHashes.append(hash)
+                hashedFiles.append((url: fileURL, hash: hash))
             }
         }
 
-        let uniqueHashes = Set(contentHashes)
-        let existingHashes = (try? repository.containedContentHashes(uniqueHashes)) ?? []
+        let uniqueHashes = Set(hashedFiles.map(\.hash))
+        let existingHashes = Set((try? repository.containedContentHashes(uniqueHashes)) ?? [])
+        for entry in hashedFiles where existingHashes.contains(entry.hash) {
+            duplicateURLs.insert(entry.url)
+        }
         let newContentCount = uniqueHashes.subtracting(existingHashes).count
         return ImportDedupPreview(
             newContentCount: newContentCount,
             existingContentCount: max(scannedPhotoCount - newContentCount, 0),
-            reachedLimit: reachedLimit
+            reachedLimit: reachedLimit,
+            duplicateURLs: duplicateURLs
         )
     }
 
@@ -276,7 +289,8 @@ struct ImportDedupPreview: Equatable {
             return ImportDedupPreview(
                 newContentCount: a.newContentCount + b.newContentCount,
                 existingContentCount: a.existingContentCount + b.existingContentCount,
-                reachedLimit: a.reachedLimit || b.reachedLimit
+                reachedLimit: a.reachedLimit || b.reachedLimit,
+                duplicateURLs: a.duplicateURLs.union(b.duplicateURLs)
             )
         }
     }
@@ -301,6 +315,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var importNewOnly = true
     var dedupPreview: ImportDedupPreview?
     var autopilotAfterImport = false
+    var selectedFiles: Set<URL>? = nil
 
     var id: String {
         [
@@ -457,19 +472,41 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         secondCopyRootURL?.lastPathComponent
     }
 
+    var hasSelectionFilter: Bool {
+        selectedFiles != nil
+    }
+
+    var selectedCount: Int? {
+        selectedFiles?.count
+    }
+
     // Verb + object + count per spec §2c ("Import 240 Photos"), matching the
     // count the body already shows in `sourceSummary.countText`. The new-only
     // count applies only while the dedupe toggle is on; with it off every
     // scanned photo is processed (already-cataloged ones re-import in place),
     // so the button counts them all instead of promising "Import 0 Photos"
-    // for an all-duplicate source.
+    // for an all-duplicate source. When `selectedFiles` is set, the count
+    // reflects only the user's exact selection and the scan-limit "+" suffix
+    // is suppressed (a selection is never capped); when nil the count is
+    // scan-derived and may be capped, so the suffix still applies.
     var primaryActionTitle: String {
-        let count = importNewOnly
-            ? (dedupPreview?.newContentCount ?? sourceSummary.photoCount)
-            : sourceSummary.photoCount
-        let suffix = importNewOnly
-            ? ((dedupPreview?.reachedLimit ?? sourceSummary.reachedLimit) ? "+" : "")
-            : (sourceSummary.reachedLimit ? "+" : "")
+        let count: Int
+        if let selectedCount, selectedCount > 0 {
+            count = selectedCount
+        } else if importNewOnly, let dedup = dedupPreview {
+            count = dedup.newContentCount
+        } else {
+            count = sourceSummary.photoCount
+        }
+        let suffix: String
+        if selectedFiles == nil {
+            let reachedLimit = importNewOnly
+                ? (dedupPreview?.reachedLimit ?? sourceSummary.reachedLimit)
+                : sourceSummary.reachedLimit
+            suffix = reachedLimit ? "+" : ""
+        } else {
+            suffix = ""
+        }
         let noun = count == 1 ? "Photo" : "Photos"
         return "Import \(count)\(suffix) \(noun)"
     }

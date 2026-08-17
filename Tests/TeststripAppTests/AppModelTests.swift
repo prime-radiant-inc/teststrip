@@ -15429,7 +15429,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(importItem.kind, .ingest)
         XCTAssertEqual(importItem.title, "Import photos")
         XCTAssertEqual(importItem.detail, "Importing from photos")
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
 
         let importedAsset = Asset(
             id: AssetID(rawValue: "worker-imported"),
@@ -15461,7 +15461,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.status, .completed)
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil),
             .generatePreview(assetID: importedAsset.id, level: .micro)
         ])
     }
@@ -16161,7 +16161,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Another import is already running")
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
     }
 
     @MainActor
@@ -16187,7 +16187,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Another import is already running")
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
     }
 
     @MainActor
@@ -16220,7 +16220,7 @@ final class AppModelTests: XCTestCase {
         scheduler.fireScheduledActions()
 
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .ingest }.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
     }
 
     @MainActor
@@ -16258,7 +16258,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, _ in
+            importTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -16282,6 +16282,39 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFolderPassesSelectedFilesToFactory() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-selected-files")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let keepPhoto = photoFolder.appendingPathComponent("keep.png")
+        let skipPhoto = photoFolder.appendingPathComponent("skip.png")
+        try writeTestPNG(to: keepPhoto)
+        try writeTestPNG(to: skipPhoto)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+
+        let recorder = SelectedFilesRecorder()
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, _, selectedFiles, _, _ in
+                recorder.record(selectedFiles)
+                return Task {
+                    AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder, selectedFiles: [keepPhoto])
+        try await waitForActivityStatus(.completed, in: model)
+
+        XCTAssertEqual(recorder.value, [keepPhoto])
+    }
+
+    @MainActor
     func testBeginImportFolderContinuesWhenSecurityScopeIsUnavailableByDefault() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-local-import-optional-security-scope")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -16292,7 +16325,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, _ in
+            importTaskFactory: { _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -16413,7 +16446,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, _ in
+            importTaskFactory: { _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -16457,7 +16490,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -16716,7 +16749,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -16777,7 +16810,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -16814,7 +16847,7 @@ final class AppModelTests: XCTestCase {
         let recorder = CardImportRequestRecorder()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, destinationPolicy, secondCopyDestination, _, _ in
+            cardImportTaskFactory: { _, _, _, destinationPolicy, secondCopyDestination, _, _, _, _ in
                 recorder.record(destinationPolicy: destinationPolicy, secondCopyDestination: secondCopyDestination)
                 return Task {
                     AppImportOutput(
@@ -16867,7 +16900,9 @@ final class AppModelTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .capturedDate,
             secondCopyDestination: secondCopy,
-            duplicateHandling: .skipCatalogedContent
+            duplicateHandling: .skipCatalogedContent,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         )])
     }
 
@@ -16884,7 +16919,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -16924,7 +16959,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -16988,7 +17023,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -17510,7 +17545,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.first?.status, .cancelled)
         XCTAssertEqual(model.statusMessage, "Cancelled import")
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil),
             .cancelAll
         ])
 
@@ -17553,7 +17588,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.item(id: importItem.id)?.status, .running)
         XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItem.id)?.status, .queued)
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)
         ])
 
         // The worker's import terminal finalizes the cancelled import, records the
@@ -17573,7 +17608,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isImporting)
         XCTAssertEqual(transport.terminateCount, 0)
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil),
             previewCommand
         ])
         XCTAssertEqual(model.recentWork.first?.id, importItem.id.rawValue)
@@ -17610,7 +17645,9 @@ final class AppModelTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .flat,
             secondCopyDestination: nil,
-            duplicateHandling: .skipCatalogedContent
+            duplicateHandling: .skipCatalogedContent,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         )])
 
         let destinationImage = destinationRoot.appendingPathComponent("one.png")
@@ -17706,7 +17743,7 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, _, _ in
+            importTaskFactory: { paths, _, _, _, _, _ in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(importedAsset)
@@ -17759,7 +17796,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, _ in
+            importTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     AppImportOutput(
                         result: LibraryImportResult(
@@ -19131,7 +19168,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, _ in
+            importTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -19165,7 +19202,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, _ in
+            importTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -19221,7 +19258,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, _, progress in
+            importTaskFactory: { paths, _, _, _, _, progress in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(importedAsset)
@@ -19278,7 +19315,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -19312,7 +19349,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, progress in
+            importTaskFactory: { _, _, _, _, _, progress in
                 Task {
                     progress(LibraryImportProgress(
                         completedUnitCount: 1,
@@ -19361,7 +19398,7 @@ final class AppModelTests: XCTestCase {
         let importGate = ImportTaskGate()
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, _, progress in
+            importTaskFactory: { paths, _, _, _, _, progress in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(importedAsset)
@@ -19423,7 +19460,7 @@ final class AppModelTests: XCTestCase {
         let completionGate = ImportTaskGate()
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, _, progress in
+            importTaskFactory: { paths, _, _, _, _, progress in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(firstAsset)
@@ -21581,6 +21618,19 @@ private final class CardImportRequestRecorder: @unchecked Sendable {
 
     var secondCopyDestinations: [URL?] {
         lock.withLock { records.map(\.secondCopyDestination) }
+    }
+}
+
+private final class SelectedFilesRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var captured: Set<URL>?
+
+    func record(_ selectedFiles: Set<URL>?) {
+        lock.withLock { captured = selectedFiles }
+    }
+
+    var value: Set<URL>? {
+        lock.withLock { captured }
     }
 }
 

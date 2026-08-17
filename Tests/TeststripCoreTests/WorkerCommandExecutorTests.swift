@@ -347,7 +347,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
+        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil))
 
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
@@ -379,7 +379,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
+        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil))
 
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
@@ -406,13 +406,13 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let repository = CatalogRepository(database: database)
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
-        let firstResult = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
+        let firstResult = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil))
         guard case .completedImport(_, let importedAssetIDs, 1, 0, 0, []) = firstResult else {
             XCTFail("expected first import to report one new asset")
             return
         }
 
-        let secondResult = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
+        let secondResult = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil))
 
         XCTAssertEqual(secondResult, .completedImport(
             "imported 1 photo from photos",
@@ -438,7 +438,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll)) { progress in
+        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil)) { progress in
             if progress.detail == "Cataloging 2 photos" {
                 try? FileManager.default.removeItem(at: disappearing)
             }
@@ -475,7 +475,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
         let recorder = ImportProgressRecorder()
 
-        _ = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll), progress: recorder.append)
+        _ = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil), progress: recorder.append)
 
         let updates = recorder.values()
         XCTAssertTrue(updates.contains(LibraryImportProgress(
@@ -514,7 +514,9 @@ final class WorkerCommandExecutorTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .flat,
             secondCopyDestination: nil,
-            duplicateHandling: .importAll
+            duplicateHandling: .importAll,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         ))
 
         let destination = destinationRoot.appendingPathComponent("source.jpg")
@@ -570,7 +572,9 @@ final class WorkerCommandExecutorTests: XCTestCase {
             destinationRoot: destinationRoot,
             destinationPolicy: .capturedDate,
             secondCopyDestination: secondCopyRoot,
-            duplicateHandling: .importAll
+            duplicateHandling: .importAll,
+            selectedFiles: nil,
+            preIngestThumbnails: nil
         ))
 
         let destination = destinationRoot
@@ -590,6 +594,35 @@ final class WorkerCommandExecutorTests: XCTestCase {
             "expected honest backup failure message, got \(message)"
         )
         XCTAssertEqual(try String(contentsOf: conflictingBackup, encoding: .utf8), "existing")
+    }
+
+    func testImportFolderPassesSelectedFilesToImportService() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-selected")
+        let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        let keep = sourceRoot.appendingPathComponent("keep.jpg")
+        let skip = sourceRoot.appendingPathComponent("skip.jpg")
+        try TestDirectories.writeTestJPEG(to: keep, width: 1600, height: 1000)
+        try TestDirectories.writeTestJPEG(to: skip, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        let result = try executor.execute(.importFolder(
+            root: sourceRoot,
+            duplicateHandling: .importAll,
+            selectedFiles: [keep],
+            preIngestThumbnails: nil
+        ))
+
+        guard case .completedImport(_, let importedAssetIDs, _, _, _, _) = result else {
+            XCTFail("expected completedImport, got \(result)")
+            return
+        }
+        XCTAssertEqual(importedAssetIDs.count, 1)
+        XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL), [keep])
     }
 
     func testSyncMetadataCommandWritesMissingSidecarFromCatalogMetadata() throws {

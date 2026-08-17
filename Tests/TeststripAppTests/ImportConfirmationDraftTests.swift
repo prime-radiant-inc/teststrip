@@ -1,7 +1,15 @@
 import XCTest
 @testable import TeststripApp
+import TeststripCore
 
 final class ImportConfirmationDraftTests: XCTestCase {
+
+    private func makeRepository(in dir: URL) throws -> CatalogRepository {
+        let database = try CatalogDatabase.open(at: dir.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        return CatalogRepository(database: database)
+    }
+
     func testFolderDraftSummarizesInPlaceCatalogImport() {
         let sourceURL = URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true)
         let draft = ImportConfirmationDraft.folder(sourceURL)
@@ -79,7 +87,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
 
     func testDedupCountsDescribeNewAndAlreadyPresentSplit() {
         var draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
-        draft.dedupPreview = ImportDedupPreview(newContentCount: 2_310, existingContentCount: 418, reachedLimit: false)
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 2_310, existingContentCount: 418, reachedLimit: false, duplicateURLs: [])
 
         XCTAssertEqual(draft.dedupCountText, "2,310 new · 418 already in catalog")
     }
@@ -98,7 +106,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
             try Data([UInt8(index)]).write(to: directory.appendingPathComponent("frame-\(index).jpg"))
         }
         var draft = ImportConfirmationDraft.folder(directory, supportedExtensions: ["jpg"])
-        draft.dedupPreview = ImportDedupPreview(newContentCount: 0, existingContentCount: 6, reachedLimit: false)
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 0, existingContentCount: 6, reachedLimit: false, duplicateURLs: [])
 
         XCTAssertEqual(draft.primaryActionTitle, "Import 0 Photos")
         XCTAssertEqual(draft.dedupCountText, "0 new · 6 already in catalog")
@@ -115,7 +123,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
             try Data([UInt8(index)]).write(to: directory.appendingPathComponent("frame-\(index).jpg"))
         }
         var draft = ImportConfirmationDraft.folder(directory, supportedExtensions: ["jpg"])
-        draft.dedupPreview = ImportDedupPreview(newContentCount: 2, existingContentCount: 0, reachedLimit: false)
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 2, existingContentCount: 0, reachedLimit: false, duplicateURLs: [])
         draft.importNewOnly = false
 
         XCTAssertEqual(draft.primaryActionTitle, "Import 2 Photos")
@@ -130,7 +138,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
 
     func testDedupCountTextMarksBoundedPreviewCounts() {
         var draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
-        draft.dedupPreview = ImportDedupPreview(newContentCount: 300, existingContentCount: 0, reachedLimit: true)
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 300, existingContentCount: 0, reachedLimit: true, duplicateURLs: [])
 
         XCTAssertEqual(draft.dedupCountText, "300+ new")
     }
@@ -561,6 +569,143 @@ final class ImportConfirmationDraftTests: XCTestCase {
         draft.setDestinationRoot(secondCopy)
 
         XCTAssertEqual(draft.secondCopyUnavailableReason, "Second copy destination must be different from the primary destination")
+    }
+
+    func testSourceSummaryFileURLsCollected() throws {
+        let dir = try makeTemporaryDirectory(named: "source-summary-file-urls")
+        let photo1 = dir.appendingPathComponent("a.jpg")
+        let photo2 = dir.appendingPathComponent("b.jpg")
+        try writeTestPNG(to: photo1)
+        try writeTestPNG(to: photo2)
+        // Non-photo file should not appear
+        try "text".write(to: dir.appendingPathComponent("c.txt"), atomically: true, encoding: .utf8)
+
+        let summary = ImportSourceSummary.scan(sourceURL: dir, supportedExtensions: ["jpg", "png"])
+        XCTAssertEqual(summary.photoCount, 2)
+        XCTAssertEqual(summary.fileURLs.count, 2)
+        let resolved = Set(summary.fileURLs.map { $0.resolvingSymlinksInPath() })
+        XCTAssertTrue(resolved.contains(photo1.resolvingSymlinksInPath()))
+        XCTAssertTrue(resolved.contains(photo2.resolvingSymlinksInPath()))
+    }
+
+    func testDedupPreviewDuplicateURLsExposed() throws {
+        let dir = try makeTemporaryDirectory(named: "dedup-preview-duplicate-urls")
+        let photo = dir.appendingPathComponent("dup.jpg")
+        try writeTestPNG(to: photo)
+
+        let repo = try makeRepository(in: makeTemporaryDirectory(named: "dedup-preview-duplicate-urls-repo"))
+        // Import the photo so it's in the catalog at this exact path
+        try repo.upsert(Asset(
+            id: .new(),
+            originalURL: photo,
+            volumeIdentifier: nil,
+            fingerprint: FileFingerprint(
+                size: 0,
+                modificationDate: Date(timeIntervalSince1970: 1)
+            ),
+            availability: .online,
+            metadata: AssetMetadata()
+        ))
+
+        let dedup = ImportDedupPreview.scan(
+            sourceURL: dir,
+            supportedExtensions: ["jpg", "png"],
+            repository: repo
+        )
+        XCTAssertNotNil(dedup)
+        let resolvedDuplicates = Set((dedup?.duplicateURLs ?? []).map { $0.resolvingSymlinksInPath() })
+        XCTAssertTrue(resolvedDuplicates.contains(photo.resolvingSymlinksInPath()))
+        XCTAssertEqual(dedup?.existingContentCount, 1)
+    }
+
+    func testSelectedFilesDefaultNil() {
+        let draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        XCTAssertNil(draft.selectedFiles)
+        XCTAssertFalse(draft.hasSelectionFilter)
+        XCTAssertNil(draft.selectedCount)
+    }
+
+    func testSelectedFilesSet() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        let urls = Set([
+            URL(fileURLWithPath: "/tmp/photos/a.jpg"),
+            URL(fileURLWithPath: "/tmp/photos/b.jpg")
+        ])
+        draft.selectedFiles = urls
+        XCTAssertTrue(draft.hasSelectionFilter)
+        XCTAssertEqual(draft.selectedCount, 2)
+    }
+
+    func testPrimaryActionTitleWithSelection() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        draft.sourceSummary = ImportSourceSummary(
+            sourceURL: URL(fileURLWithPath: "/tmp/photos"),
+            photoCount: 100,
+            byteCount: 500_000_000,
+            reachedLimit: false,
+            reachedEntryLimit: false,
+            scannedEntryCount: 100,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        draft.selectedFiles = Set([
+            URL(fileURLWithPath: "/tmp/photos/a.jpg"),
+            URL(fileURLWithPath: "/tmp/photos/b.jpg")
+        ])
+        XCTAssertTrue(draft.primaryActionTitle.contains("2"), "title should reflect selected count, got: \(draft.primaryActionTitle)")
+    }
+
+    func testPrimaryActionTitleShowsReachedLimitSuffixWhenUnselected() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        draft.sourceSummary = ImportSourceSummary(
+            sourceURL: URL(fileURLWithPath: "/tmp/photos"),
+            photoCount: 100,
+            byteCount: 500_000_000,
+            reachedLimit: true,
+            reachedEntryLimit: false,
+            scannedEntryCount: 100,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        XCTAssertNil(draft.selectedFiles)
+        XCTAssertTrue(draft.primaryActionTitle.contains("+"), "title should show \"+\" when reachedLimit and no selection, got: \(draft.primaryActionTitle)")
+    }
+
+    func testPrimaryActionTitleSuppressesReachedLimitSuffixWhenSelected() {
+        var draft = ImportConfirmationDraft.folder(
+            URL(fileURLWithPath: "/tmp/photos"),
+            supportedExtensions: ["jpg"]
+        )
+        draft.sourceSummary = ImportSourceSummary(
+            sourceURL: URL(fileURLWithPath: "/tmp/photos"),
+            photoCount: 100,
+            byteCount: 500_000_000,
+            reachedLimit: true,
+            reachedEntryLimit: false,
+            scannedEntryCount: 100,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        draft.selectedFiles = Set([
+            URL(fileURLWithPath: "/tmp/photos/a.jpg"),
+            URL(fileURLWithPath: "/tmp/photos/b.jpg")
+        ])
+        XCTAssertFalse(draft.primaryActionTitle.contains("+"), "title should not show \"+\" when selection is set, got: \(draft.primaryActionTitle)")
     }
 
 }
