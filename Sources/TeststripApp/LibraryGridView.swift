@@ -5173,7 +5173,8 @@ private struct LoupeView: View {
             selectedAssetID: model.selectedAssetID,
             evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
             explicitStackScope: model.selectedCullingStackScope,
-            stackBuilder: model.stackBuilder()
+            stackBuilder: model.stackBuilder(),
+            precomputedAllStacks: model.cachedAllCullingStacksForPresentation()
         )
     }
 
@@ -6595,7 +6596,8 @@ struct CullingStackRailPresentation: Equatable {
         selectedAssetID: AssetID?,
         evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]] = [:],
         explicitStackScope: CullingStackScope? = nil,
-        stackBuilder: AssetStackBuilder = AssetStackBuilder()
+        stackBuilder: AssetStackBuilder = AssetStackBuilder(),
+        precomputedAllStacks: [AssetStack]? = nil
     ) {
         guard let selectedAssetID else {
             items = []
@@ -6613,6 +6615,26 @@ struct CullingStackRailPresentation: Equatable {
         if let explicitStackScope,
            explicitStackScope.assetIDs.contains(selectedAssetID) {
             stackScope = explicitStackScope
+        } else if let precomputedAllStacks {
+            // Use pre-computed stacks (cached) instead of recomputing.
+            guard let stackIndex = precomputedAllStacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+                items = []
+                titleText = ""
+                positionText = ""
+                rationaleText = nil
+                keepActionTitle = ""
+                keepActionHelp = ""
+                actions = []
+                tooCloseBanner = nil
+                return
+            }
+            let stack = precomputedAllStacks[stackIndex]
+            stackScope = CullingStackScope(
+                assetIDs: stack.assetIDs,
+                stackIndex: stackIndex + 1,
+                stackCount: precomputedAllStacks.count,
+                rationaleText: stack.rationale
+            )
         } else {
             let stacks = stackBuilder.stacks(
                 from: assets,

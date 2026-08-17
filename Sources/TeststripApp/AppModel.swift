@@ -2141,9 +2141,25 @@ public final class AppModel {
     public private(set) var cullScope: CullScope = .all
     /// Cached result of `selectedCullingStackScope`; nil = dirty/invalid.
     /// Set on cache miss, cleared by `invalidateCullingStackScopeCache()`.
+    /// `@ObservationIgnored` — these are internal caches whose population
+    /// during body evaluation must not trigger SwiftUI re-evaluation.
+    @ObservationIgnored
     private var _cachedCullingStackScope: CullingStackScope?
+    /// Cached result of `cullingStacks()`; nil = dirty/invalid.
+    /// Set on cache miss, cleared by `invalidateCullingStackScopeCache()`.
+    @ObservationIgnored
+    private var _cachedCullingStacks: [AssetStack]?
+    /// Cached full stack partition including singleton stacks; nil = dirty.
+    /// Used by `selectedCullingStackScope` so singleton assets get a non-nil
+    /// scope, preventing `CullingStackRailPresentation` from recomputing
+    /// stacks on every body evaluation.
+    @ObservationIgnored
+    private var _cachedAllCullingStacks: [AssetStack]?
     /// Test hook: counts cache misses (recomputations) in
     /// `selectedCullingStackScope`. Incremented only on cache miss.
+    /// `@ObservationIgnored` so the increment does not trigger a SwiftUI
+    /// re-evaluation feedback loop.
+    @ObservationIgnored
     internal var _cullingStackScopeRecomputeCount = 0
     /// Whether a P/X/rating/color-label decision auto-advances the selection
     /// afterward (to the next undecided stack frame, or the next stack's
@@ -7628,7 +7644,35 @@ public final class AppModel {
     }
 
     private func cullingStacks() -> [AssetStack] {
-        allCullingStacks(for: assets).filter { $0.assetIDs.count > 1 }
+        if let cached = _cachedCullingStacks {
+            return cached
+        }
+        let computed = cachedAllCullingStacks().filter { $0.assetIDs.count > 1 }
+        _cachedCullingStacks = computed
+        return computed
+    }
+
+    /// Cached full stack partition (including singletons) for the current
+    /// asset set. Used by `computeSelectedCullingStackScope` so every asset
+    /// — not just multi-frame stack members — gets a non-nil scope. This
+    /// prevents `CullingStackRailPresentation.init` from falling through to
+    /// its slow path (recomputing all stacks) on every body evaluation.
+    private func cachedAllCullingStacks() -> [AssetStack] {
+        if let cached = _cachedAllCullingStacks {
+            return cached
+        }
+        let computed = allCullingStacks(for: assets)
+        _cachedAllCullingStacks = computed
+        return computed
+    }
+
+    /// Public accessor for the cached full stack partition (including
+    /// singletons). Used by `LoupeView.cullingStackPresentation` to pass
+    /// pre-computed stacks to `CullingStackRailPresentation.init`, avoiding
+    /// a full stack recomputation on every body evaluation when the selected
+    /// asset is a standalone (singleton) frame.
+    public func cachedAllCullingStacksForPresentation() -> [AssetStack] {
+        cachedAllCullingStacks()
     }
 
     /// The full auto-grouped stack partition (including singleton stacks) for
@@ -7777,6 +7821,8 @@ public final class AppModel {
     /// asset reloads, and selection changes.
     private func invalidateCullingStackScopeCache() {
         _cachedCullingStackScope = nil
+        _cachedCullingStacks = nil
+        _cachedAllCullingStacks = nil
     }
 
     private func selectNextStackForCulling() throws {
