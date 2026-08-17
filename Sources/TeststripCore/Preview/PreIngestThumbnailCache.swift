@@ -17,7 +17,7 @@ public struct PreIngestThumbnailCache: Sendable {
         try? FileManager.default.createDirectory(at: self.directoryURL, withIntermediateDirectories: true)
     }
 
-    private func thumbnailURL(for sourceURL: URL) -> URL {
+    public func thumbnailURL(for sourceURL: URL) -> URL {
         let safeName = sourceURL.path.replacingOccurrences(of: "/", with: "_")
         return directoryURL.appendingPathComponent(safeName + ".jpg")
     }
