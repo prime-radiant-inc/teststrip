@@ -391,7 +391,7 @@ final class ImportCompletionSurfaceTests: XCTestCase {
         )
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, _, _ in
+            importTaskFactory: { paths, _, _, _, _, _ in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(importedAsset)
