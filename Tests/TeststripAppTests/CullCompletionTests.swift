@@ -104,7 +104,8 @@ final class CullCompletionTests: XCTestCase {
 
         XCTAssertEqual(summary.picks, 2)
         XCTAssertEqual(summary.rejects, 1)
-        XCTAssertEqual(summary.undecided, 3)
+        // a2 is skipped so excluded from undecided; a5's tentative flag doesn't count
+        XCTAssertEqual(summary.undecided, 2)
         // a1 was skipped but later decided: skipped ∖ decided drops it.
         XCTAssertEqual(summary.skipped, 1)
         XCTAssertEqual(summary.neverViewed, 2)
@@ -226,6 +227,20 @@ final class CullCompletionTests: XCTestCase {
         )
 
         XCTAssertNil(presentation)
+    }
+
+    // MARK: - SP-D Task 3: session-level fields (unification)
+
+    func testSessionLevelFieldsDefaultToNilAndEmpty() {
+        let summary = CullCompletionPresentation.summary(
+            assets: Self.decidedAssets(picks: 1, rejects: 1),
+            viewedAssetIDs: [],
+            skippedAssetIDs: []
+        )
+        XCTAssertNil(summary.sessionID)
+        XCTAssertNil(summary.title)
+        XCTAssertNil(summary.picksSetID)
+        XCTAssertTrue(summary.remainingSingleAssetIDs.isEmpty)
     }
 
     // MARK: - Actions
@@ -435,27 +450,4 @@ final class CullCompletionTests: XCTestCase {
         return assetIDs
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-tests-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        return (try AppModel.load(catalog: catalog), repository)
-    }
 }

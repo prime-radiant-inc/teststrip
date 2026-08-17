@@ -539,20 +539,6 @@ final class ImportCompletionSurfaceTests: XCTestCase {
         )
     }
 
-    private func writePreviewPlaceholder(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("preview".utf8).write(to: url)
-    }
-
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-import-completion-surface", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
     private func makeCatalog(in directory: URL) throws -> (AppCatalog, CatalogRepository) {
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()

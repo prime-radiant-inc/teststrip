@@ -9,7 +9,8 @@ final class CullHUDPresentationTests: XCTestCase {
             positionText: "Frame 2 of 10",
             pickCount: 3,
             rejectCount: 2,
-            totalCount: 10
+            totalCount: 10,
+            viewedCount: 5
         )
 
         let presentation = CullHUDPresentation(

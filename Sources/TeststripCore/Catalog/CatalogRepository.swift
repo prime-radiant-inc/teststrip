@@ -638,45 +638,6 @@ public final class CatalogRepository {
         }
     }
 
-    public func timelineDays() throws -> [CatalogTimelineDay] {
-        let rows = try database.rows(
-            """
-            WITH valid_assets AS (
-                SELECT technical_metadata_json
-                FROM assets
-                WHERE json_valid(technical_metadata_json)
-                  AND bonded_to_asset_id IS NULL
-            ),
-            captured_assets AS (
-                SELECT CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) AS captured_at
-                FROM valid_assets
-                WHERE json_type(technical_metadata_json, '$.capturedAt') IN ('integer', 'real')
-            )
-            SELECT
-                CAST(strftime('%Y', captured_at, 'unixepoch') AS INTEGER) AS year,
-                CAST(strftime('%m', captured_at, 'unixepoch') AS INTEGER) AS month,
-                CAST(strftime('%d', captured_at, 'unixepoch') AS INTEGER) AS day,
-                COUNT(*) AS asset_count
-            FROM captured_assets
-            GROUP BY year, month, day
-            ORDER BY year DESC, month DESC, day DESC
-            """
-        )
-        return try rows.map { row in
-            guard let yearValue = row["year"],
-                  let year = Int(yearValue),
-                  let monthValue = row["month"],
-                  let month = Int(monthValue),
-                  let dayValue = row["day"],
-                  let day = Int(dayValue),
-                  let assetCountValue = row["asset_count"],
-                  let assetCount = Int(assetCountValue) else {
-                throw CatalogError.sqlite("timeline day row is missing required columns")
-            }
-            return CatalogTimelineDay(year: year, month: month, day: day, assetCount: assetCount)
-        }
-    }
-
     public func placeClusters(
         bounds: GeoBounds?,
         cellSize: Double,
@@ -1251,6 +1212,7 @@ public final class CatalogRepository {
     public func people(assetIDs: [AssetID]? = nil) throws -> [CatalogPerson] {
         guard let assetIDs else {
             return try decodePeople(try database.rows(Self.peopleSQL(scoped: false)))
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         }
         guard !assetIDs.isEmpty else { return [] }
         var seenAssetIDs = Set<AssetID>()
@@ -1290,7 +1252,6 @@ public final class CatalogRepository {
         LEFT JOIN person_assets ON person_assets.person_id = people.id\(scopeClause)
         LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
         GROUP BY people.id, people.name
-        ORDER BY people.name COLLATE NOCASE ASC
         """
     }
 

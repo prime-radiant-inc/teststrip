@@ -189,31 +189,6 @@ final class LibraryLensTests: XCTestCase {
         )
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-library-lens-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
-        return (model, repository)
-    }
-
     private func assertUnavailableCullEntryCommandsAreNoOps(_ model: AppModel) throws {
         let cullAvailability = try XCTUnwrap(model.lensAvailabilities.first { $0.lens == .cull })
         XCTAssertFalse(cullAvailability.isEnabled)

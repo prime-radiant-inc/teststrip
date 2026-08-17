@@ -1,4 +1,4 @@
-# cull-002-loupe-navigation: Left/Right stack nav, Up/Down within-stack nav, Space, and end-of-scope pagination in the Cull loupe
+# cull-002-loupe-navigation: Left/Right stack nav, Up/Down within-stack nav, and Space in the Cull loupe
 
 **Reconciled 2026-07-13 (cull-stack-rail branch)**: the arrow mapping this
 card exercises was remapped by the vertical current-stack rail work.
@@ -13,28 +13,24 @@ entirely; nothing here should be read as covering the old mapping. See
 `cull-021-stack-rail-nav.md` for the vertical rail's own dedicated coverage
 of within/across-stack nav, recommended-frame landing, and the rail's
 visual chips — this card stays focused on the loupe's base Left/Right/Space
-navigation plus the (now within-stack) Up/Down and end-of-scope pagination.
+navigation plus the (now within-stack) Up/Down.
 
 **What this covers**: as a photographer working through a shoot in the Cull
 loupe, I want Space to step linearly through the active scope, Left/Right
 to jump between stacks (landing on the next/previous stack's
-AI-recommended frame), Up/Down to step within the currently-selected
-stack, and — once Space reaches the end of the `.all` scope with more
-assets on disk than are loaded — the loupe to page in more rather than
-dead-ending. Covers:
+AI-recommended frame), and Up/Down to step within the currently-selected
+stack. Covers:
 - **Space (linear advance) and toast-clearing**:
-  `Sources/TeststripApp/AppModel.swift:7038-7046` (`.nextPhoto` calls
+  `applyCullingShortcut(.nextPhoto)` calls
   `clearCullingMetadataDecisionFeedback()` before
-  `selectNextAssetForCulling()`, `:7346-7359`, pagination branch at
-  `:6095-6103` — unchanged by this branch's remap). Space
+  `selectNextAssetForCulling()`. Space
   (`CullingKeyCaptureView.swift:158-159`) is the *only* Cull-loupe key that
   still reaches `.nextPhoto`. `.previousPhoto`
-  (`AppModel.swift:7035-7037`, → `selectPreviousAssetForCulling`,
-  `:7694-7707`, pagination branch at `:6459-6467`) is **not** bound to any
+  (→ `selectPreviousAssetForCulling`) is **not** bound to any
   key in the Cull loupe any more — it is dispatched only by the Library
   loupe's chevron buttons (`LibraryGridView.swift:4683-4691`
   `CullingNavDirection.shortcut`, wired into `libraryLoupeNavBar`,
-  `:3976-3982`, a different, non-culling view). Left no longer reverses
+  a different, non-culling view). Left no longer reverses
   Space's advance — see the next bullet for what Left/Right dispatch now.
 - **Remapped arrow dispatch** (this branch): `CullingShortcut.init(event:)`
   now maps `leftArrow`/`rightArrow` → `.previousStack`/`.nextStack` and
@@ -66,15 +62,6 @@ dead-ending. Covers:
   Stack" (↑/↓) and "Previous/Next Stack" (←/→) — no Option-arrow row, no
   `isMonitorOnly` flag on any entry (see `cull-009-keymap-overlay.md`'s
   parallel reconciliation).
-- End-of-`.all`-scope pagination: `selectNextAssetForCulling`'s pagination
-  branch at `AppModel.swift:6095-6103` (`cullScope == .all, index ==
-  assets.count - 1, hasMoreAssets` triggers `loadMoreAssets()`, `:9612`) —
-  reachable via `Space` now, not `Right` (`Right` dispatches `.nextStack`,
-  not `.nextPhoto`; see the Space bullet above). The mirror-image
-  `loadPreviousAssets()` (`:9634`) branch inside
-  `selectPreviousAssetForCulling` (`:6459-6467`) is, like `.previousPhoto`
-  itself, unreachable from any Cull-loupe key post-remap — step 7 below
-  only exercises the forward/Space leg.
 
 ## Pre-state
 ```bash
@@ -145,25 +132,8 @@ calls below.
    multi-frame within-stack candidate movement or stack-to-stack
    landing-on-recommended behavior — see Sharp edges and
    `cull-021-stack-rail-nav.md` for that coverage on the `burst` fixture.
-7. **Pagination**: find the last loaded asset in `.all` scope. Query the
-   loaded count so far and compare to the catalog total:
-   ```bash
-   TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")   # expect 24 for --smoke
-   ```
-   `--smoke` only seeds 24 assets and the Cull loupe's initial page may
-   already cover all 24 (`hasMoreAssets` false) — if so, this step cannot be
-   exercised against `--smoke` as seeded; note this and either (a) confirm
-   `hasMoreAssets` is false and the grid simply stops advancing at the last
-   asset without erroring, or (b) if a larger seed variant is available,
-   rerun against it. Navigate to the last asset (repeated `Space` or
-   jump via grid). Press `Space` once more:
-   - If `hasMoreAssets` was true: assert `loadMoreAssets()` fired — the
-     loaded asset count grows and the selection lands on the newly-loaded
-     next asset.
-   - If `hasMoreAssets` was false: assert the selection simply stays on the
-     last asset (no crash, no wraparound, no error alert).
-8. **Non-destructive invariant (persona-8 defect)**: after all the pure
-   navigation above — arrows, Space, stack keys, pagination, with NO
+7. **Non-destructive invariant (persona-8 defect)**: after all the pure
+   navigation above — arrows, Space, stack keys, with NO
    rating/flag/keyword/caption gesture in this card — assert that **zero**
    `.xmp` sidecars exist next to the originals and no metadata write was
    queued:
@@ -176,7 +146,7 @@ calls below.
    running; do not weaken to "few" — the count is exactly 0.)
 
 ## Expected
-- Step 8: browsing writes nothing — zero sidecars, zero pending metadata
+- Step 7: browsing writes nothing — zero sidecars, zero pending metadata
   syncs after pure navigation. **Fails if** even one `.xmp` appears for a
   merely-visited photo (the Rating=0 sidecar-spray defect).
 - Step 3: the filename advances forward exactly as `Space` (`.nextPhoto`)
@@ -195,11 +165,6 @@ calls below.
   **Fails if** Up/Down move the selection at all on an all-singleton
   catalog, or if on a catalog with real multi-frame stacks (see
   `cull-021-stack-rail-nav.md`) Up/Down no-op or skip frames.
-- Step 7: either pagination measurably grows the loaded set and advances
-  past the pre-pagination end, or (if `--smoke` has no `hasMoreAssets` at
-  all) the loupe holds steady at the last frame without error. **Fails if**
-  pressing `Space` at the end throws, shows an error alert, or silently
-  wraps to the first asset.
 
 ## Cleanup
 ```bash
@@ -213,11 +178,6 @@ calls below.
   now lives in `cull-021-stack-rail-nav.md` against the `burst` seed
   variant — don't duplicate that coverage here; this card only proves the
   all-singleton no-op case and the ordinary linear Space advance.
-- **Pagination may be untestable against `--smoke`'s 24-asset seed** if the
-  Cull loupe's initial working set already loads all 24 (`hasMoreAssets ==
-  false` from the start). Confirm this empirically in the live run and note
-  the actual outcome — don't force a false pass by asserting the no-op branch
-  when a real page boundary was reachable, or vice versa.
 - **The ⌥←/⌥→ mechanism this card used to test no longer exists.** Do not
   resurrect an `isMonitorOnly`/Option-arrow assertion here; the whole
   mechanism (menu entries and event handling alike) was deleted by the
@@ -238,3 +198,11 @@ can be called Verified again.
 Preamble only; no other stale symbol found in this card. Supersedes prior
 status: no substantive change — the 2026-07-13 remap reconciliation above
 is unaffected, noted for the record per house style.
+
+**Reconciled 2026-08-16 (issue #9, pagination retirement)**: the
+end-of-scope pagination step (formerly step 7) and all pagination
+references were removed — commit 3b33f0fb deleted the pager
+(`loadMoreAssets`/`loadPreviousAssets`/`hasMoreAssets`/`hasPreviousAssets`/
+`assetPageSize`/`loadedAssetWindowSize`) and the Load More/Previous buttons;
+the whole catalog loads at once now. The non-destructive invariant step is
+renumbered 7 → was 8. No other change to the navigation assertions.

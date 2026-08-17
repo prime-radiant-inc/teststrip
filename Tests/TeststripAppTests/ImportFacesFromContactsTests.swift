@@ -136,15 +136,6 @@ final class ImportFacesFromContactsTests: XCTestCase {
         return (model, repository)
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-import-faces-from-contacts-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
     private func makeAsset(id: String, path: String) -> Asset {
         Asset(
             id: AssetID(rawValue: id),

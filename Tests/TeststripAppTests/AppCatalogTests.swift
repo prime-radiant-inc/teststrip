@@ -151,15 +151,6 @@ final class AppCatalogTests: XCTestCase {
         XCTAssertTrue(file(workerOutputURL, contains: "\"level\":\"large\""))
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-app-catalog-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
     private func writeRecordingWorkerScript(to url: URL, outputURL: URL) throws {
         let script = """
         #!/usr/bin/env bash

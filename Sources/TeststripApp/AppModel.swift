@@ -54,16 +54,40 @@ public struct CullingProgressSummary: Equatable, Sendable {
     public var rejectCount: Int
     public var totalCount: Int
 
+    // SP-D Task 5: loud accounting fields for the scope line's coverage
+    // readout. Defaults of 0 keep existing call sites working.
+    public var viewedCount: Int
+    public var skippedCount: Int
+    public var neverViewedCount: Int
+    public var awaitingReviewCount: Int
+    public var hiddenByLensCount: Int
+
     public var reviewedCount: Int {
-        pickCount + rejectCount
+        viewedCount
     }
 
-    public init(selectedPosition: Int?, positionText: String?, pickCount: Int, rejectCount: Int, totalCount: Int) {
+    public init(
+        selectedPosition: Int?,
+        positionText: String?,
+        pickCount: Int,
+        rejectCount: Int,
+        totalCount: Int,
+        viewedCount: Int = 0,
+        skippedCount: Int = 0,
+        neverViewedCount: Int = 0,
+        awaitingReviewCount: Int = 0,
+        hiddenByLensCount: Int = 0
+    ) {
         self.selectedPosition = selectedPosition
         self.positionText = positionText
         self.pickCount = pickCount
         self.rejectCount = rejectCount
         self.totalCount = totalCount
+        self.viewedCount = viewedCount
+        self.skippedCount = skippedCount
+        self.neverViewedCount = neverViewedCount
+        self.awaitingReviewCount = awaitingReviewCount
+        self.hiddenByLensCount = hiddenByLensCount
     }
 }
 
@@ -2028,7 +2052,7 @@ public final class AppModel {
 
     /// One sidebar, every lens. Sources are nouns; lenses are verbs; the
     /// sidebar lists nouns, so it does not vary with the lens.
-    public func buildSidebarSections() -> [SidebarSection] {
+    func buildSidebarSections() -> [SidebarSection] {
         UnifiedSidebarPresentation.sections(
             totalAssetCount: totalAssetCount,
             importSummaries: importSourceSummaries,
@@ -2074,6 +2098,7 @@ public final class AppModel {
         didSet {
             if oldValue != selectedAssetID {
                 abContenderAssetID = nil
+                invalidateCullingStackScopeCache()
             }
             persistSessionState()
         }
@@ -2107,6 +2132,12 @@ public final class AppModel {
     /// The subset of frames the loupe/filmstrip/grid navigate through while
     /// culling. `.all` means unfiltered. Cycled with the `s` shortcut.
     public private(set) var cullScope: CullScope = .all
+    /// Cached result of `selectedCullingStackScope`; nil = dirty/invalid.
+    /// Set on cache miss, cleared by `invalidateCullingStackScopeCache()`.
+    private var _cachedCullingStackScope: CullingStackScope?
+    /// Test hook: counts cache misses (recomputations) in
+    /// `selectedCullingStackScope`. Incremented only on cache miss.
+    internal var _cullingStackScopeRecomputeCount = 0
     /// Whether a P/X/rating/color-label decision auto-advances the selection
     /// afterward (to the next undecided stack frame, or the next stack's
     /// landing frame). Toggled with the `a` shortcut; default on.
@@ -2128,6 +2159,20 @@ public final class AppModel {
     /// when the cull source/batch changes (`startCullRunTracking`), NOT on
     /// `S` scope cycling.
     private(set) var cullRunTracker = CullRunTracker()
+
+    /// Guards `resumeCullRunIfNeeded` so it only fires once per model
+    /// instance — the first `beginCullingSession` after a relaunch resumes
+    /// the prior tracker; subsequent calls start fresh.
+    private var cullRunResumeConsumed = false
+
+    /// The JSON file URL for cull-run-tracker persistence — lives in the
+    /// catalog's app-support root, never the catalog database itself (the
+    /// tracker is UI state, not operational truth). Nil when no catalog is
+    /// loaded.
+    var cullRunTrackerURL: URL? {
+        catalog?.paths.root.appendingPathComponent("cull-run-tracker.json")
+    }
+
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `LensChromePolicy.showsInspector`.
@@ -2204,6 +2249,11 @@ public final class AppModel {
     // against a frame the user is no longer staging.
     public private(set) var armedStackCommitAssetID: AssetID?
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
+    // SP-D Task 3: unified completion presentation carrying session-level
+    // fields (sessionID, title, picksSetID, remainingSingleAssetIDs) alongside
+    // the run-summary counts. Populated when a formal session completes;
+    // nil for the ad-hoc path and when no session is active.
+    private(set) var cullCompletion: CullCompletionPresentation?
     public private(set) var rejectRelocationSummary: RejectRelocationSummary?
     public private(set) var isRelocatingRejects = false
     private var rejectRelocationAbortRequested = false
@@ -2603,6 +2653,13 @@ public final class AppModel {
         saveSearchRequestToken += 1
     }
 
+    /// SP-D: ⌘R "Start Cull Run" request token. The menu command bumps this;
+    /// LibraryGridView's `.onChange` opens the start card popover.
+    public private(set) var startCullRunRequestToken = 0
+    public func requestStartCullRun() {
+        startCullRunRequestToken += 1
+    }
+
     public private(set) var moveRejectsToTrashRequestToken = 0
     public func requestMoveRejectsToTrash() {
         moveRejectsToTrashRequestToken += 1
@@ -2767,12 +2824,28 @@ public final class AppModel {
 
     public var cullingProgressSummary: CullingProgressSummary {
         let decisionCounts = cullingDecisionCounts()
+        // SP-D Task 5: loud accounting fields.
+        let scopedAssetIDs = Set(CullScopeOrdering.filteredAssets(assets, scope: cullScope).map(\.id))
+        let viewedCount = cullRunTracker.viewedAssetIDs.intersection(scopedAssetIDs).count
+        let decidedAssetIDs = Set(assets.filter { $0.metadata.confirmedProjection.flag != nil }.map(\.id))
+        let skippedCount = cullRunTracker.skippedAssetIDs
+            .intersection(scopedAssetIDs)
+            .subtracting(decidedAssetIDs)
+            .count
+        let neverViewedCount = scopedAssetIDs.count - viewedCount
+        let awaitingReviewCount = assets.filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }.count
+        let hiddenByLensCount = totalAssetCount - scopedAssetIDs.count
         return CullingProgressSummary(
             selectedPosition: selectedAssetPosition,
             positionText: selectedAssetPositionText,
             pickCount: decisionCounts.pickCount,
             rejectCount: decisionCounts.rejectCount,
-            totalCount: totalAssetCount
+            totalCount: totalAssetCount,
+            viewedCount: viewedCount,
+            skippedCount: skippedCount,
+            neverViewedCount: neverViewedCount,
+            awaitingReviewCount: awaitingReviewCount,
+            hiddenByLensCount: hiddenByLensCount
         )
     }
 
@@ -3372,10 +3445,10 @@ public final class AppModel {
     }
 
     public var canBeginCullingSession: Bool {
-        catalog != nil && !assets.isEmpty
+        catalog != nil && !assets.isEmpty && activeCullingSessionID == nil
     }
 
-    /// The Cull lens's "Cull these" is unavailable on diagnostic sources —
+    /// The Cull lens's "Cull These" is unavailable on diagnostic sources —
     /// nothing there is cullable — and on an empty scope.
     public var canCullCurrentResults: Bool {
         canBeginCullingSession && !selectedSource.isDiagnostic
@@ -3391,13 +3464,18 @@ public final class AppModel {
     /// gate guards against).
     public var scopeLine: ScopeLinePresentation {
         let isCullSessionActive = selectedLens == .cull && activeCullingSessionID != nil
+        let progress = isCullSessionActive ? cullingProgressSummary : nil
         return ScopeLinePresentation.line(
             source: selectedSource,
             lens: selectedLens,
             resultCount: totalAssetCount,
             activeFilterChips: activeLibraryFilterChips,
-            cullProgress: isCullSessionActive ? cullingProgressSummary : nil,
-            stackCount: isCullSessionActive ? cullingStackListEntries().count : 0
+            cullProgress: progress,
+            stackCount: isCullSessionActive ? cullingStackListEntries().count : 0,
+            skippedCount: progress?.skippedCount ?? 0,
+            neverViewedCount: progress?.neverViewedCount ?? 0,
+            awaitingReviewCount: progress?.awaitingReviewCount ?? 0,
+            hiddenByLensCount: progress?.hiddenByLensCount ?? 0
         )
     }
 
@@ -3472,7 +3550,10 @@ public final class AppModel {
         // chips already use, not a second title spelling.
         for predicate in detachedLibraryFilterPredicates {
             guard let title = Self.activeLibraryFilterRow(for: predicate)?.title else { continue }
-            Self.append(title, to: &parts)
+            // Chip titles ("Rating >= 5") are fine as removable chips but read
+            // as technical copy in a proposed name; map them back to the wording
+            // the old boolean-branch spellings produced ("5+ Stars"). See #7.
+            Self.append(Self.friendlierSavedSearchPart(forChipTitle: title), to: &parts)
         }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
@@ -4807,6 +4888,7 @@ public final class AppModel {
         // the frame the selection lands on has been on stage — record it for
         // the completion summary's neverViewed (scope ∖ viewed) count.
         cullRunTracker.recordViewed(assetID)
+        saveCullRunTracker()
         do {
             try refreshSelectedPreviewGenerationQueueStates(for: assetID)
         } catch {
@@ -4899,6 +4981,7 @@ public final class AppModel {
         if case .workSession(let sessionID)? = row.target?.kind {
             if expandedImportSessionIDs.contains(sessionID.rawValue) {
                 expandedImportSessionIDs.remove(sessionID.rawValue)
+                importChildCountsBySessionID.removeValue(forKey: sessionID.rawValue)
             } else {
                 expandedImportSessionIDs.insert(sessionID.rawValue)
                 importChildCountsBySessionID[sessionID.rawValue] =
@@ -4914,13 +4997,25 @@ public final class AppModel {
                 // same deadlock the top `recentImportRowLimit` rows had
                 // before `refreshImportSourceSummaries` primed their counts:
                 // an unexpanded row with no counts on file renders `.none`
-                // and its chevron never appears. Priming here is bounded by
-                // however many imports this explicit click just chose to
-                // render, not by the catalog's full import history.
-                for summary in importSourceSummaries where summary.producedOutputSet {
+                // and its chevron never appears. Prime only the overflow
+                // entries being revealed — the first `recentImportRowLimit`
+                // were already primed by `primeVisibleImportChildCounts`.
+                for summary in importSourceSummaries
+                    .filter(\.producedOutputSet)
+                    .dropFirst(UnifiedSidebarPresentation.recentImportRowLimit) {
                     guard importChildCountsBySessionID[summary.sessionID.rawValue] == nil else { continue }
                     importChildCountsBySessionID[summary.sessionID.rawValue] =
                         (try? importChildCounts(sessionID: summary.sessionID)) ?? ImportChildCounts()
+                }
+            } else {
+                // Evict overflow rows' counts so the next "All imports…"
+                // reveal fetches fresh counts, mirroring the per-row
+                // eviction on individual collapse. Expanded overflow rows
+                // are re-fetched by the projection's expanded-ID refresh.
+                for summary in importSourceSummaries
+                    .filter(\.producedOutputSet)
+                    .dropFirst(UnifiedSidebarPresentation.recentImportRowLimit) {
+                    importChildCountsBySessionID.removeValue(forKey: summary.sessionID.rawValue)
                 }
             }
             rebuildSidebarSections()
@@ -5124,7 +5219,7 @@ public final class AppModel {
         let stackAssetIDs: [AssetID]
         switch child {
         case .stacks:
-            stackAssetIDs = try latestImportStacks(
+            stackAssetIDs = try latestImportMultiFrameStacks(
                 activityID: sessionID.rawValue,
                 repository: catalog.repository
             ).flatMap(\.assetIDs)
@@ -5211,11 +5306,12 @@ public final class AppModel {
     @discardableResult
     public func beginStackCulling(importSessionID: WorkSessionID, title: String) throws -> WorkSession {
         cullingSessionCompletion = nil
+        cullCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let activityID = importSessionID.rawValue
-        let stacks = try latestImportStacks(activityID: activityID, repository: catalog.repository)
+        let stacks = try latestImportMultiFrameStacks(activityID: activityID, repository: catalog.repository)
         // "latest import" only when it actually is — a sidebar "Cull stacks"
         // context action reaches this for any past import (see the doc
         // comment above), and the recorded intent must not claim currency
@@ -5271,6 +5367,7 @@ public final class AppModel {
     @discardableResult
     public func beginManualCullingFromCompareSet() throws -> WorkSession {
         cullingSessionCompletion = nil
+        cullCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -5669,7 +5766,7 @@ public final class AppModel {
                 refreshedCount
             }
         }
-        completedImports = sessions.map(AppWorkActivity.init)
+        completedImports = sessions.prefix(ImportReceiptRow.retentionLimit).map(AppWorkActivity.init)
         importSourceSummaries = sessions.map { session in
             ImportSidebarSummary(
                 sessionID: session.id,
@@ -5721,8 +5818,9 @@ public final class AppModel {
         let repository = catalog.repository
         let session = try repository.session(id: sessionID)
         let assetIDs = try latestImportOutputAssetIDs(activityID: sessionID.rawValue, repository: repository)
+        let stackGroups = try latestImportStackGroups(assetIDs: assetIDs, repository: repository)
         return ImportChildCounts(
-            stacks: try latestImportStacks(activityID: sessionID.rawValue, repository: repository).count,
+            stacks: stackGroups.multiFrameStacks.count,
             skippedFiles: session.issues.filter { $0.kind == .skippedSourceFile }.count,
             previewFailed: try repository.previewGenerationFailureAssetIDs(assetIDs: assetIDs).count,
             likelyIssues: try repository.assetCount(
@@ -5958,7 +6056,7 @@ public final class AppModel {
         ) { _, refreshedCount in
             refreshedCount
         }
-        let completedImports = importSessions.map(AppWorkActivity.init)
+        let completedImports = importSessions.prefix(ImportReceiptRow.retentionLimit).map(AppWorkActivity.init)
         let importSourceSummaries = importSessions.map { session in
             ImportSidebarSummary(
                 sessionID: session.id,
@@ -6089,11 +6187,13 @@ public final class AppModel {
         // contact sheet, never the loupe the run just finished in.
         selectedView = .grid
         cullingSessionCompletion = nil
+        cullCompletion = nil
         statusMessage = "Viewing \(completion.title) Picks"
     }
 
     public func dismissCullingSessionCompletion() {
         cullingSessionCompletion = nil
+        cullCompletion = nil
     }
 
     /// The `.savePicksAsSet` completion action. With an active culling
@@ -6174,6 +6274,72 @@ public final class AppModel {
         )
     }
 
+    // MARK: - SP-D Task 6: Mini-run starters from the completion summary.
+    // Each finds the relevant asset IDs from the current `assets` array,
+    // creates a snapshot asset set, applies it, and begins a new culling
+    // session scoped to that subset.
+
+    /// Starts a new culling session scoped to undecided frames (no confirmed
+    /// flag). A tentative AI flag counts as undecided — `confirmedProjection`
+    /// projects it to nil.
+    public func cullUndecidedFromCompletion() throws -> WorkSession {
+        let assetIDs = assets
+            .filter { $0.metadata.confirmedProjection.flag == nil }
+            .map(\.id)
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Undecided")
+    }
+
+    /// Starts a new culling session scoped to frames that were skipped during
+    /// the last run but never decided. A skipped-then-decided frame is excluded.
+    public func cullSkippedFromCompletion() throws -> WorkSession {
+        let decidedAssetIDs = Set(assets.filter { $0.metadata.confirmedProjection.flag != nil }.map(\.id))
+        let assetIDs = cullRunTracker.skippedAssetIDs
+            .intersection(Set(assets.map(\.id)))
+            .subtracting(decidedAssetIDs)
+            .map { $0 }
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Skipped")
+    }
+
+    /// Starts a new culling session scoped to frames that were never viewed
+    /// during the last run.
+    public func cullNeverViewedFromCompletion() throws -> WorkSession {
+        let assetIDs = assets
+            .filter { !cullRunTracker.viewedAssetIDs.contains($0.id) }
+            .map(\.id)
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Never Viewed")
+    }
+
+    /// Starts a new culling session scoped to frames carrying tentative AI
+    /// flags that await user review.
+    public func reviewAIFromCompletion() throws -> WorkSession {
+        let assetIDs = assets
+            .filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }
+            .map(\.id)
+        return try startScopedMiniRun(assetIDs: assetIDs, title: "Review ✨")
+    }
+
+    /// Shared helper: creates a snapshot asset set from the given IDs, applies
+    /// it, and begins a new culling session. Throws when the set is empty.
+    private func startScopedMiniRun(assetIDs: [AssetID], title: String) throws -> WorkSession {
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("there are no photos to cull")
+        }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let setID = AssetSetID(rawValue: "work-input-mini-\(UUID().uuidString)")
+        let assetSet = AssetSet(
+            id: setID,
+            name: title,
+            membership: .snapshot(assetIDs)
+        )
+        try catalog.repository.upsert(assetSet)
+        savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
+        try applyAssetSet(id: setID)
+        return try beginCullingSession(named: title)
+    }
+
     // A new cull batch is a fresh run: the viewed/skipped tracker resets, and
     // whatever frame the batch landed on is on stage right now — record it as
     // viewed so the completion summary's neverViewed set can never include
@@ -6184,11 +6350,42 @@ public final class AppModel {
         if let selectedAssetID {
             cullRunTracker.recordViewed(selectedAssetID)
         }
+        saveCullRunTracker(force: true)
+    }
+
+    /// Persists the current cull-run tracker to `cullRunTrackerURL` (a JSON
+    /// file in the catalog's app-support root). Persistence failures are
+    /// swallowed — the tracker is UI state, not operational truth.
+    private func saveCullRunTracker(force: Bool = false) {
+        guard force || activeCullingSessionID != nil else { return }
+        guard let url = cullRunTrackerURL else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? CullRunTracker.Persistence.save(cullRunTracker, to: url)
+    }
+
+    /// Loads the cull-run tracker from `cullRunTrackerURL` if the file exists,
+    /// restoring the exact viewed/skipped sets from a prior run. Called during
+    /// `beginCullingSession` BEFORE `startCullRunTracking()` so a relaunch picks
+    /// up exactly where the previous run left off. Returns `true` when a prior
+    /// tracker was restored (so `beginCullingSession` can skip the fresh-start
+    /// reset).
+    @discardableResult
+    func resumeCullRunIfNeeded() -> Bool {
+        guard !cullRunResumeConsumed else { return false }
+        cullRunResumeConsumed = true
+        guard let url = cullRunTrackerURL,
+              let restored = CullRunTracker.Persistence.load(from: url) else { return false }
+        cullRunTracker = restored
+        return true
     }
 
     @discardableResult
     public func beginCullingSession(named name: String, intent: String = "") throws -> WorkSession {
         cullingSessionCompletion = nil
+        cullCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -6220,7 +6417,9 @@ public final class AppModel {
             }
             selectedView = .loupe
         }
-        startCullRunTracking()
+        if !resumeCullRunIfNeeded() {
+            startCullRunTracking()
+        }
         activeCullingSessionID = sessionID
 
         let detail = trimmedIntent.isEmpty ? "Culling \(Self.photoCountDescription(totalUnitCount))" : trimmedIntent
@@ -6241,6 +6440,28 @@ public final class AppModel {
         )
         statusMessage = "Started \(title)"
         return try catalog.repository.session(id: sessionID)
+    }
+
+    /// SP-D Task 4: thin convenience over `beginCullingSession(named:)` that
+    /// starts a cull run without a custom name. Switches to the loupe view.
+    @discardableResult
+    public func startCullRun() throws -> WorkSession {
+        try beginCullingSession(named: "Cull")
+    }
+
+    /// SP-D Task 4: batch stats for the ⌘R start card — photo count, multi-
+    /// frame stack count, lens-hidden count, and the auto-advance / land-on-
+    /// recommended toggles.
+    var cullStartCardPresentation: CullStartCardPresentation {
+        let stacks = cullingStacks()
+        let visibleCount = CullScopeOrdering.filteredAssets(assets, scope: cullScope).count
+        return CullStartCardPresentation(
+            photoCount: totalAssetCount,
+            stackCount: stacks.count,
+            lensHiddenCount: totalAssetCount - visibleCount,
+            autoAdvanceEnabled: cullAutoAdvanceEnabled,
+            landOnRecommended: cullLandOnRecommendedFrame
+        )
     }
 
     /// Scopes a fresh culling session to the current selection — the
@@ -6267,7 +6488,7 @@ public final class AppModel {
         return try beginCullingSession(named: "Cull These")
     }
 
-    /// "Cull these": hands the current result set to the Cull lens as its
+    /// "Cull These": hands the current result set to the Cull lens as its
     /// source. The handoff travels as a `SetQuery`, never through the text
     /// serializer — `searchTextToken(for:)` returns nil for `.likelyPick`,
     /// `.likelyIssue`, `.evaluationFailure`, and `.withinGeoBounds`, so a
@@ -7042,6 +7263,7 @@ public final class AppModel {
             // decision) is a skip, recorded for the completion summary.
             if let selectedAsset, selectedAsset.metadata.confirmedProjection.flag == nil {
                 cullRunTracker.recordSkipped(selectedAsset.id)
+                saveCullRunTracker()
             }
             try selectNextAssetForCulling()
         case .previousStack:
@@ -7145,6 +7367,7 @@ public final class AppModel {
 
     public func cycleCullScope() {
         cullScope = cullScope.next()
+        invalidateCullingStackScopeCache()
         selectAssetID(CullScopeOrdering.selectionAfterScopeChange(
             assets: assets,
             scope: cullScope,
@@ -7224,6 +7447,7 @@ public final class AppModel {
     /// The `.reviewPicks` action from `CullCompletionPresentation`.
     public func applyCullCompletionReviewPicks() {
         cullScope = .picks
+        invalidateCullingStackScopeCache()
         selectAssetID(CullScopeOrdering.selectionAfterScopeChange(
             assets: assets,
             scope: cullScope,
@@ -7503,6 +7727,16 @@ public final class AppModel {
     // from partial inputs and display a membership promote won't write —
     // that made the rail's Keep button a silent no-op (cull-004/cull-014).
     public var selectedCullingStackScope: CullingStackScope? {
+        if let cached = _cachedCullingStackScope {
+            return cached
+        }
+        let computed = computeSelectedCullingStackScope()
+        _cachedCullingStackScope = computed
+        _cullingStackScopeRecomputeCount += 1
+        return computed
+    }
+
+    private func computeSelectedCullingStackScope() -> CullingStackScope? {
         if let selectedWorkStackAssetIDs {
             let position = try? selectedPersistedCullingStackPosition()
             return CullingStackScope(
@@ -7524,6 +7758,14 @@ public final class AppModel {
             stackCount: stacks.count,
             rationaleText: stack.rationale
         )
+    }
+
+    /// Clears the cached `selectedCullingStackScope` so the next access
+    /// recomputes from current state. Called after any state change that
+    /// could affect the partition: flag/rating writes, scope changes,
+    /// asset reloads, and selection changes.
+    private func invalidateCullingStackScopeCache() {
+        _cachedCullingStackScope = nil
     }
 
     private func selectNextStackForCulling() throws {
@@ -8816,6 +9058,7 @@ public final class AppModel {
         if let index = assets.firstIndex(where: { $0.id == assetID }) {
             assets[index] = updatedAsset
         }
+        invalidateCullingStackScopeCache()
     }
 
     private static func objectLabels(from signal: EvaluationSignal) -> [String] {
@@ -8899,6 +9142,7 @@ public final class AppModel {
             return
         }
         assets[index] = updatedAsset
+        invalidateCullingStackScopeCache()
     }
 
     private func syncMetadataSidecar(for asset: Asset) throws {
@@ -10235,6 +10479,7 @@ public final class AppModel {
         replaceAssets(loadedAssets, preferredSelection: preferredSelection)
         totalAssetCount = try catalog.repository.assetCount(ids: autopilotGhostAssetIDs)
         isAutopilotReviewActive = true
+        persistSessionState()
     }
 
     /// Confirms the ghosts on the given assets: each one's tentative
@@ -11228,12 +11473,13 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        invalidateCullingStackScopeCache()
         isAutopilotReviewActive = false
         try refreshProposedAssets()
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         // reload() is the single funnel after bulk mutations (trash, move
         // back, relocation, deletes), so every count surface refreshes here
-        // together — otherwise the sidebar keeps stale review-queue/folder
+        // together — otherwise the sidebar keeps stale smart-collection/folder
         // counts while the HUD and catalog already tell the new story
         // (persona-7's "three surfaces, three stories").
         try refreshCatalogSidebarCounts()
@@ -11249,6 +11495,7 @@ public final class AppModel {
             if sourceBeingApplied == nil, selectedView == .people {
                 refreshPeopleFaceSuggestions()
             }
+            persistSessionState()
             return
         }
         if let explicitAssetIDs = selectedExplicitAssetIDs {
@@ -11264,6 +11511,7 @@ public final class AppModel {
             if sourceBeingApplied == nil, selectedView == .people {
                 refreshPeopleFaceSuggestions()
             }
+            persistSessionState()
             return
         }
         let loadedAssets: [Asset]
@@ -11289,6 +11537,7 @@ public final class AppModel {
         if sourceBeingApplied == nil, selectedView == .people {
             refreshPeopleFaceSuggestions()
         }
+        persistSessionState()
     }
 
     /// A person's PROPOSED photos — shown as a separate section below the
@@ -11746,8 +11995,16 @@ public final class AppModel {
         _ loadedAssets: [Asset],
         preferredSelection: AssetID? = nil
     ) {
+        // Suppress selectedAssetID.didSet → persistSessionState() during this
+        // call.  Callers that need persistence call persistSessionState()
+        // explicitly.  This prevents replaceAssets from masking
+        // persistence-trigger regressions on session-restore fields (issue #14).
+        sessionPersistenceDeferralDepth += 1
+        defer { sessionPersistenceDeferralDepth -= 1 }
+
         let previousSelection = selectedAssetID
         assets = loadedAssets
+        invalidateCullingStackScopeCache()
         if let preferredSelection, assets.contains(where: { $0.id == preferredSelection }) {
             selectedAssetID = preferredSelection
         } else if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
@@ -11790,6 +12047,7 @@ public final class AppModel {
         replaceAssets(contents.assets, preferredSelection: preferredSelection)
         totalAssetCount = contents.totalAssetCount
         refreshAssetIDsWithBondedSecondaries()
+        persistSessionState()
     }
 
     private static func append(_ predicate: SetQuery.Predicate, to predicates: inout [SetQuery.Predicate]) {
@@ -11812,6 +12070,31 @@ public final class AppModel {
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    /// Friendlier wording for a detached filter-predicate chip title when it
+    /// appears in a proposed saved-search name. Chip titles ("Rating >= 5")
+    /// are fine as removable chips but read as technical copy in a name; this
+    /// restores the wording the old boolean-branch spellings produced
+    /// ("5+ Stars"). Only the proposed name changes — the chips themselves
+    /// keep their technical titles. See issue #7.
+    private static func friendlierSavedSearchPart(forChipTitle title: String) -> String {
+        let ratingPrefix = "Rating >= "
+        if title.hasPrefix(ratingPrefix) {
+            return "\(title.dropFirst(ratingPrefix.count))+ Stars"
+        }
+        let isoPrefix = "ISO >= "
+        if title.hasPrefix(isoPrefix) {
+            return "ISO \(title.dropFirst(isoPrefix.count))+"
+        }
+        // Prefix-labelled chips collapse to their value, matching the old
+        // boolean-filter spellings (e.g. "Camera: Canon" → "Canon").
+        for prefix in ["Source: ", "Camera: ", "Lens: ", "Keyword: ", "Search: ", "Folder: "] {
+            if title.hasPrefix(prefix) {
+                return String(title.dropFirst(prefix.count))
+            }
+        }
+        return title
     }
 
     private static func activeLibraryFilterRow(for predicate: SetQuery.Predicate) -> ActiveLibraryFilterRow? {
@@ -12323,6 +12606,13 @@ public final class AppModel {
     // longer exist are silently dropped rather than surfaced as errors, and routes
     // or scopes that belong to an in-progress culling session are never restored.
     private func applyRestoredSessionState(_ state: SessionRestoreState, catalog: AppCatalog) throws {
+        // Suppress all didSet → persistSessionState() fires during restore.
+        // This is restoring saved state — it should NOT save.  Without this
+        // guard, ~20 property didSets each trigger a redundant save that just
+        // rewrites the state that was just read (issue #14).
+        sessionPersistenceDeferralDepth += 1
+        defer { sessionPersistenceDeferralDepth -= 1 }
+
         librarySortOption = state.sortOption
         librarySearchText = state.librarySearchText
         keywordFilterText = state.keywordFilterText
@@ -13339,18 +13629,33 @@ public final class AppModel {
     ) {
         if session.status == .completed, previousStatus != .completed {
             let picksSetID = Self.cullingOutputSetID(sessionID: session.id)
+            let resolvedPicksSetID = session.outputSetIDs.contains(picksSetID) ? picksSetID : nil
             cullingSessionCompletion = CullingSessionCompletionSummary(
                 sessionID: session.id,
                 title: session.title,
                 pickCount: decisionCounts.pick,
                 rejectCount: decisionCounts.reject,
-                picksSetID: session.outputSetIDs.contains(picksSetID) ? picksSetID : nil,
+                picksSetID: resolvedPicksSetID,
                 remainingSingleAssetIDs: remainingSingleAssetIDs
             )
+            // SP-D Task 3: populate the unified completion presentation with
+            // session-level fields alongside the run-summary counts.
+            var completion = CullCompletionPresentation.summary(
+                assets: assets,
+                viewedAssetIDs: cullRunTracker.viewedAssetIDs,
+                skippedAssetIDs: cullRunTracker.skippedAssetIDs,
+                awaitingReviewCount: assets.filter { $0.metadata.aiUnconfirmedFields.contains(.flag) }.count
+            )
+            completion.sessionID = session.id
+            completion.title = session.title
+            completion.picksSetID = resolvedPicksSetID
+            completion.remainingSingleAssetIDs = remainingSingleAssetIDs
+            cullCompletion = completion
             return
         }
         if session.status != .completed, cullingSessionCompletion?.sessionID == session.id {
             cullingSessionCompletion = nil
+            cullCompletion = nil
         }
     }
 
@@ -13590,6 +13895,10 @@ public final class AppModel {
 
     private func latestImportStackGroups(activityID: String, repository: CatalogRepository) throws -> LatestImportStackGroups {
         let assetIDs = try latestImportOutputAssetIDs(activityID: activityID, repository: repository)
+        return try latestImportStackGroups(assetIDs: assetIDs, repository: repository)
+    }
+
+    private func latestImportStackGroups(assetIDs: [AssetID], repository: CatalogRepository) throws -> LatestImportStackGroups {
         let importAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
         let allStacks = stackBuilder()
             .stacks(
@@ -13602,7 +13911,7 @@ public final class AppModel {
         )
     }
 
-    private func latestImportStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
+    private func latestImportMultiFrameStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
         try latestImportStackGroups(activityID: activityID, repository: repository).multiFrameStacks
     }
 
@@ -13807,6 +14116,7 @@ public final class AppModel {
             )
             totalAssetCount = output.totalAssetCount
             refreshAssetIDsWithBondedSecondaries()
+            persistSessionState()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -13855,6 +14165,7 @@ public final class AppModel {
             )
             totalAssetCount = output.totalAssetCount
             refreshAssetIDsWithBondedSecondaries()
+            persistSessionState()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
@@ -13928,12 +14239,9 @@ public final class AppModel {
             do {
                 let output = try await task.value
                 guard let self, self.activeWork?.id == activityID else { return }
-                self.replaceAssets(
-                    output.assets,
+                try self.loadCatalogPage(
                     preferredSelection: output.result.importedAssets.first?.id
                 )
-                self.totalAssetCount = output.totalAssetCount
-                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -14064,12 +14372,9 @@ public final class AppModel {
             do {
                 let output = try await task.value
                 guard let self, self.activeWork?.id == activityID else { return }
-                self.replaceAssets(
-                    output.assets,
+                try self.loadCatalogPage(
                     preferredSelection: output.result.importedAssets.first?.id
                 )
-                self.totalAssetCount = output.totalAssetCount
-                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)

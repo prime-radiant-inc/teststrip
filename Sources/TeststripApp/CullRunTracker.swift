@@ -1,3 +1,4 @@
+import Foundation
 import TeststripCore
 
 /// In-memory tracking for the current cull run, behind the completion
@@ -7,8 +8,9 @@ import TeststripCore
 /// undecided (`skippedAssetIDs`, recorded only by the `.nextPhoto` arm).
 /// Reset when the cull source/batch changes — a new run — but NOT on `S`
 /// scope cycling: changing the lens mid-run doesn't unsee anything.
-/// In-memory only; persistence for exact resume is out of scope (SP-D).
-struct CullRunTracker: Equatable {
+/// Codable for JSON file persistence (never the catalog — the tracker is
+/// UI state, not operational truth).
+struct CullRunTracker: Codable, Equatable {
     private(set) var viewedAssetIDs: Set<AssetID> = []
     private(set) var skippedAssetIDs: Set<AssetID> = []
 
@@ -27,5 +29,20 @@ struct CullRunTracker: Equatable {
     mutating func reset() {
         viewedAssetIDs = []
         skippedAssetIDs = []
+    }
+}
+
+extension CullRunTracker {
+    enum Persistence {
+        static func save(_ tracker: CullRunTracker, to url: URL) throws {
+            let data = try JSONEncoder().encode(tracker)
+            try data.write(to: url, options: .atomic)
+        }
+
+        static func load(from url: URL) -> CullRunTracker? {
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return try? JSONDecoder().decode(CullRunTracker.self, from: data)
+        }
     }
 }

@@ -371,7 +371,7 @@ reproducible).
 12. First prove the discriminator is non-vacuous: CARD1 contributed exactly
     four catalog rows and CARD2 contributed exactly two CARD2-only rows. Then
     record the culling-session count, latest row ID, and latest session ID
-    **after Step 10** and before pressing `Cull these`. The receipt action in
+    **after Step 10** and before pressing `Cull These`. The receipt action in
     Step 4 created an earlier culling run, but this later boundary excludes it
     (and Step 10's run) from the one-new-run query below. Step 10 entered the
     Cull lens, which hides the query/result header; switch to Grid first so
@@ -382,7 +382,7 @@ reproducible).
     (`selectSidebarRow`/`applySource`'s `.workSession` case,
     `AppModel.swift:4867-4877,5024-5094`; `applyWorkSession` sets
     `selectedAssetSetID = nil` at `:5096-5114`),
-    then press the result-header **"Cull these"** button (exact-case label,
+    then press the result-header **"Cull These"** button (exact-case label,
     same disambiguation `app-019-lens-shell.md` documents against the grid's
     "Cull These" context-menu item — do not batch-select assets first and
     use the context-menu item instead, which takes a different, `.manual`-
@@ -405,7 +405,7 @@ reproducible).
     CARD1_ROW_TITLE=$(script/vm_scenario_run.sh ax find --role AXButton --contains "Imported 4 photos from card1 (2 files skipped)" | awk 'index($0,"Imported 4 photos from card1 (2 files skipped)") && $0 !~ /^(Expand|Collapse) / {print; exit}')
     test -n "$CARD1_ROW_TITLE"
     script/vm_scenario_run.sh ax press --role AXButton --label "$CARD1_ROW_TITLE"
-    script/vm_scenario_run.sh ax press --role AXButton --label "Cull these"
+    script/vm_scenario_run.sh ax press --role AXButton --label "Cull These"
 
     for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
       AFTER_CULL_COUNT=$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions WHERE kind='culling';")
@@ -478,7 +478,7 @@ reproducible).
   read the exact existing-only string, or if it shows a `Start culling`
   button it has no business showing.
 - Step 12: **fails if** the positive CARD2-only baseline is not exactly 2,
-  Grid is not selected before targeting the browse-only `Cull these` button,
+  Grid is not selected before targeting the browse-only `Cull These` button,
   pressing that button does not create exactly one genuinely new run in the
   running state with exactly one input set, the exact new run's input does not
   contain all 4 CARD1 members, its total input is not exactly 4, or it contains
@@ -696,7 +696,7 @@ summary.newPhotoCount > 0` with `newPhotoCount == 0`.
   `✓ 0 · ✕ 0 · 4 left`). Correct per `beginStackCulling`'s no-stacks guard
   (`AppModel.swift:5227-5231`) for a fixture with no time-adjacent frames.
 - **Step 12** — culling the **older** import scoped correctly. CARD1's row
-  selected as source, `Cull these` pressed; the run's `work-input-…` set held
+  selected as source, `Cull These` pressed; the run's `work-input-…` set held
   exactly 4 photos (`INPUT_COUNT=4`, matching `CARD1_BASELINE`). The join-based
   `CARD1_INPUT_COUNT`/`CARD2_ONLY_INPUT_COUNT` split was not evidence in this
   historical run: its `json_each` join was malformed (see the correction

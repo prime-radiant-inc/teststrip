@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import TeststripApp
 
 final class CullingCommandMenuPresentationTests: XCTestCase {
@@ -70,5 +71,29 @@ final class CullingMenuSingleKeyOwnerTests: XCTestCase {
                 )
             }
         }
+    }
+}
+
+/// F14.2 — the bare-key/menu double-dispatch landmine — has two sides:
+/// 1. Culling keys must not carry menu key equivalents (tested above).
+/// 2. Lens shortcuts (⌘1–⌘6) must be modifier-bearing. If the `.command`
+///    modifier were stripped from `main.swift`'s binding, the key equivalent
+///    would fire through AppKit's `performKeyEquivalent` path independently of
+///    the in-view monitor — one keypress would dispatch twice.
+///    We pin the key-equivalent values here; the modifier is applied at the
+///    call site (`main.swift`'s `LibraryCommands`) and documented by the
+///    comment on `LibraryLens.keyEquivalent`.
+final class LensShortcutModifierTests: XCTestCase {
+    func testLensKeyEquivalentsAreOneThroughSixInDeclarationOrder() {
+        let equivalents = LibraryLens.allCases.map(\.keyEquivalent)
+        let expected: [KeyEquivalent] = ["1", "2", "3", "4", "5", "6"].map { KeyEquivalent($0) }
+        XCTAssertEqual(equivalents, expected,
+                       "Lens shortcuts must be ⌘1–⌘6 in declaration order — a bare (modifier-less) equivalent double-dispatches (F14.2)")
+    }
+
+    func testLensKeyEquivalentsAreUnique() {
+        let equivalents = LibraryLens.allCases.map(\.keyEquivalent)
+        XCTAssertEqual(Set(equivalents).count, equivalents.count,
+                       "Two lenses sharing a key equivalent would conflict in the menu")
     }
 }

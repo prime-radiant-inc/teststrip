@@ -45,7 +45,8 @@ final class ScopeLinePresentationTests: XCTestCase {
                 positionText: "1 of 854",
                 pickCount: 15,
                 rejectCount: 5,
-                totalCount: 854
+                totalCount: 854,
+                viewedCount: 20
             ),
             stackCount: 326
         )
@@ -65,12 +66,36 @@ final class ScopeLinePresentationTests: XCTestCase {
                 positionText: "1 of 4",
                 pickCount: 1,
                 rejectCount: 1,
-                totalCount: 4
+                totalCount: 4,
+                viewedCount: 2
             ),
             stackCount: 0
         )
 
         XCTAssertEqual(line.statusText, "4 photos · ✓ 1 · ✕ 1 · 2 left")
+    }
+
+    /// When a cull session is active, `cullProgress.totalCount` is the source
+    /// of truth for the photo count — `resultCount` is dead in that branch and
+    /// must not win even when the two differ.
+    func testCullProgressTotalCountWinsOverResultCount() {
+        let line = ScopeLinePresentation.line(
+            source: .allPhotos,
+            lens: .cull,
+            resultCount: 999,
+            activeFilterChips: [],
+            cullProgress: CullingProgressSummary(
+                selectedPosition: 1,
+                positionText: "1 of 12",
+                pickCount: 0,
+                rejectCount: 0,
+                totalCount: 12
+            ),
+            stackCount: 0
+        )
+
+        // 12 (cullProgress.totalCount), not 999 (resultCount)
+        XCTAssertEqual(line.statusText, "12 photos · ✓ 0 · ✕ 0 · 12 left")
     }
 
     func testTheCullLensFallsBackToTheResultCountWithNoRun() {

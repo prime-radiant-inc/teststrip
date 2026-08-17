@@ -124,10 +124,15 @@ final class CullRunTrackerTests: XCTestCase {
             Self.asset(id: "batch-\(index)")
         }
         let (model, _) = try makeModelWithCatalogAssets(named: "run-tracker-session-reset", assets: assets)
+        // Start a cull run so the tracker is initialized and culling keys are
+        // valid (mirrors real usage where shortcuts only fire inside a run).
+        _ = try model.beginCullingSession(named: "First Batch")
         try model.applyCullingShortcut(.nextPhoto)
         XCTAssertFalse(model.cullRunTracker.skippedAssetIDs.isEmpty)
 
-        try model.beginCullingSession(named: "Fresh Batch")
+        // A second beginCullingSession on the same instance must reset, not
+        // resume, because cullRunResumeConsumed is already true.
+        _ = try model.beginCullingSession(named: "Fresh Batch")
 
         XCTAssertEqual(model.cullRunTracker.skippedAssetIDs, [])
         // The frame the new batch landed on is on stage now — it is viewed,
@@ -136,6 +141,42 @@ final class CullRunTrackerTests: XCTestCase {
             model.cullRunTracker.viewedAssetIDs,
             model.selectedAssetID.map { [$0] } ?? []
         )
+    }
+
+    // MARK: - Codable + file persistence (SP-D Task 1)
+
+    func testTrackerCodableRoundTrip() throws {
+        var tracker = CullRunTracker()
+        tracker.recordViewed(AssetID(rawValue: "a1"))
+        tracker.recordViewed(AssetID(rawValue: "a2"))
+        tracker.recordSkipped(AssetID(rawValue: "a3"))
+
+        let data = try JSONEncoder().encode(tracker)
+        let restored = try JSONDecoder().decode(CullRunTracker.self, from: data)
+
+        XCTAssertEqual(restored, tracker)
+    }
+
+    func testPersistenceSaveAndLoad() throws {
+        var tracker = CullRunTracker()
+        tracker.recordViewed(AssetID(rawValue: "v1"))
+        tracker.recordSkipped(AssetID(rawValue: "s1"))
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cull-run-tracker-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try CullRunTracker.Persistence.save(tracker, to: url)
+        let loaded = CullRunTracker.Persistence.load(from: url)
+
+        XCTAssertEqual(loaded, tracker)
+    }
+
+    func testPersistenceLoadReturnsNilWhenFileDoesNotExist() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nonexistent-\(UUID().uuidString).json")
+
+        XCTAssertNil(CullRunTracker.Persistence.load(from: url))
     }
 
     // MARK: - Fixtures
@@ -169,27 +210,4 @@ final class CullRunTrackerTests: XCTestCase {
         )
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-tests-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        return (try AppModel.load(catalog: catalog), repository)
-    }
 }

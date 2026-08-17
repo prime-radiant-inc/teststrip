@@ -69,6 +69,15 @@ public struct LibrarySource: Equatable, Codable, Sendable {
         self.title = title
     }
 
+    /// Identity is the set of photos a source names (`kind`), not its display
+    /// title. Two sources with the same kind but different titles (a work
+    /// session constructed from different code paths) must compare equal so
+    /// nav-history dedupe and `LibraryQueryToken.legacyRows` don't create
+    /// spurious back-stack entries or double-render.
+    public static func == (lhs: LibrarySource, rhs: LibrarySource) -> Bool {
+        lhs.kind == rhs.kind
+    }
+
     /// Diagnostic sources hold problems rather than photographs. The Cull lens
     /// disables on them; they open in Grid for inspection.
     public var isDiagnostic: Bool {

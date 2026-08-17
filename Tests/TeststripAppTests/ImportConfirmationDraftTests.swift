@@ -563,11 +563,4 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.secondCopyUnavailableReason, "Second copy destination must be different from the primary destination")
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let parent = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-import-confirmation-\(UUID().uuidString)", isDirectory: true)
-        let directory = parent.appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
 }

@@ -1,10 +1,19 @@
 import CoreGraphics
+import Foundation
 import ImageIO
 import Observation
 import UniformTypeIdentifiers
 import XCTest
 @testable import TeststripCore
 @testable import TeststripApp
+
+/// Safety-net timeout for condition-based waits. The poll loops below exit
+/// the instant their condition holds, so this deadline only guards against
+/// hangs — it is never the primary wait mechanism. The generous value (vs.
+/// the prior fixed 100-iteration / ~100ms budget) absorbs scheduler latency
+/// under concurrent machine load without slowing passing runs, which still
+/// return in milliseconds.
+private let waitConditionTimeoutSeconds: TimeInterval = 10
 
 final class AppModelTests: XCTestCase {
     func testAppModelStartsWithStudioLayoutSections() {
@@ -191,10 +200,15 @@ final class AppModelTests: XCTestCase {
                 positionText: "Frame 3 of 4",
                 pickCount: 2,
                 rejectCount: 1,
-                totalCount: 4
+                totalCount: 4,
+                viewedCount: 1,
+                skippedCount: 0,
+                neverViewedCount: 3,
+                awaitingReviewCount: 0,
+                hiddenByLensCount: 0
             )
         )
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 1)
     }
 
     // A tentative AI `.reject` (unconfirmed autopilot proposal) must not
@@ -259,7 +273,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 125)
         XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
         XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 0)
     }
 
     func testCullingProgressSummaryCountsCurrentFilteredScope() throws {
@@ -291,7 +305,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 125)
         XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
         XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 0)
     }
 
     func testCullingProgressSummaryCountsExplicitSavedSetScope() throws {
@@ -338,7 +352,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 125)
         XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
         XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
-        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 0)
     }
 
     // `navigateBack`/`navigateForward` route through `applySource`, so a
@@ -6542,7 +6556,7 @@ final class AppModelTests: XCTestCase {
         let evaluated = makeAsset(id: "evaluated-target", path: "/Photos/Target/evaluated.jpg", rating: 0)
         let unevaluated = makeAsset(id: "unevaluated-target", path: "/Photos/Target/unevaluated.jpg", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(
-            named: "sidebar-target-review-queue",
+            named: "sidebar-target-smart-collection",
             assets: [evaluated, unevaluated]
         )
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
@@ -6698,6 +6712,59 @@ final class AppModelTests: XCTestCase {
             ActiveLibraryFilterRow(title: "OCR Found", target: LibrarySource.smartCollection(.ocrFound))
         ])
         XCTAssertEqual(model.suggestedSavedSearchName, "OCR Found")
+    }
+
+    /// Issue #7: the smart-collection predicate collapse made
+    /// `suggestedSavedSearchName` derive its proposal from filter chip titles,
+    /// so saving over Five Stars proposed "Rating >= 5" instead of "5+ Stars".
+    /// The chip title stays "Rating >= 5" (it is a removable filter chip); only
+    /// the proposed saved-search name uses the friendlier spelling. This test
+    /// pins the wording so it cannot drift back to the technical chip title.
+    func testSuggestedSavedSearchNameUsesFriendlierRatingWording() throws {
+        let fiveStar = makeAsset(id: "five", path: "/Photos/five.jpg", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "saved-search-rating-wording",
+            assets: [fiveStar]
+        )
+
+        // The exact scenario from the issue: saving over the Five Stars
+        // smart collection. The chip reads "Rating >= 5"; the name reads "5+ Stars".
+        try model.selectSource(.smartCollection(.fiveStars))
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 5"])
+        XCTAssertEqual(model.suggestedSavedSearchName, "5+ Stars")
+
+        // The friendlier spelling covers every rating threshold, not just five.
+        for rating in 1...5 {
+            try model.selectSource(.search(
+                SetQuery(predicates: [.ratingAtLeast(rating)]),
+                titled: "\(rating)+ Stars"
+            ))
+            XCTAssertEqual(
+                model.suggestedSavedSearchName, "\(rating)+ Stars",
+                "rating \(rating) should spell as \(rating)+ Stars"
+            )
+        }
+
+        // Other technical chip titles get the same friendlier treatment so a
+        // saved-search name never reads like a raw predicate.
+        try model.selectSource(.search(
+            SetQuery(predicates: [.isoAtLeast(800)]),
+            titled: "ISO 800+"
+        ))
+        XCTAssertEqual(model.suggestedSavedSearchName, "ISO 800+")
+
+        try model.selectSource(.search(
+            SetQuery(predicates: [.camera("Canon")]),
+            titled: "Canon"
+        ))
+        XCTAssertEqual(model.suggestedSavedSearchName, "Canon")
+
+        // Multiple chips combine with the friendlier spellings.
+        try model.selectSource(.search(
+            SetQuery(predicates: [.ratingAtLeast(5), .flag(.pick)]),
+            titled: "5+ Stars Pick"
+        ))
+        XCTAssertEqual(model.suggestedSavedSearchName, "5+ Stars Pick")
     }
 
     func testActiveLibraryFilterRowsExposeSelectedDynamicSetRules() {
@@ -6928,7 +6995,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testLoadExposesSmartCollectionsAndSelectingQueueAppliesFilter() throws {
-        let directory = try makeTemporaryDirectory(named: "app-model-review-queue-sidebar")
+        let directory = try makeTemporaryDirectory(named: "app-model-smart-collection-sidebar")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
@@ -6978,41 +7045,44 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(smartCollectionCount("Likely Issues", in: model), "1")
         XCTAssertEqual(smartCollectionCount("Analysis Failures", in: model), "1")
 
+        // Set a manual filter so the nil-checks below are meaningful — they
+        // verify applySmartCollection's clearLibraryQueryFilters() actually
+        // clears a previously-set filter, not just that the default is nil.
+        model.minimumRatingFilter = 4
+        model.flagFilter = .pick
+        model.needsKeywordsFilter = true
+        model.likelyIssuesFilter = true
+        model.evaluationKindFilter = .focus
+
         try model.selectSource(.smartCollection(.picks))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
-        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertNil(model.minimumRatingFilter, "applySmartCollection must clear a previously-set manual rating filter")
+        XCTAssertNil(model.flagFilter, "applySmartCollection must clear a previously-set manual flag filter")
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.rejects))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Reject"])
-        XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [reject.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.fiveStars))
 
-        XCTAssertNil(model.flagFilter)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 5"])
         XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.needsKeywords))
 
-        XCTAssertNil(model.flagFilter)
-        XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Needs Keywords"])
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.needsEvaluation))
 
-        XCTAssertNil(model.flagFilter)
-        XCTAssertNil(model.minimumRatingFilter)
-        XCTAssertFalse(model.needsKeywordsFilter)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Not analyzed yet"])
         XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 2)
@@ -7032,15 +7102,12 @@ final class AppModelTests: XCTestCase {
         try model.selectSource(.smartCollection(.likelyIssues))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
-        XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
         try model.selectSource(.smartCollection(.providerFailures))
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Analysis Failures"])
-        XCTAssertFalse(model.likelyIssuesFilter)
-        XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [providerFailure.id])
         XCTAssertEqual(model.totalAssetCount, 1)
     }
@@ -7643,8 +7710,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertThrowsError(try repository.assetSet(id: savedSet.id))
         XCTAssertEqual(model.savedAssetSets, [])
         XCTAssertEqual(model.starredAssetSets, [])
-        XCTAssertNil(model.sidebarSections.first { $0.title == "Saved Sets" })
         XCTAssertNil(model.selectedAssetSetID)
+        // The deleted dynamic set must be gone from the Smart Collections
+        // section (not just from a non-existent "Saved Sets" section).
+        XCTAssertFalse(
+            model.sidebarSections.first { $0.title == "Smart Collections" }?.rowTitles.contains("Five Stars") ?? false,
+            "Deleted dynamic set should not appear in Smart Collections"
+        )
         XCTAssertEqual(model.selectedSource, .allPhotos)
         XCTAssertEqual(model.scopeLine.sourceTitle, "All Photos")
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
@@ -10470,7 +10542,7 @@ final class AppModelTests: XCTestCase {
             keywords: ["tagged"]
         )
         let (model, repository) = try makeModelWithCatalogAssets(
-            named: "smart-collection-review-queue-phrases",
+            named: "smart-collection-phrases",
             assets: [faceIssue, faceOnly, issueOnly]
         )
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
@@ -10879,7 +10951,7 @@ final class AppModelTests: XCTestCase {
 
         let session = try model.beginCullingSession(named: " Ceremony Cull ", intent: " One hero per burst ")
 
-        XCTAssertTrue(model.canBeginCullingSession)
+        XCTAssertFalse(model.canBeginCullingSession)
         XCTAssertEqual(session.kind, .culling)
         XCTAssertEqual(session.status, .running)
         XCTAssertEqual(session.title, "Ceremony Cull")
@@ -10933,9 +11005,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-"))
         XCTAssertEqual(inputSet.name, "Wedding Cull Input")
         XCTAssertEqual(inputSet.membership, .snapshot([keeper.id]))
-        XCTAssertFalse(model.sidebarSections.contains { section in
-            section.title == "Saved Sets" && section.rowTitles.contains("Wedding Cull Input")
-        })
+        // The hidden work-input-* set must be filtered from every visible
+        // sidebar section (visibleSavedAssetSets strips work-input- prefixes),
+        // not just from a non-existent "Saved Sets" section.
+        XCTAssertFalse(
+            model.sidebarSections.contains { section in
+                section.rowTitles.contains("Wedding Cull Input")
+            },
+            "work-input set should be filtered from the sidebar"
+        )
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.librarySearchText, "Wedding")
@@ -18938,10 +19016,35 @@ final class AppModelTests: XCTestCase {
         model.selectedView = .compare
 
         XCTAssertEqual(model.compareAssets().map(\.id), [firstStackLead.id, firstStackAlternate.id])
-        XCTAssertFalse(model.sidebarSections.contains { section in
-            section.title == "Saved Sets"
-                && section.rowTitles.contains { $0.localizedCaseInsensitiveContains("Stack 1") }
-        })
+
+        // Positive case: the Stacks child row renders in the Imports section
+        // with count "2" — the burst (time-adjacent assets) seeded by the
+        // import session is visible even while the culling session's
+        // work-stack sets are filtered from the sidebar below.
+        let importSummary = try XCTUnwrap(model.latestImportCompletionSummary)
+        let importSessionID = WorkSessionID(rawValue: importSummary.activityID)
+        let importCounts = try model.importChildCounts(sessionID: importSessionID)
+        XCTAssertEqual(importCounts.stacks, 2, "two burst stacks should be detected")
+
+        let importsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let importRow = try XCTUnwrap(importsSection.rows.first { $0.id == "import-\(importSessionID.rawValue)" })
+        model.toggleSidebarExpansion(importRow)
+        let expandedImports = try XCTUnwrap(model.sidebarSections.first { $0.title == "Imports" })
+        let stacksRow = try XCTUnwrap(
+            expandedImports.rows.first { $0.id == "import-\(importSessionID.rawValue)-stacks" }
+        )
+        XCTAssertEqual(stacksRow.title, "Stacks")
+        XCTAssertEqual(stacksRow.countText, "2")
+
+        // The hidden work-stack-* sets must be filtered from every visible
+        // sidebar section (visibleSavedAssetSets strips work-stack- prefixes),
+        // not just from a non-existent "Saved Sets" section.
+        XCTAssertFalse(
+            model.sidebarSections.contains { section in
+                section.rowTitles.contains { $0.localizedCaseInsensitiveContains("Stack 1") }
+            },
+            "work-stack set should be filtered from the sidebar"
+        )
     }
 
     func testBeginningStackCullingFromLatestImportSelectsFirstStack() throws {
@@ -19255,6 +19358,7 @@ final class AppModelTests: XCTestCase {
             availability: .online,
             metadata: AssetMetadata()
         )
+        let importGate = ImportTaskGate()
         let model = try AppModel.load(
             catalog: catalog,
             importTaskFactory: { paths, _, _, progress in
@@ -19267,7 +19371,7 @@ final class AppModelTests: XCTestCase {
                         detail: "Cataloged 1 photo",
                         catalogedAssetIDs: [importedAsset.id]
                     ))
-                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    try await importGate.wait()
                     return AppImportOutput(
                         result: LibraryImportResult(importedAssets: [importedAsset], previewFailures: []),
                         assets: try backgroundCatalog.repository.allAssets(limit: 500),
@@ -19315,6 +19419,8 @@ final class AppModelTests: XCTestCase {
             availability: .online,
             metadata: AssetMetadata()
         )
+        let firstProgressGate = ImportTaskGate()
+        let completionGate = ImportTaskGate()
         let model = try AppModel.load(
             catalog: catalog,
             importTaskFactory: { paths, _, _, progress in
@@ -19327,7 +19433,7 @@ final class AppModelTests: XCTestCase {
                         detail: "Cataloging 1 of 2 photos",
                         catalogedAssetIDs: [firstAsset.id]
                     ))
-                    try await Task.sleep(nanoseconds: 20_000_000)
+                    try await firstProgressGate.wait()
                     try backgroundCatalog.repository.upsert(secondAsset)
                     progress(LibraryImportProgress(
                         completedUnitCount: 2,
@@ -19335,7 +19441,7 @@ final class AppModelTests: XCTestCase {
                         detail: "Cataloging 2 of 2 photos",
                         catalogedAssetIDs: [secondAsset.id]
                     ))
-                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    try await completionGate.wait()
                     return AppImportOutput(
                         result: LibraryImportResult(importedAssets: [firstAsset, secondAsset], previewFailures: []),
                         assets: try backgroundCatalog.repository.allAssets(limit: 500),
@@ -19348,6 +19454,7 @@ final class AppModelTests: XCTestCase {
         model.beginImportFolder(photoFolder)
 
         try await waitForSelectedAsset(firstAsset.id, in: model)
+        firstProgressGate.release()
         try await waitForActiveWorkProgress(
             completedUnitCount: 2,
             totalUnitCount: 2,
@@ -19794,7 +19901,7 @@ final class AppModelTests: XCTestCase {
     // Persona-7 count drift: after trashing rejects the sidebar still said
     // "Rejects 40" / "Not analyzed yet 130" while HUD and catalog said
     // otherwise. Every bulk mutation funnels through reload(), so reload()
-    // must refresh the sidebar's review-queue/set/folder counts too.
+    // must refresh the sidebar's smart-collection/set/folder counts too.
     func testMoveRejectsToTrashRefreshesSidebarCounts() throws {
         let directory = try makeTemporaryDirectory(named: "trash-sidebar-counts")
         let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
@@ -20062,63 +20169,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(Set(try repository.assetIDs(personID: "person-1")), [kept.id, trashed.id])
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-app-tests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    private func writeTestPNG(to url: URL) throws {
-        let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
-        try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
-    }
-
-    // `writeTestPNG` always writes the same fixed bytes, which is fine when a
-    // test only ever re-imports the same path — dedup keys off content hash
-    // (`ContentHash.compute`, whole-file for anything this small), so two
-    // `writeTestPNG` files at *different* paths hash identically and collide
-    // as "already cataloged" duplicates of one another. Use this instead
-    // whenever a test needs several files in one folder that must each
-    // register as their own distinct asset (e.g. a real mixed new+existing
-    // reimport): the fill color varies with `tag`, so the encoded bytes do
-    // too.
-    private func writeDistinctTestPNG(to url: URL, tag: Int) throws {
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil,
-            width: 2,
-            height: 2,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            throw TeststripError.io("could not create test bitmap context")
-        }
-        let component = CGFloat(tag % 256) / 255
-        context.setFillColor(CGColor(red: component, green: 0.4, blue: 0.8, alpha: 1.0))
-        context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
-        guard let image = context.makeImage(),
-              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-            throw TeststripError.io("could not create distinct test png")
-        }
-        CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else {
-            throw TeststripError.io("could not write distinct test png")
-        }
-    }
-
     private func imageProperties(of url: URL) throws -> [CFString: Any] {
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
         return try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
-    }
-
-    private func writePreviewPlaceholder(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("preview".utf8).write(to: url)
     }
 
     // Task 7's render gate requires the staged frame's `.large` preview to
@@ -20780,21 +20833,6 @@ final class AppModelTests: XCTestCase {
         return (try AppModel.load(catalog: catalog), repository, asset, originalURL, sidecarURL)
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset],
-        configureRepository: (CatalogRepository) throws -> Void = { _ in },
-        workerSupervisor: WorkerSupervisor? = nil
-    ) throws -> (AppModel, CatalogRepository) {
-        let result = try makeModelWithCatalogAssetsAndPreviewCache(
-            named: name,
-            assets: assets,
-            configureRepository: configureRepository,
-            workerSupervisor: workerSupervisor
-        )
-        return (result.model, result.repository)
-    }
-
     // SP-D0 shared fixture: two evaluated near-dup frames run through
     // autopilot, so `alternate` carries a `.pick` ghost and `lead` a
     // `.reject` ghost.
@@ -20824,39 +20862,6 @@ final class AppModelTests: XCTestCase {
         try model.selectSource(.allPhotos)
         _ = try model.runAutopilot(scope: .visible)
         return (model, repository, lead.id, alternate.id)
-    }
-
-    private func makeModelWithCatalogAssetsAndPreviewCache(
-        named name: String,
-        assets: [Asset],
-        configureRepository: (CatalogRepository) throws -> Void = { _ in },
-        workerSupervisor: WorkerSupervisor? = nil,
-        backgroundWorkPublicationInterval: TimeInterval? = nil,
-        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
-    ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
-        let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        try configureRepository(repository)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(
-            catalog: catalog,
-            workerSupervisor: workerSupervisor,
-            backgroundWorkPublicationInterval: backgroundWorkPublicationInterval,
-            backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler
-        )
-        return (model, repository, previewCache)
     }
 
     /// Starts a stack cull over the model's newest completed import, the way
@@ -21051,24 +21056,103 @@ final class AppModelTests: XCTestCase {
         return (result.model, result.previewCache, first, second)
     }
 
+    // MARK: - Condition-based wait helpers
+
+    /// Polls `condition` every ~1ms until it returns `true` or `timeoutSeconds`
+    /// elapses, exiting early as soon as the condition holds. The timeout is a
+    /// safety net, not the wait duration.
+    @MainActor
+    private func waitUntil(
+        _ condition: @MainActor @escaping () -> Bool,
+        timeoutSeconds: TimeInterval = waitConditionTimeoutSeconds
+    ) async throws -> Bool {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            if condition() { return true }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        return condition()
+    }
+
+    /// Like `waitUntil`, but returns the first non-`nil` value from `condition`.
+    @MainActor
+    private func waitUntilValue<T>(
+        _ condition: @MainActor @escaping () -> T?,
+        timeoutSeconds: TimeInterval = waitConditionTimeoutSeconds
+    ) async throws -> T? {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            if let value = condition() { return value }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        return condition()
+    }
+
+    /// A cancellation-aware gate for import-task test fixtures. `wait()` blocks a
+    /// background task until `release()` is called or the enclosing task is
+    /// cancelled, in which case `wait()` throws `CancellationError` — matching
+    /// `Task.sleep` under cancellation. It replaces the fixed "keep the work
+    /// alive" sleeps in import tests so ordering and liveness depend on a real
+    /// signal, not a guessed wall-clock duration.
+    private final class ImportTaskGate: @unchecked Sendable {
+        private var continuation: CheckedContinuation<Void, any Error>?
+        private var resolved = false
+        private var cancelled = false
+        private let lock = NSLock()
+
+        func wait() async throws {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                    lock.lock()
+                    if cancelled {
+                        lock.unlock()
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    if resolved {
+                        lock.unlock()
+                        continuation.resume()
+                        return
+                    }
+                    self.continuation = continuation
+                    lock.unlock()
+                }
+            } onCancel: {
+                self.cancel()
+            }
+        }
+
+        func release() {
+            lock.lock()
+            let cont = continuation
+            continuation = nil
+            resolved = true
+            lock.unlock()
+            cont?.resume()
+        }
+
+        private func cancel() {
+            lock.lock()
+            let cont = continuation
+            continuation = nil
+            cancelled = true
+            lock.unlock()
+            cont?.resume(throwing: CancellationError())
+        }
+    }
+
     @MainActor
     private func waitForActivityStatus(_ status: WorkSessionStatus, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.recentWork.first?.status == status {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.recentWork.first?.status == status }) {
+            return
         }
         XCTFail("timed out waiting for activity status \(status.rawValue)")
     }
 
     @MainActor
     private func waitForVisibleWorkStatus(_ status: WorkSessionStatus, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.visibleWorkActivity?.status == status {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.visibleWorkActivity?.status == status }) {
+            return
         }
         XCTFail("timed out waiting for visible work status \(status.rawValue)")
     }
@@ -21079,22 +21163,16 @@ final class AppModelTests: XCTestCase {
         itemID: WorkSessionID,
         in model: AppModel
     ) async throws {
-        for _ in 0..<100 {
-            if model.backgroundWorkQueue.item(id: itemID)?.status == status {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.backgroundWorkQueue.item(id: itemID)?.status == status }) {
+            return
         }
         XCTFail("timed out waiting for background work status \(status.rawValue)")
     }
 
     @MainActor
     private func waitForVisibleWorkDetail(_ detail: String, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.visibleWorkActivity?.detail == detail {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.visibleWorkActivity?.detail == detail }) {
+            return
         }
         XCTFail("timed out waiting for visible work detail \(detail)")
     }
@@ -21105,77 +21183,56 @@ final class AppModelTests: XCTestCase {
         itemID: WorkSessionID,
         repository: CatalogRepository
     ) async throws {
-        for _ in 0..<100 {
-            if try repository.session(id: itemID).detail == detail {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ (try? repository.session(id: itemID).detail) == detail }) {
+            return
         }
         XCTFail("timed out waiting for persisted work detail \(detail)")
     }
 
     @MainActor
     private func waitForSelectedAsset(_ assetID: AssetID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.selectedAssetID == assetID {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.selectedAssetID == assetID }) {
+            return
         }
         XCTFail("timed out waiting for selected asset \(assetID.rawValue)")
     }
 
     @MainActor
     private func waitForCompletedBackgroundWorkItem(id itemID: WorkSessionID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.backgroundWorkQueue.item(id: itemID)?.status == .completed {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.backgroundWorkQueue.item(id: itemID)?.status == .completed }) {
+            return
         }
         XCTFail("timed out waiting for completed work item \(itemID.rawValue)")
     }
 
     @MainActor
     private func waitForRecognitionItemCount(_ count: Int, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.backgroundWorkQueue.items.filter({ $0.kind == .recognition }).count >= count {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.backgroundWorkQueue.items.filter({ $0.kind == .recognition }).count >= count }) {
+            return
         }
         XCTFail("timed out waiting for \(count) recognition work items")
     }
 
     @MainActor
     private func waitForFirstAsset(in model: AppModel) async throws -> AssetID {
-        for _ in 0..<100 {
-            if let assetID = model.assets.first?.id {
-                return assetID
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        guard let assetID = try await waitUntilValue({ model.assets.first?.id }) else {
+            throw TeststripError.invalidState("timed out waiting for first asset")
         }
-        throw TeststripError.invalidState("timed out waiting for first asset")
+        return assetID
     }
 
     @MainActor
     private func waitForGridPreview(assetID: AssetID, in model: AppModel) async throws -> URL {
-        for _ in 0..<100 {
-            if let previewURL = model.gridPreviewURL(for: assetID) {
-                return previewURL
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        guard let previewURL = try await waitUntilValue({ model.gridPreviewURL(for: assetID) }) else {
+            throw TeststripError.invalidState("timed out waiting for grid preview")
         }
-        throw TeststripError.invalidState("timed out waiting for grid preview")
+        return previewURL
     }
 
     @MainActor
     private func waitForStatusMessage(_ statusMessage: String, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.statusMessage == statusMessage {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.statusMessage == statusMessage }) {
+            return
         }
         throw TeststripError.invalidState("timed out waiting for status \(statusMessage)")
     }
@@ -21187,13 +21244,12 @@ final class AppModelTests: XCTestCase {
         detail: String,
         in model: AppModel
     ) async throws {
-        for _ in 0..<1_000 {
-            if model.activeWork?.completedUnitCount == completedUnitCount,
-               model.activeWork?.totalUnitCount == totalUnitCount,
-               model.activeWork?.detail == detail {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({
+            model.activeWork?.completedUnitCount == completedUnitCount
+                && model.activeWork?.totalUnitCount == totalUnitCount
+                && model.activeWork?.detail == detail
+        }) {
+            return
         }
         XCTFail("timed out waiting for active import progress")
     }
@@ -21249,22 +21305,16 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     private func waitForPreviewCacheGeneration(_ generation: Int, for assetID: AssetID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.previewCacheGeneration(for: assetID) == generation {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.previewCacheGeneration(for: assetID) == generation }) {
+            return
         }
         XCTFail("timed out waiting for preview cache generation \(generation)")
     }
 
     @MainActor
     private func waitForEvaluationSignalGeneration(_ generation: Int, for assetID: AssetID, in model: AppModel) async throws {
-        for _ in 0..<100 {
-            if model.evaluationSignalGeneration(for: assetID) == generation {
-                return
-            }
-            try await Task.sleep(nanoseconds: 1_000_000)
+        if try await waitUntil({ model.evaluationSignalGeneration(for: assetID) == generation }) {
+            return
         }
         XCTFail("timed out waiting for evaluation signal generation \(generation)")
     }

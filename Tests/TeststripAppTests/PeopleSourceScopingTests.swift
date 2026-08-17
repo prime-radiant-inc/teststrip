@@ -518,6 +518,24 @@ final class PeopleSourceScopingTests: XCTestCase {
         )
     }
 
+    /// Issue #6: after clicking through to a person's photos, the scope line
+    /// and `selectedSource` must name the person, not whatever source you
+    /// came from. Starting from All Photos, the scope line must change from
+    /// "All Photos" to the person's name.
+    func testShowingPersonPhotosUpdatesSelectedSourceAndScopeLineFromAllPhotos() throws {
+        let fixture = try makePersonDrillFixture(named: "people-person-scope-line")
+        XCTAssertEqual(fixture.model.selectedSource, .allPhotos)
+        XCTAssertEqual(fixture.model.scopeLine.sourceTitle, "All Photos")
+
+        try fixture.model.showPersonPhotos(named: "Ada")
+
+        XCTAssertEqual(
+            fixture.model.selectedSource,
+            .search(SetQuery(predicates: [.person("Ada")]), titled: "Ada")
+        )
+        XCTAssertEqual(fixture.model.scopeLine.sourceTitle, "Ada")
+    }
+
     func testModelPresentationScopesFaceSignalSummariesToFolderAndAllPhotos() throws {
         let fixture = try makeFaceSignalFixture(named: "people-presentation-folder")
         let globalSummaries = faceSignalSummaries(assetCount: 2)
@@ -1047,30 +1065,4 @@ final class PeopleSourceScopingTests: XCTestCase {
         XCTAssertEqual(Set(model.proposedPhotos.map(\.asset.id)), Set(proposedAssetIDs), file: file, line: line)
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset],
-        configureRepository: (CatalogRepository) throws -> Void = { _ in }
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-people-scoping-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        try configureRepository(repository)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
-        return (model, repository)
-    }
 }

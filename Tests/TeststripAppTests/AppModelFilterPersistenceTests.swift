@@ -187,7 +187,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         XCTAssertEqual(Set(model.assets.map(\.id)), Set([five.id, four.id]))
     }
 
-    // A "Cull From" review-queue source is a filter-field scope (applySmartCollection
+    // A "Cull From" smart-collection source is a filter-field scope (applySmartCollection
     // installs the collection's query predicates as detached library filter
     // predicates, not a snapshot set), so culling from it keeps that filter
     // live and it persists back to Library — the same single-scope behavior the
@@ -197,7 +197,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         let pick = makeAsset(id: "pick", path: "/Photos/pick.jpg", rating: 5, flag: .pick)
         let unflagged = makeAsset(id: "unflagged", path: "/Photos/unflagged.jpg", rating: 3)
         let (model, _) = try makeModelWithCatalogAssets(
-            named: "cull-source-review-queue-persists-filter",
+            named: "cull-source-smart-collection-persists-filter",
             assets: [pick, unflagged]
         )
 
@@ -242,33 +242,4 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         )
     }
 
-    private func makeModelWithCatalogAssets(
-        named name: String,
-        assets: [Asset]
-    ) throws -> (AppModel, CatalogRepository) {
-        let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        try repository.upsert(assets)
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: nil)
-        return (model, repository)
-    }
-
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-tests-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
 }

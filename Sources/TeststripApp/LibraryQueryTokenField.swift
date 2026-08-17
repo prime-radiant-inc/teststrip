@@ -391,7 +391,7 @@ public struct LibraryQueryToken: Equatable, Identifiable {
 
     /// Filters `activeLibraryFilterRows` down to rows not already rendered
     /// as a structured token chip. Dedupe is by filter identity, not just
-    /// title: `.faceCount`/`.ocrText` legacy rows carry review-queue titles
+    /// title: `.faceCount`/`.ocrText` legacy rows carry smart-collection titles
     /// ("Faces Found"/"OCR Found") that never match the token's plain-predicate
     /// display ("Has faces"/"Has text"), so title-only matching would
     /// double-render.

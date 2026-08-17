@@ -197,13 +197,6 @@ final class FolderSelectionPanelTests: XCTestCase {
         XCTAssertEqual(FolderSelectionPanel.startingCardSecondCopyDirectory(defaults: defaults)?.standardizedFileURL, secondCopy.standardizedFileURL)
     }
 
-    private func makeTemporaryDirectory(named name: String) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("teststrip-folder-panel-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
     private func makeDefaults() throws -> UserDefaults {
         let suiteName = "teststrip.folder-panel.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
