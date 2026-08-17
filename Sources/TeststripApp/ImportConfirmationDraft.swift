@@ -204,7 +204,9 @@ struct ImportDedupPreview: Equatable {
         supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions,
         repository: CatalogRepository,
         limit: Int = ImportSourceSummary.defaultScanLimit,
-        entryLimit: Int = ImportSourceSummary.defaultEntryLimit
+        entryLimit: Int = ImportSourceSummary.defaultEntryLimit,
+        budget: TimeInterval = 3.0,
+        now: () -> Date = { Date() }
     ) -> ImportDedupPreview? {
         let boundedLimit = max(1, limit)
         let boundedEntryLimit = max(1, entryLimit)
@@ -217,11 +219,16 @@ struct ImportDedupPreview: Equatable {
             return nil
         }
 
+        let startTime = now()
         var scannedPhotoCount = 0
         var contentHashes: [String] = []
         var scannedEntryCount = 0
         var reachedLimit = false
         for case let fileURL as URL in enumerator {
+            if now().timeIntervalSince(startTime) > budget {
+                reachedLimit = true
+                break
+            }
             if scannedEntryCount == boundedEntryLimit {
                 reachedLimit = true
                 break

@@ -2635,32 +2635,12 @@ struct LibraryGridView: View {
     private func showImportFolderPanel() {
         let folderURLs = FolderSelectionPanel.chooseImportFolders()
         guard !folderURLs.isEmpty else { return }
-        let reviewID = UUID()
-        importPathReviewID = reviewID
-        isReviewingImportPath = true
-        let catalogPaths = model.catalogPaths
         let allURLs = folderURLs
-        Task {
-            let confirmationDraft = await Task.detached(priority: .userInitiated) {
-                var draft = ImportConfirmationDraft.folder(
-                    allURLs[0],
-                    additionalFolderURLs: Array(allURLs.dropFirst())
-                )
-                var dedup = Self.dedupPreview(for: allURLs[0], catalogPaths: catalogPaths)
-                for additionalURL in allURLs.dropFirst() {
-                    let additional = Self.dedupPreview(for: additionalURL, catalogPaths: catalogPaths)
-                    dedup = ImportDedupPreview.merging(dedup, additional)
-                }
-                draft.dedupPreview = dedup
-                return draft
-            }.value
-            await MainActor.run {
-                guard importPathReviewID == reviewID else { return }
-                importPathReviewID = nil
-                isReviewingImportPath = false
-                presentImportConfirmation(confirmationDraft)
-            }
-        }
+        var draft = ImportConfirmationDraft.folder(
+            allURLs[0],
+            additionalFolderURLs: Array(allURLs.dropFirst())
+        )
+        presentImportConfirmation(draft)
     }
 
     // Seeds the draft's Autopilot-after-import toggle from the persisted app
@@ -2714,24 +2694,10 @@ struct LibraryGridView: View {
     private func importFolderPath() {
         do {
             let folderURL = try importPathDraft.resolveFolderURL()
-            let reviewID = UUID()
-            importPathReviewID = reviewID
-            isReviewingImportPath = true
-            let catalogPaths = model.catalogPaths
-            Task {
-                let confirmationDraft = await Task.detached(priority: .userInitiated) {
-                    var draft = ImportConfirmationDraft.folder(folderURL)
-                    draft.dedupPreview = Self.dedupPreview(for: folderURL, catalogPaths: catalogPaths)
-                    return draft
-                }.value
-                await MainActor.run {
-                    guard importPathReviewID == reviewID else { return }
-                    importPathReviewID = nil
-                    isReviewingImportPath = false
-                    isShowingImportPathSheet = false
-                    presentImportConfirmation(confirmationDraft)
-                }
-            }
+            isReviewingImportPath = false
+            isShowingImportPathSheet = false
+            var draft = ImportConfirmationDraft.folder(folderURL)
+            presentImportConfirmation(draft)
         } catch {
             importPathReviewID = nil
             isReviewingImportPath = false
@@ -2743,29 +2709,15 @@ struct LibraryGridView: View {
         do {
             let roots = try importCardPathDraft.resolveCardURLs()
             let destinationPolicy = importCardPathDraft.destinationPolicy
-            let reviewID = UUID()
-            importCardPathReviewID = reviewID
-            isReviewingImportCardPath = true
-            let catalogPaths = model.catalogPaths
-            Task {
-                let confirmationDraft = await Task.detached(priority: .userInitiated) {
-                    var draft = ImportConfirmationDraft.card(
-                        source: roots.source,
-                        destinationRoot: roots.destinationRoot,
-                        destinationPolicy: destinationPolicy,
-                        secondCopyRootURL: roots.secondCopyRoot
-                    )
-                    draft.dedupPreview = Self.dedupPreview(for: roots.source, catalogPaths: catalogPaths)
-                    return draft
-                }.value
-                await MainActor.run {
-                    guard importCardPathReviewID == reviewID else { return }
-                    importCardPathReviewID = nil
-                    isReviewingImportCardPath = false
-                    isShowingImportCardPathSheet = false
-                    presentImportConfirmation(confirmationDraft)
-                }
-            }
+            isReviewingImportCardPath = false
+            isShowingImportCardPathSheet = false
+            let draft = ImportConfirmationDraft.card(
+                source: roots.source,
+                destinationRoot: roots.destinationRoot,
+                destinationPolicy: destinationPolicy,
+                secondCopyRootURL: roots.secondCopyRoot
+            )
+            presentImportConfirmation(draft)
         } catch {
             importCardPathReviewID = nil
             isReviewingImportCardPath = false
@@ -2800,16 +2752,6 @@ struct LibraryGridView: View {
                 autopilotAfterImport: draft.autopilotAfterImport
             )
         }
-    }
-
-    // Opens a short-lived read-only catalog connection off the main actor so the
-    // import sheet can promise the new/known split before any copy runs.
-    private nonisolated static func dedupPreview(for sourceURL: URL, catalogPaths: AppCatalogPaths?) -> ImportDedupPreview? {
-        guard let catalogPaths,
-              let database = try? CatalogDatabase.open(at: catalogPaths.catalogURL) else {
-            return nil
-        }
-        return ImportDedupPreview.scan(sourceURL: sourceURL, repository: CatalogRepository(database: database))
     }
 
     private func chooseImportSecondCopyDestination() {
