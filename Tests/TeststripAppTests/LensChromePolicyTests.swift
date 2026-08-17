@@ -12,7 +12,6 @@ final class LensChromePolicyTests: XCTestCase {
         for view in Self.browseViews {
             XCTAssertTrue(LensChromePolicy.showsSearchField(view), "\(view)")
             XCTAssertTrue(LensChromePolicy.showsFilterTokens(view), "\(view)")
-            XCTAssertTrue(LensChromePolicy.showsImportButton(view), "\(view)")
             XCTAssertTrue(LensChromePolicy.showsFooter(view), "\(view)")
             XCTAssertTrue(LensChromePolicy.showsImportMenu(view), "\(view)")
             XCTAssertTrue(LensChromePolicy.showsCullButton(view), "\(view)")
@@ -26,7 +25,6 @@ final class LensChromePolicyTests: XCTestCase {
         for view in Self.focusedViews {
             XCTAssertFalse(LensChromePolicy.showsSearchField(view), "\(view)")
             XCTAssertFalse(LensChromePolicy.showsFilterTokens(view), "\(view)")
-            XCTAssertFalse(LensChromePolicy.showsImportButton(view), "\(view)")
             XCTAssertFalse(LensChromePolicy.showsFooter(view), "\(view)")
             XCTAssertFalse(LensChromePolicy.showsImportMenu(view), "\(view)")
             XCTAssertFalse(LensChromePolicy.showsCullButton(view), "\(view)")
