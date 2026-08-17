@@ -75,12 +75,13 @@ struct LibraryGridView: View {
         model.isImporting
     }
 
-    // `bodyContent` is its own declaration so the compiler type-checks its
-    // long modifier chain and this `.onChange` as two separate expressions —
-    // chained on in-line, the tenth handler pushed the whole chain over the
-    // type-checker's "reasonable time" limit. It sits outside `bodyContent`'s
-    // lens `Group`, so the sidebar's skipped-files child can open its sheet
-    // from every lens.
+    // `bodyContent` is split from `body` and further broken into `mainContent`
+    // plus three `ViewModifier` structs (`LibraryChangeHandlers`,
+    // `LibrarySheetPresentations`, `LibraryOverlays`) so the compiler
+    // type-checks each group independently — the previous single chain of
+    // 20+ modifiers hit the type-checker's "reasonable time" limit. `body`
+    // adds two more `.onChange`/`.sheet` outside `bodyContent`'s lens `Group`
+    // so the sidebar's skipped-files child can open its sheet from every lens.
     var body: some View {
         bodyContent.onChange(of: model.importIssueReviewRequestToken) { _, _ in
             presentRequestedImportIssueReview()
@@ -94,8 +95,49 @@ struct LibraryGridView: View {
     }
 
     private var bodyContent: some View {
-        let toast = model.importCompletionToast
-        return Group {
+        mainContent
+            .modifier(LibraryChangeHandlers(
+                model: model,
+                focusSearchField: { isQueryFieldFocused = true },
+                openBatchMetadataSheet: openBatchMetadataSheet,
+                showImportFolderPanel: showImportFolderPanel,
+                showPrimaryCardImportRoute: showPrimaryCardImportRoute,
+                showImportPathSheet: showImportPathSheet,
+                beginExport: beginExport,
+                beginRejectRelocation: beginRejectRelocation,
+                showManualSetPopover: showManualSetPopover,
+                showSaveSearchPopover: showSaveSearchPopover,
+                beginRejectRelocationToTrash: beginRejectRelocationToTrash
+            ))
+            .modifier(LibrarySheetPresentations(
+                rejectRelocationPreflight: $rejectRelocationPreflight,
+                isShowingImportPathSheet: $isShowingImportPathSheet,
+                isShowingImportCardPathSheet: $isShowingImportCardPathSheet,
+                importConfirmationDraft: $importConfirmationDraft,
+                importIssueReview: $importIssueReview,
+                isShowingSourceReconnectSheet: $isShowingSourceReconnectSheet,
+                rejectRelocationSheet: rejectRelocationSheet,
+                importPathSheet: { importPathSheet },
+                importCardPathSheet: { importCardPathSheet },
+                importConfirmationSheet: importConfirmationSheet,
+                importIssueReviewSheet: importIssueReviewSheet,
+                sourceReconnectSheet: { sourceReconnectSheet }
+            ))
+            .modifier(LibraryOverlays(
+                model: model,
+                cullingFocusRequest: $cullingFocusRequest,
+                gridFocusRequest: $gridFocusRequest,
+                dismissedToastSummaryID: $dismissedToastSummaryID,
+                isToastVisible: $isToastVisible,
+                handleCullingShortcut: handleCullingShortcut,
+                handleGridCommand: handleGridCommand,
+                importCompletionToast: importCompletionToast,
+                showToastThenFade: showToastThenFade
+            ))
+    }
+
+    private var mainContent: some View {
+        Group {
             if model.selectedView == .people {
                 PeopleView(model: model)
             } else if model.selectedView == .timeline {
@@ -146,39 +188,6 @@ struct LibraryGridView: View {
         }
         .navigationTitle(model.catalogDisplayName)
         .navigationSubtitle(LibraryGridChromePolicy.windowSubtitle(for: model.selectedView))
-        .onChange(of: model.statusMessage) { _, _ in
-            model.scheduleTransientStatusMessageAutoClear()
-        }
-        .onChange(of: model.batchMetadataRequestToken) { _, _ in
-            openBatchMetadataSheet()
-        }
-        .onChange(of: model.focusSearchRequestToken) { _, _ in
-            isQueryFieldFocused = true
-        }
-        .onChange(of: model.importFolderRequestToken) { _, _ in
-            showImportFolderPanel()
-        }
-        .onChange(of: model.importFromCardRequestToken) { _, _ in
-            showPrimaryCardImportRoute()
-        }
-        .onChange(of: model.importPathRequestToken) { _, _ in
-            showImportPathSheet()
-        }
-        .onChange(of: model.exportRequestToken) { _, _ in
-            beginExport()
-        }
-        .onChange(of: model.moveRejectsRequestToken) { _, _ in
-            beginRejectRelocation()
-        }
-        .onChange(of: model.newSetFromSelectionRequestToken) { _, _ in
-            showManualSetPopover()
-        }
-        .onChange(of: model.saveSearchRequestToken) { _, _ in
-            showSaveSearchPopover()
-        }
-        .onChange(of: model.moveRejectsToTrashRequestToken) { _, _ in
-            beginRejectRelocationToTrash()
-        }
         .toolbar {
             libraryToolbarContent
         }
@@ -198,73 +207,6 @@ struct LibraryGridView: View {
                     footer
                 }
             }
-        }
-        .sheet(item: $rejectRelocationPreflight) { preflight in
-            rejectRelocationSheet(preflight)
-        }
-        .sheet(isPresented: $isShowingImportPathSheet) {
-            importPathSheet
-        }
-        .sheet(isPresented: $isShowingImportCardPathSheet) {
-            importCardPathSheet
-        }
-        .sheet(item: $importConfirmationDraft) { draft in
-            importConfirmationSheet(draft)
-        }
-        .sheet(item: $importIssueReview) { review in
-            importIssueReviewSheet(review)
-        }
-        .sheet(isPresented: $isShowingSourceReconnectSheet) {
-            sourceReconnectSheet
-        }
-        .overlay(alignment: .topLeading) {
-            CullingKeyCaptureView(
-                focusRequest: cullingFocusRequest,
-                // Scoped to the Cull lens's loupe/compare/A-B sub-modes only
-                // (see CullingKeyCaptureGate) — every other route either has
-                // its own monitor (.cullGrid uses GridKeyCaptureView) or no
-                // culling chrome at all (.people/.timeline/.map/.grid/
-                // .libraryLoupe), where these shortcuts would write metadata
-                // or navigate behind hidden chrome.
-                isActive: CullingKeyCaptureGate.isActive(lens: model.selectedLens, selectedView: model.selectedView),
-                isCompareLikeMode: model.selectedView == .compare || model.selectedView == .abCompare,
-                onShortcut: handleCullingShortcut
-            )
-            .frame(width: 1, height: 1)
-            .accessibilityHidden(true)
-        }
-        .overlay(alignment: .topLeading) {
-            GridKeyCaptureView(
-                mode: model.selectedView,
-                focusRequest: gridFocusRequest,
-                onCommand: handleGridCommand
-            )
-            .frame(width: 1, height: 1)
-            .accessibilityHidden(true)
-        }
-        .overlay {
-            if model.isKeyMapOverlayVisible {
-                KeyMapOverlayView(
-                    scrollToSectionIndex: model.keyMapOverlayScrollIndex,
-                    dismiss: { model.isKeyMapOverlayVisible = false }
-                )
-                .onExitCommand { model.isKeyMapOverlayVisible = false }
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if let toast = toast,
-               toast.summaryID != dismissedToastSummaryID,
-               isToastVisible {
-                importCompletionToast(toast)
-                    .transition(.opacity)
-            }
-        }
-        .task(id: toast?.summaryID) {
-            guard let toast = toast, toast.summaryID != dismissedToastSummaryID else {
-                isToastVisible = false
-                return
-            }
-            await showToastThenFade(toast)
         }
     }
 
@@ -962,13 +904,13 @@ struct LibraryGridView: View {
                 }
             }
             Spacer(minLength: 0)
-            Button("Cull these") {
+            Button("Cull These") {
                 cullCurrentResults()
             }
             .buttonStyle(.borderless)
             .disabled(!model.canCullCurrentResults)
             .help("Cull the photos this search found")
-            .accessibilityLabel("Cull these")
+            .accessibilityLabel("Cull These")
             if !presentation.saveActions.isEmpty {
                 saveMenu(presentation.saveActions)
             }
@@ -3544,6 +3486,171 @@ struct LibraryGridView: View {
             minimumItemWidth: gridLayout.gridItemMinimumWidth,
             spacing: gridLayout.gridSpacing
         )
+    }
+}
+
+// MARK: - LibraryGridView modifier extractions
+// Split from bodyContent so the compiler type-checks each group independently.
+
+private struct LibraryChangeHandlers: ViewModifier {
+    let model: AppModel
+    let focusSearchField: () -> Void
+    let openBatchMetadataSheet: () -> Void
+    let showImportFolderPanel: () -> Void
+    let showPrimaryCardImportRoute: () -> Void
+    let showImportPathSheet: () -> Void
+    let beginExport: () -> Void
+    let beginRejectRelocation: () -> Void
+    let showManualSetPopover: () -> Void
+    let showSaveSearchPopover: () -> Void
+    let beginRejectRelocationToTrash: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: model.statusMessage) { _, _ in
+                model.scheduleTransientStatusMessageAutoClear()
+            }
+            .onChange(of: model.batchMetadataRequestToken) { _, _ in
+                openBatchMetadataSheet()
+            }
+            .onChange(of: model.focusSearchRequestToken) { _, _ in
+                focusSearchField()
+            }
+            .onChange(of: model.importFolderRequestToken) { _, _ in
+                showImportFolderPanel()
+            }
+            .onChange(of: model.importFromCardRequestToken) { _, _ in
+                showPrimaryCardImportRoute()
+            }
+            .onChange(of: model.importPathRequestToken) { _, _ in
+                showImportPathSheet()
+            }
+            .onChange(of: model.exportRequestToken) { _, _ in
+                beginExport()
+            }
+            .onChange(of: model.moveRejectsRequestToken) { _, _ in
+                beginRejectRelocation()
+            }
+            .onChange(of: model.newSetFromSelectionRequestToken) { _, _ in
+                showManualSetPopover()
+            }
+            .onChange(of: model.saveSearchRequestToken) { _, _ in
+                showSaveSearchPopover()
+            }
+            .onChange(of: model.moveRejectsToTrashRequestToken) { _, _ in
+                beginRejectRelocationToTrash()
+            }
+    }
+}
+
+private struct LibrarySheetPresentations<
+    RejectRelocationContent: View,
+    ImportPathContent: View,
+    ImportCardPathContent: View,
+    ImportConfirmationContent: View,
+    ImportIssueReviewContent: View,
+    SourceReconnectContent: View
+>: ViewModifier {
+    @Binding var rejectRelocationPreflight: RejectRelocationPreflight?
+    @Binding var isShowingImportPathSheet: Bool
+    @Binding var isShowingImportCardPathSheet: Bool
+    @Binding var importConfirmationDraft: ImportConfirmationDraft?
+    @Binding var importIssueReview: ImportIssueReview?
+    @Binding var isShowingSourceReconnectSheet: Bool
+
+    let rejectRelocationSheet: (RejectRelocationPreflight) -> RejectRelocationContent
+    let importPathSheet: () -> ImportPathContent
+    let importCardPathSheet: () -> ImportCardPathContent
+    let importConfirmationSheet: (ImportConfirmationDraft) -> ImportConfirmationContent
+    let importIssueReviewSheet: (ImportIssueReview) -> ImportIssueReviewContent
+    let sourceReconnectSheet: () -> SourceReconnectContent
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $rejectRelocationPreflight) { preflight in
+                rejectRelocationSheet(preflight)
+            }
+            .sheet(isPresented: $isShowingImportPathSheet) {
+                importPathSheet()
+            }
+            .sheet(isPresented: $isShowingImportCardPathSheet) {
+                importCardPathSheet()
+            }
+            .sheet(item: $importConfirmationDraft) { draft in
+                importConfirmationSheet(draft)
+            }
+            .sheet(item: $importIssueReview) { review in
+                importIssueReviewSheet(review)
+            }
+            .sheet(isPresented: $isShowingSourceReconnectSheet) {
+                sourceReconnectSheet()
+            }
+    }
+}
+
+private struct LibraryOverlays<ToastContent: View>: ViewModifier {
+    let model: AppModel
+    @Binding var cullingFocusRequest: Int
+    @Binding var gridFocusRequest: Int
+    @Binding var dismissedToastSummaryID: String?
+    @Binding var isToastVisible: Bool
+    let handleCullingShortcut: (CullingShortcut) -> Void
+    let handleGridCommand: (GridKeyCommand) -> Void
+    let importCompletionToast: (ImportCompletionToastPresentation) -> ToastContent
+    let showToastThenFade: (ImportCompletionToastPresentation) async -> Void
+
+    func body(content: Content) -> some View {
+        let toast = model.importCompletionToast
+        return content
+            .overlay(alignment: .topLeading) {
+                CullingKeyCaptureView(
+                    focusRequest: cullingFocusRequest,
+                    // Scoped to the Cull lens's loupe/compare/A-B sub-modes only
+                    // (see CullingKeyCaptureGate) — every other route either has
+                    // its own monitor (.cullGrid uses GridKeyCaptureView) or no
+                    // culling chrome at all (.people/.timeline/.map/.grid/
+                    // .libraryLoupe), where these shortcuts would write metadata
+                    // or navigate behind hidden chrome.
+                    isActive: CullingKeyCaptureGate.isActive(lens: model.selectedLens, selectedView: model.selectedView),
+                    isCompareLikeMode: model.selectedView == .compare || model.selectedView == .abCompare,
+                    onShortcut: handleCullingShortcut
+                )
+                .frame(width: 1, height: 1)
+                .accessibilityHidden(true)
+            }
+            .overlay(alignment: .topLeading) {
+                GridKeyCaptureView(
+                    mode: model.selectedView,
+                    focusRequest: gridFocusRequest,
+                    onCommand: handleGridCommand
+                )
+                .frame(width: 1, height: 1)
+                .accessibilityHidden(true)
+            }
+            .overlay {
+                if model.isKeyMapOverlayVisible {
+                    KeyMapOverlayView(
+                        scrollToSectionIndex: model.keyMapOverlayScrollIndex,
+                        dismiss: { model.isKeyMapOverlayVisible = false }
+                    )
+                    .onExitCommand { model.isKeyMapOverlayVisible = false }
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if let toast = toast,
+                   toast.summaryID != dismissedToastSummaryID,
+                   isToastVisible {
+                    importCompletionToast(toast)
+                        .transition(.opacity)
+                }
+            }
+            .task(id: toast?.summaryID) {
+                guard let toast = toast, toast.summaryID != dismissedToastSummaryID else {
+                    isToastVisible = false
+                    return
+                }
+                await showToastThenFade(toast)
+            }
     }
 }
 
