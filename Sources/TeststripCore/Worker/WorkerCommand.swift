@@ -35,6 +35,20 @@ public enum WorkerCommand: Equatable, Sendable {
         }
     }
 
+    /// Per-command silence watchdog: how long without a progress event before
+    /// the supervisor declares the command timed out. Import commands copy
+    /// large files (RAW, video) from slow sources (SD cards, network); a
+    /// single file can take minutes. Other commands are per-asset and should
+    /// complete in well under 2 minutes.
+    public var silenceTimeout: TimeInterval {
+        switch self {
+        case .importFolder, .importCard:
+            return 600
+        default:
+            return 120
+        }
+    }
+
     public var operationDescription: String {
         switch self {
         case .importFolder(let root, _):
