@@ -141,4 +141,31 @@ final class ImportDedupPreviewTests: XCTestCase {
         XCTAssertEqual(preview.newContentCount, 3)
         XCTAssertTrue(preview.reachedLimit)
     }
+
+    func testScanStopsWhenTimeBudgetExpires() throws {
+        let root = try makeDirectory(named: "budget-limit")
+        let source = root.appendingPathComponent("card", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        for index in 0..<5 {
+            try Data("frame \(index)".utf8).write(to: source.appendingPathComponent("frame\(index).jpg"))
+        }
+        let repository = try makeRepository(in: root)
+
+        var elapsed: TimeInterval = 0
+        let now: () -> Date = {
+            elapsed += 0.001
+            return Date(timeIntervalSince1970: elapsed)
+        }
+
+        let preview = try XCTUnwrap(ImportDedupPreview.scan(
+            sourceURL: source,
+            supportedExtensions: ["jpg"],
+            repository: repository,
+            budget: 0.002,
+            now: now
+        ))
+
+        XCTAssertTrue(preview.reachedLimit, "budget expiry should set reachedLimit")
+        XCTAssertLessThanOrEqual(preview.newContentCount + preview.existingContentCount, 5)
+    }
 }
