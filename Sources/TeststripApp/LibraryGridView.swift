@@ -261,6 +261,7 @@ struct LibraryGridView: View {
                 }
             }
         }
+        .coordinateSpace(name: "gridExpand")
         .overlay {
             if !reduceMotion,
                let transition = model.gridExpandTransition,
@@ -278,8 +279,8 @@ struct LibraryGridView: View {
                 }
             }
         }
-        .task {
-            if reduceMotion && model.gridExpandTransition != nil {
+        .onChange(of: model.gridExpandTransition) { _, newValue in
+            if reduceMotion && newValue != nil {
                 model.endGridExpand()
             }
         }
@@ -7898,7 +7899,7 @@ private struct GridCellPinchModifier: ViewModifier {
             .background(
                 GeometryReader { proxy in
                     Color.clear
-                        .onAppear { cellFrame = proxy.frame(in: .global) }
+                        .onAppear { cellFrame = proxy.frame(in: .named("gridExpand")) }
                 }
             )
             .simultaneousGesture(
@@ -7921,7 +7922,7 @@ private struct GridCellPinchModifier: ViewModifier {
 
 /// Overlay that grows a cell's thumbnail during the grid→loupe pinch-expand.
 /// Fades out once the loupe view is visible and has rendered its image.
-struct GridExpandOverlayView: View {
+private struct GridExpandOverlayView: View {
     var model: AppModel
     var transition: GridExpandTransition
     var pinchScale: CGFloat
