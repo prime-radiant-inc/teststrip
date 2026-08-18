@@ -274,6 +274,7 @@ struct LoupeZoomStageView: View {
                             .padding(10)
                     }
                 }
+                .simultaneousGesture(magnificationGesture(viewportSize: proxy.size))
         }
         .task(id: StagePreviewLoadKey(
             url: displayedPreviewURL,
@@ -363,7 +364,6 @@ struct LoupeZoomStageView: View {
             model.resetLoupeZoom()
         }
         .gesture(panGesture(geometry: geometry))
-        .gesture(magnificationGesture(geometry: geometry))
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Return to fit")
     }
@@ -384,9 +384,11 @@ struct LoupeZoomStageView: View {
             }
     }
 
-    private func magnificationGesture(geometry: LoupeZoomGeometry) -> some Gesture {
+    private func magnificationGesture(viewportSize: CGSize) -> some Gesture {
         MagnificationGesture()
             .onChanged { value in
+                guard let image else { return }
+                let geometry = zoomGeometry(viewportSize: viewportSize, image: image)
                 if pinchBaseScale == nil {
                     pinchBaseScale = model.loupeZoomScale
                 }

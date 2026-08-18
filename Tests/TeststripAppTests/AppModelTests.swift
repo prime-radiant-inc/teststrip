@@ -3965,6 +3965,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.loupeZoomFocus)
     }
 
+    /// Pinch-to-zoom from the fitted state (loupeZoomFocus == nil) must
+    /// enter zoom mode: setLoupeZoomScale(>1.0) sets focus to .center.
+    /// The magnification gesture is attached at the stage level (not only
+    /// on the already-zoomed image), so it fires from the fitted state.
+    func testPinchFromFittedStateEntersZoomMode() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "pinch-from-fit", size: 1)])
+        XCTAssertNil(model.loupeZoomFocus)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+
+        // Pinch outward — MagnificationGesture.onChanged calls setLoupeZoomScale
+        model.setLoupeZoomScale(2.5)
+        XCTAssertEqual(model.loupeZoomScale, 2.5, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, .center, "pinch from fitted must enter zoom mode")
+
+        // Pinch further
+        model.setLoupeZoomScale(4.0)
+        XCTAssertEqual(model.loupeZoomScale, 4.0, accuracy: 0.001)
+
+        // Pinch back to 1.0 — focus stays (R5: does NOT dismiss)
+        model.setLoupeZoomScale(1.0)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        XCTAssertNotNil(model.loupeZoomFocus, "pinching to 1.0 must not dismiss zoom")
+
+        // Pinch ends at ~1.0 → resetLoupeZoom (magnificationGesture.onEnded)
+        model.resetLoupeZoom()
+        XCTAssertNil(model.loupeZoomFocus)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+    }
+
     func testFrameAdvanceResetsLoupeZoom() throws {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)
