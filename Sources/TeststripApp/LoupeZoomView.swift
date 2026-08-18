@@ -197,8 +197,8 @@ struct LoupeZoomHUDPresentation: Equatable {
     var statusText: String?
     var isLoading: Bool
 
-    init(fullResolutionStatus: LoupeZoomFullResolutionStatus) {
-        zoomLabelText = "100%"
+    init(scale: CGFloat, fullResolutionStatus: LoupeZoomFullResolutionStatus) {
+        zoomLabelText = "\(Int((scale * 100).rounded()))%"
         switch fullResolutionStatus {
         case .satisfied:
             statusText = nil
@@ -250,6 +250,12 @@ struct LoupeZoomStageView: View {
     var body: some View {
         GeometryReader { proxy in
             stageContent(viewportSize: proxy.size)
+                .overlay(alignment: .bottomTrailing) {
+                    if isZoomed {
+                        zoomHUD(viewportSize: proxy.size)
+                            .padding(10)
+                    }
+                }
         }
         .task(id: StagePreviewLoadKey(
             url: displayedPreviewURL,
@@ -263,12 +269,6 @@ struct LoupeZoomStageView: View {
                 try model.requestLoupeFullResolutionPreview(assetID: asset.id)
             } catch {
                 model.errorMessage = error.localizedDescription
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if isZoomed {
-                zoomHUD
-                    .padding(10)
             }
         }
     }
@@ -360,8 +360,14 @@ struct LoupeZoomStageView: View {
             }
     }
 
-    private var zoomHUD: some View {
+    private func zoomHUD(viewportSize: CGSize) -> some View {
+        let scale: CGFloat = if let image {
+            zoomGeometry(viewportSize: viewportSize, image: image).maxScale
+        } else {
+            1.0
+        }
         let presentation = LoupeZoomHUDPresentation(
+            scale: scale,
             fullResolutionStatus: model.loupeZoomFullResolutionStatus(for: asset.id)
         )
         return HStack(spacing: 8) {
