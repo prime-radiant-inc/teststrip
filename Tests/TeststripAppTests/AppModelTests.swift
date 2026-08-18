@@ -16315,6 +16315,49 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFoldersPassesNilSelectedFilesToPendingFolders() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-folders-selected-files")
+        let photoFolder1 = directory.appendingPathComponent("photos1", isDirectory: true)
+        let photoFolder2 = directory.appendingPathComponent("photos2", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder1, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: photoFolder2, withIntermediateDirectories: true)
+        let keepPhoto = photoFolder1.appendingPathComponent("keep.png")
+        try writeTestPNG(to: keepPhoto)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+
+        let recorder = SelectedFilesRecorder()
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, _, selectedFiles, _, _ in
+                recorder.record(selectedFiles)
+                return Task {
+                    AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolders(
+            [photoFolder1, photoFolder2],
+            selectedFiles: [keepPhoto]
+        )
+
+        // Pending (additional) folders should receive nil for selectedFiles
+        // and preIngestThumbnailCache — they didn't go through the selection window.
+        XCTAssertEqual(model.pendingImportFolders.count, 1)
+        XCTAssertNil(model.pendingImportFolders[0].selectedFiles)
+        XCTAssertNil(model.pendingImportFolders[0].preIngestThumbnailCache)
+
+        // First folder should receive the selectedFiles from the selection window.
+        try await waitForActivityStatus(.completed, in: model)
+        XCTAssertEqual(recorder.value, [keepPhoto])
+    }
+
+    @MainActor
     func testBeginImportFolderContinuesWhenSecurityScopeIsUnavailableByDefault() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-local-import-optional-security-scope")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
