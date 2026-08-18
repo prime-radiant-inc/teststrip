@@ -64,6 +64,22 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(files, ["one.jpg"])
     }
 
+    func testFolderScannerEmitsHeartbeatProgressForNonPhotoFiles() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "scan-heartbeat")
+        for index in 0..<10 {
+            try Data("txt".utf8).write(to: root.appendingPathComponent("file-\(index).txt"))
+        }
+        let recorder = FolderScanProgressRecorder()
+
+        let scanner = FolderScanner(supportedExtensions: ["jpg"], heartbeatInterval: 0)
+        _ = try scanner.scan(root: root) { progress in
+            recorder.append(progress)
+        }
+
+        let heartbeatEvents = recorder.values().filter { $0.supportedFileCount == 0 }
+        XCTAssertFalse(heartbeatEvents.isEmpty, "Scanner should emit heartbeat progress even when no supported files are found")
+    }
+
     func testFolderScannerReportsVideoAndUnrecognizedFilesAsSkipped() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "scan-skipped")
         try Data("jpg".utf8).write(to: root.appendingPathComponent("one.jpg"))

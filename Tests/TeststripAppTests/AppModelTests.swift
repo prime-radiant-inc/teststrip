@@ -3892,6 +3892,79 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.25, y: 0.75))
     }
 
+    func testLoupeZoomScaleDefaultsToOne() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-default", size: 1)])
+        XCTAssertEqual(model.loupeZoomScale, 1.0)
+    }
+
+    func testSetLoupeZoomScaleUpdatesScale() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-set", size: 1)])
+        model.setLoupeZoomScale(3.5)
+        XCTAssertEqual(model.loupeZoomScale, 3.5, accuracy: 0.001)
+    }
+
+    func testSetLoupeZoomScaleClampsToOne() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-clamp", size: 1)])
+        model.setLoupeZoomScale(0.5)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        // R5: pinching back to 1.0 does NOT dismiss loupe — focus stays set
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+    }
+
+    func testSetLoupeZoomScaleAtOneKeepsFocus() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-keep", size: 1)])
+        // Zoom in to 3x with a focus point
+        model.setLoupeZoomScale(3.0)
+        model.zoomLoupe(to: LoupeZoomFocus(x: 0.3, y: 0.7))
+        // Pinch back to 1.0 — focus must not be cleared (R5: does NOT dismiss loupe)
+        model.setLoupeZoomScale(1.0)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.3, y: 0.7))
+        // resetLoupeZoom is the explicit dismiss path (called on pinch .onEnded at 1.0)
+        model.resetLoupeZoom()
+        XCTAssertNil(model.loupeZoomFocus)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+    }
+
+    func testZoomLoupePreservesScaleForPanning() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-pan", size: 1)])
+        model.setLoupeZoomScale(4.0)
+        XCTAssertEqual(model.loupeZoomScale, 4.0, accuracy: 0.001)
+        // Pan: zoomLoupe(to:) changes focus but not scale
+        model.zoomLoupe(to: LoupeZoomFocus(x: 0.3, y: 0.7))
+        XCTAssertEqual(model.loupeZoomScale, 4.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.3, y: 0.7))
+    }
+
+    func testResetLoupeZoomResetsScaleToOne() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-reset", size: 1)])
+        model.setLoupeZoomScale(4.0)
+        model.zoomLoupe(to: .center)
+        model.resetLoupeZoom()
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
+    func testZoomLoupeToMaxSetsScaleAndFocus() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-max", size: 1)])
+        model.zoomLoupeToMax(scale: 8.0, focus: .center)
+        XCTAssertEqual(model.loupeZoomScale, 8.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+    }
+
+    func testToggleLoupeZoomCyclesBetweenFitAndMax() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-toggle", size: 1)])
+        model.loupeMaxScale = 8.0
+        // nil → zoom to max at center
+        model.toggleLoupeZoom()
+        XCTAssertEqual(model.loupeZoomScale, 8.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+        // max → back to fit
+        model.toggleLoupeZoom()
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
     func testFrameAdvanceResetsLoupeZoom() throws {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)
@@ -21609,6 +21682,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(conflicts.count, 1)
         XCTAssertEqual(conflicts.first?.assetID, assetID)
         XCTAssertEqual(conflicts.first?.displayName, "IMG_0001")
+    }
+
+    func testGridExpandTransitionDefaultsToNil() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-default", size: 1)])
+        XCTAssertNil(model.gridExpandTransition)
+    }
+
+    func testBeginGridExpandSetsTransition() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-begin", size: 1)])
+        let frame = CGRect(x: 100, y: 200, width: 140, height: 100)
+        let assetID = AssetID(rawValue: UUID().uuidString)
+        model.beginGridExpand(from: frame, assetID: assetID)
+        XCTAssertNotNil(model.gridExpandTransition)
+        XCTAssertEqual(model.gridExpandTransition?.cellFrame, frame)
+        XCTAssertEqual(model.gridExpandTransition?.assetID, assetID)
+    }
+
+    func testEndGridExpandClearsTransition() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-end", size: 1)])
+        let frame = CGRect(x: 100, y: 200, width: 140, height: 100)
+        let assetID = AssetID(rawValue: UUID().uuidString)
+        model.beginGridExpand(from: frame, assetID: assetID)
+        model.endGridExpand()
+        XCTAssertNil(model.gridExpandTransition)
     }
 }
 

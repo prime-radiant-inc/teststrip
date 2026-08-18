@@ -88,14 +88,18 @@ final class ProgressCoalescerTests: XCTestCase {
         XCTAssertTrue(coalescer.shouldReportScanCount(100))
     }
 
-    func testScanProgressCoalescerNeverReportsRepeatedCountEvenPastHeartbeat() {
+    func testScanProgressCoalescerEmitsHeartbeatEvenWhenCountUnchanged() {
         let clock = MutableClock()
         let coalescer = ScanProgressCoalescer(interval: 100, heartbeat: 15, now: clock.now)
+
         XCTAssertTrue(coalescer.shouldReportScanCount(100))
 
         clock.advance(by: 20)
 
-        XCTAssertFalse(coalescer.shouldReportScanCount(100))
+        // Heartbeat must fire even when count hasn't changed — this is what
+        // keeps the worker stall detector alive while scanning directories
+        // with many non-supported files between supported ones.
+        XCTAssertTrue(coalescer.shouldReportScanCount(100))
     }
 }
 

@@ -2136,6 +2136,18 @@ public final class AppModel {
     // Loupe 1:1 zoom state: nil shows the fitted frame. Reset whenever the
     // selection moves so every new frame starts fitted.
     public private(set) var loupeZoomFocus: LoupeZoomFocus?
+    // Continuous loupe zoom scale: 1.0 = aspect-fitted, >1.0 = zoomed.
+    // Reset alongside loupeZoomFocus whenever the selection moves.
+    public private(set) var loupeZoomScale: CGFloat = 1.0
+    // Max zoom for 1:1 pixel display, updated by LoupeZoomStageView from the
+    // actual image/viewport geometry. Keyboard zoom shortcuts use this.
+    public var loupeMaxScale: CGFloat = 8.0
+
+    /// Active grid→loupe pinch-expand transition, if any.
+    public private(set) var gridExpandTransition: GridExpandTransition?
+
+    /// Live pinch scale during a grid→loupe expand transition.
+    public private(set) var gridExpandPinchScale: CGFloat = 1.0
     // Detected-face targets for the current selection, reusing the Close-Ups
     // face-box pipeline (LoupeView populates this from on-demand detection).
     // Normalized (0...1) image-relative points, same space as LoupeZoomFocus.
@@ -7516,7 +7528,12 @@ public final class AppModel {
     }
 
     public func toggleLoupeZoom() {
-        loupeZoomFocus = loupeZoomFocus == nil ? .center : nil
+        if loupeZoomFocus == nil {
+            loupeZoomScale = max(1.0, loupeMaxScale)
+            loupeZoomFocus = .center
+        } else {
+            resetLoupeZoom()
+        }
         loupeFaceZoomIndex = nil
     }
 
@@ -7525,9 +7542,38 @@ public final class AppModel {
         loupeFaceZoomIndex = nil
     }
 
+    /// Sets a continuous zoom scale (clamped to >= 1.0).
+    public func setLoupeZoomScale(_ scale: CGFloat) {
+        loupeZoomScale = max(1.0, scale)
+        if loupeZoomFocus == nil {
+            loupeZoomFocus = .center
+        }
+    }
+
+    /// Click-to-zoom: jumps to maxScale centered on a point.
+    public func zoomLoupeToMax(scale: CGFloat, focus: LoupeZoomFocus) {
+        loupeZoomScale = max(1.0, scale)
+        loupeZoomFocus = focus
+        loupeFaceZoomIndex = nil
+    }
+
     public func resetLoupeZoom() {
         loupeZoomFocus = nil
+        loupeZoomScale = 1.0
         loupeFaceZoomIndex = nil
+    }
+
+    public func beginGridExpand(from frame: CGRect, assetID: AssetID) {
+        gridExpandTransition = GridExpandTransition(cellFrame: frame, assetID: assetID)
+    }
+
+    public func endGridExpand() {
+        gridExpandTransition = nil
+        gridExpandPinchScale = 1.0
+    }
+
+    public func setGridExpandPinchScale(_ scale: CGFloat) {
+        gridExpandPinchScale = scale
     }
 
     /// Reuses the Close-Ups face-box pipeline's detections as zoom targets
@@ -7548,6 +7594,9 @@ public final class AppModel {
         guard !loupeFaceFocuses.isEmpty else {
             loupeFaceZoomIndex = nil
             loupeZoomFocus = .center
+            if loupeZoomScale < 1.001 {
+                loupeZoomScale = loupeMaxScale
+            }
             return
         }
         let nextIndex: Int
@@ -7561,6 +7610,9 @@ public final class AppModel {
         }
         loupeFaceZoomIndex = nextIndex
         loupeZoomFocus = loupeFaceFocuses[nextIndex]
+        if loupeZoomScale < 1.001 {
+            loupeZoomScale = loupeMaxScale
+        }
     }
 
     private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {

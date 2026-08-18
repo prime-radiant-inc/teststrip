@@ -21,6 +21,7 @@ enum LoupeZoomRenderPolicy {
         guard let assetMaxPixelDimension else { return true }
         return assetMaxPixelDimension > cachedMaxPixelDimension
     }
+
 }
 
 /// Image-relative point (0...1 on each axis) the zoomed loupe viewport is
@@ -36,6 +37,17 @@ public struct LoupeZoomFocus: Equatable, Sendable {
     }
 
     public static let center = LoupeZoomFocus(x: 0.5, y: 0.5)
+}
+
+/// Frame and asset for a grid→loupe pinch-expand transition.
+public struct GridExpandTransition: Equatable, Sendable {
+    public var cellFrame: CGRect
+    public var assetID: AssetID
+
+    public init(cellFrame: CGRect, assetID: AssetID) {
+        self.cellFrame = cellFrame
+        self.assetID = assetID
+    }
 }
 
 /// Pure geometry for the loupe's 1:1 pixel zoom: how large the image draws,
@@ -63,6 +75,47 @@ struct LoupeZoomGeometry: Equatable {
         )
         guard scale > 0 else { return .zero }
         return CGSize(width: imagePixelSize.width * scale, height: imagePixelSize.height * scale)
+    }
+
+    /// Maximum zoom factor: ratio of 1:1 display size to fitted display size.
+    var maxScale: CGFloat {
+        guard fittedDisplaySize.width > 0 else { return 1.0 }
+        return actualSizeDisplaySize.width / fittedDisplaySize.width
+    }
+
+    /// Display size at a continuous scale factor (1.0 = fit, maxScale = 1:1).
+    func displaySize(for scale: CGFloat) -> CGSize {
+        let fitted = fittedDisplaySize
+        return CGSize(width: fitted.width * scale, height: fitted.height * scale)
+    }
+
+    /// Offset for a focus point at a given scale (not just 1:1).
+    func offset(for focus: LoupeZoomFocus, scale: CGFloat) -> CGSize {
+        let clamped = clampedFocus(focus, scale: scale)
+        let display = displaySize(for: scale)
+        return CGSize(
+            width: (0.5 - clamped.x) * display.width,
+            height: (0.5 - clamped.y) * display.height
+        )
+    }
+
+    /// Pan by a drag translation at a given scale.
+    func focus(pannedBy translation: CGSize, from start: LoupeZoomFocus, scale: CGFloat) -> LoupeZoomFocus {
+        let display = displaySize(for: scale)
+        guard display.width > 0, display.height > 0 else { return clampedFocus(start, scale: scale) }
+        return clampedFocus(LoupeZoomFocus(
+            x: start.x - translation.width / display.width,
+            y: start.y - translation.height / display.height
+        ), scale: scale)
+    }
+
+    /// Clamp focus so image edges stay in viewport at a given scale.
+    func clampedFocus(_ focus: LoupeZoomFocus, scale: CGFloat) -> LoupeZoomFocus {
+        let display = displaySize(for: scale)
+        return LoupeZoomFocus(
+            x: Self.clampedFocusComponent(focus.x, imageExtent: display.width, viewportExtent: viewportSize.width),
+            y: Self.clampedFocusComponent(focus.y, imageExtent: display.height, viewportExtent: viewportSize.height)
+        )
     }
 
     /// Offset in points to apply to the 1:1 image (positioned at the viewport
@@ -156,8 +209,8 @@ struct LoupeZoomHUDPresentation: Equatable {
     var statusText: String?
     var isLoading: Bool
 
-    init(fullResolutionStatus: LoupeZoomFullResolutionStatus) {
-        zoomLabelText = "100%"
+    init(scale: CGFloat, fullResolutionStatus: LoupeZoomFullResolutionStatus) {
+        zoomLabelText = "\(Int((scale * 100).rounded()))%"
         switch fullResolutionStatus {
         case .satisfied:
             statusText = nil
@@ -197,6 +250,7 @@ struct LoupeZoomStageView: View {
     @State private var loadedURL: URL?
     @State private var loadedGeneration: Int?
     @State private var dragStartFocus: LoupeZoomFocus?
+    @State private var pinchBaseScale: CGFloat?
 
     private var isZoomed: Bool {
         model.loupeZoomFocus != nil
@@ -209,6 +263,17 @@ struct LoupeZoomStageView: View {
     var body: some View {
         GeometryReader { proxy in
             stageContent(viewportSize: proxy.size)
+                .task(id: proxy.size) {
+                    if let image {
+                        model.loupeMaxScale = zoomGeometry(viewportSize: proxy.size, image: image).maxScale
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if isZoomed {
+                        zoomHUD
+                            .padding(10)
+                    }
+                }
         }
         .task(id: StagePreviewLoadKey(
             url: displayedPreviewURL,
@@ -222,12 +287,6 @@ struct LoupeZoomStageView: View {
                 try model.requestLoupeFullResolutionPreview(assetID: asset.id)
             } catch {
                 model.errorMessage = error.localizedDescription
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if isZoomed {
-                zoomHUD
-                    .padding(10)
             }
         }
     }
@@ -254,7 +313,8 @@ struct LoupeZoomStageView: View {
             .contentShape(Rectangle())
             .onTapGesture(coordinateSpace: .local) { location in
                 let geometry = zoomGeometry(viewportSize: viewportSize, image: image)
-                model.zoomLoupe(to: geometry.focus(atFittedViewportPoint: location))
+                let focus = geometry.focus(atFittedViewportPoint: location)
+                model.zoomLoupeToMax(scale: geometry.maxScale, focus: focus)
             }
             .overlay {
                 faceBoxOverlay(viewportSize: viewportSize, image: image)
@@ -285,8 +345,8 @@ struct LoupeZoomStageView: View {
 
     private func zoomedImage(_ image: NSImage, focus: LoupeZoomFocus, viewportSize: CGSize) -> some View {
         let geometry = zoomGeometry(viewportSize: viewportSize, image: image)
-        let displaySize = geometry.actualSizeDisplaySize
-        let offset = geometry.offset(for: focus)
+        let displaySize = geometry.displaySize(for: model.loupeZoomScale)
+        let offset = geometry.offset(for: focus, scale: model.loupeZoomScale)
         return ZStack {
             Image(nsImage: image)
                 .resizable()
@@ -303,6 +363,7 @@ struct LoupeZoomStageView: View {
             model.resetLoupeZoom()
         }
         .gesture(panGesture(geometry: geometry))
+        .gesture(magnificationGesture(geometry: geometry))
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Return to fit")
     }
@@ -312,15 +373,38 @@ struct LoupeZoomStageView: View {
             .onChanged { value in
                 let start = dragStartFocus ?? model.loupeZoomFocus ?? .center
                 dragStartFocus = start
-                model.zoomLoupe(to: geometry.focus(pannedBy: value.translation, from: start))
+                model.zoomLoupe(to: geometry.focus(
+                    pannedBy: value.translation,
+                    from: start,
+                    scale: model.loupeZoomScale
+                ))
             }
             .onEnded { _ in
                 dragStartFocus = nil
             }
     }
 
+    private func magnificationGesture(geometry: LoupeZoomGeometry) -> some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                if pinchBaseScale == nil {
+                    pinchBaseScale = model.loupeZoomScale
+                }
+                let newScale = (pinchBaseScale ?? 1.0) * value
+                let clamped = min(max(1.0, newScale), geometry.maxScale)
+                model.setLoupeZoomScale(clamped)
+            }
+            .onEnded { _ in
+                pinchBaseScale = nil
+                if model.loupeZoomScale <= 1.02 {
+                    model.resetLoupeZoom()
+                }
+            }
+    }
+
     private var zoomHUD: some View {
         let presentation = LoupeZoomHUDPresentation(
+            scale: model.loupeZoomScale,
             fullResolutionStatus: model.loupeZoomFullResolutionStatus(for: asset.id)
         )
         return HStack(spacing: 8) {

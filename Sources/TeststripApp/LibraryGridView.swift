@@ -52,6 +52,7 @@ struct ImportSelectionData: Identifiable {
 
 struct LibraryGridView: View {
     var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isSavingSearch = false
     @State private var isSavingManualSet = false
     @State private var isSavingSnapshotSet = false
@@ -258,6 +259,29 @@ struct LibraryGridView: View {
                 if LensChromePolicy.showsFooter(model.selectedView) {
                     footer
                 }
+            }
+        }
+        .coordinateSpace(name: "gridExpand")
+        .overlay {
+            if !reduceMotion,
+               let transition = model.gridExpandTransition,
+               model.selectedView == .libraryLoupe {
+                GridExpandOverlayView(
+                    model: model,
+                    transition: transition,
+                    pinchScale: model.gridExpandPinchScale
+                )
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .task(id: model.gridExpandPinchScale) {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    model.endGridExpand()
+                }
+            }
+        }
+        .onChange(of: model.gridExpandTransition) { _, newValue in
+            if reduceMotion && newValue != nil {
+                model.endGridExpand()
             }
         }
     }
@@ -7862,6 +7886,67 @@ enum AssetActivationFocusPolicy {
     }
 }
 
+/// Captures the cell's global frame and hosts a magnification gesture
+/// for the grid→loupe pinch-expand.
+private struct GridCellPinchModifier: ViewModifier {
+    var model: AppModel
+    var asset: Asset
+    var openInLoupe: (AssetID) -> Void
+    @State private var cellFrame: CGRect = .zero
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { cellFrame = proxy.frame(in: .named("gridExpand")) }
+                        .onChange(of: proxy.frame(in: .named("gridExpand"))) { _, newFrame in
+                            cellFrame = newFrame
+                        }
+                }
+            )
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { scale in
+                        model.setGridExpandPinchScale(scale)
+                        if scale > 1.3 && model.gridExpandTransition == nil {
+                            model.beginGridExpand(from: cellFrame, assetID: asset.id)
+                            openInLoupe(asset.id)
+                        }
+                    }
+                    .onEnded { scale in
+                        if scale < 1.3 {
+                            model.endGridExpand()
+                        }
+                    }
+            )
+    }
+}
+
+/// Overlay that grows a cell's thumbnail during the grid→loupe pinch-expand.
+/// Fades out once the loupe view is visible and has rendered its image.
+private struct GridExpandOverlayView: View {
+    var model: AppModel
+    var transition: GridExpandTransition
+    var pinchScale: CGFloat
+
+    var body: some View {
+        let scaledWidth = transition.cellFrame.width * pinchScale
+        let scaledHeight = transition.cellFrame.height * pinchScale
+        CachedPreviewImage(
+            previewURL: model.gridPreviewURL(for: transition.assetID),
+            scaling: .fill,
+            cacheGeneration: model.previewCacheGeneration(for: transition.assetID)
+        )
+            .frame(width: scaledWidth, height: scaledHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .position(x: transition.cellFrame.midX, y: transition.cellFrame.midY)
+            .opacity(max(0, 1.5 - pinchScale))
+            .allowsHitTesting(false)
+            .ignoresSafeArea()
+    }
+}
+
 private extension View {
     // `openInLoupe` is which loupe a double-click lands in: Grid and Timeline
     // callers pass `openAssetInLibraryLoupe`; the Cull lens's Compare tile
@@ -7901,6 +7986,11 @@ private extension View {
         }
             .buttonStyle(.plain)
             .simultaneousGesture(doubleClick)
+            .modifier(GridCellPinchModifier(
+                model: model,
+                asset: asset,
+                openInLoupe: openInLoupe
+            ))
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(asset.originalURL.lastPathComponent)
