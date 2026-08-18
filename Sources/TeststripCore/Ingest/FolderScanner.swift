@@ -41,9 +41,11 @@ public struct FolderScanner: Sendable {
     private static let ancillaryExtensions: Set<String> = ["xmp"]
 
     private let supportedExtensions: Set<String>
+    private let heartbeatInterval: TimeInterval
 
-    public init(supportedExtensions: Set<String>) {
+    public init(supportedExtensions: Set<String>, heartbeatInterval: TimeInterval = 15) {
         self.supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
+        self.heartbeatInterval = heartbeatInterval
     }
 
     public func scan(
@@ -61,8 +63,16 @@ public struct FolderScanner: Sendable {
         }
 
         var files: [URL] = []
+        var lastHeartbeat = Date()
         for case let url as URL in enumerator {
             try Task.checkCancellation()
+            if let progress {
+                let now = Date()
+                if now.timeIntervalSince(lastHeartbeat) >= heartbeatInterval {
+                    lastHeartbeat = now
+                    progress(FolderScanProgress(supportedFileCount: files.count, url: url))
+                }
+            }
             let values: URLResourceValues
             do {
                 values = try url.resourceValues(forKeys: [.isRegularFileKey])

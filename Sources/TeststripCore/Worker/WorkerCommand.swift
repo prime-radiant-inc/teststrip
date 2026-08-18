@@ -43,14 +43,20 @@ public enum WorkerCommand: Equatable, Sendable {
     }
 
     /// Per-command silence watchdog: how long without a progress event before
-    /// the supervisor declares the command timed out. Import commands copy
-    /// large files (RAW, video) from slow sources (SD cards, network); a
-    /// single file can take minutes. Other commands are per-asset and should
-    /// complete in well under 2 minutes.
+    /// the supervisor declares the command timed out. This is a stall detector,
+    /// not a hard ceiling — the timer resets on every progress event (including
+    /// scanner heartbeats emitted every 15 seconds), so a working command can
+    /// run indefinitely as long as it keeps producing output. The watchdog
+    /// fires only when the worker is truly frozen (zero output for the full
+    /// window). Import commands scan directories that may contain millions of
+    /// non-photo files; the scanner emits heartbeats every 15 seconds, so a
+    /// generous 30-minute window catches genuine freezes without killing slow
+    /// but active scans. Other commands are per-asset and should complete in
+    /// well under 2 minutes.
     public var silenceTimeout: TimeInterval {
         switch self {
         case .importFolder, .importCard:
-            return 600
+            return 1800
         default:
             return 120
         }
