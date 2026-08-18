@@ -2136,6 +2136,9 @@ public final class AppModel {
     // Loupe 1:1 zoom state: nil shows the fitted frame. Reset whenever the
     // selection moves so every new frame starts fitted.
     public private(set) var loupeZoomFocus: LoupeZoomFocus?
+    // Continuous loupe zoom scale: 1.0 = aspect-fitted, >1.0 = zoomed.
+    // Reset alongside loupeZoomFocus whenever the selection moves.
+    public private(set) var loupeZoomScale: CGFloat = 1.0
     // Detected-face targets for the current selection, reusing the Close-Ups
     // face-box pipeline (LoupeView populates this from on-demand detection).
     // Normalized (0...1) image-relative points, same space as LoupeZoomFocus.
@@ -7515,8 +7518,13 @@ public final class AppModel {
         ))
     }
 
-    public func toggleLoupeZoom() {
-        loupeZoomFocus = loupeZoomFocus == nil ? .center : nil
+    public func toggleLoupeZoom(maxScale: CGFloat = 8.0) {
+        if loupeZoomFocus == nil {
+            loupeZoomScale = max(1.0, maxScale)
+            loupeZoomFocus = .center
+        } else {
+            resetLoupeZoom()
+        }
         loupeFaceZoomIndex = nil
     }
 
@@ -7525,8 +7533,26 @@ public final class AppModel {
         loupeFaceZoomIndex = nil
     }
 
+    /// Sets a continuous zoom scale (clamped to >= 1.0).
+    public func setLoupeZoomScale(_ scale: CGFloat) {
+        loupeZoomScale = max(1.0, scale)
+        if loupeZoomScale == 1.0 {
+            loupeZoomFocus = nil
+        } else if loupeZoomFocus == nil {
+            loupeZoomFocus = .center
+        }
+    }
+
+    /// Click-to-zoom: jumps to maxScale centered on a point.
+    public func zoomLoupeToMax(scale: CGFloat, focus: LoupeZoomFocus) {
+        loupeZoomScale = max(1.0, scale)
+        loupeZoomFocus = focus
+        loupeFaceZoomIndex = nil
+    }
+
     public func resetLoupeZoom() {
         loupeZoomFocus = nil
+        loupeZoomScale = 1.0
         loupeFaceZoomIndex = nil
     }
 
@@ -7561,6 +7587,9 @@ public final class AppModel {
         }
         loupeFaceZoomIndex = nextIndex
         loupeZoomFocus = loupeFaceFocuses[nextIndex]
+        if loupeZoomScale < 1.001 {
+            loupeZoomScale = 8.0
+        }
     }
 
     private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {

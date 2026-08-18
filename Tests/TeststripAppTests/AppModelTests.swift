@@ -3892,6 +3892,61 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.25, y: 0.75))
     }
 
+    func testLoupeZoomScaleDefaultsToOne() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-default", size: 1)])
+        XCTAssertEqual(model.loupeZoomScale, 1.0)
+    }
+
+    func testSetLoupeZoomScaleUpdatesScale() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-set", size: 1)])
+        model.setLoupeZoomScale(3.5)
+        XCTAssertEqual(model.loupeZoomScale, 3.5, accuracy: 0.001)
+    }
+
+    func testSetLoupeZoomScaleClampsToOne() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-clamp", size: 1)])
+        model.setLoupeZoomScale(0.5)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+    }
+
+    func testZoomLoupePreservesScaleForPanning() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-pan", size: 1)])
+        model.setLoupeZoomScale(4.0)
+        XCTAssertEqual(model.loupeZoomScale, 4.0, accuracy: 0.001)
+        // Pan: zoomLoupe(to:) changes focus but not scale
+        model.zoomLoupe(to: LoupeZoomFocus(x: 0.3, y: 0.7))
+        XCTAssertEqual(model.loupeZoomScale, 4.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.3, y: 0.7))
+    }
+
+    func testResetLoupeZoomResetsScaleToOne() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-reset", size: 1)])
+        model.setLoupeZoomScale(4.0)
+        model.zoomLoupe(to: .center)
+        model.resetLoupeZoom()
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
+    func testZoomLoupeToMaxSetsScaleAndFocus() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-max", size: 1)])
+        model.zoomLoupeToMax(scale: 8.0, focus: .center)
+        XCTAssertEqual(model.loupeZoomScale, 8.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+    }
+
+    func testToggleLoupeZoomCyclesBetweenFitAndMax() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-toggle", size: 1)])
+        // nil → zoom to max at center
+        model.toggleLoupeZoom(maxScale: 8.0)
+        XCTAssertEqual(model.loupeZoomScale, 8.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+        // max → back to fit
+        model.toggleLoupeZoom(maxScale: 8.0)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
     func testFrameAdvanceResetsLoupeZoom() throws {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)
