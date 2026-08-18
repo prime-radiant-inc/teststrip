@@ -30,6 +30,12 @@ public struct PreIngestThumbnailCache: Sendable {
         try data.write(to: thumbnailURL(for: sourceURL))
     }
 
+    public func thumbnailData(for sourceURL: URL) -> Data? {
+        let url = thumbnailURL(for: sourceURL)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
     /// Copy a temp thumbnail to a permanent PreviewCache location.
     /// No-op when no temp thumbnail exists for the source URL.
     public func promote(from sourceURL: URL, to destinationURL: URL) throws {
