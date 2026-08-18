@@ -1965,6 +1965,7 @@ struct LibraryGridView: View {
 
         return ImportSelectionView(
             model: selectionModel,
+            duplicateURLs: data.duplicateURLs,
             onConfirm: { selectedURLs in
                 importSheet = ImportSheetState.confirmingSelection(
                     importSheet,

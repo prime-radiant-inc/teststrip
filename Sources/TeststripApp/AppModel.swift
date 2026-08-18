@@ -14324,8 +14324,8 @@ public final class AppModel {
                 evaluateAfterImport: evaluateAfterImport,
                 importNewOnly: importNewOnly,
                 autopilotAfterImport: autopilotAfterImport,
-                selectedFiles: selectedFiles,
-                preIngestThumbnailCache: preIngestThumbnailCache
+                selectedFiles: nil,
+                preIngestThumbnailCache: nil
             )
         }
         beginImportFolder(

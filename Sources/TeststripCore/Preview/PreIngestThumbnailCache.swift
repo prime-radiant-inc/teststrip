@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Temporary thumbnail cache for pre-ingest selection review.
@@ -22,7 +23,8 @@ public struct PreIngestThumbnailCache: Sendable, Equatable {
     }
 
     public func thumbnailURL(for sourceURL: URL) -> URL {
-        let safeName = sourceURL.path.replacingOccurrences(of: "/", with: "_")
+        let hash = SHA256.hash(data: Data(sourceURL.path.utf8))
+        let safeName = hash.map { String(format: "%02x", $0) }.joined()
         return directoryURL.appendingPathComponent(safeName + ".jpg")
     }
 

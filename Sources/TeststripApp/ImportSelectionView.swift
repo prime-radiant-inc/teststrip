@@ -18,7 +18,7 @@ struct ImportSelectionEntry: Identifiable, Hashable {
 @MainActor
 final class ImportSelectionModel: ObservableObject {
     let entries: [ImportSelectionEntry]
-    let duplicateURLs: Set<URL>
+    @Published var duplicateURLs: Set<URL>
     let thumbnailCache: PreIngestThumbnailCache
     let thumbnailRenderer: PreIngestThumbnailRenderer
 
@@ -26,6 +26,8 @@ final class ImportSelectionModel: ObservableObject {
     @Published var filter: ImportSelectionFilter = .all
     @Published var thumbnails: [URL: NSImage] = [:]
     @Published var isRendering = false
+
+    private var inFlightRenders = Set<URL>()
 
     init(
         entries: [ImportSelectionEntry],
@@ -70,11 +72,13 @@ final class ImportSelectionModel: ObservableObject {
     }
 
     func loadThumbnail(for url: URL) {
+        guard !inFlightRenders.contains(url) else { return }
         if thumbnails[url] != nil { return }
         if let data = thumbnailCache.thumbnailData(for: url), let image = NSImage(data: data) {
             thumbnails[url] = image
             return
         }
+        inFlightRenders.insert(url)
         isRendering = true
         let cache = thumbnailCache
         let renderer = thumbnailRenderer
@@ -82,10 +86,13 @@ final class ImportSelectionModel: ObservableObject {
             try? renderer.render(sourceURL: url, cache: cache)
             let data = cache.thumbnailData(for: url)
             await MainActor.run {
+                self.inFlightRenders.remove(url)
                 if let data, let image = NSImage(data: data) {
                     self.thumbnails[url] = image
                 }
-                self.isRendering = false
+                if self.inFlightRenders.isEmpty {
+                    self.isRendering = false
+                }
             }
         }
     }
@@ -93,6 +100,7 @@ final class ImportSelectionModel: ObservableObject {
 
 struct ImportSelectionView: View {
     @StateObject var model: ImportSelectionModel
+    let duplicateURLs: Set<URL>
     let onConfirm: (Set<URL>) -> Void
     let onCancel: () -> Void
 
@@ -155,6 +163,9 @@ struct ImportSelectionView: View {
             .padding(12)
         }
         .frame(width: 800, height: 600)
+        .onChange(of: duplicateURLs) { _, newURLs in
+            model.duplicateURLs = newURLs
+        }
     }
 }
 
