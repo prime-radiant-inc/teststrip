@@ -3954,12 +3954,13 @@ final class AppModelTests: XCTestCase {
 
     func testToggleLoupeZoomCyclesBetweenFitAndMax() {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-toggle", size: 1)])
+        model.loupeMaxScale = 8.0
         // nil → zoom to max at center
-        model.toggleLoupeZoom(maxScale: 8.0)
+        model.toggleLoupeZoom()
         XCTAssertEqual(model.loupeZoomScale, 8.0, accuracy: 0.001)
         XCTAssertEqual(model.loupeZoomFocus, .center)
         // max → back to fit
-        model.toggleLoupeZoom(maxScale: 8.0)
+        model.toggleLoupeZoom()
         XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
         XCTAssertNil(model.loupeZoomFocus)
     }

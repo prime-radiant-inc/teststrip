@@ -544,13 +544,21 @@ final class ScanProgressCoalescer: @unchecked Sendable {
 
     func shouldReportScanCount(_ count: Int) -> Bool {
         lock.withLock {
+            let currentTime = now()
+            let heartbeatElapsed = currentTime.timeIntervalSince(lastReportedAt) >= heartbeat
+            // Heartbeat fires even when count hasn't changed — this is what
+            // keeps the worker stall detector alive while scanning directories
+            // that have many non-supported files between supported ones.
+            if heartbeatElapsed {
+                lastReportedCount = count
+                lastReportedAt = currentTime
+                return true
+            }
             guard count != lastReportedCount else {
                 return false
             }
-            let currentTime = now()
             let countConditionMet = count == 1 || count.isMultiple(of: interval)
-            let heartbeatElapsed = currentTime.timeIntervalSince(lastReportedAt) >= heartbeat
-            guard countConditionMet || heartbeatElapsed else {
+            guard countConditionMet else {
                 return false
             }
             lastReportedCount = count

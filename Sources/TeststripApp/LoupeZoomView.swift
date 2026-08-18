@@ -22,23 +22,6 @@ enum LoupeZoomRenderPolicy {
         return assetMaxPixelDimension > cachedMaxPixelDimension
     }
 
-    /// Decides if original-resolution is needed at a continuous zoom scale:
-    /// when the displayed pixel demand exceeds what the cached preview level
-    /// can deliver without upscaling.
-    static func fullResolutionIsRequired(
-        cachedLevel: PreviewLevel?,
-        assetMaxPixelDimension: Int?,
-        displayScale: CGFloat,
-        loupeScale: CGFloat,
-        fittedDisplayWidth: CGFloat
-    ) -> Bool {
-        guard let cachedLevel else { return true }
-        guard let cachedMaxPixelDimension = cachedLevel.maxPixelDimension else { return false }
-        guard assetMaxPixelDimension != nil else { return true }
-        // Displayed width in points at the current zoom scale
-        let displayedWidth = fittedDisplayWidth * loupeScale
-        return displayedWidth > CGFloat(cachedMaxPixelDimension)
-    }
 }
 
 /// Image-relative point (0...1 on each axis) the zoomed loupe viewport is
@@ -267,7 +250,7 @@ struct LoupeZoomStageView: View {
     @State private var loadedURL: URL?
     @State private var loadedGeneration: Int?
     @State private var dragStartFocus: LoupeZoomFocus?
-    @State private var pinchBaseScale: CGFloat = 1.0
+    @State private var pinchBaseScale: CGFloat?
 
     private var isZoomed: Bool {
         model.loupeZoomFocus != nil
@@ -280,6 +263,11 @@ struct LoupeZoomStageView: View {
     var body: some View {
         GeometryReader { proxy in
             stageContent(viewportSize: proxy.size)
+                .task(id: proxy.size) {
+                    if let image {
+                        model.loupeMaxScale = zoomGeometry(viewportSize: proxy.size, image: image).maxScale
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     if isZoomed {
                         zoomHUD
@@ -399,16 +387,16 @@ struct LoupeZoomStageView: View {
     private func magnificationGesture(geometry: LoupeZoomGeometry) -> some Gesture {
         MagnificationGesture()
             .onChanged { value in
-                if pinchBaseScale == 1.0 {
+                if pinchBaseScale == nil {
                     pinchBaseScale = model.loupeZoomScale
                 }
-                let newScale = pinchBaseScale * value
+                let newScale = (pinchBaseScale ?? 1.0) * value
                 let clamped = min(max(1.0, newScale), geometry.maxScale)
                 model.setLoupeZoomScale(clamped)
             }
             .onEnded { _ in
-                pinchBaseScale = 1.0
-                if model.loupeZoomScale == 1.0 {
+                pinchBaseScale = nil
+                if model.loupeZoomScale <= 1.02 {
                     model.resetLoupeZoom()
                 }
             }

@@ -2139,6 +2139,9 @@ public final class AppModel {
     // Continuous loupe zoom scale: 1.0 = aspect-fitted, >1.0 = zoomed.
     // Reset alongside loupeZoomFocus whenever the selection moves.
     public private(set) var loupeZoomScale: CGFloat = 1.0
+    // Max zoom for 1:1 pixel display, updated by LoupeZoomStageView from the
+    // actual image/viewport geometry. Keyboard zoom shortcuts use this.
+    public var loupeMaxScale: CGFloat = 8.0
 
     /// Active grid→loupe pinch-expand transition, if any.
     public private(set) var gridExpandTransition: GridExpandTransition?
@@ -7524,9 +7527,9 @@ public final class AppModel {
         ))
     }
 
-    public func toggleLoupeZoom(maxScale: CGFloat = 8.0) {
+    public func toggleLoupeZoom() {
         if loupeZoomFocus == nil {
-            loupeZoomScale = max(1.0, maxScale)
+            loupeZoomScale = max(1.0, loupeMaxScale)
             loupeZoomFocus = .center
         } else {
             resetLoupeZoom()
@@ -7591,6 +7594,9 @@ public final class AppModel {
         guard !loupeFaceFocuses.isEmpty else {
             loupeFaceZoomIndex = nil
             loupeZoomFocus = .center
+            if loupeZoomScale < 1.001 {
+                loupeZoomScale = loupeMaxScale
+            }
             return
         }
         let nextIndex: Int
@@ -7605,7 +7611,7 @@ public final class AppModel {
         loupeFaceZoomIndex = nextIndex
         loupeZoomFocus = loupeFaceFocuses[nextIndex]
         if loupeZoomScale < 1.001 {
-            loupeZoomScale = 8.0
+            loupeZoomScale = loupeMaxScale
         }
     }
 

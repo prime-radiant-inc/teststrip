@@ -273,7 +273,7 @@ struct LibraryGridView: View {
                 )
                 .allowsHitTesting(false)
                 .transition(.opacity)
-                .task {
+                .task(id: model.gridExpandPinchScale) {
                     try? await Task.sleep(for: .milliseconds(500))
                     model.endGridExpand()
                 }
@@ -7900,6 +7900,9 @@ private struct GridCellPinchModifier: ViewModifier {
                 GeometryReader { proxy in
                     Color.clear
                         .onAppear { cellFrame = proxy.frame(in: .named("gridExpand")) }
+                        .onChange(of: proxy.frame(in: .named("gridExpand"))) { _, newFrame in
+                            cellFrame = newFrame
+                        }
                 }
             )
             .simultaneousGesture(
@@ -7931,7 +7934,7 @@ private struct GridExpandOverlayView: View {
         let scaledWidth = transition.cellFrame.width * pinchScale
         let scaledHeight = transition.cellFrame.height * pinchScale
         CachedPreviewImage(
-            previewURL: model.previewURL(for: transition.assetID, levels: [.grid]),
+            previewURL: model.gridPreviewURL(for: transition.assetID),
             scaling: .fill,
             cacheGeneration: model.previewCacheGeneration(for: transition.assetID)
         )
