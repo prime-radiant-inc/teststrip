@@ -206,59 +206,65 @@ public struct LibraryImportService: Sendable {
             interval: Self.scanProgressInterval,
             heartbeat: Self.scanProgressHeartbeat
         )
-        var scanSkippedFiles: [FolderScanSkippedFile] = []
-        let scannedSourceFiles = try ingestService.files(
-            for: plan,
-            progress: { scanProgress in
-                if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
-                    reportScanProgress(
-                        count: scanProgress.supportedFileCount,
+        // Thread-safe buffer for streaming scan → ingest. The scan runs in a
+        // background thread and appends files as they're discovered; the main
+        // flow polls the buffer and processes batches through ingest, so import
+        // starts before the scan finishes.
+        let buffer = StreamingScanBuffer()
+        let resolvedSelected = selectedFiles.map { selected in
+            Set(selected.map { $0.resolvingSymlinksInPath() })
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let allFiles = try self.ingestService.files(
+                    for: plan,
+                    progress: { scanProgress in
+                        if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
+                            self.reportScanProgress(
+                                count: scanProgress.supportedFileCount,
+                                rootName: scanRootName,
+                                progress: progress
+                            )
+                        }
+                    },
+                    skipped: { scanSkippedFile in
+                        buffer.lock.withLock {
+                            buffer.scanSkippedFiles.append(scanSkippedFile)
+                        }
+                    },
+                    fileCallback: { url in
+                        guard !self.isPreviewCacheFile(url) else { return }
+                        if let resolved = resolvedSelected {
+                            guard resolved.contains(url.resolvingSymlinksInPath()) else { return }
+                        }
+                        buffer.lock.withLock {
+                            buffer.pendingFiles.append(url)
+                        }
+                    }
+                )
+                if scanProgressCoalescer.shouldReportFinalScanCount(allFiles.count) {
+                    self.reportScanProgress(
+                        count: allFiles.count,
                         rootName: scanRootName,
                         progress: progress
                     )
                 }
-            },
-            skipped: { scanSkippedFile in
-                scanSkippedFiles.append(scanSkippedFile)
+            } catch {
+                buffer.lock.withLock {
+                    buffer.scanError = error
+                }
             }
-        )
-        let sourceFiles = scannedSourceFiles.filter { !isPreviewCacheFile($0) }
-        // Resolve symlinks on both sides before comparing: ImportSourceSummary.scan
-        // and FolderScanner.scan may produce different URL representations for the
-        // same file (e.g. /var/folders/... vs /private/var/folders/... on macOS).
-        let filteredFiles = selectedFiles.map { selected in
-            let resolvedSelected = Set(selected.map { $0.resolvingSymlinksInPath() })
-            return sourceFiles.filter { resolvedSelected.contains($0.resolvingSymlinksInPath()) }
-        } ?? sourceFiles
-        var skippedSourceFiles = scanSkippedFiles
-            .filter { !isPreviewCacheFile($0.url) }
-            .sorted { first, second in
-                first.url.path.localizedStandardCompare(second.url.path) == .orderedAscending
+            buffer.lock.withLock {
+                buffer.scanComplete = true
             }
-            .map { scanSkippedFile in
-                LibrarySkippedSourceFile(
-                    sourceURL: scanSkippedFile.url,
-                    message: Self.skippedSourceFileMessage(for: scanSkippedFile.reason)
-                )
-            }
-        if scanProgressCoalescer.shouldReportFinalScanCount(sourceFiles.count) {
-            reportScanProgress(
-                count: sourceFiles.count,
-                rootName: scanRootName,
-                progress: progress
-            )
         }
-        let existingPreviewStates = try existingGridPreviewStates(
-            for: sourceFiles,
-            plan: plan,
-            repository: repository,
-            progress: progress
-        )
-        progress?(LibraryImportProgress(
-            completedUnitCount: 0,
-            totalUnitCount: filteredFiles.count,
-            detail: catalogingDetail(filteredFiles.count)
-        ))
+        // Process batches as they arrive from the scan
+        let batchSize = 256
+        var allAssets: [Asset] = []
+        var skippedSourceFiles: [LibrarySkippedSourceFile] = []
+        var alreadyInCatalogCount = 0
+        var allExistingPreviewStates: [AssetID: ExistingGridPreviewState] = [:]
+        let cumulativeIngestCount = ImportCumulativeCount()
         let ingestProgressCoalescer = IngestProgressCoalescer(
             interval: Self.ingestProgressInterval,
             eagerLimit: Self.eagerIngestProgressLimit,
@@ -280,71 +286,120 @@ public struct LibraryImportService: Sendable {
                 kind: .backupFailed
             ))
         } : nil
-        // Content already in the catalog is a normal dedup outcome, not a
-        // problem, so it feeds the "already in catalog" count rather than the
-        // skipped-file list.
-        var alreadyInCatalogCount = 0
-        let assets = try ingestService.ingest(
-            files: filteredFiles,
-            plan: plan,
-            repository: repository,
-            skippedSourceFile: skippedSourceFileHandler,
-            secondCopyFailure: secondCopyFailureHandler,
-            alreadyInCatalog: { _ in alreadyInCatalogCount += 1 },
-            progress: { ingestProgress in
-                if ingestProgressCoalescer.shouldReport(
-                    completedCount: ingestProgress.completedUnitCount,
-                    totalCount: ingestProgress.totalUnitCount
-                ) {
-                    progress?(LibraryImportProgress(
-                        completedUnitCount: ingestProgress.completedUnitCount,
-                        totalUnitCount: ingestProgress.totalUnitCount,
-                        detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount),
-                        catalogedAssetIDs: ingestProgress.catalogedAssetIDs
-                    ))
+        while true {
+            let (batch, scanDone) = buffer.lock.withLock { () -> ([URL], Bool) in
+                if buffer.pendingFiles.count >= batchSize {
+                    let taken = Array(buffer.pendingFiles.prefix(batchSize))
+                    buffer.pendingFiles.removeFirst(batchSize)
+                    return (taken, buffer.scanComplete)
+                } else if buffer.scanComplete {
+                    let taken = buffer.pendingFiles
+                    buffer.pendingFiles.removeAll(keepingCapacity: true)
+                    return (taken, buffer.scanComplete)
+                } else {
+                    return ([], buffer.scanComplete)
                 }
             }
-        )
-        if !assets.isEmpty {
+            if batch.isEmpty {
+                if let error = buffer.lock.withLock({ buffer.scanError }) {
+                    throw error
+                }
+                if scanDone { break }
+                Thread.sleep(forTimeInterval: 0.01)
+                continue
+            }
+            // Check existing preview states BEFORE ingest for this batch so we
+            // can distinguish new from existing (re-import) assets.
+            let batchExistingStates = try existingGridPreviewStates(
+                for: batch,
+                plan: plan,
+                repository: repository
+            )
+            for (id, state) in batchExistingStates {
+                allExistingPreviewStates[id] = state
+            }
+            // Emit cataloging-start progress so callers know ingest is underway.
+            // In streaming mode this fires per batch with the batch count.
+            progress?(LibraryImportProgress(
+                completedUnitCount: cumulativeIngestCount.count,
+                totalUnitCount: batch.count,
+                detail: catalogingDetail(batch.count),
+                catalogedAssetIDs: []
+            ))
+            let assets = try ingestService.ingest(
+                files: batch,
+                plan: plan,
+                repository: repository,
+                skippedSourceFile: skippedSourceFileHandler,
+                secondCopyFailure: secondCopyFailureHandler,
+                alreadyInCatalog: { _ in alreadyInCatalogCount += 1 },
+                progress: { ingestProgress in
+                    let cumulativeCompleted = cumulativeIngestCount.count + ingestProgress.completedUnitCount
+                    if ingestProgressCoalescer.shouldReport(
+                        completedCount: cumulativeCompleted,
+                        totalCount: ingestProgress.totalUnitCount
+                    ) {
+                        progress?(LibraryImportProgress(
+                            completedUnitCount: cumulativeCompleted,
+                            totalUnitCount: ingestProgress.totalUnitCount,
+                            detail: perFileDetail(cumulativeCompleted, ingestProgress.totalUnitCount),
+                            catalogedAssetIDs: ingestProgress.catalogedAssetIDs
+                        ))
+                    }
+                }
+            )
+            allAssets.append(contentsOf: assets)
+            cumulativeIngestCount.count += assets.count
+        }
+        // Convert scan-level skipped files (unsupported types, videos)
+        let sortedScanSkipped = buffer.lock.withLock { buffer.scanSkippedFiles }
+            .filter { !isPreviewCacheFile($0.url) }
+            .sorted { first, second in
+                first.url.path.localizedStandardCompare(second.url.path) == .orderedAscending
+            }
+            .map { scanSkippedFile in
+                LibrarySkippedSourceFile(
+                    sourceURL: scanSkippedFile.url,
+                    message: Self.skippedSourceFileMessage(for: scanSkippedFile.reason)
+                )
+            }
+        skippedSourceFiles.insert(contentsOf: sortedScanSkipped, at: 0)
+        if !allAssets.isEmpty {
             try repository.recordSourceRoot(Self.catalogSourceRoot(for: plan))
         }
         // A returned asset that already sat at its path (an unchanged or changed
         // same-path re-import) is existing; a content duplicate skipped before
         // copy is existing too. New is whatever is left.
-        let existingReturnedCount = assets.filter { existingPreviewStates[$0.id] != nil }.count
+        let existingReturnedCount = allAssets.filter { allExistingPreviewStates[$0.id] != nil }.count
         let existingAssetCount = existingReturnedCount + alreadyInCatalogCount
-        let newAssetCount = assets.count - existingReturnedCount
-        let previewItems: [PreviewGenerationItem] = assets.flatMap { asset -> [PreviewGenerationItem] in
-            guard shouldGenerateGridPreview(for: asset, existingState: existingPreviewStates[asset.id]) else {
+        let newAssetCount = allAssets.count - existingReturnedCount
+        let previewItems: [PreviewGenerationItem] = allAssets.flatMap { asset -> [PreviewGenerationItem] in
+            guard shouldGenerateGridPreview(for: asset, existingState: allExistingPreviewStates[asset.id]) else {
                 return []
             }
             return Self.importPreviewLevels.map { PreviewGenerationItem(assetID: asset.id, level: $0) }
         }
         try repository.recordPreviewGenerationPending(previewItems)
-
         progress?(LibraryImportProgress(
-            completedUnitCount: assets.count,
-            totalUnitCount: assets.count,
-            detail: catalogedDetail(assets.count),
-            catalogedAssetIDs: assets.map(\.id)
+            completedUnitCount: allAssets.count,
+            totalUnitCount: allAssets.count,
+            detail: catalogedDetail(allAssets.count),
+            catalogedAssetIDs: allAssets.map(\.id)
         ))
-
         guard previewPolicy == .generateImmediately else {
             return LibraryImportResult(
-                importedAssets: assets,
+                importedAssets: allAssets,
                 previewFailures: [],
                 skippedSourceFiles: skippedSourceFiles,
                 newAssetCount: newAssetCount,
                 existingAssetCount: existingAssetCount
             )
         }
-
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
             totalUnitCount: previewItems.count,
             detail: "Generating previews"
         ))
-
         let previewResult = try generatePreviews(
             for: previewItems,
             repository: repository,
@@ -352,7 +407,7 @@ public struct LibraryImportService: Sendable {
             progress: progress
         )
         return LibraryImportResult(
-            importedAssets: assets,
+            importedAssets: allAssets,
             previewFailures: previewResult.previewFailures,
             skippedSourceFiles: skippedSourceFiles,
             newAssetCount: newAssetCount,
@@ -636,4 +691,24 @@ final class IngestProgressCoalescer: @unchecked Sendable {
             return true
         }
     }
+}
+
+/// Thread-safe buffer for streaming scan → ingest. The scan runs in a
+/// background thread and appends files as they're discovered; the main flow
+/// polls the buffer and processes batches through ingest, so import starts
+/// before the scan finishes.
+final class StreamingScanBuffer: @unchecked Sendable {
+    let lock = NSLock()
+    var pendingFiles: [URL] = []
+    var scanSkippedFiles: [FolderScanSkippedFile] = []
+    var scanComplete = false
+    var scanError: Error?
+}
+
+/// Mutable counter captured in a @Sendable ingest progress closure. The
+/// closure is called synchronously from the same thread that updates the
+/// count, so no lock is needed — the @unchecked Sendable wrapper satisfies
+/// Swift 6's concurrency checker.
+final class ImportCumulativeCount: @unchecked Sendable {
+    var count = 0
 }

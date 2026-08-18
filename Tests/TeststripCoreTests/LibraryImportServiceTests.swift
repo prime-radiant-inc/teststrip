@@ -355,8 +355,10 @@ final class LibraryImportServiceTests: XCTestCase {
         }
 
         let updates = recorder.values()
-        let catalogingIndex = try XCTUnwrap(updates.firstIndex { $0.totalUnitCount == 250 })
-        let scanUpdates = updates[..<catalogingIndex]
+        // With streaming import, scan and ingest progress interleave. Scan
+        // updates always have totalUnitCount == nil; filter those to verify
+        // the scan coalescer still reports at the same count intervals.
+        let scanUpdates = updates.filter { $0.totalUnitCount == nil }
         XCTAssertEqual(scanUpdates.map(\.completedUnitCount), [0, 1, 100, 200, 250])
         XCTAssertEqual(scanUpdates.map(\.totalUnitCount), [nil, nil, nil, nil, nil])
     }

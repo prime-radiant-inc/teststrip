@@ -39,7 +39,7 @@ final class ImportSelectionModel: ObservableObject {
         self.duplicateURLs = duplicateURLs
         self.thumbnailCache = thumbnailCache
         self.thumbnailRenderer = thumbnailRenderer
-        self.selectedURLs = Set(entries.map(\.url))
+        self.selectedURLs = Set(entries.filter { !$0.isDuplicate }.map(\.url))
     }
 
     var filteredEntries: [ImportSelectionEntry] {

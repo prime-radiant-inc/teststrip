@@ -73,11 +73,12 @@ public struct IngestService: Sendable {
     public func files(
         for plan: IngestPlan,
         progress: FolderScanProgressHandler? = nil,
-        skipped: FolderScanSkippedFileHandler? = nil
+        skipped: FolderScanSkippedFileHandler? = nil,
+        fileCallback: ((URL) -> Void)? = nil
     ) throws -> [URL] {
         try Task.checkCancellation()
         try validate(plan: plan)
-        return try scanner.scan(root: plan.sourceRoot, progress: progress, skipped: skipped)
+        return try scanner.scan(root: plan.sourceRoot, progress: progress, skipped: skipped, fileCallback: fileCallback)
     }
 
     public func ingest(plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {

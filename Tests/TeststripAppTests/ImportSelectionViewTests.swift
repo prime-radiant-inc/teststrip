@@ -48,10 +48,11 @@ final class ImportSelectionViewTests: XCTestCase {
     }
 
     @MainActor
-    func testDefaultAllSelected() {
+    func testDefaultDeselectsDuplicates() {
         let entries = makeEntries(count: 3, duplicateIndices: [1])
         let model = ImportSelectionModel(entries: entries, duplicateURLs: [entries[1].url])
-        XCTAssertEqual(model.selectedURLs.count, 3, "all should be selected by default")
+        XCTAssertEqual(model.selectedURLs.count, 2, "duplicates should be deselected by default")
+        XCTAssertFalse(model.selectedURLs.contains(entries[1].url), "duplicate should not be selected")
     }
 
     @MainActor

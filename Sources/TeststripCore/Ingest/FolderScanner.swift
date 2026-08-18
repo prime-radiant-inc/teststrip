@@ -51,7 +51,8 @@ public struct FolderScanner: Sendable {
     public func scan(
         root: URL,
         progress: FolderScanProgressHandler? = nil,
-        skipped: FolderScanSkippedFileHandler? = nil
+        skipped: FolderScanSkippedFileHandler? = nil,
+        fileCallback: ((URL) -> Void)? = nil
     ) throws -> [URL] {
         let resolvedRoot = root.resolvingSymlinksInPath()
         guard let enumerator = FileManager.default.enumerator(
@@ -84,6 +85,7 @@ public struct FolderScanner: Sendable {
             if supportedExtensions.contains(fileExtension) {
                 let visibleURL = visibleURL(for: url, resolvedRoot: resolvedRoot, requestedRoot: root)
                 files.append(visibleURL)
+                fileCallback?(visibleURL)
                 progress?(FolderScanProgress(supportedFileCount: files.count, url: visibleURL))
             } else if let reason = Self.skipReason(forFileExtension: fileExtension) {
                 skipped?(FolderScanSkippedFile(
