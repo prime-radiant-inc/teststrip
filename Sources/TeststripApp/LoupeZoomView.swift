@@ -21,6 +21,24 @@ enum LoupeZoomRenderPolicy {
         guard let assetMaxPixelDimension else { return true }
         return assetMaxPixelDimension > cachedMaxPixelDimension
     }
+
+    /// Decides if original-resolution is needed at a continuous zoom scale:
+    /// when the displayed pixel demand exceeds what the cached preview level
+    /// can deliver without upscaling.
+    static func fullResolutionIsRequired(
+        cachedLevel: PreviewLevel?,
+        assetMaxPixelDimension: Int?,
+        displayScale: CGFloat,
+        loupeScale: CGFloat,
+        fittedDisplayWidth: CGFloat
+    ) -> Bool {
+        guard let cachedLevel else { return true }
+        guard let cachedMaxPixelDimension = cachedLevel.maxPixelDimension else { return false }
+        guard assetMaxPixelDimension != nil else { return true }
+        // Displayed width in points at the current zoom scale
+        let displayedWidth = fittedDisplayWidth * loupeScale
+        return displayedWidth > CGFloat(cachedMaxPixelDimension)
+    }
 }
 
 /// Image-relative point (0...1 on each axis) the zoomed loupe viewport is
