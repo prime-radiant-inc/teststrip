@@ -223,8 +223,12 @@ public struct LibraryImportService: Sendable {
             }
         )
         let sourceFiles = scannedSourceFiles.filter { !isPreviewCacheFile($0) }
+        // Resolve symlinks on both sides before comparing: ImportSourceSummary.scan
+        // and FolderScanner.scan may produce different URL representations for the
+        // same file (e.g. /var/folders/... vs /private/var/folders/... on macOS).
         let filteredFiles = selectedFiles.map { selected in
-            sourceFiles.filter { selected.contains($0) }
+            let resolvedSelected = Set(selected.map { $0.resolvingSymlinksInPath() })
+            return sourceFiles.filter { resolvedSelected.contains($0.resolvingSymlinksInPath()) }
         } ?? sourceFiles
         var skippedSourceFiles = scanSkippedFiles
             .filter { !isPreviewCacheFile($0.url) }
