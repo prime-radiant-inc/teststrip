@@ -39,11 +39,11 @@ Add these tests to `LoupeZoomGeometryTests.swift`:
 ```swift
 func testMaxScaleIsRatioOfActualToFitted() {
     // 4000x2000 image in 1000x800 viewport at displayScale 1:
-    // fitted = min(1000/4000, 800/2000) * 4000x2000 = 500x250
+    // fitted = min(1000/4000, 800/2000) * 4000x2000 = 1000x500
     // actual = 4000x2000
-    // maxScale = 4000/500 = 8.0
+    // maxScale = 4000/1000 = 4.0
     let g = makeGeometry(displayScale: 1)
-    XCTAssertEqual(g.maxScale, 8.0, accuracy: 0.001)
+    XCTAssertEqual(g.maxScale, 4.0, accuracy: 0.001)
 }
 
 func testDisplaySizeAtScale1IsFitted() {
@@ -58,39 +58,44 @@ func testDisplaySizeAtMaxScaleIsActualSize() {
 
 func testDisplaySizeAtIntermediateScale() {
     // scale 2.0 on 4000x2000 in 1000x800 at ds=1:
-    // fitted = 500x250, so displaySize(2.0) = 1000x500
+    // fitted = 1000x500, so displaySize(2.0) = 2000x1000
     let g = makeGeometry(displayScale: 1)
-    assertEqual(g.displaySize(for: 2.0), CGSize(width: 1000, height: 500))
+    assertEqual(g.displaySize(for: 2.0), CGSize(width: 2000, height: 1000))
 }
 
 func testOffsetScalesWithScale() {
     // At scale 1.0 (fitted), offset should be zero (image fills viewport)
     // At scale 2.0, focus center → offset 0 (centered)
-    // At scale 2.0, focus (1,1) → offset = (0.5-1)*1000, (0.5-1)*500 = -500, -250
+    // At scale 2.0, displaySize = 2000x1000 in viewport 1000x800
+    // focus (1,1) clamped: x: halfViewport=1000/2000/2=0.25 → clamp(1,0.25,0.75)=0.75
+    //                     y: halfViewport=800/1000/2=0.4 → clamp(1,0.4,0.6)=0.6
+    // offset = (0.5-0.75)*2000, (0.5-0.6)*1000 = -500, -100
     let g = makeGeometry(displayScale: 1)
     let centerOffset = g.offset(for: .center, scale: 2.0)
     assertEqual(centerOffset, .zero)
     let cornerOffset = g.offset(for: LoupeZoomFocus(x: 1, y: 1), scale: 2.0)
-    assertEqual(cornerOffset, CGSize(width: -500, height: -250))
+    assertEqual(cornerOffset, CGSize(width: -500, height: -100))
 }
 
 func testFocusPannedByScalesWithDisplaySize() {
-    // At scale 2.0, displaySize = 1000x500; pan 50pt right
-    // → focus delta = 50/1000 = 0.05 on x, 50/500 = 0.1 on y
+    // At scale 2.0, displaySize = 2000x1000; pan 50pt right and down
+    // → focus delta = 50/2000 = 0.025 on x, 50/1000 = 0.05 on y
+    // → 0.5-0.025=0.475 on x, 0.5-0.05=0.45 on y
+    // clamped: x: clamp(0.475, 0.25, 0.75)=0.475; y: clamp(0.45, 0.4, 0.6)=0.45
     let g = makeGeometry(displayScale: 1)
     let result = g.focus(pannedBy: CGSize(width: 50, height: 50), from: .center, scale: 2.0)
-    XCTAssertEqual(result.x, 0.45, accuracy: 0.001)
-    XCTAssertEqual(result.y, 0.4, accuracy: 0.001)
+    XCTAssertEqual(result.x, 0.475, accuracy: 0.001)
+    XCTAssertEqual(result.y, 0.45, accuracy: 0.001)
 }
 
 func testClampedFocusScalesWithDisplaySize() {
-    // At scale 2.0, displaySize = 1000x500 in viewport 1000x800
-    // x-axis: imageExtent(1000) == viewportExtent(1000) → center (0.5)
-    // y-axis: imageExtent(500) < viewportExtent(800) → center (0.5)
+    // At scale 2.0, displaySize = 2000x1000 in viewport 1000x800
+    // x-axis: imageExtent(2000) > viewportExtent(1000) → halfViewport=0.25, clamp(0,0.25,0.75)=0.25
+    // y-axis: imageExtent(1000) > viewportExtent(800) → halfViewport=0.4, clamp(0,0.4,0.6)=0.4
     let g = makeGeometry(displayScale: 1)
     let clamped = g.clampedFocus(LoupeZoomFocus(x: 0.0, y: 0.0), scale: 2.0)
-    XCTAssertEqual(clamped.x, 0.5, accuracy: 0.001)
-    XCTAssertEqual(clamped.y, 0.5, accuracy: 0.001)
+    XCTAssertEqual(clamped.x, 0.25, accuracy: 0.001)
+    XCTAssertEqual(clamped.y, 0.4, accuracy: 0.001)
 }
 ```
 
@@ -178,24 +183,24 @@ Add these to `AppModelTests.swift` near the existing loupe zoom tests (around li
 
 ```swift
 func testLoupeZoomScaleDefaultsToOne() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-default", size: 1)])
     XCTAssertEqual(model.loupeZoomScale, 1.0)
 }
 
 func testSetLoupeZoomScaleUpdatesScale() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-set", size: 1)])
     model.setLoupeZoomScale(3.5)
     XCTAssertEqual(model.loupeZoomScale, 3.5, accuracy: 0.001)
 }
 
 func testSetLoupeZoomScaleClampsToOne() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-clamp", size: 1)])
     model.setLoupeZoomScale(0.5)
     XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
 }
 
 func testZoomLoupePreservesScaleForPanning() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-pan", size: 1)])
     model.setLoupeZoomScale(4.0)
     XCTAssertEqual(model.loupeZoomScale, 4.0, accuracy: 0.001)
     // Pan: zoomLoupe(to:) changes focus but not scale
@@ -205,7 +210,7 @@ func testZoomLoupePreservesScaleForPanning() {
 }
 
 func testResetLoupeZoomResetsScaleToOne() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-reset", size: 1)])
     model.setLoupeZoomScale(4.0)
     model.zoomLoupe(to: .center)
     model.resetLoupeZoom()
@@ -214,14 +219,14 @@ func testResetLoupeZoomResetsScaleToOne() {
 }
 
 func testZoomLoupeToMaxSetsScaleAndFocus() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-max", size: 1)])
     model.zoomLoupeToMax(scale: 8.0, focus: .center)
     XCTAssertEqual(model.loupeZoomScale, 8.0, accuracy: 0.001)
     XCTAssertEqual(model.loupeZoomFocus, .center)
 }
 
 func testToggleLoupeZoomCyclesBetweenFitAndMax() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-toggle", size: 1)])
     // nil → zoom to max at center
     model.toggleLoupeZoom(maxScale: 8.0)
     XCTAssertEqual(model.loupeZoomScale, 8.0, accuracy: 0.001)
@@ -721,12 +726,12 @@ Add to `AppModelTests.swift`:
 
 ```swift
 func testGridExpandTransitionDefaultsToNil() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-default", size: 1)])
     XCTAssertNil(model.gridExpandTransition)
 }
 
 func testBeginGridExpandSetsTransition() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-begin", size: 1)])
     let frame = CGRect(x: 100, y: 200, width: 140, height: 100)
     let assetID = AssetID(rawValue: UUID())
     model.beginGridExpand(from: frame, assetID: assetID)
@@ -736,7 +741,7 @@ func testBeginGridExpandSetsTransition() {
 }
 
 func testEndGridExpandClearsTransition() {
-    let model = makeModel()
+    let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-end", size: 1)])
     let frame = CGRect(x: 100, y: 200, width: 140, height: 100)
     let assetID = AssetID(rawValue: UUID())
     model.beginGridExpand(from: frame, assetID: assetID)
