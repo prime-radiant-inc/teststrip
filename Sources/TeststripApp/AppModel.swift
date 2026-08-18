@@ -7536,9 +7536,7 @@ public final class AppModel {
     /// Sets a continuous zoom scale (clamped to >= 1.0).
     public func setLoupeZoomScale(_ scale: CGFloat) {
         loupeZoomScale = max(1.0, scale)
-        if loupeZoomScale == 1.0 {
-            loupeZoomFocus = nil
-        } else if loupeZoomFocus == nil {
+        if loupeZoomFocus == nil {
             loupeZoomFocus = .center
         }
     }

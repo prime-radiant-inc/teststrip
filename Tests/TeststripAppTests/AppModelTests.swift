@@ -3907,6 +3907,23 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-clamp", size: 1)])
         model.setLoupeZoomScale(0.5)
         XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        // R5: pinching back to 1.0 does NOT dismiss loupe — focus stays set
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+    }
+
+    func testSetLoupeZoomScaleAtOneKeepsFocus() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-scale-keep", size: 1)])
+        // Zoom in to 3x with a focus point
+        model.setLoupeZoomScale(3.0)
+        model.zoomLoupe(to: LoupeZoomFocus(x: 0.3, y: 0.7))
+        // Pinch back to 1.0 — focus must not be cleared (R5: does NOT dismiss loupe)
+        model.setLoupeZoomScale(1.0)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
+        XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.3, y: 0.7))
+        // resetLoupeZoom is the explicit dismiss path (called on pinch .onEnded at 1.0)
+        model.resetLoupeZoom()
+        XCTAssertNil(model.loupeZoomFocus)
+        XCTAssertEqual(model.loupeZoomScale, 1.0, accuracy: 0.001)
     }
 
     func testZoomLoupePreservesScaleForPanning() {

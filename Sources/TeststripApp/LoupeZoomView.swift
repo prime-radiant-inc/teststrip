@@ -238,7 +238,6 @@ struct LoupeZoomStageView: View {
     @State private var loadedURL: URL?
     @State private var loadedGeneration: Int?
     @State private var dragStartFocus: LoupeZoomFocus?
-    @GestureState private var pinchScale: CGFloat = 1.0
     @State private var pinchBaseScale: CGFloat = 1.0
 
     private var isZoomed: Bool {
@@ -380,6 +379,9 @@ struct LoupeZoomStageView: View {
             }
             .onEnded { _ in
                 pinchBaseScale = 1.0
+                if model.loupeZoomScale == 1.0 {
+                    model.resetLoupeZoom()
+                }
             }
     }
 
