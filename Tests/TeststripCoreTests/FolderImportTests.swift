@@ -1220,6 +1220,54 @@ final class FolderImportTests: XCTestCase {
         XCTAssertFalse(importedURLs.contains(photo2))
     }
 
+    func testSelectedFilesSurvivesSymlinkResolution() throws {
+        // Regression: ImportSourceSummary.scan uses FileManager.enumerator which
+        // returns resolved URLs (/private/var/...), while FolderScanner maps URLs
+        // back to the requested root's namespace (/var/...). The selectedFiles
+        // filter must resolve both sides to match.
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let realRoot = tmp.appendingPathComponent("symlink-real-root", isDirectory: true)
+        let realSub = realRoot.appendingPathComponent("sub", isDirectory: true)
+        try FileManager.default.createDirectory(at: realSub, withIntermediateDirectories: true)
+        let photo1 = realSub.appendingPathComponent("keep.jpg")
+        let photo2 = realSub.appendingPathComponent("skip.jpg")
+        try Data("jpg one".utf8).write(to: photo1)
+        try Data("jpg two".utf8).write(to: photo2)
+
+        let linkRoot = tmp.appendingPathComponent("symlink-link-root", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: linkRoot, withDestinationURL: realRoot)
+        // Scan root goes through the symlink — sub is a real dir, linkRoot is the symlink
+        let scanRoot = linkRoot.appendingPathComponent("sub", isDirectory: true)
+
+        let catalogDir = try TestDirectories.makeTemporaryDirectory(named: "symlink-catalog")
+        let database = try CatalogDatabase.open(at: catalogDir.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg", "png"]))
+        let previewCacheDir = try TestDirectories.makeTemporaryDirectory(named: "symlink-preview")
+        let importService = LibraryImportService(
+            ingestService: service,
+            previewCache: PreviewCache(root: previewCacheDir)
+        )
+
+        // selectedFiles uses the REAL path — as ImportSourceSummary.scan's enumerator would produce
+        // (the enumerator resolves /var → /private/var, producing resolved URLs)
+        let selectedFiles: Set<URL> = [photo1]
+        let result = try importService.addFolderInPlace(
+            scanRoot,
+            repository: repository,
+            previewPolicy: .deferGeneration,
+            selectedFiles: selectedFiles
+        )
+
+        XCTAssertEqual(result.importedAssets.count, 1)
+        let importedURLs = Set(result.importedAssets.map(\.originalURL))
+        XCTAssertTrue(importedURLs.contains { $0.resolvingSymlinksInPath() == photo1.resolvingSymlinksInPath() })
+
+        try? FileManager.default.removeItem(at: realRoot)
+        try? FileManager.default.removeItem(at: linkRoot)
+    }
+
     func testThumbnailPromotionSkipsMicroRender() throws {
         let dir = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion")
         let photo = dir.appendingPathComponent("photo.jpg")
