@@ -23,6 +23,7 @@ private struct ImportSelectionData: Identifiable {
     let fileURLs: [URL]
     var duplicateURLs: Set<URL>
     let thumbnailCache: PreIngestThumbnailCache
+    var confirmationDraft: ImportConfirmationDraft
 }
 
 struct LibraryGridView: View {
@@ -1899,7 +1900,8 @@ struct LibraryGridView: View {
             supportedExtensions: model.supportedExtensions,
             fileURLs: draft.sourceSummary.fileURLs,
             duplicateURLs: draft.dedupPreview?.duplicateURLs ?? [],
-            thumbnailCache: cache
+            thumbnailCache: cache,
+            confirmationDraft: draft
         )
         importSheet = .selection(data)
 
@@ -1941,16 +1943,18 @@ struct LibraryGridView: View {
             model: selectionModel,
             onConfirm: { selectedURLs in
                 // Return to confirmation sheet with selectedFiles set
-                if case .confirmation(var draft) = importSheet {
+                if case .selection(let d) = importSheet {
+                    var draft = d.confirmationDraft
                     draft.selectedFiles = selectedURLs
+                    draft.preIngestThumbnailCache = d.thumbnailCache
                     importSheet = .confirmation(draft)
                 } else {
                     importSheet = nil
                 }
             },
             onCancel: {
-                if case .confirmation(let draft) = importSheet {
-                    importSheet = .confirmation(draft)
+                if case .selection(let d) = importSheet {
+                    importSheet = .confirmation(d.confirmationDraft)
                 } else {
                     importSheet = nil
                 }
@@ -2848,7 +2852,8 @@ struct LibraryGridView: View {
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
                 autopilotAfterImport: draft.autopilotAfterImport,
-                selectedFiles: draft.selectedFiles
+                selectedFiles: draft.selectedFiles,
+                preIngestThumbnailCache: draft.preIngestThumbnailCache
             )
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
@@ -2863,7 +2868,8 @@ struct LibraryGridView: View {
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
                 autopilotAfterImport: draft.autopilotAfterImport,
-                selectedFiles: draft.selectedFiles
+                selectedFiles: draft.selectedFiles,
+                preIngestThumbnailCache: draft.preIngestThumbnailCache
             )
         }
     }
@@ -2901,14 +2907,16 @@ struct LibraryGridView: View {
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
         autopilotAfterImport: Bool = false,
-        selectedFiles: Set<URL>? = nil
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil
     ) {
         model.beginImportFolders(
             folderURLs,
             evaluateAfterImport: evaluateAfterImport,
             importNewOnly: importNewOnly,
             autopilotAfterImport: autopilotAfterImport,
-            selectedFiles: selectedFiles
+            selectedFiles: selectedFiles,
+            preIngestThumbnailCache: preIngestThumbnailCache
         )
     }
 
@@ -2934,7 +2942,8 @@ struct LibraryGridView: View {
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
         autopilotAfterImport: Bool = false,
-        selectedFiles: Set<URL>? = nil
+        selectedFiles: Set<URL>? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil
     ) {
         model.beginImportCard(
             source: source,
@@ -2944,7 +2953,8 @@ struct LibraryGridView: View {
             evaluateAfterImport: evaluateAfterImport,
             importNewOnly: importNewOnly,
             autopilotAfterImport: autopilotAfterImport,
-            selectedFiles: selectedFiles
+            selectedFiles: selectedFiles,
+            preIngestThumbnailCache: preIngestThumbnailCache
         )
     }
 

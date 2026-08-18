@@ -4,8 +4,12 @@ import Foundation
 /// Keyed by source file path; stores JPEGs in a temp directory.
 /// After import, thumbnails can be promoted to the permanent
 /// PreviewCache, avoiding re-rendering.
-public struct PreIngestThumbnailCache: Sendable {
+public struct PreIngestThumbnailCache: Sendable, Equatable {
     public let directoryURL: URL
+
+    public static func == (lhs: PreIngestThumbnailCache, rhs: PreIngestThumbnailCache) -> Bool {
+        lhs.directoryURL == rhs.directoryURL
+    }
 
     public init(directoryURL: URL? = nil) {
         if let directoryURL {
