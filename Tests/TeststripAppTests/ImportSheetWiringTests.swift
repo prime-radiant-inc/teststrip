@@ -44,62 +44,163 @@ final class ImportSheetWiringTests: XCTestCase {
         XCTAssertTrue(model.pendingImportFolders.isEmpty)
     }
 
-    // MARK: - Review & Select round-trip (Task 9 fix)
+    // MARK: - ImportSheetState state-machine (Task 9 fix #3)
 
-    /// Verifies the data flow that was broken in the initial Task 9:
-    /// `startImportSelection` captures the draft in `ImportSelectionData`,
-    /// and `onConfirm`/`onCancel` restore it. Since `ImportSheetState` and
-    /// `ImportSelectionData` are private to LibraryGridView.swift, we test
-    /// the round-trip through `ImportConfirmationDraft` fields directly —
-    /// this is the exact data path the sheet transition uses.
-    func testReviewSelectRoundTripPreservesSelectedFilesAndCache() {
-        var draft = ImportConfirmationDraft.folder(
-            URL(fileURLWithPath: "/tmp/import-sheet/test", isDirectory: true)
+    /// Helper: builds a minimal `ImportSelectionData` with a real draft
+    /// and cache, suitable for constructing `.selection(data)` sheet state.
+    private func makeSelectionData(
+        fileURLs: [URL] = []
+    ) -> (ImportSelectionData, PreIngestThumbnailCache) {
+        let sourceURL = URL(fileURLWithPath: "/tmp/import-sheet/test", isDirectory: true)
+        let summary = ImportSourceSummary(
+            sourceURL: sourceURL,
+            photoCount: fileURLs.count,
+            byteCount: 0,
+            reachedLimit: false,
+            reachedEntryLimit: false,
+            scannedEntryCount: fileURLs.count,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: fileURLs
+        )
+        let draft = ImportConfirmationDraft(
+            mode: .folder,
+            sourceURL: sourceURL,
+            additionalFolderURLs: [],
+            destinationRootURL: nil,
+            destinationUnavailableReason: nil,
+            sourceSummary: summary
         )
         let cache = PreIngestThumbnailCache()
-        draft.preIngestThumbnailCache = cache
-
-        // Simulate what startImportSelection stores: the draft is carried
-        // alongside the selection data so it can be restored on confirm.
-        // The old code lost the draft here (set importSheet = .selection(data)
-        // without carrying the draft), making onConfirm a no-op.
-        let carriedDraft = draft
-        let carriedCache = draft.preIngestThumbnailCache!
-
-        // Simulate onConfirm: restore the draft with selectedFiles set
-        let selectedURLs: Set<URL> = [
-            URL(fileURLWithPath: "/tmp/import-sheet/test/photo1.jpg"),
-            URL(fileURLWithPath: "/tmp/import-sheet/test/photo2.jpg")
-        ]
-        var restoredDraft = carriedDraft
-        restoredDraft.selectedFiles = selectedURLs
-        restoredDraft.preIngestThumbnailCache = carriedCache
-
-        // Assert the confirmation state is restored with the selection
-        XCTAssertEqual(restoredDraft.selectedFiles, selectedURLs)
-        XCTAssertEqual(restoredDraft.preIngestThumbnailCache, cache)
-        XCTAssertTrue(restoredDraft.hasSelectionFilter)
-        XCTAssertEqual(restoredDraft.selectedCount, 2)
+        let data = ImportSelectionData(
+            sourceURL: sourceURL,
+            supportedExtensions: ["jpg"],
+            fileURLs: fileURLs,
+            duplicateURLs: [],
+            thumbnailCache: cache,
+            confirmationDraft: draft
+        )
+        return (data, cache)
     }
 
-    /// Verifies that onCancel restores the original draft without losing it.
-    func testReviewSelectCancelRestoresOriginalDraft() {
-        var draft = ImportConfirmationDraft.folder(
-            URL(fileURLWithPath: "/tmp/import-sheet/test2", isDirectory: true)
-        )
-        let cache = PreIngestThumbnailCache()
-        draft.preIngestThumbnailCache = cache
+    /// Verifies that `confirmingSelection` on a `.selection` sheet transitions
+    /// to `.confirmation` with `selectedFiles` and `preIngestThumbnailCache` set.
+    /// This would FAIL against the original buggy code that checked
+    /// `if case .confirmation = importSheet` (false on `.selection`) and
+    /// fell through to `importSheet = nil`.
+    func testConfirmSelectionTransitionsToConfirmationWithSelectedFiles() {
+        let fileURLs = [
+            URL(fileURLWithPath: "/tmp/import-sheet/test/a.jpg"),
+            URL(fileURLWithPath: "/tmp/import-sheet/test/b.jpg"),
+            URL(fileURLWithPath: "/tmp/import-sheet/test/c.jpg")
+        ]
+        let (data, cache) = makeSelectionData(fileURLs: fileURLs)
+        let sheet: ImportSheetState = .selection(data)
+        let selectedURLs: Set<URL> = [fileURLs[0], fileURLs[2]]
 
-        // Simulate what startImportSelection stores
-        let carriedDraft = draft
+        let result = ImportSheetState.confirmingSelection(sheet, selectedURLs: selectedURLs)
 
-        // Simulate onCancel: restore the draft without modifying selectedFiles
-        let restoredDraft = carriedDraft
+        guard case .confirmation(let confirmedDraft) = result else {
+            XCTFail("Expected .confirmation, got \(String(describing: result))")
+            return
+        }
+        XCTAssertEqual(confirmedDraft.selectedFiles, selectedURLs)
+        XCTAssertEqual(confirmedDraft.preIngestThumbnailCache, cache)
+        XCTAssertTrue(confirmedDraft.hasSelectionFilter)
+        XCTAssertEqual(confirmedDraft.selectedCount, 2)
+    }
 
-        // Assert the confirmation state is restored, no selection applied
+    /// Verifies that `cancellingSelection` on a `.selection` sheet transitions
+    /// back to `.confirmation` with the original draft unchanged (no selection).
+    /// This would FAIL against the original buggy code that checked
+    /// `if case .confirmation = importSheet` and fell through to `importSheet = nil`.
+    func testCancelSelectionTransitionsToConfirmationWithOriginalDraft() {
+        let (data, _) = makeSelectionData()
+        let sheet: ImportSheetState = .selection(data)
+
+        let result = ImportSheetState.cancellingSelection(sheet)
+
+        guard case .confirmation(let restoredDraft) = result else {
+            XCTFail("Expected .confirmation, got \(String(describing: result))")
+            return
+        }
         XCTAssertNil(restoredDraft.selectedFiles)
-        XCTAssertEqual(restoredDraft.preIngestThumbnailCache, cache)
+        XCTAssertNil(restoredDraft.preIngestThumbnailCache)
         XCTAssertFalse(restoredDraft.hasSelectionFilter)
+    }
+
+    /// Verifies that `confirmingSelection` returns `nil` when the sheet is
+    /// already `.confirmation` (not `.selection`). This guards against stale
+    /// state — the transition should only fire from the selection sheet.
+    func testConfirmSelectionReturnsNilWhenSheetIsConfirmation() {
+        let sourceURL = URL(fileURLWithPath: "/tmp/import-sheet/test", isDirectory: true)
+        let summary = ImportSourceSummary(
+            sourceURL: sourceURL,
+            photoCount: 0,
+            byteCount: 0,
+            reachedLimit: false,
+            reachedEntryLimit: false,
+            scannedEntryCount: 0,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        let draft = ImportConfirmationDraft(
+            mode: .folder,
+            sourceURL: sourceURL,
+            additionalFolderURLs: [],
+            destinationRootURL: nil,
+            destinationUnavailableReason: nil,
+            sourceSummary: summary
+        )
+        let sheet: ImportSheetState = .confirmation(draft)
+
+        let result = ImportSheetState.confirmingSelection(
+            sheet,
+            selectedURLs: [URL(fileURLWithPath: "/tmp/x.jpg")]
+        )
+
+        XCTAssertNil(result)
+    }
+
+    /// Verifies that `cancellingSelection` returns `nil` when the sheet is
+    /// already `.confirmation` (not `.selection`).
+    func testCancelSelectionReturnsNilWhenSheetIsConfirmation() {
+        let sourceURL = URL(fileURLWithPath: "/tmp/import-sheet/test", isDirectory: true)
+        let summary = ImportSourceSummary(
+            sourceURL: sourceURL,
+            photoCount: 0,
+            byteCount: 0,
+            reachedLimit: false,
+            reachedEntryLimit: false,
+            scannedEntryCount: 0,
+            unavailableReason: nil,
+            blocksImport: false,
+            fileURLs: []
+        )
+        let draft = ImportConfirmationDraft(
+            mode: .folder,
+            sourceURL: sourceURL,
+            additionalFolderURLs: [],
+            destinationRootURL: nil,
+            destinationUnavailableReason: nil,
+            sourceSummary: summary
+        )
+        let sheet: ImportSheetState = .confirmation(draft)
+
+        let result = ImportSheetState.cancellingSelection(sheet)
+
+        XCTAssertNil(result)
+    }
+
+    /// Verifies that both transitions return `nil` when the sheet is `nil`
+    /// (dismissed or never presented).
+    func testSelectionTransitionsReturnNilWhenSheetIsNil() {
+        XCTAssertNil(ImportSheetState.confirmingSelection(
+            nil,
+            selectedURLs: [URL(fileURLWithPath: "/tmp/x.jpg")]
+        ))
+        XCTAssertNil(ImportSheetState.cancellingSelection(nil))
     }
 
     /// Verifies that PreIngestThumbnailCache is Equatable (required for

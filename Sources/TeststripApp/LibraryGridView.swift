@@ -4,7 +4,7 @@ import MapKit
 import SwiftUI
 import TeststripCore
 
-private enum ImportSheetState: Identifiable {
+enum ImportSheetState: Identifiable {
     case confirmation(ImportConfirmationDraft)
     case selection(ImportSelectionData)
 
@@ -14,9 +14,33 @@ private enum ImportSheetState: Identifiable {
         case .selection: return "selection"
         }
     }
+
+    /// Transition from `.selection` back to `.confirmation` with the selected
+    /// files and thumbnail cache applied. Returns `nil` if the current sheet
+    /// is not `.selection` (the guard clause that prevents acting on stale state).
+    static func confirmingSelection(
+        _ sheet: ImportSheetState?,
+        selectedURLs: Set<URL>
+    ) -> ImportSheetState? {
+        guard case .selection(let d) = sheet else { return nil }
+        var draft = d.confirmationDraft
+        draft.selectedFiles = selectedURLs
+        draft.preIngestThumbnailCache = d.thumbnailCache
+        return .confirmation(draft)
+    }
+
+    /// Transition from `.selection` back to `.confirmation` without applying
+    /// any selection (user cancelled). Returns `nil` if the current sheet is
+    /// not `.selection`.
+    static func cancellingSelection(
+        _ sheet: ImportSheetState?
+    ) -> ImportSheetState? {
+        guard case .selection(let d) = sheet else { return nil }
+        return .confirmation(d.confirmationDraft)
+    }
 }
 
-private struct ImportSelectionData: Identifiable {
+struct ImportSelectionData: Identifiable {
     let id = UUID()
     let sourceURL: URL
     let supportedExtensions: Set<String>
@@ -1942,22 +1966,13 @@ struct LibraryGridView: View {
         return ImportSelectionView(
             model: selectionModel,
             onConfirm: { selectedURLs in
-                // Return to confirmation sheet with selectedFiles set
-                if case .selection(let d) = importSheet {
-                    var draft = d.confirmationDraft
-                    draft.selectedFiles = selectedURLs
-                    draft.preIngestThumbnailCache = d.thumbnailCache
-                    importSheet = .confirmation(draft)
-                } else {
-                    importSheet = nil
-                }
+                importSheet = ImportSheetState.confirmingSelection(
+                    importSheet,
+                    selectedURLs: selectedURLs
+                )
             },
             onCancel: {
-                if case .selection(let d) = importSheet {
-                    importSheet = .confirmation(d.confirmationDraft)
-                } else {
-                    importSheet = nil
-                }
+                importSheet = ImportSheetState.cancellingSelection(importSheet)
             }
         )
     }
