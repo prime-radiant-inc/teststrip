@@ -2139,6 +2139,12 @@ public final class AppModel {
     // Continuous loupe zoom scale: 1.0 = aspect-fitted, >1.0 = zoomed.
     // Reset alongside loupeZoomFocus whenever the selection moves.
     public private(set) var loupeZoomScale: CGFloat = 1.0
+
+    /// Active grid→loupe pinch-expand transition, if any.
+    public private(set) var gridExpandTransition: GridExpandTransition?
+
+    /// Live pinch scale during a grid→loupe expand transition.
+    public private(set) var gridExpandPinchScale: CGFloat = 1.0
     // Detected-face targets for the current selection, reusing the Close-Ups
     // face-box pipeline (LoupeView populates this from on-demand detection).
     // Normalized (0...1) image-relative points, same space as LoupeZoomFocus.
@@ -7552,6 +7558,19 @@ public final class AppModel {
         loupeZoomFocus = nil
         loupeZoomScale = 1.0
         loupeFaceZoomIndex = nil
+    }
+
+    public func beginGridExpand(from frame: CGRect, assetID: AssetID) {
+        gridExpandTransition = GridExpandTransition(cellFrame: frame, assetID: assetID)
+    }
+
+    public func endGridExpand() {
+        gridExpandTransition = nil
+        gridExpandPinchScale = 1.0
+    }
+
+    public func setGridExpandPinchScale(_ scale: CGFloat) {
+        gridExpandPinchScale = scale
     }
 
     /// Reuses the Close-Ups face-box pipeline's detections as zoom targets

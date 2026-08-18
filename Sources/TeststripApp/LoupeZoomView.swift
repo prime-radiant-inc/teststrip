@@ -56,6 +56,17 @@ public struct LoupeZoomFocus: Equatable, Sendable {
     public static let center = LoupeZoomFocus(x: 0.5, y: 0.5)
 }
 
+/// Frame and asset for a grid→loupe pinch-expand transition.
+public struct GridExpandTransition: Equatable, Sendable {
+    public var cellFrame: CGRect
+    public var assetID: AssetID
+
+    public init(cellFrame: CGRect, assetID: AssetID) {
+        self.cellFrame = cellFrame
+        self.assetID = assetID
+    }
+}
+
 /// Pure geometry for the loupe's 1:1 pixel zoom: how large the image draws,
 /// how far it may pan, and how clicks and drags map onto the zoom focus.
 struct LoupeZoomGeometry: Equatable {

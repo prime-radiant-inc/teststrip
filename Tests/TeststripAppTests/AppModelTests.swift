@@ -21682,6 +21682,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(conflicts.first?.assetID, assetID)
         XCTAssertEqual(conflicts.first?.displayName, "IMG_0001")
     }
+
+    func testGridExpandTransitionDefaultsToNil() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-default", size: 1)])
+        XCTAssertNil(model.gridExpandTransition)
+    }
+
+    func testBeginGridExpandSetsTransition() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-begin", size: 1)])
+        let frame = CGRect(x: 100, y: 200, width: 140, height: 100)
+        let assetID = AssetID(rawValue: UUID().uuidString)
+        model.beginGridExpand(from: frame, assetID: assetID)
+        XCTAssertNotNil(model.gridExpandTransition)
+        XCTAssertEqual(model.gridExpandTransition?.cellFrame, frame)
+        XCTAssertEqual(model.gridExpandTransition?.assetID, assetID)
+    }
+
+    func testEndGridExpandClearsTransition() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "grid-expand-end", size: 1)])
+        let frame = CGRect(x: 100, y: 200, width: 140, height: 100)
+        let assetID = AssetID(rawValue: UUID().uuidString)
+        model.beginGridExpand(from: frame, assetID: assetID)
+        model.endGridExpand()
+        XCTAssertNil(model.gridExpandTransition)
+    }
 }
 
 private extension WorkerCommand {
