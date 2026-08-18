@@ -206,6 +206,7 @@ private struct ThumbnailCell: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(entry.url.lastPathComponent)
         .onAppear { onAppear() }
     }
 }

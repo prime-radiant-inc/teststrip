@@ -1925,6 +1925,7 @@ private struct WorkerImportContext {
     var didAccessDestination: Bool
     var didAccessSecondCopy: Bool
     var displayedCatalogedAssetID: AssetID?
+    var preIngestThumbnailCache: PreIngestThumbnailCache?
 }
 
 private struct MetadataSyncStateSnapshot {
@@ -11003,6 +11004,7 @@ public final class AppModel {
         source: URL,
         destinationRoot: URL?,
         secondCopyDestination: URL? = nil,
+        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         command: WorkerCommand
     ) {
         guard let workerSupervisor else { return }
@@ -11041,7 +11043,8 @@ public final class AppModel {
             secondCopyDestination: secondCopyDestination,
             didAccessSource: didAccessSource,
             didAccessDestination: didAccessDestination,
-            didAccessSecondCopy: didAccessSecondCopy
+            didAccessSecondCopy: didAccessSecondCopy,
+            preIngestThumbnailCache: preIngestThumbnailCache
         )
         let item = BackgroundWorkItem(
             id: itemID,
@@ -11061,6 +11064,7 @@ public final class AppModel {
             stopAccessingWorkerImportResources(context)
             statusMessage = nil
             errorMessage = error.localizedDescription
+            preIngestThumbnailCache?.cleanup()
         }
     }
 
@@ -11388,6 +11392,9 @@ public final class AppModel {
         }
         defer {
             stopAccessingWorkerImportResources(context)
+            if pendingImportFolders.isEmpty && workerImportContextsByItemID.isEmpty {
+                context.preIngestThumbnailCache?.cleanup()
+            }
         }
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
@@ -11442,6 +11449,9 @@ public final class AppModel {
                         destinationRoot: context.destinationRoot,
                         error: TeststripError.io(item.detail)
                     )
+                }
+                if pendingImportFolders.isEmpty && workerImportContextsByItemID.isEmpty {
+                    context.preIngestThumbnailCache?.cleanup()
                 }
             }
             if item.status == .failed {
@@ -14360,6 +14370,7 @@ public final class AppModel {
             enqueueWorkerImport(
                 source: folderURL,
                 destinationRoot: nil,
+                preIngestThumbnailCache: preIngestThumbnailCache,
                 command: .importFolder(
                     root: folderURL,
                     duplicateHandling: duplicateHandling,
@@ -14394,6 +14405,9 @@ public final class AppModel {
         Task { @MainActor [weak self] in
             defer {
                 self?.stopAccessingImportResource(folderURL, didAccess: didAccess)
+                if self?.pendingImportFolders.isEmpty ?? true {
+                    preIngestThumbnailCache?.cleanup()
+                }
             }
             do {
                 let output = try await task.value
@@ -14472,6 +14486,7 @@ public final class AppModel {
                source: source,
                destinationRoot: destinationRoot,
                secondCopyDestination: secondCopyDestination,
+               preIngestThumbnailCache: preIngestThumbnailCache,
                command: .importCard(
                    source: source,
                    destinationRoot: destinationRoot,
@@ -14535,6 +14550,7 @@ public final class AppModel {
                 if let secondCopyDestination {
                     self?.stopAccessingImportResource(secondCopyDestination, didAccess: didAccessSecondCopy)
                 }
+                preIngestThumbnailCache?.cleanup()
             }
             do {
                 let output = try await task.value

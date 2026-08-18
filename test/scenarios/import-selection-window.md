@@ -238,19 +238,6 @@ find "${TMPDIR:-/tmp}" -maxdepth 1 -name "teststrip-pre-ingest-*" -type d 2>/dev
 ```
 
 ## Sharp edges
-- **ThumbnailCell has no accessibility label.** `ThumbnailCell`
-  (`ImportSelectionView.swift:161-210`) uses `.buttonStyle(.plain)` with no
-  `.accessibilityLabel()` modifier. The AX label may be empty or derived from
-  the system image name ("checkmark.circle.fill" / "circle"). Use
-  `ax_drive.sh find --role AXButton` to discover labels at runtime, or add
-  `.accessibilityLabel(entry.url.lastPathComponent)` to ThumbnailCell for
-  reliable per-cell AX driving.
-- **Temp cache cleanup is not wired.** `PreIngestThumbnailCache.cleanup()`
-  (`PreIngestThumbnailCache.swift:58`) is defined but never called in the
-  import flow — `confirmImport` (`LibraryGridView.swift:2859-2872`) threads the
-  cache to `importFolders` but does not call `cleanup()` afterward. The temp
-  directory at `$TMPDIR/teststrip-pre-ingest-<UUID>/` persists after import.
-  The Step 7 cleanup assertion will fail until cleanup is wired.
 - **Re-encoded fixture JPEGs.** The fixture uses `sips -s formatOptions 70` to
   re-encode smoke originals at 70% quality, producing different bytes and
   content hashes. Do not use `cp`/`copyItem` — the copies would be
@@ -280,6 +267,11 @@ to `selectedFiles` (`LibraryImportService.swift:226-228`) and promotes temp
 micro thumbnails to the permanent `PreviewCache`
 (`LibraryImportService.swift:388-406`). The catalog SQL queries and
 `preview_generation_queue` schema were verified against
-`CatalogMigrations.swift:41-49`. The temp cache cleanup gap
-(`PreIngestThumbnailCache.cleanup()` never called) and the ThumbnailCell
-accessibility label gap are documented in Sharp edges above.
+`CatalogMigrations.swift:41-49`. `PreIngestThumbnailCache.cleanup()` is wired
+into all import completion paths: non-worker folder import (`defer` in
+`beginImportFolder`'s Task, guarded by `pendingImportFolders.isEmpty`), non-worker
+card import (`defer` in `beginImportCard`'s Task), and worker imports (stored in
+`WorkerImportContext`, cleaned up in `handleWorkerImportCompleted` and
+`releaseInactiveWorkerImportContexts` when no pending folders or active worker
+contexts remain). `ThumbnailCell` carries
+`.accessibilityLabel(entry.url.lastPathComponent)` for per-cell AX driving.
