@@ -1980,13 +1980,29 @@ public enum MetadataSyncConflictSidecarMetadataState: Equatable {
     case unreadable
 }
 
-struct PendingImportFolder: Sendable {
-    let url: URL
-    let evaluateAfterImport: Bool
-    let importNewOnly: Bool
-    let autopilotAfterImport: Bool
-    let selectedFiles: Set<URL>?
-    let preIngestThumbnailCache: PreIngestThumbnailCache?
+public struct PendingImportFolder: Sendable {
+    public let url: URL
+    public let evaluateAfterImport: Bool
+    public let importNewOnly: Bool
+    public let autopilotAfterImport: Bool
+    public let selectedFiles: Set<URL>?
+    public let preIngestThumbnailCache: PreIngestThumbnailCache?
+
+    public init(
+        url: URL,
+        evaluateAfterImport: Bool,
+        importNewOnly: Bool,
+        autopilotAfterImport: Bool,
+        selectedFiles: Set<URL>?,
+        preIngestThumbnailCache: PreIngestThumbnailCache?
+    ) {
+        self.url = url
+        self.evaluateAfterImport = evaluateAfterImport
+        self.importNewOnly = importNewOnly
+        self.autopilotAfterImport = autopilotAfterImport
+        self.selectedFiles = selectedFiles
+        self.preIngestThumbnailCache = preIngestThumbnailCache
+    }
 }
 
 @Observable
@@ -2549,7 +2565,7 @@ public final class AppModel {
 
     // Folders queued for sequential import when the user selects multiple directories.
     @ObservationIgnored
-    private var pendingImportFolders: [PendingImportFolder] = []
+    public private(set) var pendingImportFolders: [PendingImportFolder] = []
 
     @ObservationIgnored
     private var displayedLocalImportCatalogedAssetID: AssetID?
@@ -3196,6 +3212,12 @@ public final class AppModel {
 
     public var diagnosticsReportText: String {
         AppDiagnosticsReport.text(for: diagnosticsSnapshot)
+    }
+
+    /// The set of file extensions the catalog can import. Drives the
+    /// pre-ingest selection window's file scan and dedup preview.
+    public var supportedExtensions: Set<String> {
+        ImageIODecodeProvider.catalogableExtensions
     }
 
     public var isImporting: Bool {
@@ -14638,6 +14660,7 @@ public final class AppModel {
         )
     }
 
+    @MainActor
     func scanDedupPreview(
         sourceURL: URL,
         supportedExtensions: Set<String>

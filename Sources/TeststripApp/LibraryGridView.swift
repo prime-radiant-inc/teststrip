@@ -4,6 +4,27 @@ import MapKit
 import SwiftUI
 import TeststripCore
 
+private enum ImportSheetState: Identifiable {
+    case confirmation(ImportConfirmationDraft)
+    case selection(ImportSelectionData)
+
+    var id: String {
+        switch self {
+        case .confirmation: return "confirmation"
+        case .selection: return "selection"
+        }
+    }
+}
+
+private struct ImportSelectionData: Identifiable {
+    let id = UUID()
+    let sourceURL: URL
+    let supportedExtensions: Set<String>
+    let fileURLs: [URL]
+    var duplicateURLs: Set<URL>
+    let thumbnailCache: PreIngestThumbnailCache
+}
+
 struct LibraryGridView: View {
     var model: AppModel
     @State private var isSavingSearch = false
@@ -52,7 +73,7 @@ struct LibraryGridView: View {
     @State private var isReviewingImportCardPath = false
     @State private var importPathReviewID: UUID?
     @State private var importCardPathReviewID: UUID?
-    @State private var importConfirmationDraft: ImportConfirmationDraft?
+    @State private var importSheet: ImportSheetState?
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
     @State private var gridFocusRequest = 0
@@ -118,13 +139,14 @@ struct LibraryGridView: View {
                 rejectRelocationPreflight: $rejectRelocationPreflight,
                 isShowingImportPathSheet: $isShowingImportPathSheet,
                 isShowingImportCardPathSheet: $isShowingImportCardPathSheet,
-                importConfirmationDraft: $importConfirmationDraft,
+                importSheet: $importSheet,
                 importIssueReview: $importIssueReview,
                 isShowingSourceReconnectSheet: $isShowingSourceReconnectSheet,
                 rejectRelocationSheet: rejectRelocationSheet,
                 importPathSheet: { importPathSheet },
                 importCardPathSheet: { importCardPathSheet },
                 importConfirmationSheet: importConfirmationSheet,
+                importSelectionSheet: importSelectionSheet,
                 importIssueReviewSheet: importIssueReviewSheet,
                 sourceReconnectSheet: { sourceReconnectSheet }
             ))
@@ -229,18 +251,15 @@ struct LibraryGridView: View {
                     } label: {
                         Label("Folder…", systemImage: "square.and.arrow.down")
                     }
-                    .disabled(isImporting)
 
                     Button {
                         showPrimaryCardImportRoute()
                     } label: {
                         Label("From Card…", systemImage: "externaldrive.badge.plus")
                     }
-                    .disabled(isImporting)
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
-                .disabled(isImporting)
                 .help("Import photos from a folder or a memory card")
             }
         }
@@ -255,7 +274,6 @@ struct LibraryGridView: View {
                 } label: {
                     Label("Import Path", systemImage: "folder.badge.plus")
                 }
-                .disabled(isImporting)
                 .help("Import a folder by typed path (dev/automation)")
             }
         }
@@ -1727,7 +1745,7 @@ struct LibraryGridView: View {
             width: 480,
             primaryLabel: draft.primaryActionTitle,
             isPrimaryEnabled: !isImporting && draft.canStartImport,
-            cancel: { importConfirmationDraft = nil },
+            cancel: { importSheet = nil },
             primary: { confirmImport(draft) },
             content: {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1773,14 +1791,27 @@ struct LibraryGridView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 importPlanView(steps: draft.planSteps, width: 440)
+
+                Button("Review & Select…") {
+                    startImportSelection(for: draft)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 6)
             },
             options: {
                 if draft.mode == .card {
                     Toggle(
                         "Organize into dated folders (YYYY/YYYY-MM-DD)",
                         isOn: Binding(
-                            get: { (importConfirmationDraft?.destinationPolicy ?? .capturedDate) == .capturedDate },
-                            set: { importConfirmationDraft?.destinationPolicy = $0 ? .capturedDate : .flat }
+                            get: {
+                                guard case .confirmation(let d) = importSheet else { return true }
+                                return d.destinationPolicy == .capturedDate
+                            },
+                            set: { isCaptured in
+                                guard case .confirmation(var d) = importSheet else { return }
+                                d.destinationPolicy = isCaptured ? .capturedDate : .flat
+                                importSheet = .confirmation(d)
+                            }
                         )
                     )
                     .toggleStyle(.checkbox)
@@ -1793,7 +1824,10 @@ struct LibraryGridView: View {
                         .font(.caption)
                         if draft.secondCopyRootURL != nil {
                             Button("Remove second copy") {
-                                importConfirmationDraft?.setSecondCopyRoot(nil)
+                                if case .confirmation(var d) = importSheet {
+                                    d.setSecondCopyRoot(nil)
+                                    importSheet = .confirmation(d)
+                                }
                             }
                             .font(.caption)
                         }
@@ -1802,8 +1836,15 @@ struct LibraryGridView: View {
                 Toggle(
                     "Import new photos only",
                     isOn: Binding(
-                        get: { importConfirmationDraft?.importNewOnly ?? true },
-                        set: { importConfirmationDraft?.importNewOnly = $0 }
+                        get: {
+                            guard case .confirmation(let d) = importSheet else { return true }
+                            return d.importNewOnly
+                        },
+                        set: { newValue in
+                            guard case .confirmation(var d) = importSheet else { return }
+                            d.importNewOnly = newValue
+                            importSheet = .confirmation(d)
+                        }
                     )
                 )
                 .toggleStyle(.checkbox)
@@ -1812,8 +1853,15 @@ struct LibraryGridView: View {
                 Toggle(
                     "Read imported frames automatically",
                     isOn: Binding(
-                        get: { importConfirmationDraft?.evaluateAfterImport ?? true },
-                        set: { importConfirmationDraft?.evaluateAfterImport = $0 }
+                        get: {
+                            guard case .confirmation(let d) = importSheet else { return true }
+                            return d.evaluateAfterImport
+                        },
+                        set: { newValue in
+                            guard case .confirmation(var d) = importSheet else { return }
+                            d.evaluateAfterImport = newValue
+                            importSheet = .confirmation(d)
+                        }
                     )
                 )
                 .toggleStyle(.checkbox)
@@ -1822,14 +1870,90 @@ struct LibraryGridView: View {
                 Toggle(
                     "Autopilot cull after reading",
                     isOn: Binding(
-                        get: { importConfirmationDraft?.autopilotAfterImport ?? false },
-                        set: { importConfirmationDraft?.autopilotAfterImport = $0 }
+                        get: {
+                            guard case .confirmation(let d) = importSheet else { return false }
+                            return d.autopilotAfterImport
+                        },
+                        set: { newValue in
+                            guard case .confirmation(var d) = importSheet else { return }
+                            d.autopilotAfterImport = newValue
+                            importSheet = .confirmation(d)
+                        }
                     )
                 )
                 .toggleStyle(.checkbox)
                 .font(.caption)
-                .disabled(!(importConfirmationDraft?.evaluateAfterImport ?? true))
+                .disabled({
+                    guard case .confirmation(let d) = importSheet else { return true }
+                    return !d.evaluateAfterImport
+                }())
                 .help("Once the imported reads finish, Autopilot proposes keeps and cuts for review. Proposals stay provisional; nothing is written until you commit.")
+            }
+        )
+    }
+
+    private func startImportSelection(for draft: ImportConfirmationDraft) {
+        let cache = PreIngestThumbnailCache()
+        let data = ImportSelectionData(
+            sourceURL: draft.sourceURL,
+            supportedExtensions: model.supportedExtensions,
+            fileURLs: draft.sourceSummary.fileURLs,
+            duplicateURLs: draft.dedupPreview?.duplicateURLs ?? [],
+            thumbnailCache: cache
+        )
+        importSheet = .selection(data)
+
+        // Background: render thumbnails + scan for duplicates
+        Task { @MainActor in
+            let renderer = PreIngestThumbnailRenderer()
+            try? await Task.detached {
+                try renderer.renderBatch(data.fileURLs, cache: cache)
+            }.value
+
+            let dedup = await model.scanDedupPreview(
+                sourceURL: data.sourceURL,
+                supportedExtensions: data.supportedExtensions
+            )
+            if let dedup {
+                if case .selection(var d) = importSheet {
+                    d.duplicateURLs = dedup.duplicateURLs
+                    importSheet = .selection(d)
+                }
+            }
+        }
+    }
+
+    private func importSelectionSheet(_ data: ImportSelectionData) -> some View {
+        let entries = data.fileURLs.map { url in
+            ImportSelectionEntry(
+                url: url,
+                byteSize: 0,
+                isDuplicate: data.duplicateURLs.contains(url)
+            )
+        }
+        let selectionModel = ImportSelectionModel(
+            entries: entries,
+            duplicateURLs: data.duplicateURLs,
+            thumbnailCache: data.thumbnailCache
+        )
+
+        return ImportSelectionView(
+            model: selectionModel,
+            onConfirm: { selectedURLs in
+                // Return to confirmation sheet with selectedFiles set
+                if case .confirmation(var draft) = importSheet {
+                    draft.selectedFiles = selectedURLs
+                    importSheet = .confirmation(draft)
+                } else {
+                    importSheet = nil
+                }
+            },
+            onCancel: {
+                if case .confirmation(let draft) = importSheet {
+                    importSheet = .confirmation(draft)
+                } else {
+                    importSheet = nil
+                }
             }
         )
     }
@@ -2502,6 +2626,11 @@ struct LibraryGridView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
+                if !model.pendingImportFolders.isEmpty {
+                    Text("Next: \(model.pendingImportFolders.count) folder\(model.pendingImportFolders.count == 1 ? "" : "s") queued")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Button {
                     cancelImport()
                 } label: {
@@ -2613,7 +2742,7 @@ struct LibraryGridView: View {
     private func presentImportConfirmation(_ draft: ImportConfirmationDraft) {
         var draft = draft
         draft.autopilotAfterImport = model.autopilotEnabled
-        importConfirmationDraft = draft
+        importSheet = .confirmation(draft)
     }
 
     private func showImportPathSheet() {
@@ -2709,7 +2838,7 @@ struct LibraryGridView: View {
     }
 
     private func confirmImport(_ draft: ImportConfirmationDraft) {
-        importConfirmationDraft = nil
+        importSheet = nil
         switch draft.mode {
         case .folder:
             FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
@@ -2718,7 +2847,8 @@ struct LibraryGridView: View {
                 allURLs,
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
-                autopilotAfterImport: draft.autopilotAfterImport
+                autopilotAfterImport: draft.autopilotAfterImport,
+                selectedFiles: draft.selectedFiles
             )
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
@@ -2732,14 +2862,17 @@ struct LibraryGridView: View {
                 secondCopyDestination: draft.secondCopyRootURL,
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
-                autopilotAfterImport: draft.autopilotAfterImport
+                autopilotAfterImport: draft.autopilotAfterImport,
+                selectedFiles: draft.selectedFiles
             )
         }
     }
 
     private func chooseImportSecondCopyDestination() {
         guard let secondCopyRootURL = FolderSelectionPanel.chooseCardSecondCopyFolder() else { return }
-        importConfirmationDraft?.setSecondCopyRoot(secondCopyRootURL)
+        guard case .confirmation(var draft) = importSheet else { return }
+        draft.setSecondCopyRoot(secondCopyRootURL)
+        importSheet = .confirmation(draft)
     }
 
     // Redirects a single import to a different destination without touching
@@ -2747,7 +2880,9 @@ struct LibraryGridView: View {
     // the only thing mutated here.
     private func chooseImportDestinationOverride() {
         guard let destinationRootURL = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
-        importConfirmationDraft?.setDestinationRoot(destinationRootURL)
+        guard case .confirmation(var draft) = importSheet else { return }
+        draft.setDestinationRoot(destinationRootURL)
+        importSheet = .confirmation(draft)
     }
 
     private func reconnectSourceRoot() {
@@ -2765,13 +2900,15 @@ struct LibraryGridView: View {
         _ folderURLs: [URL],
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
-        autopilotAfterImport: Bool = false
+        autopilotAfterImport: Bool = false,
+        selectedFiles: Set<URL>? = nil
     ) {
         model.beginImportFolders(
             folderURLs,
             evaluateAfterImport: evaluateAfterImport,
             importNewOnly: importNewOnly,
-            autopilotAfterImport: autopilotAfterImport
+            autopilotAfterImport: autopilotAfterImport,
+            selectedFiles: selectedFiles
         )
     }
 
@@ -2796,7 +2933,8 @@ struct LibraryGridView: View {
         secondCopyDestination: URL?,
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
-        autopilotAfterImport: Bool = false
+        autopilotAfterImport: Bool = false,
+        selectedFiles: Set<URL>? = nil
     ) {
         model.beginImportCard(
             source: source,
@@ -2805,7 +2943,8 @@ struct LibraryGridView: View {
             secondCopyDestination: secondCopyDestination,
             evaluateAfterImport: evaluateAfterImport,
             importNewOnly: importNewOnly,
-            autopilotAfterImport: autopilotAfterImport
+            autopilotAfterImport: autopilotAfterImport,
+            selectedFiles: selectedFiles
         )
     }
 
@@ -3519,13 +3658,14 @@ private struct LibrarySheetPresentations<
     ImportPathContent: View,
     ImportCardPathContent: View,
     ImportConfirmationContent: View,
+    ImportSelectionContent: View,
     ImportIssueReviewContent: View,
     SourceReconnectContent: View
 >: ViewModifier {
     @Binding var rejectRelocationPreflight: RejectRelocationPreflight?
     @Binding var isShowingImportPathSheet: Bool
     @Binding var isShowingImportCardPathSheet: Bool
-    @Binding var importConfirmationDraft: ImportConfirmationDraft?
+    @Binding var importSheet: ImportSheetState?
     @Binding var importIssueReview: ImportIssueReview?
     @Binding var isShowingSourceReconnectSheet: Bool
 
@@ -3533,6 +3673,7 @@ private struct LibrarySheetPresentations<
     let importPathSheet: () -> ImportPathContent
     let importCardPathSheet: () -> ImportCardPathContent
     let importConfirmationSheet: (ImportConfirmationDraft) -> ImportConfirmationContent
+    let importSelectionSheet: (ImportSelectionData) -> ImportSelectionContent
     let importIssueReviewSheet: (ImportIssueReview) -> ImportIssueReviewContent
     let sourceReconnectSheet: () -> SourceReconnectContent
 
@@ -3547,8 +3688,13 @@ private struct LibrarySheetPresentations<
             .sheet(isPresented: $isShowingImportCardPathSheet) {
                 importCardPathSheet()
             }
-            .sheet(item: $importConfirmationDraft) { draft in
-                importConfirmationSheet(draft)
+            .sheet(item: $importSheet) { state in
+                switch state {
+                case .confirmation(let draft):
+                    importConfirmationSheet(draft)
+                case .selection(let data):
+                    importSelectionSheet(data)
+                }
             }
             .sheet(item: $importIssueReview) { review in
                 importIssueReviewSheet(review)
