@@ -56,7 +56,10 @@ public enum WorkerCommand: Equatable, Sendable {
     public var silenceTimeout: TimeInterval {
         switch self {
         case .importFolder, .importCard:
-            return 1800
+            // No hard ceiling on imports — the silence watchdog (reset by
+            // heartbeats every 15 seconds) catches genuine freezes. A wall-
+            // clock limit kills long but healthy imports of large libraries.
+            return .greatestFiniteMagnitude
         default:
             return 120
         }

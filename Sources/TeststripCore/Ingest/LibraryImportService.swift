@@ -251,7 +251,8 @@ public struct LibraryImportService: Sendable {
         let existingPreviewStates = try existingGridPreviewStates(
             for: sourceFiles,
             plan: plan,
-            repository: repository
+            repository: repository,
+            progress: progress
         )
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
@@ -445,10 +446,22 @@ public struct LibraryImportService: Sendable {
     private func existingGridPreviewStates(
         for sourceFiles: [URL],
         plan: IngestPlan,
-        repository: CatalogRepository
+        repository: CatalogRepository,
+        progress: LibraryImportProgressHandler? = nil
     ) throws -> [AssetID: ExistingGridPreviewState] {
         var states: [AssetID: ExistingGridPreviewState] = [:]
-        for sourceFile in sourceFiles {
+        let heartbeatCoalescer = ScanProgressCoalescer(
+            interval: Int.max,
+            heartbeat: Self.ingestProgressHeartbeat
+        )
+        for (index, sourceFile) in sourceFiles.enumerated() {
+            if heartbeatCoalescer.shouldReportScanCount(index) {
+                progress?(LibraryImportProgress(
+                    completedUnitCount: index,
+                    totalUnitCount: sourceFiles.count,
+                    detail: "Checking existing previews: \(index) of \(sourceFiles.count)"
+                ))
+            }
             let originalURL = try ingestService.originalURL(for: sourceFile, plan: plan)
             guard let existingAsset = try repository.asset(originalURL: originalURL) else {
                 continue
@@ -598,15 +611,24 @@ final class IngestProgressCoalescer: @unchecked Sendable {
 
     func shouldReport(completedCount: Int, totalCount: Int) -> Bool {
         lock.withLock {
+            let currentTime = now()
+            let heartbeatElapsed = currentTime.timeIntervalSince(lastReportedAt) >= heartbeat
+            // Heartbeat fires even when count hasn't changed — this keeps the
+            // worker stall detector alive during slow per-file operations
+            // (large file copies, fingerprinting) where the count is stalled
+            // on a single item for a long time.
+            if heartbeatElapsed {
+                lastReportedCount = completedCount
+                lastReportedAt = currentTime
+                return true
+            }
             guard completedCount != lastReportedCount else {
                 return false
             }
-            let currentTime = now()
             let countConditionMet = totalCount <= eagerLimit ||
                 completedCount.isMultiple(of: interval) ||
                 completedCount == totalCount
-            let heartbeatElapsed = currentTime.timeIntervalSince(lastReportedAt) >= heartbeat
-            guard countConditionMet || heartbeatElapsed else {
+            guard countConditionMet else {
                 return false
             }
             lastReportedCount = completedCount

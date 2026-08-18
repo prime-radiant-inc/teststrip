@@ -2,12 +2,12 @@ import XCTest
 @testable import TeststripCore
 
 // These coalescers gate how often import/scan progress is reported to the
-// WorkerSupervisor, which resets its 120s-silence watchdog on every progress
+// WorkerSupervisor, which resets its silence watchdog on every progress
 // event (see WorkerSupervisorTests.testProgressWorkerEventReschedulesCommandTimeout).
-// Count-based coalescing alone can go far longer than 120s between reports on
+// Count-based coalescing alone can go far longer than the watchdog window on
 // a slow phase (e.g. copying files 11-500 off a card), which trips the
 // watchdog on a healthy import. The heartbeat guarantees a report at least
-// every `heartbeat` seconds whenever the count has actually advanced.
+// every `heartbeat` seconds, even when the count hasn't changed.
 final class ProgressCoalescerTests: XCTestCase {
     func testIngestProgressCoalescerSuppressesReportsWithinHeartbeatWindow() {
         let clock = MutableClock()
@@ -48,7 +48,7 @@ final class ProgressCoalescerTests: XCTestCase {
         XCTAssertTrue(coalescer.shouldReport(completedCount: 864, totalCount: 864))
     }
 
-    func testIngestProgressCoalescerNeverReportsRepeatedCountEvenPastHeartbeat() {
+    func testIngestProgressCoalescerEmitsHeartbeatEvenWhenCountUnchanged() {
         let clock = MutableClock()
         let coalescer = IngestProgressCoalescer(interval: 500, eagerLimit: 10, heartbeat: 15, now: clock.now)
         let totalCount = 864
@@ -56,7 +56,10 @@ final class ProgressCoalescerTests: XCTestCase {
 
         clock.advance(by: 20)
 
-        XCTAssertFalse(coalescer.shouldReport(completedCount: 500, totalCount: totalCount))
+        // Heartbeat must fire even when count hasn't changed — this keeps the
+        // worker stall detector alive during slow per-file operations where
+        // the count is stalled on a single item for a long time.
+        XCTAssertTrue(coalescer.shouldReport(completedCount: 500, totalCount: totalCount))
     }
 
     func testScanProgressCoalescerSuppressesReportsWithinHeartbeatWindow() {
