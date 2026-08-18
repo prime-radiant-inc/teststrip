@@ -164,4 +164,65 @@ final class LoupeZoomGeometryTests: XCTestCase {
             .center
         )
     }
+
+    func testMaxScaleIsRatioOfActualToFitted() {
+        // 4000x2000 image in 1000x800 viewport at displayScale 1:
+        // fitted = min(1000/4000, 800/2000) * 4000x2000 = 1000x500
+        // actual = 4000x2000
+        // maxScale = 4000/1000 = 4.0
+        let g = makeGeometry(displayScale: 1)
+        XCTAssertEqual(g.maxScale, 4.0, accuracy: 0.001)
+    }
+
+    func testDisplaySizeAtScale1IsFitted() {
+        let g = makeGeometry(displayScale: 1)
+        assertEqual(g.displaySize(for: 1.0), g.fittedDisplaySize)
+    }
+
+    func testDisplaySizeAtMaxScaleIsActualSize() {
+        let g = makeGeometry(displayScale: 1)
+        assertEqual(g.displaySize(for: g.maxScale), g.actualSizeDisplaySize)
+    }
+
+    func testDisplaySizeAtIntermediateScale() {
+        // scale 2.0 on 4000x2000 in 1000x800 at ds=1:
+        // fitted = 1000x500, so displaySize(2.0) = 2000x1000
+        let g = makeGeometry(displayScale: 1)
+        assertEqual(g.displaySize(for: 2.0), CGSize(width: 2000, height: 1000))
+    }
+
+    func testOffsetScalesWithScale() {
+        // At scale 1.0 (fitted), offset should be zero (image fills viewport)
+        // At scale 2.0, focus center → offset 0 (centered)
+        // At scale 2.0, displaySize = 2000x1000 in viewport 1000x800
+        // focus (1,1) clamped: x: halfViewport=1000/2000/2=0.25 → clamp(1,0.25,0.75)=0.75
+        //                     y: halfViewport=800/1000/2=0.4 → clamp(1,0.4,0.6)=0.6
+        // offset = (0.5-0.75)*2000, (0.5-0.6)*1000 = -500, -100
+        let g = makeGeometry(displayScale: 1)
+        let centerOffset = g.offset(for: .center, scale: 2.0)
+        assertEqual(centerOffset, .zero)
+        let cornerOffset = g.offset(for: LoupeZoomFocus(x: 1, y: 1), scale: 2.0)
+        assertEqual(cornerOffset, CGSize(width: -500, height: -100))
+    }
+
+    func testFocusPannedByScalesWithDisplaySize() {
+        // At scale 2.0, displaySize = 2000x1000; pan 50pt right and down
+        // → focus delta = 50/2000 = 0.025 on x, 50/1000 = 0.05 on y
+        // → 0.5-0.025=0.475 on x, 0.5-0.05=0.45 on y
+        // clamped: x: clamp(0.475, 0.25, 0.75)=0.475; y: clamp(0.45, 0.4, 0.6)=0.45
+        let g = makeGeometry(displayScale: 1)
+        let result = g.focus(pannedBy: CGSize(width: 50, height: 50), from: .center, scale: 2.0)
+        XCTAssertEqual(result.x, 0.475, accuracy: 0.001)
+        XCTAssertEqual(result.y, 0.45, accuracy: 0.001)
+    }
+
+    func testClampedFocusScalesWithDisplaySize() {
+        // At scale 2.0, displaySize = 2000x1000 in viewport 1000x800
+        // x-axis: imageExtent(2000) > viewportExtent(1000) → halfViewport=0.25, clamp(0,0.25,0.75)=0.25
+        // y-axis: imageExtent(1000) > viewportExtent(800) → halfViewport=0.4, clamp(0,0.4,0.6)=0.4
+        let g = makeGeometry(displayScale: 1)
+        let clamped = g.clampedFocus(LoupeZoomFocus(x: 0.0, y: 0.0), scale: 2.0)
+        XCTAssertEqual(clamped.x, 0.25, accuracy: 0.001)
+        XCTAssertEqual(clamped.y, 0.4, accuracy: 0.001)
+    }
 }

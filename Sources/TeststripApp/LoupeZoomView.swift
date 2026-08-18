@@ -65,6 +65,47 @@ struct LoupeZoomGeometry: Equatable {
         return CGSize(width: imagePixelSize.width * scale, height: imagePixelSize.height * scale)
     }
 
+    /// Maximum zoom factor: ratio of 1:1 display size to fitted display size.
+    var maxScale: CGFloat {
+        guard fittedDisplaySize.width > 0 else { return 1.0 }
+        return actualSizeDisplaySize.width / fittedDisplaySize.width
+    }
+
+    /// Display size at a continuous scale factor (1.0 = fit, maxScale = 1:1).
+    func displaySize(for scale: CGFloat) -> CGSize {
+        let fitted = fittedDisplaySize
+        return CGSize(width: fitted.width * scale, height: fitted.height * scale)
+    }
+
+    /// Offset for a focus point at a given scale (not just 1:1).
+    func offset(for focus: LoupeZoomFocus, scale: CGFloat) -> CGSize {
+        let clamped = clampedFocus(focus, scale: scale)
+        let display = displaySize(for: scale)
+        return CGSize(
+            width: (0.5 - clamped.x) * display.width,
+            height: (0.5 - clamped.y) * display.height
+        )
+    }
+
+    /// Pan by a drag translation at a given scale.
+    func focus(pannedBy translation: CGSize, from start: LoupeZoomFocus, scale: CGFloat) -> LoupeZoomFocus {
+        let display = displaySize(for: scale)
+        guard display.width > 0, display.height > 0 else { return clampedFocus(start, scale: scale) }
+        return clampedFocus(LoupeZoomFocus(
+            x: start.x - translation.width / display.width,
+            y: start.y - translation.height / display.height
+        ), scale: scale)
+    }
+
+    /// Clamp focus so image edges stay in viewport at a given scale.
+    func clampedFocus(_ focus: LoupeZoomFocus, scale: CGFloat) -> LoupeZoomFocus {
+        let display = displaySize(for: scale)
+        return LoupeZoomFocus(
+            x: Self.clampedFocusComponent(focus.x, imageExtent: display.width, viewportExtent: viewportSize.width),
+            y: Self.clampedFocusComponent(focus.y, imageExtent: display.height, viewportExtent: viewportSize.height)
+        )
+    }
+
     /// Offset in points to apply to the 1:1 image (positioned at the viewport
     /// center) so the focus point sits at the viewport center. The focus is
     /// clamped so the image edges never pull inside the viewport; axes where
