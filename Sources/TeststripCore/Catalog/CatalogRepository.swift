@@ -2299,6 +2299,33 @@ public final class CatalogRepository {
         return try rows.map(decodeEvaluationSignal)
     }
 
+    /// Batch-fetch evaluation signals for many assets in a single query,
+    /// eliminating the N+1 pattern where `evaluationSignals(assetID:)` is
+    /// called once per asset.  Returns a dictionary keyed by asset ID.
+    public func evaluationSignals(forAssetIDs assetIDs: [AssetID]) throws -> [AssetID: [EvaluationSignal]] {
+        guard !assetIDs.isEmpty else { return [:] }
+        let placeholders = Array(repeating: "?", count: assetIDs.count).joined(separator: ", ")
+        let idBindings = assetIDs.map(\.rawValue)
+        let rows = try database.rows(
+            """
+            SELECT asset_id, kind, value_json, confidence, provenance_json
+            FROM evaluation_signals
+            WHERE asset_id IN (\(placeholders))
+              AND \(Self.currentScaleSignalSQL)
+            ORDER BY asset_id, rowid ASC
+            """,
+            bindings: idBindings
+        )
+        var result: [AssetID: [EvaluationSignal]] = [:]
+        for row in rows {
+            guard let assetIDRaw = row["asset_id"] else { continue }
+            let assetID = AssetID(rawValue: assetIDRaw)
+            let signal = try decodeEvaluationSignal(row)
+            result[assetID, default: []].append(signal)
+        }
+        return result
+    }
+
     public func recordEvaluationFailure(assetID: AssetID, provider: String, message: String) throws {
         let now = "\(Date().timeIntervalSince1970)"
         try database.execute(
@@ -3574,9 +3601,15 @@ public final class CatalogRepository {
     }
 
     private static func folderName(forFolderPath folderPath: String) -> String {
+        // Pure string implementation — avoids URL(fileURLWithPath:).lastPathComponent
+        // which triggers filesystem access on macOS for /Volumes/* paths (SMB mounts),
+        // taking ~8ms per call × 984 folders = ~8 seconds on a network mount.
         let trimmedPath = folderPath == "/" ? folderPath : String(folderPath.dropLast(folderPath.hasSuffix("/") ? 1 : 0))
-        let name = URL(fileURLWithPath: trimmedPath).lastPathComponent
-        return name.isEmpty ? folderPath : name
+        if let lastSlash = trimmedPath.lastIndex(of: "/") {
+            let name = String(trimmedPath[trimmedPath.index(after: lastSlash)...])
+            return name.isEmpty ? folderPath : name
+        }
+        return trimmedPath.isEmpty ? folderPath : trimmedPath
     }
 
     private static func normalizedDirectoryPath(_ url: URL) -> String {

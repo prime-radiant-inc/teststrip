@@ -74,6 +74,15 @@ public final class CatalogDatabase: @unchecked Sendable {
         try addColumnIfMissing(table: "assets", column: "content_hash", definition: "TEXT")
         try execute("CREATE INDEX IF NOT EXISTS idx_assets_content_hash ON assets(content_hash)")
         try addColumnIfMissing(table: "assets", column: "bonded_to_asset_id", definition: "TEXT")
+        // Partial covering index for folder-list queries: SELECT original_path
+        // FROM assets WHERE bonded_to_asset_id IS NULL. Without this, SQLite
+        // must scan the full table (reading metadata_json + technical_metadata_json
+        // blobs for every row) to evaluate the WHERE clause. The partial index
+        // stores only original_path for unbonded assets — far smaller than the
+        // full table, so cold-cache scans are ~10x faster.
+        try execute(
+            "CREATE INDEX IF NOT EXISTS idx_assets_unbonded_path ON assets(original_path) WHERE bonded_to_asset_id IS NULL"
+        )
         try addColumnIfMissing(table: "source_roots", column: "security_scoped_bookmark_base64", definition: "TEXT")
         try addColumnIfMissing(table: "work_sessions", column: "issues_json", definition: "TEXT NOT NULL DEFAULT '[]'")
         try addColumnIfMissing(

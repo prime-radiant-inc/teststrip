@@ -8035,6 +8035,7 @@ private struct PlacesWorkspaceView: View {
     var model: AppModel
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var lastCellSize: Double = AppModel.defaultPlaceClusterCellSize
+    @State private var pendingRegionRefresh: DispatchWorkItem?
 
     private var presentation: PlacesPresentation {
         PlacesPresentation(
@@ -8057,7 +8058,16 @@ private struct PlacesWorkspaceView: View {
         .background(Color.black.opacity(0.18))
         .liveMockupPlaceholder(.placesMap)
         .onAppear {
-            try? model.refreshPlaceData()
+            // Defer the initial load so the Places view doesn't block
+            // app startup with 3 SQL queries on the main thread. The
+            // map's first camera-change event will also trigger a
+            // debounced refresh, so this just covers the case where the
+            // map doesn't fire one.
+            scheduleRegionRefresh()
+        }
+        .onDisappear {
+            pendingRegionRefresh?.cancel()
+            pendingRegionRefresh = nil
         }
     }
 
@@ -8176,7 +8186,23 @@ private struct PlacesWorkspaceView: View {
             minLongitude: region.center.longitude - region.span.longitudeDelta / 2,
             maxLongitude: region.center.longitude + region.span.longitudeDelta / 2
         )
-        try? model.refreshPlaceData(bounds: bounds, cellSize: cellSize)
+        scheduleRegionRefresh(bounds: bounds, cellSize: cellSize)
+    }
+
+    /// Debounces place-data SQL queries so the cascade of camera-change
+    /// events fired during initial map layout collapses into a single
+    /// query batch. Without this, the map fires 10+ region changes during
+    /// its first layout pass, each running 3 SQL queries on the main thread.
+    private func scheduleRegionRefresh(
+        bounds: GeoBounds? = nil,
+        cellSize: Double = AppModel.defaultPlaceClusterCellSize
+    ) {
+        pendingRegionRefresh?.cancel()
+        let work = DispatchWorkItem { [model] in
+            try? model.refreshPlaceData(bounds: bounds, cellSize: cellSize)
+        }
+        pendingRegionRefresh = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     private func drill(latitude: Double, longitude: Double, half: Double) {

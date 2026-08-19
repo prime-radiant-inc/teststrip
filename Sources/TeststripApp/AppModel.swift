@@ -2084,7 +2084,7 @@ public final class AppModel {
     /// sidebar lists nouns, so it does not vary with the lens.
     func buildSidebarSections() -> [SidebarSection] {
         UnifiedSidebarPresentation.sections(
-            totalAssetCount: totalAssetCount,
+            totalAssetCount: libraryAssetCount,
             importSummaries: importSourceSummaries,
             runningImport: visibleImportActivity,
             expandedImportSessionIDs: expandedImportSessionIDs,
@@ -2113,6 +2113,14 @@ public final class AppModel {
     private var lastCullViewMode: LibraryViewMode = .loupe
     public var assets: [Asset]
     public var totalAssetCount: Int
+    /// Total asset count for the entire catalog, independent of the current
+    /// view/filter. The sidebar "All Photos" row uses this so it always shows
+    /// the library total, not the filtered result count.
+    public private(set) var libraryAssetCount: Int = 0
+    /// True when the folder list / source roots may have changed (after
+    /// import, trash, move, move-back). `reload()` only re-queries folders
+    /// when this is true; navigation clicks skip the expensive GROUP BY.
+    private var catalogFoldersStale = true
     /// Primary asset IDs that have >=1 bonded secondary (a RAW with a bonded
     /// working JPEG/HEIC) — refreshed whenever the catalog reloads. The
     /// grid/loupe RAW badge reads membership to render "RAW+JPEG" instead of
@@ -4466,6 +4474,7 @@ public final class AppModel {
         self.selectedView = selectedView
         self.assets = assets
         self.totalAssetCount = resolvedTotalAssetCount
+        self.libraryAssetCount = resolvedTotalAssetCount
         self.selectedAssetID = assets.first?.id
         self.selectedBatchAssetIDs = []
         self.selectedBatchAssetIDOrder = []
@@ -4730,10 +4739,13 @@ public final class AppModel {
         contactFaceDetector: (@Sendable (CGImage) throws -> [AppleVisionFaceObservation])? = nil
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
+        // Load folders before allAssets: allAssets does SELECT * (reads all
+        // metadata_json blobs) which fills the SQLite page cache. Running
+        // folders() first lets it use the folder index while it's still hot.
+        let catalogFolders = try catalog.repository.folders()
         let assets = try catalog.repository.allAssets()
         let savedAssetSets = try catalog.repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
-        let catalogFolders = try catalog.repository.folders()
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
@@ -11703,14 +11715,11 @@ public final class AppModel {
         isAutopilotReviewActive = false
         try refreshProposedAssets()
         try refreshWorkHistorySearchResults(repository: catalog.repository)
-        // reload() is the single funnel after bulk mutations (trash, move
-        // back, relocation, deletes), so every count surface refreshes here
-        // together — otherwise the sidebar keeps stale smart-collection/folder
-        // counts while the HUD and catalog already tell the new story
-        // (persona-7's "three surfaces, three stories").
         try refreshCatalogSidebarCounts()
         try refreshImportSourceSummaries()
-        refreshCatalogFolders()
+        if catalogFoldersStale {
+            refreshCatalogFolders()
+        }
         refreshAssetIDsWithBondedSecondaries()
         if sourceForScopeResolution == .autopilotSuggestions {
             try loadAutopilotSuggestionsScope(preferredSelection: nil)
@@ -13324,6 +13333,7 @@ public final class AppModel {
         )
         try catalog.repository.save(session)
         recordRecentActivity(AppWorkActivity(workSession: session))
+        catalogFoldersStale = true
         try reload()
 
         let summary = RejectRelocationSummary(
@@ -13441,6 +13451,7 @@ public final class AppModel {
         )
         try catalog.repository.save(session)
         recordRecentActivity(AppWorkActivity(workSession: session))
+        catalogFoldersStale = true
         try reload()
 
         let summary = RejectRelocationSummary(
@@ -13546,6 +13557,7 @@ public final class AppModel {
                 rejectRelocationSummary?.canMoveBack = restoreFailureCount > 0
             }
         }
+        catalogFoldersStale = true
         try reload()
         if unrestorableCount > 0 || restoreFailureCount > 0, let summary = rejectRelocationSummary {
             statusMessage = summary.detailText
@@ -14091,8 +14103,13 @@ public final class AppModel {
         for assets: [Asset],
         repository: CatalogRepository
     ) -> [AssetID: [Double]] {
-        visualSimilarityVectorsByAssetID(for: assets) { assetID in
-            (try? repository.evaluationSignals(assetID: assetID)) ?? []
+        // Batch-fetch all evaluation signals in one query instead of one per
+        // asset.  With thousands of import assets this avoids an N+1 query
+        // that blocks the main thread for tens of seconds on every reload().
+        guard !assets.isEmpty else { return [:] }
+        let allSignals = (try? repository.evaluationSignals(forAssetIDs: assets.map(\.id))) ?? [:]
+        return visualSimilarityVectorsByAssetID(for: assets) { assetID in
+            allSignals[assetID] ?? []
         }
     }
 
@@ -14234,6 +14251,7 @@ public final class AppModel {
             catalogFolders = try catalog.repository.folders()
             sourceRoots = try catalog.repository.sourceRoots()
             rebuildSidebarSections()
+            catalogFoldersStale = false
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -14268,6 +14286,7 @@ public final class AppModel {
 
     private func refreshCatalogSidebarCounts() throws {
         guard let catalog else { return }
+        libraryAssetCount = try catalog.repository.assetCount()
         smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
         try refreshAutopilotGhostAssetIDs()
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
@@ -14840,6 +14859,7 @@ public final class AppModel {
             destinationRoot: destinationRoot,
             result: result
         )
+        catalogFoldersStale = true
         refreshCatalogFolders()
         activeWork = nil
         displayedLocalImportCatalogedAssetID = nil

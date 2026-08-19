@@ -364,7 +364,7 @@ public enum UnifiedSidebarPresentation {
         let row = SidebarRow(
             id: "folder-\(node.fullPath)",
             title: node.title,
-            detailText: node.fullPath,
+            detailText: depth == 0 ? node.fullPath : nil,
             countText: countText(node.assetCount),
             target: .folder(node.fullPath),
             depth: depth,

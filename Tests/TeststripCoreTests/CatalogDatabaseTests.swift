@@ -2747,6 +2747,39 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.evaluationSignals(assetID: assetID), [signal])
     }
 
+    func testBatchEvaluationSignalsReturnsAllAssetsInOneQuery() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-batch-evaluation-signals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let asset1 = Asset.testAsset(id: AssetID(rawValue: "batch-1"), path: "/Volumes/NAS/batch-1.jpg", rating: 0)
+        let asset2 = Asset.testAsset(id: AssetID(rawValue: "batch-2"), path: "/Volumes/NAS/batch-2.jpg", rating: 0)
+        let asset3 = Asset.testAsset(id: AssetID(rawValue: "batch-3"), path: "/Volumes/NAS/batch-3.jpg", rating: 0)
+        try repository.upsert([asset1, asset2, asset3])
+
+        let signal1a = EvaluationSignal(assetID: asset1.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
+        let signal1b = EvaluationSignal(assetID: asset1.id, kind: .visualSimilarity, value: .vector([0.1, 0.2]), confidence: 1.0, provenance: provenance)
+        let signal2 = EvaluationSignal(assetID: asset2.id, kind: .focus, value: .score(0.5), confidence: 0.5, provenance: provenance)
+        try repository.recordEvaluationSignals([signal1a, signal1b, signal2])
+
+        let batch = try repository.evaluationSignals(forAssetIDs: [asset1.id, asset2.id, asset3.id])
+
+        XCTAssertEqual(batch[asset1.id]?.count, 2)
+        XCTAssertEqual(batch[asset2.id]?.count, 1)
+        XCTAssertNil(batch[asset3.id])
+        XCTAssertEqual(batch[asset1.id]?.map(\.kind), [.focus, .visualSimilarity])
+    }
+
+    func testBatchEvaluationSignalsEmptyInputReturnsEmpty() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-batch-eval-empty")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let result = try repository.evaluationSignals(forAssetIDs: [])
+        XCTAssertTrue(result.isEmpty)
+    }
+
     func testUnevaluatedQueryMatchesAssetsWithoutSignals() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-unevaluated-query")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
