@@ -8693,11 +8693,15 @@ public final class AppModel {
         // an exported deliverable (same discipline as the sidecar/relocation
         // edges: confirmed wins for anything committing/destructive/portable).
         var catalogMetadataBySourceURL: [URL: AssetMetadata] = [:]
+        var catalogRotationBySourceURL: [URL: Int] = [:]
         for assetID in assetIDs {
             guard seenAssetIDs.insert(assetID).inserted else { continue }
             let asset = try catalog.repository.asset(id: assetID)
             originalURLs.append(asset.originalURL)
             catalogMetadataBySourceURL[asset.originalURL] = asset.metadata.confirmedProjection
+            if let rotation = asset.technicalMetadata?.rotation, rotation != 0 {
+                catalogRotationBySourceURL[asset.originalURL] = rotation
+            }
         }
         guard !originalURLs.isEmpty else {
             throw TeststripError.invalidState("no photos to export")
@@ -8718,6 +8722,7 @@ public final class AppModel {
                     settings: settings,
                     destinationDirectory: destination,
                     catalogMetadataBySourceURL: catalogMetadataBySourceURL,
+                    catalogRotationBySourceURL: catalogRotationBySourceURL,
                     collisionResolution: collisionResolution
                 ) { completedCount, totalCount in
                     sink.handle(completedCount: completedCount, totalCount: totalCount)

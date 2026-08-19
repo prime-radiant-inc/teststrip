@@ -679,6 +679,117 @@ final class ExportServiceTests: XCTestCase {
         }
         return properties
     }
+
+    // MARK: - Rotation
+
+    func testExportAppliesRotation90() throws {
+        let exportService = ExportService()
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("export-rotation-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let sourceURL = tmpDir.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: sourceURL, width: 200, height: 100)
+        let destDir = tmpDir.appendingPathComponent("out")
+        let results = try exportService.export(
+            originalURLs: [sourceURL],
+            settings: ExportSettings(jpegQuality: 0.9),
+            destinationDirectory: destDir,
+            catalogRotationBySourceURL: [sourceURL: 90]
+        )
+        guard case .exported(let destURL) = results[0].outcome else {
+            XCTFail("expected exported")
+            return
+        }
+        let data = try Data(contentsOf: destURL)
+        let source = CGImageSourceCreateWithData(data as CFData, nil)!
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as! [CFString: Any]
+        let width = props[kCGImagePropertyPixelWidth] as! Int
+        let height = props[kCGImagePropertyPixelHeight] as! Int
+        XCTAssertEqual(width, 100)
+        XCTAssertEqual(height, 200)
+    }
+
+    func testExportAppliesRotation180() throws {
+        let exportService = ExportService()
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("export-rotation-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let sourceURL = tmpDir.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: sourceURL, width: 200, height: 100)
+        let destDir = tmpDir.appendingPathComponent("out")
+        let results = try exportService.export(
+            originalURLs: [sourceURL],
+            settings: ExportSettings(jpegQuality: 0.9),
+            destinationDirectory: destDir,
+            catalogRotationBySourceURL: [sourceURL: 180]
+        )
+        guard case .exported(let destURL) = results[0].outcome else {
+            XCTFail("expected exported")
+            return
+        }
+        let data = try Data(contentsOf: destURL)
+        let source = CGImageSourceCreateWithData(data as CFData, nil)!
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as! [CFString: Any]
+        let width = props[kCGImagePropertyPixelWidth] as! Int
+        let height = props[kCGImagePropertyPixelHeight] as! Int
+        // 180° rotation preserves dimensions
+        XCTAssertEqual(width, 200)
+        XCTAssertEqual(height, 100)
+    }
+
+    func testExportAppliesRotation270() throws {
+        let exportService = ExportService()
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("export-rotation-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let sourceURL = tmpDir.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: sourceURL, width: 200, height: 100)
+        let destDir = tmpDir.appendingPathComponent("out")
+        let results = try exportService.export(
+            originalURLs: [sourceURL],
+            settings: ExportSettings(jpegQuality: 0.9),
+            destinationDirectory: destDir,
+            catalogRotationBySourceURL: [sourceURL: 270]
+        )
+        guard case .exported(let destURL) = results[0].outcome else {
+            XCTFail("expected exported")
+            return
+        }
+        let data = try Data(contentsOf: destURL)
+        let source = CGImageSourceCreateWithData(data as CFData, nil)!
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as! [CFString: Any]
+        let width = props[kCGImagePropertyPixelWidth] as! Int
+        let height = props[kCGImagePropertyPixelHeight] as! Int
+        // 270° CW (90° CCW) swaps dimensions
+        XCTAssertEqual(width, 100)
+        XCTAssertEqual(height, 200)
+    }
+
+    func testExportNoRotationPreservesDimensions() throws {
+        let exportService = ExportService()
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("export-rotation-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let sourceURL = tmpDir.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: sourceURL, width: 200, height: 100)
+        let destDir = tmpDir.appendingPathComponent("out")
+        let results = try exportService.export(
+            originalURLs: [sourceURL],
+            settings: ExportSettings(jpegQuality: 0.9),
+            destinationDirectory: destDir
+        )
+        guard case .exported(let destURL) = results[0].outcome else {
+            XCTFail("expected exported")
+            return
+        }
+        let data = try Data(contentsOf: destURL)
+        let source = CGImageSourceCreateWithData(data as CFData, nil)!
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as! [CFString: Any]
+        let width = props[kCGImagePropertyPixelWidth] as! Int
+        let height = props[kCGImagePropertyPixelHeight] as! Int
+        XCTAssertEqual(width, 200)
+        XCTAssertEqual(height, 100)
+    }
 }
 
 private final class ProgressRecorder: @unchecked Sendable {

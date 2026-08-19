@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import CoreImage
 import UniformTypeIdentifiers
 
 public enum ExportFormat: String, Hashable, Sendable, Codable, CaseIterable {
@@ -131,6 +132,7 @@ public struct ExportService: Sendable {
         settings: ExportSettings,
         destinationDirectory: URL,
         catalogMetadataBySourceURL: [URL: AssetMetadata] = [:],
+        catalogRotationBySourceURL: [URL: Int] = [:],
         collisionResolution: ExportCollisionResolution = .keepBoth,
         progress: ExportProgressHandler? = nil
     ) throws -> [ExportFileResult] {
@@ -148,6 +150,7 @@ public struct ExportService: Sendable {
                 outcome: exportOutcome(
                     sourceURL: sourceURL,
                     catalogMetadata: catalogMetadataBySourceURL[sourceURL],
+                    rotation: catalogRotationBySourceURL[sourceURL] ?? 0,
                     settings: settings,
                     destinationDirectory: destinationDirectory,
                     collisionResolution: collisionResolution,
@@ -172,6 +175,7 @@ public struct ExportService: Sendable {
     private func exportOutcome(
         sourceURL: URL,
         catalogMetadata: AssetMetadata?,
+        rotation: Int,
         settings: ExportSettings,
         destinationDirectory: URL,
         collisionResolution: ExportCollisionResolution,
@@ -192,6 +196,9 @@ public struct ExportService: Sendable {
             if settings.includeSourceMetadata, let catalogMetadata {
                 destinationProperties = Self.embeddingCatalogMetadata(catalogMetadata, into: destinationProperties)
             }
+            let finalImage: CGImage = rotation != 0
+                ? applyRotation(image: image, rotation: rotation)
+                : image
             let destinationURL = availableDestinationURL(
                 for: sourceURL,
                 destinationDirectory: destinationDirectory,
@@ -199,7 +206,7 @@ public struct ExportService: Sendable {
                 collisionResolution: collisionResolution,
                 claimedFilenames: &claimedFilenames
             )
-            guard let data = encodedData(image: image, settings: settings, destinationProperties: destinationProperties) else {
+            guard let data = encodedData(image: finalImage, settings: settings, destinationProperties: destinationProperties) else {
                 return .failed(message: "could not create \(destinationURL.lastPathComponent)")
             }
             do {
@@ -209,6 +216,13 @@ public struct ExportService: Sendable {
             }
             return .exported(destinationURL: destinationURL)
         }
+    }
+
+    private func applyRotation(image: CGImage, rotation: Int) -> CGImage {
+        let ciImage = CIImage(cgImage: image)
+        let oriented = ciImage.oriented(forExifOrientation: Int32(RotationTransform.exifOrientation(forRotation: rotation).rawValue))
+        let context = CIContext()
+        return context.createCGImage(oriented, from: oriented.extent) ?? image
     }
 
     private enum DecodedThumbnail {
