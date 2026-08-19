@@ -24,7 +24,14 @@ enum ImportSheetState: Identifiable {
     ) -> ImportSheetState? {
         guard case .selection(let d) = sheet else { return nil }
         var draft = d.confirmationDraft
-        draft.selectedFiles = selectedURLs
+        // If all non-duplicate entries are selected, pass nil so the import
+        // scans the entire source (including files not shown due to the
+        // selection-screen scan budget). Only pass a whitelist when the
+        // user explicitly deselected non-duplicate files — duplicates are
+        // already handled by ingest-level dedup (importNewOnly).
+        let nonDuplicateURLs = Set(d.fileURLs).subtracting(d.duplicateURLs)
+        let deselectedNonDuplicates = nonDuplicateURLs.subtracting(selectedURLs)
+        draft.selectedFiles = deselectedNonDuplicates.isEmpty ? nil : selectedURLs
         draft.preIngestThumbnailCache = d.thumbnailCache
         return .confirmation(draft)
     }
