@@ -486,6 +486,7 @@ public struct WorkerCommandExecutor {
         do {
             decision = try metadataSyncDecision(
                 catalogMetadata: asset.metadata,
+                catalogRotation: asset.technicalMetadata?.rotation,
                 catalogGeneration: catalogGeneration,
                 syncItem: syncItem,
                 sidecarData: sidecarData,
@@ -517,7 +518,11 @@ public struct WorkerCommandExecutor {
             return .completed("metadata up to date for \(assetName)")
         case .writeCatalog:
             do {
-                let result = try sidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
+                let result = try sidecarStore.write(
+                    metadata: asset.metadata,
+                    rotation: asset.technicalMetadata?.rotation,
+                    forOriginalAt: asset.originalURL
+                )
                 try repository.markMetadataSynced(
                     assetID: assetID,
                     sidecarURL: result.sidecarURL,
@@ -543,9 +548,12 @@ public struct WorkerCommandExecutor {
                 ))
                 return .completed("metadata pending for \(assetName)")
             }
-        case .importSidecar(let metadata):
+        case .importSidecar(let metadata, let rotation):
             try repository.updateMetadata(assetID: assetID) { catalogMetadata in
                 catalogMetadata = catalogMetadata.mergingConfirmedSidecar(metadata)
+            }
+            if let rotation {
+                try repository.updateRotation(assetID: assetID, rotation: rotation)
             }
             let importedGeneration = try repository.catalogGeneration(assetID: assetID)
             let importedData: Data
@@ -607,6 +615,7 @@ public struct WorkerCommandExecutor {
 
     private func metadataSyncDecision(
         catalogMetadata: AssetMetadata,
+        catalogRotation: Int? = nil,
         catalogGeneration: Int,
         syncItem: MetadataSyncItem?,
         sidecarData: Data?,
@@ -628,6 +637,7 @@ public struct WorkerCommandExecutor {
 
         return try MetadataSyncPlanner().decision(
             catalogMetadata: catalogMetadata,
+            catalogRotation: catalogRotation,
             catalogGeneration: catalogGeneration,
             lastSynced: syncItem,
             sidecarData: sidecarData,

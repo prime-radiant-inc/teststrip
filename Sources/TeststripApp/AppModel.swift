@@ -9343,7 +9343,11 @@ public final class AppModel {
             return
         }
         do {
-            let result = try catalog.metadataSidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
+            let result = try catalog.metadataSidecarStore.write(
+                metadata: asset.metadata,
+                rotation: asset.technicalMetadata?.rotation,
+                forOriginalAt: asset.originalURL
+            )
             try catalog.repository.markMetadataSynced(
                 assetID: asset.id,
                 sidecarURL: result.sidecarURL,
@@ -9373,7 +9377,11 @@ public final class AppModel {
         )
 
         do {
-            let result = try catalog.metadataSidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
+            let result = try catalog.metadataSidecarStore.write(
+                metadata: asset.metadata,
+                rotation: asset.technicalMetadata?.rotation,
+                forOriginalAt: asset.originalURL
+            )
             try catalog.repository.markMetadataSynced(
                 assetID: assetID,
                 sidecarURL: result.sidecarURL,

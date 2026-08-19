@@ -47,13 +47,13 @@ public struct XMPSidecarStore: Sendable {
             : nil
     }
 
-    public func write(metadata: AssetMetadata, forOriginalAt originalURL: URL) throws -> XMPSidecarWriteResult {
+    public func write(metadata: AssetMetadata, rotation: Int? = nil, forOriginalAt originalURL: URL) throws -> XMPSidecarWriteResult {
         let sidecarURL = sidecarURL(forOriginalAt: originalURL)
         let data: Data
         if FileManager.default.fileExists(atPath: sidecarURL.path) {
-            data = try XMPPacket(metadata: metadata).xmlData(mergingInto: Data(contentsOf: sidecarURL))
+            data = try XMPPacket(metadata: metadata, rotation: rotation).xmlData(mergingInto: Data(contentsOf: sidecarURL))
         } else {
-            data = try XMPPacket(metadata: metadata).xmlData()
+            data = try XMPPacket(metadata: metadata, rotation: rotation).xmlData()
         }
         try data.write(to: sidecarURL, options: [.atomic])
         return XMPSidecarWriteResult(sidecarURL: sidecarURL, fingerprint: Self.fingerprint(for: data))

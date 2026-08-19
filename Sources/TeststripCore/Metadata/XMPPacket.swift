@@ -2,6 +2,7 @@ import Foundation
 
 public struct XMPPacket: Equatable, Sendable {
     public var metadata: AssetMetadata
+    public var rotation: Int?
 
     private static let xmpMetaNamespace = "adobe:ns:meta/"
     private static let rdfNamespace = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -10,8 +11,9 @@ public struct XMPPacket: Equatable, Sendable {
     private static let teststripNamespace = "https://teststrip.app/xmp/1.0/"
     private static let photoshopNamespace = "http://ns.adobe.com/photoshop/1.0/"
 
-    public init(metadata: AssetMetadata) {
+    public init(metadata: AssetMetadata, rotation: Int? = nil) {
         self.metadata = metadata
+        self.rotation = rotation
     }
 
     public func xmlData() throws -> Data {
@@ -71,6 +73,7 @@ public struct XMPPacket: Equatable, Sendable {
         addAttribute("xmp:Rating", "\(metadata.rating)")
         addAttribute("xmp:Label", metadata.colorLabel.map(Self.xmpLabel))
         addAttribute("ts:Pick", metadata.flag?.rawValue)
+        addAttribute("ts:Rotation", rotation.flatMap { $0 != 0 ? "\($0)" : nil })
         Self.addContainer(
             propertyName: "dc:subject",
             containerName: "rdf:Bag",
@@ -167,7 +170,8 @@ public struct XMPPacket: Equatable, Sendable {
             propertyLocalName: "rights",
             containerLocalName: "Alt"
         ).first
-        return XMPPacket(metadata: metadata)
+        let rotation = Self.attribute(description, localName: "Rotation", uri: Self.teststripNamespace).flatMap { Int($0) }
+        return XMPPacket(metadata: metadata, rotation: rotation)
     }
 
     /// Reads `photoshop:SidecarForExtension`, the attribute Adobe tools use to bind a basename-shared
@@ -210,6 +214,7 @@ public struct XMPPacket: Equatable, Sendable {
         removeAttribute(from: description, localName: "Rating", uri: xmpNamespace)
         removeAttribute(from: description, localName: "Label", uri: xmpNamespace)
         removeAttribute(from: description, localName: "Pick", uri: teststripNamespace)
+        removeAttribute(from: description, localName: "Rotation", uri: teststripNamespace)
         removeChild(from: description, localName: "subject", uri: dcNamespace)
         removeChild(from: description, localName: "description", uri: dcNamespace)
         removeChild(from: description, localName: "creator", uri: dcNamespace)

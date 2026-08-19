@@ -569,7 +569,7 @@ final class MetadataSyncTests: XCTestCase {
             sidecarData: currentSidecarData
         )
 
-        XCTAssertEqual(decision, .importSidecar(sidecarMetadata))
+        XCTAssertEqual(decision, .importSidecar(metadata: sidecarMetadata, rotation: nil))
     }
 
     func testPlannerImportsSidecarWhenSidecarModificationDateIsNewerThanCheckpoint() throws {
@@ -591,7 +591,7 @@ final class MetadataSyncTests: XCTestCase {
             sidecarModificationDate: Date(timeIntervalSince1970: 200)
         )
 
-        XCTAssertEqual(decision, .importSidecar(metadata))
+        XCTAssertEqual(decision, .importSidecar(metadata: metadata, rotation: nil))
     }
 
     func testPlannerTreatsUnchangedConfirmedMetadataAsUpToDateDespiteGenerationBump() throws {
