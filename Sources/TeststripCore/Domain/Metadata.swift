@@ -237,6 +237,7 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
     public var altitude: Double?
     public var capturedAt: Date?
     public var provenance: ProviderProvenance
+    public var rotation: Int?
 
     public init(
         pixelWidth: Int,
@@ -252,7 +253,8 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
         longitude: Double? = nil,
         altitude: Double? = nil,
         capturedAt: Date? = nil,
-        provenance: ProviderProvenance
+        provenance: ProviderProvenance,
+        rotation: Int? = nil
     ) {
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
@@ -268,5 +270,6 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
         self.altitude = altitude
         self.capturedAt = capturedAt
         self.provenance = provenance
+        self.rotation = rotation
     }
 }
