@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 public final class CatalogDatabase: @unchecked Sendable {
-    private static let busyTimeoutMilliseconds: Int32 = 5_000
+    private static let busyTimeoutMilliseconds: Int32 = 30_000
 
     private let handle: OpaquePointer
     // Concurrent worker lanes share one CatalogDatabase; recursive because
@@ -29,7 +29,35 @@ public final class CatalogDatabase: @unchecked Sendable {
             sqlite3_close(handle)
             throw CatalogError.sqlite(message)
         }
-        return CatalogDatabase(handle: handle)
+        let database = CatalogDatabase(handle: handle)
+        try database.configureForConcurrentAccess()
+        return database
+    }
+
+    /// Configures the connection for safe multi-process access. WAL mode
+    /// allows concurrent readers alongside a writer, so the main app can
+    /// read the catalog while the worker process writes import batches.
+    /// Without WAL (default rollback journal), readers block during writes
+    /// and both processes hit "database is locked" under the busy timeout.
+    private func configureForConcurrentAccess() throws {
+        try exec("PRAGMA journal_mode=WAL")
+        try exec("PRAGMA synchronous=NORMAL")
+    }
+
+    /// Runs a statement that doesn't return rows (PRAGMA, etc.) via
+    /// `sqlite3_exec`. The `execute` method expects `SQLITE_DONE` from
+    /// `sqlite3_step`, but `PRAGMA journal_mode=WAL` returns a row, so
+    /// `sqlite3_exec` is the simpler path.
+    private func exec(_ sql: String) throws {
+        handleLock.lock()
+        defer { handleLock.unlock() }
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let result = sqlite3_exec(handle, sql, nil, nil, &errorMessage)
+        guard result == SQLITE_OK else {
+            let message = errorMessage.map { String(cString: $0) } ?? lastError
+            if let errorMessage { sqlite3_free(errorMessage) }
+            throw CatalogError.sqlite(message)
+        }
     }
 
     public func migrate() throws {

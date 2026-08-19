@@ -16,6 +16,33 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched, asset)
     }
 
+    func testReadSucceedsDuringWriteTransactionInWalMode() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-wal-read-during-write")
+        let catalogURL = directory.appendingPathComponent("catalog.sqlite")
+        let writer = try CatalogDatabase.open(at: catalogURL)
+        try writer.migrate()
+        let reader = try CatalogDatabase.open(at: catalogURL)
+
+        // Start a write transaction and insert a row without committing.
+        try writer.execute("BEGIN IMMEDIATE TRANSACTION")
+        try writer.execute(
+            "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES ('wal_probe', 'uncommitted')"
+        )
+
+        // In WAL mode, the reader gets a consistent snapshot that doesn't
+        // block on the writer's uncommitted transaction. In rollback journal
+        // mode (the default before this fix), this read would block and
+        // eventually fail with "database is locked" after the busy timeout.
+        let rows = try reader.rows("SELECT key FROM catalog_meta WHERE key = 'wal_probe'")
+        XCTAssertEqual(rows.count, 0, "reader should see pre-transaction snapshot in WAL mode")
+
+        try writer.execute("COMMIT")
+
+        // After commit, a new read sees the row.
+        let rowsAfterCommit = try reader.rows("SELECT value FROM catalog_meta WHERE key = 'wal_probe'")
+        XCTAssertEqual(rowsAfterCommit.first?["value"], "uncommitted")
+    }
+
     func testSecondConnectionWaitsForBusyWriter() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-busy-timeout")
         let catalogURL = directory.appendingPathComponent("catalog.sqlite")

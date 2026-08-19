@@ -11524,6 +11524,7 @@ public final class AppModel {
     }
 
     private func releaseInactiveWorkerImportContexts(in queue: BackgroundWorkQueue) {
+        var didReleaseImportContext = false
         for itemID in Array(workerImportContextsByItemID.keys) {
             guard let item = queue.item(id: itemID), [.cancelled, .failed].contains(item.status) else {
                 continue
@@ -11552,6 +11553,12 @@ public final class AppModel {
                 statusMessage = nil
                 errorMessage = item.detail
             }
+            didReleaseImportContext = true
+        }
+        // Refresh the grid so assets committed before the failure/cancellation
+        // remain visible — matching the success path's loadCatalogPage call.
+        if didReleaseImportContext {
+            try? loadCatalogPage(preferredSelection: nil)
         }
     }
 
