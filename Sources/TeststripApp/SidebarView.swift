@@ -304,7 +304,8 @@ struct SidebarView: View {
                         CachedPreviewImage(
                             previewURL: previewURL,
                             scaling: .fit,
-                            cacheGeneration: model.previewCacheGeneration(for: entry.leadAssetID)
+                            cacheGeneration: model.previewCacheGeneration(for: entry.leadAssetID),
+                            rotation: model.rotationForAsset(id: entry.leadAssetID)
                         )
                     } else {
                         Image(systemName: "photo")

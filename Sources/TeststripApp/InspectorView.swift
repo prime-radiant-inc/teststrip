@@ -717,7 +717,8 @@ struct InspectorView: View {
                 previewURL: model.selectedPreviewURL,
                 scaling: .fit,
                 cornerRadius: 5,
-                cacheGeneration: model.previewCacheGeneration(for: asset.id)
+                cacheGeneration: model.previewCacheGeneration(for: asset.id),
+                rotation: asset.technicalMetadata?.rotation ?? 0
             )
             .padding(4)
         }

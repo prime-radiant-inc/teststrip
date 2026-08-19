@@ -4966,7 +4966,8 @@ private struct LoupeView: View {
                 CachedPreviewImage(
                     previewURL: previewURL,
                     scaling: .fit,
-                    cacheGeneration: model.previewCacheGeneration(for: stop.leadAssetID)
+                    cacheGeneration: model.previewCacheGeneration(for: stop.leadAssetID),
+                    rotation: model.rotationForAsset(id: stop.leadAssetID)
                 )
                 .padding(2)
             } else {
@@ -5201,7 +5202,8 @@ private struct LoupeView: View {
                         CachedPreviewImage(
                             previewURL: previewURL,
                             scaling: .fit,
-                            cacheGeneration: model.previewCacheGeneration(for: item.assetID)
+                            cacheGeneration: model.previewCacheGeneration(for: item.assetID),
+                            rotation: model.rotationForAsset(id: item.assetID)
                         )
                         .padding(3)
                     } else {
@@ -7943,7 +7945,8 @@ private struct GridExpandOverlayView: View {
         CachedPreviewImage(
             previewURL: model.gridPreviewURL(for: transition.assetID),
             scaling: .fill,
-            cacheGeneration: model.previewCacheGeneration(for: transition.assetID)
+            cacheGeneration: model.previewCacheGeneration(for: transition.assetID),
+            rotation: model.rotationForAsset(id: transition.assetID)
         )
             .frame(width: scaledWidth, height: scaledHeight)
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -9650,7 +9653,8 @@ private struct AssetGridCell: View {
         CachedPreviewImage(
             previewURL: previewURL,
             scaling: AssetGridPreviewPolicy.thumbnailScaling,
-            cacheGeneration: previewCacheGeneration
+            cacheGeneration: previewCacheGeneration,
+            rotation: asset.technicalMetadata?.rotation ?? 0
         )
     }
 

@@ -1,5 +1,7 @@
 import AppKit
+import CoreImage
 import SwiftUI
+import TeststripCore
 
 enum PreviewImageDataLoader {
     static func loadData(from url: URL) async -> Data? {
@@ -8,12 +10,28 @@ enum PreviewImageDataLoader {
         }.value
     }
 
-    static func loadImage(from url: URL) async -> NSImage? {
-        await Task.detached(priority: .userInitiated) {
+    static func loadImage(from url: URL, rotation: Int = 0) async -> NSImage? {
+        await Task.detached(priority: .userInitiated) { () -> NSImage? in
             guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
                 return nil
             }
-            return NSImage(data: data)
+            guard rotation != 0 else {
+                return NSImage(data: data)
+            }
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                return NSImage(data: data)
+            }
+            let ciImage = CIImage(cgImage: cgImage)
+            let oriented = ciImage.oriented(forExifOrientation: Int32(RotationTransform.exifOrientation(forRotation: rotation).rawValue))
+            let context = CIContext()
+            guard let rotatedCGImage = context.createCGImage(oriented, from: oriented.extent) else {
+                return NSImage(data: data)
+            }
+            let dims = RotationTransform.rotatedDimensions(
+                width: cgImage.width, height: cgImage.height, rotation: rotation
+            )
+            return NSImage(cgImage: rotatedCGImage, size: NSSize(width: dims.width, height: dims.height))
         }.value
     }
 }
@@ -37,6 +55,7 @@ struct CachedPreviewImage: View {
     var scaling: Scaling
     var cornerRadius: CGFloat = 5
     var cacheGeneration: Int = 0
+    var rotation: Int = 0
 
     @State private var image: NSImage?
     @State private var loadedURL: URL?
@@ -44,7 +63,7 @@ struct CachedPreviewImage: View {
 
     var body: some View {
         content
-            .task(id: PreviewLoadRequest(url: previewURL, cacheGeneration: cacheGeneration)) {
+            .task(id: PreviewLoadRequest(url: previewURL, cacheGeneration: cacheGeneration, rotation: rotation)) {
                 await loadPreview()
             }
     }
@@ -82,7 +101,7 @@ struct CachedPreviewImage: View {
         }
         loadedURL = previewURL
         loadedGeneration = cacheGeneration
-        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL), !Task.isCancelled else {
+        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL, rotation: rotation), !Task.isCancelled else {
             return
         }
         image = loadedImage
@@ -92,4 +111,5 @@ struct CachedPreviewImage: View {
 private struct PreviewLoadRequest: Equatable {
     var url: URL?
     var cacheGeneration: Int
+    var rotation: Int
 }

@@ -457,7 +457,7 @@ struct LoupeZoomStageView: View {
         }
         loadedURL = displayedPreviewURL
         loadedGeneration = generation
-        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: displayedPreviewURL),
+        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: displayedPreviewURL, rotation: asset.technicalMetadata?.rotation ?? 0),
               !Task.isCancelled else {
             return
         }

@@ -219,6 +219,9 @@ public struct LibraryImportService: Sendable {
                 let allFiles = try self.ingestService.files(
                     for: plan,
                     progress: { scanProgress in
+                        buffer.lock.withLock {
+                            buffer.scanTotalCount = scanProgress.supportedFileCount
+                        }
                         if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
                             self.reportScanProgress(
                                 count: scanProgress.supportedFileCount,
@@ -242,6 +245,9 @@ public struct LibraryImportService: Sendable {
                         }
                     }
                 )
+                buffer.lock.withLock {
+                    buffer.scanTotalCount = allFiles.count
+                }
                 if scanProgressCoalescer.shouldReportFinalScanCount(allFiles.count) {
                     self.reportScanProgress(
                         count: allFiles.count,
@@ -319,10 +325,12 @@ public struct LibraryImportService: Sendable {
                 allExistingPreviewStates[id] = state
             }
             // Emit cataloging-start progress so callers know ingest is underway.
-            // In streaming mode this fires per batch with the batch count.
+            // Use the scan's running total as totalUnitCount so the UI shows the
+            // overall library size, not the batch size (e.g. "549 of 100000").
+            let scanTotal = buffer.lock.withLock { buffer.scanTotalCount }
             progress?(LibraryImportProgress(
                 completedUnitCount: cumulativeIngestCount.count,
-                totalUnitCount: batch.count,
+                totalUnitCount: scanTotal > 0 ? scanTotal : batch.count,
                 detail: catalogingDetail(batch.count),
                 catalogedAssetIDs: []
             ))
@@ -337,12 +345,15 @@ public struct LibraryImportService: Sendable {
                     let cumulativeCompleted = cumulativeIngestCount.count + ingestProgress.completedUnitCount
                     if ingestProgressCoalescer.shouldReport(
                         completedCount: cumulativeCompleted,
-                        totalCount: ingestProgress.totalUnitCount
+                        totalCount: scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount
                     ) {
                         progress?(LibraryImportProgress(
                             completedUnitCount: cumulativeCompleted,
-                            totalUnitCount: ingestProgress.totalUnitCount,
-                            detail: perFileDetail(cumulativeCompleted, ingestProgress.totalUnitCount),
+                            totalUnitCount: scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount,
+                            detail: perFileDetail(
+                                cumulativeCompleted,
+                                scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount
+                            ),
                             catalogedAssetIDs: ingestProgress.catalogedAssetIDs
                         ))
                     }
@@ -703,6 +714,10 @@ final class StreamingScanBuffer: @unchecked Sendable {
     var scanSkippedFiles: [FolderScanSkippedFile] = []
     var scanComplete = false
     var scanError: Error?
+    /// Running total of supported files the scanner has found so far.
+    /// Used as totalUnitCount in per-batch cataloging progress so the UI
+    /// shows "X of 100000" instead of "X of 256" (the batch size).
+    var scanTotalCount = 0
 }
 
 /// Mutable counter captured in a @Sendable ingest progress closure. The

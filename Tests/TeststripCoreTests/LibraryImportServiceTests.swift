@@ -363,6 +363,35 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(scanUpdates.map(\.totalUnitCount), [nil, nil, nil, nil, nil])
     }
 
+    func testStreamingImportProgressShowsScanTotalNotBatchSize() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-streaming-total")
+        // Create more files than the batch size (256) to verify that per-batch
+        // progress events show the overall scan total, not the batch size.
+        for index in 0..<260 {
+            try Data("jpg-\(index)".utf8).write(to: root.appendingPathComponent("image-\(index).jpg"))
+        }
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let recorder = ImportProgressRecorder()
+
+        _ = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration) { progress in
+            recorder.append(progress)
+        }
+
+        let updates = recorder.values()
+        // Filter to per-batch/per-file cataloging events (exclude the final
+        // "Cataloged" event which already uses the correct total).
+        let catalogingUpdates = updates.filter { $0.detail.hasPrefix("Cataloging") }
+        XCTAssertFalse(catalogingUpdates.isEmpty, "Expected cataloging progress events")
+        // Without the fix, per-batch events use totalUnitCount = batch.count
+        // (max 256). With the fix, they use the scan total (260), so at least
+        // one event should show totalUnitCount >= 260.
+        let maxTotal = catalogingUpdates.compactMap(\.totalUnitCount).max()
+        XCTAssertGreaterThanOrEqual(maxTotal ?? 0, 260,
+            "Per-batch cataloging progress should show the scan total (260), not the batch size (256)")
+    }
+
     func testCopyFromCardCopiesOriginalSidecarAndDefersPreviewGeneration() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-copy-card")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)

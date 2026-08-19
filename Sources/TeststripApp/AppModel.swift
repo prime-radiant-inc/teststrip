@@ -15144,6 +15144,10 @@ public final class AppModel {
         return url
     }
 
+    public func rotationForAsset(id assetID: AssetID) -> Int {
+        assets.first { $0.id == assetID }?.technicalMetadata?.rotation ?? 0
+    }
+
     func gridPreviewStatus(for assetID: AssetID) -> AssetGridPreviewStatusPresentation? {
         if let cachedStatus = gridPreviewStatusCacheByAssetID[assetID] {
             return cachedStatus
