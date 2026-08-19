@@ -2473,7 +2473,7 @@ public final class CatalogRepository {
     /// Targeted write that updates only the rotation field within technical_metadata_json,
     /// preserving all other technical metadata fields without a full-row upsert.
     public func updateRotation(assetID: AssetID, rotation: Int) throws {
-        var asset = try asset(id: assetID)
+        let asset = try asset(id: assetID)
         var metadata = asset.technicalMetadata ?? AssetTechnicalMetadata(
             pixelWidth: 0, pixelHeight: 0,
             provenance: ProviderProvenance(provider: "rotation", model: "", version: "", settingsHash: "")

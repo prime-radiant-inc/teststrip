@@ -19,3 +19,17 @@ public protocol FaceObservationEvaluationProvider: EvaluationProvider {
     var faceProvenance: ProviderProvenance { get }
     func evaluateWithFaces(assetID: AssetID, previewURL: URL) throws -> FaceEvaluationOutcome
 }
+
+public struct OrientationEvaluationOutcome: Equatable, Sendable {
+    public var signals: [EvaluationSignal]
+    public var rotation: Int?
+
+    public init(signals: [EvaluationSignal] = [], rotation: Int? = nil) {
+        self.signals = signals
+        self.rotation = rotation
+    }
+}
+
+public protocol OrientationEvaluationProvider: EvaluationProvider {
+    func evaluateWithOrientation(assetID: AssetID, previewURL: URL) throws -> OrientationEvaluationOutcome
+}
