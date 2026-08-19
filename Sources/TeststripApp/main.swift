@@ -67,6 +67,7 @@ struct TeststripApplication: App {
                 SearchCommands(model: model)
                 NavigationCommands(model: model)
                 MetadataActionCommands(model: model)
+                ImageCommands(model: model)
             }
             Group {
                 CullingCommands(model: model)
@@ -337,6 +338,24 @@ private struct NavigationCommands: Commands {
             try model.navigateForward()
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct ImageCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Image") {
+            Button("Rotate Left") {
+                try? model.rotateSelectedAssetCounterClockwise()
+            }
+            .keyboardShortcut("[", modifiers: [.command])
+
+            Button("Rotate Right") {
+                try? model.rotateSelectedAssetClockwise()
+            }
+            .keyboardShortcut("]", modifiers: [.command])
         }
     }
 }

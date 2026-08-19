@@ -8160,6 +8160,35 @@ public final class AppModel {
         }
     }
 
+    public func rotateSelectedAssetClockwise() throws {
+        try rotateSelectedAsset(by: 90)
+    }
+
+    public func rotateSelectedAssetCounterClockwise() throws {
+        try rotateSelectedAsset(by: -90)
+    }
+
+    private func rotateSelectedAsset(by delta: Int) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        let asset = try catalog.repository.asset(id: selectedAssetID)
+        let currentRotation = asset.technicalMetadata?.rotation ?? 0
+        var newRotation = (currentRotation + delta) % 360
+        if newRotation < 0 { newRotation += 360 }
+        try catalog.repository.updateRotation(assetID: selectedAssetID, rotation: newRotation)
+        let updatedAsset = try catalog.repository.asset(id: selectedAssetID)
+        try syncMetadataSidecar(for: updatedAsset)
+        if let index = assets.firstIndex(where: { $0.id == selectedAssetID }) {
+            assets[index] = updatedAsset
+            invalidateCullingStackScopeCache()
+        }
+        statusMessage = newRotation == 0 ? "Rotated back to original" : "Rotated \(newRotation)°"
+    }
+
     /// Batch rating/flag/color across the whole grid multi-selection when one is
     /// active, otherwise the single focused asset. One undo group covers every
     /// changed photo, so "select 12 near-dupes, reject 11" is a single gesture.
