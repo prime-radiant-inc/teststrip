@@ -30,7 +30,7 @@ final class AppModelTests: XCTestCase {
     func testDefaultEvaluationProvidersIncludeFaceExpressionPass() {
         XCTAssertEqual(
             AppModel.defaultEvaluationProviderNames,
-            ["local-image-metrics", "apple-vision", "core-image-faces"]
+            ["local-image-metrics", "apple-vision", "core-image-faces", "orientation"]
         )
     }
 

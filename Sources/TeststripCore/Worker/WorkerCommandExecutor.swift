@@ -153,7 +153,8 @@ public struct WorkerCommandExecutor {
         var evaluationProviders: [any EvaluationProvider] = [
             LocalImageMetricsEvaluationProvider(),
             AppleVisionEvaluationProvider(),
-            FaceExpressionEvaluationProvider()
+            FaceExpressionEvaluationProvider(),
+            AppleOrientationEvaluationProvider()
         ]
         if let localHTTPModel = configuration.localHTTPModel {
             evaluationProviders.append(LocalHTTPModelProvider(
@@ -422,7 +423,13 @@ public struct WorkerCommandExecutor {
         guard let previewURL = cachedPreviewURL(for: assetID) else {
             throw TeststripError.invalidState("no cached preview for \(assetID.rawValue)")
         }
-        if let faceProvider = provider as? any FaceObservationEvaluationProvider {
+        if let orientationProvider = provider as? any OrientationEvaluationProvider {
+            let outcome = try orientationProvider.evaluateWithOrientation(assetID: assetID, previewURL: previewURL)
+            try repository.recordEvaluationSignals(outcome.signals)
+            if let rotation = outcome.rotation {
+                try repository.updateRotation(assetID: assetID, rotation: rotation)
+            }
+        } else if let faceProvider = provider as? any FaceObservationEvaluationProvider {
             let outcome = try faceProvider.evaluateWithFaces(assetID: assetID, previewURL: previewURL)
             try repository.recordEvaluationSignals(outcome.signals)
             try repository.replaceFaceObservations(

@@ -2799,7 +2799,7 @@ public final class AppModel {
     public private(set) var abContenderAssetID: AssetID?
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
-    public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision", "core-image-faces"]
+    public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision", "core-image-faces", "orientation"]
     private static let pendingPreviewRecoveryBatchSize = 40
     static let previewGenerationQueueStateDisplayLimit = pendingPreviewRecoveryBatchSize
     private static let pendingMetadataSyncRecoveryBatchSize = 200
