@@ -41,7 +41,7 @@ enum ImportSourcePreflight {
 struct ImportSourceSummary: Equatable {
     static let defaultScanLimit = 100_000
     static let defaultEntryLimit = 1_000_000
-    static let defaultScanBudget: TimeInterval = .greatestFiniteMagnitude
+    static let defaultScanBudget: TimeInterval = 2.0
 
     var sourceURL: URL
     var photoCount: Int
@@ -212,7 +212,7 @@ struct ImportDedupPreview: Equatable {
         repository: CatalogRepository,
         limit: Int = ImportSourceSummary.defaultScanLimit,
         entryLimit: Int = ImportSourceSummary.defaultEntryLimit,
-        budget: TimeInterval = .greatestFiniteMagnitude,
+        budget: TimeInterval = 3.0,
         now: () -> Date = { Date() }
     ) -> ImportDedupPreview? {
         let boundedLimit = max(1, limit)
