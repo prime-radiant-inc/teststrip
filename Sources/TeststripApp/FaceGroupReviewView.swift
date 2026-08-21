@@ -242,7 +242,7 @@ struct FaceReviewTileView: View {
     @ViewBuilder
     private var faceOrPhoto: some View {
         if isRevealingPhoto {
-            CachedPreviewImage(previewURL: previewURL, scaling: .fit)
+            CachedPreviewImage(previewURL: previewURL, scaling: .fit, maxPixelDimension: PreviewLevel.medium.maxPixelDimension)
         } else if let faceCrop {
             Image(nsImage: faceCrop)
                 .resizable()

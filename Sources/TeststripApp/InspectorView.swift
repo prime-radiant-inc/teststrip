@@ -718,7 +718,8 @@ struct InspectorView: View {
                 scaling: .fit,
                 cornerRadius: 5,
                 cacheGeneration: model.previewCacheGeneration(for: asset.id),
-                rotation: asset.technicalMetadata?.rotation ?? 0
+                rotation: asset.technicalMetadata?.rotation ?? 0,
+                maxPixelDimension: PreviewLevel.medium.maxPixelDimension
             )
             .padding(4)
         }

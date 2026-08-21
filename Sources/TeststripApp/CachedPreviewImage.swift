@@ -89,6 +89,7 @@ struct CachedPreviewImage: View {
     var cornerRadius: CGFloat = 5
     var cacheGeneration: Int = 0
     var rotation: Int = 0
+    var maxPixelDimension: Int? = nil
 
     @State private var image: NSImage?
     @State private var loadedURL: URL?
@@ -136,7 +137,7 @@ struct CachedPreviewImage: View {
         loadedURL = previewURL
         loadedGeneration = cacheGeneration
         loadedRotation = rotation
-        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL, rotation: rotation), !Task.isCancelled else {
+        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL, maxPixelDimension: maxPixelDimension, rotation: rotation), !Task.isCancelled else {
             return
         }
         image = loadedImage

@@ -175,4 +175,41 @@ final class PreviewRendererTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: gridURL.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: largeURL.path))
     }
+
+    func testRenderLevelsMediumAloneProducesLargeResolution() throws {
+        // Rendering .medium alone must still write large.heic at .large's
+        // 3200px resolution, not .medium's 1600px, so .large is not starved.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-medium-alone")
+        let source = directory.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 4000, height: 3000)
+        let previewDir = directory.appendingPathComponent("previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true)
+
+        let renderer = PreviewRenderer()
+        let assetID = AssetID(rawValue: "asset-1")
+        let cache = PreviewCache(root: previewDir)
+
+        try renderer.renderLevels(
+            fromLocalSource: source,
+            levels: [.medium],
+            destinationProvider: { level in
+                cache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+            }
+        )
+
+        let largeURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .large))
+        let dims = try renderer.dimensions(of: largeURL)
+        // .large's maxPixelDimension is 3200; the file must be at that resolution,
+        // not .medium's 1600.
+        XCTAssertGreaterThan(
+            max(dims.width, dims.height),
+            PreviewLevel.medium.maxPixelDimension!,
+            "large.heic must be rendered at .large's 3200px, not .medium's 1600px"
+        )
+        XCTAssertLessThanOrEqual(
+            max(dims.width, dims.height),
+            PreviewLevel.large.maxPixelDimension!,
+            "large.heic must not exceed .large's 3200px bound"
+        )
+    }
 }

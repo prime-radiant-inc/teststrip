@@ -220,6 +220,7 @@ public struct WorkerCommandExecutor {
             }
             let tempURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("teststrip-preview-source-\(UUID().uuidString)")
+                .appendingPathExtension(asset.originalURL.pathExtension.isEmpty ? "tmp" : asset.originalURL.pathExtension)
             do {
                 try FileManager.default.copyItem(at: asset.originalURL, to: tempURL)
                 try renderer.renderLevels(
