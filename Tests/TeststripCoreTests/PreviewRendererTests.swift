@@ -117,4 +117,62 @@ final class PreviewRendererTests: XCTestCase {
         let dimensions = try renderer.dimensions(of: output)
         XCTAssertEqual(dimensions, PreviewDimensions(width: 1200, height: 800))
     }
+
+    func testRenderLevelsGeneratesMultiplePhysicalFilesFromOneSource() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-batch")
+        let source = directory.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 3200, height: 2400)
+        let previewDir = directory.appendingPathComponent("previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true)
+
+        let renderer = PreviewRenderer()
+        let assetID = AssetID(rawValue: "asset-1")
+        let cache = PreviewCache(root: previewDir)
+
+        try renderer.renderLevels(
+            fromLocalSource: source,
+            levels: [.grid, .large, .original],
+            destinationProvider: { level in
+                cache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+            }
+        )
+
+        let gridURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .grid))
+        let largeURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .large))
+        let fullURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .original))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: gridURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: largeURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fullURL.path))
+    }
+
+    func testRenderLevelsDeduplicatesLevelsMappingToSamePhysicalFile() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-batch-dedup")
+        let source = directory.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 3200, height: 2400)
+        let previewDir = directory.appendingPathComponent("previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true)
+
+        let renderer = PreviewRenderer()
+        let assetID = AssetID(rawValue: "asset-1")
+        let cache = PreviewCache(root: previewDir)
+
+        try renderer.renderLevels(
+            fromLocalSource: source,
+            levels: [.micro, .grid, .medium, .large],
+            destinationProvider: { level in
+                cache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+            }
+        )
+
+        let gridURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .grid))
+        let microURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .micro))
+        let largeURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .large))
+        let mediumURL = cache.url(for: PreviewCacheKey(assetID: assetID, level: .medium))
+
+        XCTAssertEqual(gridURL, microURL)
+        XCTAssertEqual(largeURL, mediumURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: gridURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: largeURL.path))
+    }
 }

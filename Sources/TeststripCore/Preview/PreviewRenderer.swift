@@ -64,6 +64,37 @@ public struct PreviewRenderer: Sendable {
         }
     }
 
+    private static func physicalFile(for level: PreviewLevel) -> String {
+        switch level {
+        case .micro, .grid:   return "grid.heic"
+        case .medium, .large: return "large.heic"
+        case .original:       return "full.heic"
+        }
+    }
+
+    public func renderLevels(
+        fromLocalSource sourceURL: URL,
+        levels: [PreviewLevel],
+        destinationProvider: (PreviewLevel) -> URL
+    ) throws {
+        var seen = Set<String>()
+        var toRender: [PreviewLevel] = []
+        for level in levels {
+            let file = Self.physicalFile(for: level)
+            if !seen.contains(file) {
+                seen.insert(file)
+                toRender.append(level)
+            }
+        }
+        for level in toRender {
+            try render(
+                sourceURL: sourceURL,
+                level: level,
+                destinationURL: destinationProvider(level)
+            )
+        }
+    }
+
     public func dimensions(of url: URL) throws -> PreviewDimensions {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
