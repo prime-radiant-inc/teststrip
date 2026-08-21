@@ -10,6 +10,39 @@ enum PreviewImageDataLoader {
         }.value
     }
 
+    static func loadImage(from url: URL, maxPixelDimension: Int?, rotation: Int = 0) async -> NSImage? {
+        guard let maxPixelDimension else {
+            return await loadImage(from: url, rotation: rotation)
+        }
+        return await Task.detached(priority: .userInitiated) { () -> NSImage? in
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+                return nil
+            }
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelDimension,
+                kCGImageSourceShouldCache: false
+            ]
+            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                return nil
+            }
+            if rotation == 0 {
+                return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            }
+            let ciImage = CIImage(cgImage: cgImage)
+            let oriented = ciImage.oriented(forExifOrientation: Int32(RotationTransform.exifOrientation(forRotation: rotation).rawValue))
+            let context = CIContext()
+            guard let rotatedCGImage = context.createCGImage(oriented, from: oriented.extent) else {
+                return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            }
+            let dims = RotationTransform.rotatedDimensions(
+                width: cgImage.width, height: cgImage.height, rotation: rotation
+            )
+            return NSImage(cgImage: rotatedCGImage, size: NSSize(width: dims.width, height: dims.height))
+        }.value
+    }
+
     static func loadImage(from url: URL, rotation: Int = 0) async -> NSImage? {
         await Task.detached(priority: .userInitiated) { () -> NSImage? in
             guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
