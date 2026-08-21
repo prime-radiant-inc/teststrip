@@ -1284,18 +1284,13 @@ final class FolderImportTests: XCTestCase {
         try? FileManager.default.removeItem(at: linkRoot)
     }
 
-    func testThumbnailPromotionSkipsMicroRender() throws {
-        let dir = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion")
+    func testGridPreviewGeneratedOnImmediateImport() throws {
+        let dir = try TestDirectories.makeTemporaryDirectory(named: "grid-preview-import")
         let photo = dir.appendingPathComponent("photo.jpg")
         try TestDirectories.writeTestJPEG(to: photo, width: 8, height: 8)
 
-        let preIngestCacheDir = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion-cache")
-        let preIngestCache = PreIngestThumbnailCache(directoryURL: preIngestCacheDir)
-        let thumbnailData = Data([0xFF, 0xD8, 0xFF, 0xE0])
-        try preIngestCache.storeThumbnail(thumbnailData, for: photo)
-
-        let previewRoot = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion-preview")
-        let catalogDir = try TestDirectories.makeTemporaryDirectory(named: "thumbnail-promotion-catalog")
+        let previewRoot = try TestDirectories.makeTemporaryDirectory(named: "grid-preview-preview")
+        let catalogDir = try TestDirectories.makeTemporaryDirectory(named: "grid-preview-catalog")
         let database = try CatalogDatabase.open(at: catalogDir.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
@@ -1308,25 +1303,17 @@ final class FolderImportTests: XCTestCase {
         let result = try importService.addFolderInPlace(
             dir,
             repository: repository,
-            previewPolicy: .generateImmediately,
-            preIngestThumbnailCache: preIngestCache
+            previewPolicy: .generateImmediately
         )
 
         XCTAssertEqual(result.importedAssets.count, 1)
         let asset = result.importedAssets[0]
 
-        let microURL = PreviewCache(root: previewRoot).url(for: PreviewCacheKey(assetID: asset.id, level: .micro))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: microURL.path), "micro preview should exist from promotion")
-
-        let promotedData = try Data(contentsOf: microURL)
-        XCTAssertEqual(promotedData, thumbnailData,
-            "micro preview should be the promoted thumbnail bytes, not a fresh render")
+        let gridURL = PreviewCache(root: previewRoot).url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: gridURL.path), "grid preview should exist after import")
 
         let pendingItems = try repository.pendingPreviewGenerationItems()
-        let microPending = pendingItems.filter { $0.assetID == asset.id && $0.level == .micro }
-        XCTAssertTrue(microPending.isEmpty, "micro preview should be marked as generated")
-
-        preIngestCache.cleanup()
+        XCTAssertTrue(pendingItems.isEmpty, "all preview items should be marked as generated")
     }
 }
 

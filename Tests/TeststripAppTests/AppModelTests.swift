@@ -15019,16 +15019,17 @@ final class AppModelTests: XCTestCase {
             named: "compare-progressive-selected-large",
             workerSupervisor: supervisor
         )
+        // Medium and large share the same physical file (large.heic),
+        // so caching medium means large is already served — no promotion needed.
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: first.id, level: .medium)))
 
         try model.requestVisibleComparePreviews()
 
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
-            "preview-first-large",
             "preview-second-medium"
         ])
         XCTAssertEqual(try transport.commands(), [
-            .generatePreviews(assetID: first.id, levels: [.large])
+            .generatePreviews(assetID: AssetID(rawValue: "second"), levels: [.medium])
         ])
     }
 
@@ -15525,10 +15526,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertNil(model.gridPreviewURL(for: assetID))
         XCTAssertEqual(try catalog.repository.pendingPreviewGenerationItems(), [
-            PreviewGenerationItem(assetID: assetID, level: .micro),
             PreviewGenerationItem(assetID: assetID, level: .grid)
         ])
-        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: assetID, levels: [.micro])])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: assetID, levels: [.grid])])
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
 

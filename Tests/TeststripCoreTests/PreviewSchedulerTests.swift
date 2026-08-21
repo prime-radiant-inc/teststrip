@@ -34,7 +34,7 @@ final class PreviewSchedulerTests: XCTestCase {
         XCTAssertFalse(components[0].contains(".."))
         XCTAssertNotEqual(components[0], "outside")
         XCTAssertNotEqual(components[0], "path")
-        XCTAssertEqual(components[1], "grid.jpg")
+        XCTAssertEqual(components[1], "grid.heic")
     }
 
     func testPreviewCacheKeepsDistinctUnsafeAndLiteralIDsSeparate() {

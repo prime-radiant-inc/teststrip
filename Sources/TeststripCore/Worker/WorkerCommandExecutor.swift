@@ -244,7 +244,7 @@ public struct WorkerCommandExecutor {
                 throw error
             }
             try? FileManager.default.removeItem(at: tempURL)
-            for level in Self.allLevelsServedBy(levels) {
+            for level in PreviewCache.allLevelsServedBy(levels) {
                 try repository.markPreviewGenerated(assetID: assetID, level: level)
             }
             return .completed("generated \(levels.map(\.rawValue).joined(separator: ",")) previews for \(Self.displayName(for: asset))")
@@ -287,23 +287,6 @@ public struct WorkerCommandExecutor {
     private static func displayName(for asset: Asset) -> String {
         let name = asset.originalURL.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? asset.id.rawValue : name
-    }
-
-    private static func allLevelsServedBy(_ levels: [PreviewLevel]) -> [PreviewLevel] {
-        var result = Set<PreviewLevel>()
-        for level in levels {
-            switch level {
-            case .micro, .grid:
-                result.insert(.micro)
-                result.insert(.grid)
-            case .medium, .large:
-                result.insert(.medium)
-                result.insert(.large)
-            case .original:
-                result.insert(.original)
-            }
-        }
-        return PreviewLevel.allCases.filter { result.contains($0) }
     }
 
     private func markPreviewBlockingAvailabilityIfNeeded(_ asset: Asset) throws -> SourceAvailability? {

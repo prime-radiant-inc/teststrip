@@ -51,7 +51,7 @@ final class LibraryGridLayoutTests: XCTestCase {
 
     func testGridPreviewStatusHidesWhenCachedPreviewExists() {
         let status = AssetGridPreviewStatusPresentation.presentation(
-            previewURL: URL(fileURLWithPath: "/Previews/asset/grid.jpg"),
+            previewURL: URL(fileURLWithPath: "/Previews/asset/grid.heic"),
             queueStates: [
                 PreviewGenerationQueueState(
                     item: PreviewGenerationItem(assetID: AssetID(rawValue: "asset"), level: .grid),

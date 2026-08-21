@@ -113,7 +113,7 @@ public struct LibraryImportService: Sendable {
     // (e.g. copying files off a card).
     private static let scanProgressHeartbeat: TimeInterval = 15
     private static let ingestProgressHeartbeat: TimeInterval = 15
-    private static let importPreviewLevels: [PreviewLevel] = [.micro, .grid]
+    private static let importPreviewLevels: [PreviewLevel] = [.grid]
 
     public var ingestService: IngestService
     public var previewCache: PreviewCache
@@ -459,52 +459,60 @@ public struct LibraryImportService: Sendable {
         var failures: [LibraryPreviewFailure] = []
         var failedAssetIDs: Set<AssetID> = []
 
-        for (index, item) in items.enumerated() {
-            try Task.checkCancellation()
-            let asset = try repository.asset(id: item.assetID)
-            if let cache = preIngestThumbnailCache,
-               item.level == .micro,
-               cache.thumbnailExists(for: asset.originalURL) {
-                let destURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .micro))
-                do {
-                    try cache.promote(from: asset.originalURL, to: destURL)
-                    try repository.markPreviewGenerated(assetID: asset.id, level: .micro)
-                    generatedCount += 1
-                    let completedCount = index + 1
-                    progress?(LibraryImportProgress(
-                        completedUnitCount: completedCount,
-                        totalUnitCount: items.count,
-                        detail: "Generated \(completedCount) of \(items.count) previews"
-                    ))
-                    continue
-                } catch {
-                    // Fall through to normal render path
-                }
+        // Group items by asset so each source file is read once per asset.
+        var itemsByAsset: [AssetID: [PreviewLevel]] = [:]
+        var itemOrder: [AssetID] = []
+        for item in items {
+            if itemsByAsset[item.assetID] == nil {
+                itemOrder.append(item.assetID)
+                itemsByAsset[item.assetID] = []
             }
-            if !failedAssetIDs.contains(asset.id) {
-                do {
-                    try renderer.render(
-                        sourceURL: asset.originalURL,
-                        level: item.level,
-                        destinationURL: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: item.level))
-                    )
-                    try repository.markPreviewGenerated(assetID: asset.id, level: item.level)
-                    generatedCount += 1
-                } catch {
-                    failedAssetIDs.insert(asset.id)
+            itemsByAsset[item.assetID]?.append(item.level)
+        }
+
+        var completedCount = 0
+        for assetID in itemOrder {
+            try Task.checkCancellation()
+            let levels = itemsByAsset[assetID] ?? []
+            let asset = try repository.asset(id: assetID)
+            if failedAssetIDs.contains(asset.id) {
+                completedCount += levels.count
+                continue
+            }
+            do {
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension(asset.originalURL.pathExtension.isEmpty ? "tmp" : asset.originalURL.pathExtension)
+                try FileManager.default.copyItem(at: asset.originalURL, to: tempURL)
+                defer { try? FileManager.default.removeItem(at: tempURL) }
+
+                try renderer.renderLevels(
+                    fromLocalSource: tempURL,
+                    levels: levels,
+                    destinationProvider: { level in
+                        previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: level))
+                    }
+                )
+                for level in PreviewCache.allLevelsServedBy(levels) {
+                    try repository.markPreviewGenerated(assetID: asset.id, level: level)
+                }
+                generatedCount += levels.count
+            } catch {
+                failedAssetIDs.insert(asset.id)
+                for level in levels {
                     try repository.recordPreviewGenerationFailure(
                         assetID: asset.id,
-                        level: item.level,
+                        level: level,
                         errorMessage: error.localizedDescription
                     )
-                    failures.append(LibraryPreviewFailure(
-                        assetID: asset.id,
-                        sourceURL: asset.originalURL,
-                        message: error.localizedDescription
-                    ))
                 }
+                failures.append(LibraryPreviewFailure(
+                    assetID: asset.id,
+                    sourceURL: asset.originalURL,
+                    message: error.localizedDescription
+                ))
             }
-            let completedCount = index + 1
+            completedCount += levels.count
             progress?(LibraryImportProgress(
                 completedUnitCount: completedCount,
                 totalUnitCount: items.count,

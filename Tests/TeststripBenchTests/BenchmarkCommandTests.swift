@@ -128,7 +128,7 @@ final class BenchmarkCommandTests: XCTestCase {
 
         XCTAssertEqual(result.importedAssetCount, 250)
         XCTAssertEqual(result.catalogAssetCount, 250)
-        XCTAssertEqual(result.pendingPreviewCount, 500)
+        XCTAssertEqual(result.pendingPreviewCount, 250)
         XCTAssertLessThanOrEqual(result.progressEventCount, 8)
     }
 
@@ -139,11 +139,11 @@ final class BenchmarkCommandTests: XCTestCase {
 
         XCTAssertEqual(result.importedAssetCount, 3)
         XCTAssertEqual(result.catalogAssetCount, 3)
-        XCTAssertEqual(result.pendingPreviewCountBeforeDrain, 6)
-        XCTAssertEqual(result.generatedPreviewCount, 6)
+        XCTAssertEqual(result.pendingPreviewCountBeforeDrain, 3)
+        XCTAssertEqual(result.generatedPreviewCount, 3)
         XCTAssertEqual(result.previewFailureCount, 0)
         XCTAssertEqual(result.pendingPreviewCountAfterDrain, 0)
-        XCTAssertEqual(result.cachedPreviewCount, 6)
+        XCTAssertEqual(result.cachedPreviewCount, 3)
     }
 
     func testCardImportSmokeCopiesToDestinationGeneratesPreviewsAndPreservesSource() throws {
@@ -154,7 +154,7 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.importedAssetCount, 3)
         XCTAssertEqual(result.catalogAssetCount, 3)
         XCTAssertEqual(result.destinationOriginalCount, 3)
-        XCTAssertEqual(result.cachedPreviewCount, 6)
+        XCTAssertEqual(result.cachedPreviewCount, 3)
         XCTAssertEqual(result.sourceOriginalUnchangedCount, 3)
         XCTAssertEqual(result.sourceRootCount, 1)
         XCTAssertEqual(result.destinationCatalogAssetCount, 3)
@@ -228,8 +228,8 @@ final class BenchmarkCommandTests: XCTestCase {
         let result = try PreviewRenderBenchmark(count: 12, root: root).run()
 
         XCTAssertEqual(result.sourceImageCount, 12)
-        XCTAssertEqual(result.renderedPreviewCount, 48)
-        XCTAssertEqual(result.cachedPreviewCount, 48)
+        XCTAssertEqual(result.renderedPreviewCount, 24)
+        XCTAssertEqual(result.cachedPreviewCount, 24)
     }
 
     func testWorkerRecoverySmokeLoadsPendingPreviewWorkIntoAppQueue() throws {
@@ -256,7 +256,7 @@ final class BenchmarkCommandTests: XCTestCase {
 
         XCTAssertEqual(result.sourceImageCount, 2)
         XCTAssertEqual(result.catalogAssetCount, 2)
-        XCTAssertEqual(result.cachedPreviewCount, 4)
+        XCTAssertEqual(result.cachedPreviewCount, 2)
     }
 
     func testRealCorpusSmokeImportsRepresentativePhotosWithoutMutatingSources() throws {
@@ -353,7 +353,7 @@ final class BenchmarkCommandTests: XCTestCase {
 
         XCTAssertEqual(result.assetCount, 8)
         XCTAssertEqual(result.sourceImageCount, 8)
-        XCTAssertEqual(result.cachedPreviewCount, 32)
+        XCTAssertEqual(result.cachedPreviewCount, 16)
         XCTAssertEqual(try repository.assetCount(), 8)
         XCTAssertEqual(assets.count, 8)
         XCTAssertEqual(assets.first?.metadata.rating, 0)
@@ -417,7 +417,7 @@ final class BenchmarkCommandTests: XCTestCase {
 
         XCTAssertEqual(result.sourceImageCount, 2)
         XCTAssertEqual(result.assetCount, 2)
-        XCTAssertEqual(result.cachedPreviewCount, 4)
+        XCTAssertEqual(result.cachedPreviewCount, 2)
         XCTAssertEqual(try repository.assetCount(), 2)
         XCTAssertEqual(Set(assets.map { $0.originalURL.deletingLastPathComponent() }), [photoDirectory])
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: assets[0].id, level: .grid)).path))
@@ -452,7 +452,7 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.workingStillCount, 1)
         XCTAssertEqual(result.bestEffortRawCount, 2)
         XCTAssertEqual(result.unsupportedCount, 1)
-        XCTAssertEqual(result.cachedPreviewCount, 6)
+        XCTAssertEqual(result.cachedPreviewCount, 3)
         XCTAssertEqual(try repository.assetCount(), 4)
         XCTAssertEqual(Set(assets.map { $0.originalURL.deletingLastPathComponent() }), [photoDirectory])
         XCTAssertEqual(try repository.sourceRoots().map { $0.path }, [photoDirectory.standardizedFileURL.path])

@@ -36,7 +36,7 @@ public struct RealCorpusCatalogSeeder {
     public var applicationSupportDirectory: URL
     public var photoDirectory: URL
 
-    private let renderedLevels: [PreviewLevel] = [.micro, .grid]
+    private let renderedLevels: [PreviewLevel] = [.grid]
 
     public init(applicationSupportDirectory: URL, photoDirectory: URL) {
         self.applicationSupportDirectory = applicationSupportDirectory
@@ -84,13 +84,11 @@ public struct RealCorpusCatalogSeeder {
 
         let renderer = PreviewRenderer()
         for asset in importedAssets where (try? decodeRegistry.capability(for: asset.originalURL).canRenderPreview) == true {
-            for level in renderedLevels {
-                try renderer.render(
-                    sourceURL: asset.originalURL,
-                    level: level,
-                    destinationURL: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: level))
-                )
-            }
+            try renderer.render(
+                sourceURL: asset.originalURL,
+                level: .grid,
+                destinationURL: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+            )
         }
 
         return RealCorpusCatalogSeederResult(

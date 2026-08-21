@@ -13,7 +13,7 @@ enum PreviewCacheFileCounter {
                 at: assetDirectory,
                 includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
-            ).filter { $0.pathExtension == "jpg" }.count)
+            ).filter { $0.pathExtension == "heic" }.count)
         }
     }
 }

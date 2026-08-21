@@ -60,7 +60,7 @@ public struct SmokeCatalogSeeder {
     /// the default 15-minute spacing, which never auto-stacks.
     public var captureOffsets: [TimeInterval]?
 
-    private let renderedLevels: [PreviewLevel] = [.micro, .grid, .medium, .large]
+    private let renderedLevels: [PreviewLevel] = [.grid, .large]
 
     public init(applicationSupportDirectory: URL, count: Int, captureOffsets: [TimeInterval]? = nil) {
         self.applicationSupportDirectory = applicationSupportDirectory
@@ -104,13 +104,13 @@ public struct SmokeCatalogSeeder {
                 fingerprint: fingerprint(for: sourceURL)
             ))
 
-            for level in renderedLevels {
-                try renderer.render(
-                    sourceURL: sourceURL,
-                    level: level,
-                    destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
-                )
-            }
+            try renderer.renderLevels(
+                fromLocalSource: sourceURL,
+                levels: renderedLevels,
+                destinationProvider: { level in
+                    previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+                }
+            )
         }
         if !pickAssetIDs.isEmpty {
             try repository.upsert(AssetSet(

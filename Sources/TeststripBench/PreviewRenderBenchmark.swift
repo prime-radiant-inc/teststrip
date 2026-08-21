@@ -17,7 +17,7 @@ public struct PreviewRenderBenchmark {
     public var count: Int
     public var root: URL
 
-    private let renderedLevels: [PreviewLevel] = [.micro, .grid, .medium, .large]
+    private let renderedLevels: [PreviewLevel] = [.grid, .large]
 
     public init(count: Int, root: URL) {
         self.count = count
@@ -37,11 +37,14 @@ public struct PreviewRenderBenchmark {
             let sourceURL = sourceRoot.appendingPathComponent("\(assetID.rawValue).jpg")
             try BenchmarkImageFixtures.writeJPEG(to: sourceURL, index: index)
 
-            for level in renderedLevels {
-                let destinationURL = previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
-                try renderer.render(sourceURL: sourceURL, level: level, destinationURL: destinationURL)
-                renderedPreviewCount += 1
-            }
+            try renderer.renderLevels(
+                fromLocalSource: sourceURL,
+                levels: renderedLevels,
+                destinationProvider: { level in
+                    previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+                }
+            )
+            renderedPreviewCount += renderedLevels.count
         }
 
         return PreviewRenderBenchmarkResult(

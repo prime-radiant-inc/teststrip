@@ -25,12 +25,32 @@ public struct PreviewCache: Sendable {
             .appendingPathComponent(Self.physicalFile(for: key.level))
     }
 
-    private static func physicalFile(for level: PreviewLevel) -> String {
+    public static func physicalFile(for level: PreviewLevel) -> String {
         switch level {
         case .micro, .grid:   return "grid.heic"
         case .medium, .large: return "large.heic"
         case .original:       return "full.heic"
         }
+    }
+
+    /// Returns all logical levels served by the same physical files as the
+    /// requested levels. Micro and grid share one file; medium and large
+    /// share another; original is standalone.
+    public static func allLevelsServedBy(_ levels: [PreviewLevel]) -> [PreviewLevel] {
+        var result = Set<PreviewLevel>()
+        for level in levels {
+            switch level {
+            case .micro, .grid:
+                result.insert(.micro)
+                result.insert(.grid)
+            case .medium, .large:
+                result.insert(.medium)
+                result.insert(.large)
+            case .original:
+                result.insert(.original)
+            }
+        }
+        return PreviewLevel.allCases.filter { result.contains($0) }
     }
 
     /// Deletes every cached preview level for an asset (its whole per-asset

@@ -64,14 +64,6 @@ public struct PreviewRenderer: Sendable {
         }
     }
 
-    private static func physicalFile(for level: PreviewLevel) -> String {
-        switch level {
-        case .micro, .grid:   return "grid.heic"
-        case .medium, .large: return "large.heic"
-        case .original:       return "full.heic"
-        }
-    }
-
     public func renderLevels(
         fromLocalSource sourceURL: URL,
         levels: [PreviewLevel],
@@ -80,7 +72,7 @@ public struct PreviewRenderer: Sendable {
         var seen = Set<String>()
         var toRender: [PreviewLevel] = []
         for level in levels {
-            let file = Self.physicalFile(for: level)
+            let file = PreviewCache.physicalFile(for: level)
             if !seen.contains(file) {
                 seen.insert(file)
                 toRender.append(level)

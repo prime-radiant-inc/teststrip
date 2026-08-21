@@ -74,7 +74,7 @@ final class FaceReportPreviewCompletionTests: XCTestCase {
         )
         let source = model.faceReportPreviewSource(for: asset.id)
         XCTAssertNotNil(source, "the memoized nil must not survive the completion that made a preview available")
-        XCTAssertEqual(source?.level, .medium)
+        XCTAssertEqual(source?.level, .large)
     }
 
     // Matches production exactly: AppCatalog.loadModel wires
@@ -141,7 +141,7 @@ final class FaceReportPreviewCompletionTests: XCTestCase {
         )
         let source = model.faceReportPreviewSource(for: asset.id)
         XCTAssertNotNil(source, "the memoized nil must not survive the flush that made a preview available")
-        XCTAssertEqual(source?.level, .medium)
+        XCTAssertEqual(source?.level, .large)
     }
 
     // SwiftUI's `.task(id:)` only re-evaluates its id expression (and thus
@@ -234,7 +234,7 @@ final class FaceReportPreviewCompletionTests: XCTestCase {
         try await waitForBackgroundWorkStatus(.completed, itemID: mediumItemID, in: model)
 
         XCTAssertEqual(model.previewCacheGeneration(for: asset.id), initialGeneration + 1)
-        XCTAssertEqual(model.faceReportPreviewSource(for: asset.id)?.level, .medium)
+        XCTAssertEqual(model.faceReportPreviewSource(for: asset.id)?.level, .large)
 
         // Freed by .medium's completion -- now running.
         try await waitForBackgroundWorkStatus(.running, itemID: largeItemID, in: model)
