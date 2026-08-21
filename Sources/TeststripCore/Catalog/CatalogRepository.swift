@@ -2765,6 +2765,22 @@ public final class CatalogRepository {
         )
     }
 
+    /// Clear all preview generation queue entries and re-queue one item
+    /// per physical file for every cataloged asset. Used by the HEIC migration.
+    public func resetAllPreviewGenerationQueue() throws {
+        try database.execute("DELETE FROM preview_generation_queue")
+        let rows = try database.rows("SELECT id FROM assets ORDER BY rowid ASC")
+        var items: [PreviewGenerationItem] = []
+        for row in rows {
+            guard let id = row["id"] else { continue }
+            let assetID = AssetID(rawValue: id)
+            for level in [PreviewLevel.grid, .large, .original] {
+                items.append(PreviewGenerationItem(assetID: assetID, level: level))
+            }
+        }
+        try recordPreviewGenerationPending(items)
+    }
+
     public func pendingPreviewGenerationItems(
         limit: Int? = nil,
         maximumAttemptCount: Int? = nil,

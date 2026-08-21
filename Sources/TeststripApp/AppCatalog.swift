@@ -110,6 +110,15 @@ public struct AppCatalog {
         let repository = CatalogRepository(database: database)
         try repository.backfillBonds()
         let previewCache = PreviewCache(root: paths.previewCacheRoot)
+
+        // One-time migration: delete old JPEG previews and re-queue for HEIC
+        let migrationKey = "preview-heic-migration-done"
+        if !UserDefaults.standard.bool(forKey: migrationKey) {
+            try PreviewMigration.deleteExistingJPEGPreviews(in: previewCache)
+            try PreviewMigration.resetPreviewGenerationQueue(repository: repository)
+            UserDefaults.standard.set(true, forKey: migrationKey)
+        }
+
         let ingestService = IngestService(
             scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.catalogableExtensions),
             decodeRegistry: DecodeRegistry(providers: [ImageIODecodeProvider()])
