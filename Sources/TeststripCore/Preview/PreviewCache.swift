@@ -22,7 +22,15 @@ public struct PreviewCache: Sendable {
 
         return root
             .appendingPathComponent(assetDirectoryName, isDirectory: true)
-            .appendingPathComponent("\(key.level.rawValue).jpg")
+            .appendingPathComponent(Self.physicalFile(for: key.level))
+    }
+
+    private static func physicalFile(for level: PreviewLevel) -> String {
+        switch level {
+        case .micro, .grid:   return "grid.heic"
+        case .medium, .large: return "large.heic"
+        case .original:       return "full.heic"
+        }
     }
 
     /// Deletes every cached preview level for an asset (its whole per-asset
