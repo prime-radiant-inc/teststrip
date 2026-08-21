@@ -39,12 +39,28 @@ public struct PreviewRenderer: Sendable {
         } catch {
             throw TeststripError.io("could not create preview directory \(destinationDirectory.path): \(error.localizedDescription)")
         }
-        guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
-            throw TeststripError.io("could not create preview destination")
+        guard let destination = CGImageDestinationCreateWithURL(
+            destinationURL as CFURL,
+            UTType("public.heic")!.identifier as CFString,
+            1,
+            nil
+        ) else {
+            throw TeststripError.io("could not create HEIC preview destination")
         }
-        CGImageDestinationAddImage(destination, thumbnail, nil)
+        let properties: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: Self.compressionQuality(for: level)
+        ]
+        CGImageDestinationAddImage(destination, thumbnail, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {
             throw TeststripError.io("could not write preview \(destinationURL.path)")
+        }
+    }
+
+    private static func compressionQuality(for level: PreviewLevel) -> Double {
+        switch level {
+        case .micro, .grid:   return 0.82
+        case .medium, .large: return 0.40
+        case .original:       return 0.25
         }
     }
 
