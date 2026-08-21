@@ -160,7 +160,7 @@ public struct LaneOverlapSmoke {
                     completedUnitCount: 0,
                     totalUnitCount: 1
                 ),
-                command: .generatePreview(assetID: pendingItem.assetID, level: pendingItem.level),
+                command: .generatePreviews(assetID: pendingItem.assetID, levels: [pendingItem.level]),
                 placement: .back
             ))
         }

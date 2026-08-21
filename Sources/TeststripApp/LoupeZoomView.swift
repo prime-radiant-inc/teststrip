@@ -249,6 +249,7 @@ struct LoupeZoomStageView: View {
     @State private var image: NSImage?
     @State private var loadedURL: URL?
     @State private var loadedGeneration: Int?
+    @State private var loadedRotation: Int?
     @State private var dragStartFocus: LoupeZoomFocus?
     @State private var pinchBaseScale: CGFloat?
 
@@ -278,7 +279,8 @@ struct LoupeZoomStageView: View {
         }
         .task(id: StagePreviewLoadKey(
             url: displayedPreviewURL,
-            cacheGeneration: model.previewCacheGeneration(for: asset.id)
+            cacheGeneration: model.previewCacheGeneration(for: asset.id),
+            rotation: asset.technicalMetadata?.rotation ?? 0
         )) {
             await loadPreview()
         }
@@ -448,15 +450,18 @@ struct LoupeZoomStageView: View {
             image = nil
             loadedURL = nil
             loadedGeneration = model.previewCacheGeneration(for: asset.id)
+            loadedRotation = asset.technicalMetadata?.rotation ?? 0
             return
         }
         let generation = model.previewCacheGeneration(for: asset.id)
-        guard loadedURL != displayedPreviewURL || loadedGeneration != generation else { return }
+        let rotation = asset.technicalMetadata?.rotation ?? 0
+        guard loadedURL != displayedPreviewURL || loadedGeneration != generation || loadedRotation != rotation else { return }
         if !PreviewImageTransition.shouldRetainCurrentImage(loadedURL: loadedURL, nextURL: displayedPreviewURL) {
             image = nil
         }
         loadedURL = displayedPreviewURL
         loadedGeneration = generation
+        loadedRotation = rotation
         guard let loadedImage = await PreviewImageDataLoader.loadImage(from: displayedPreviewURL, rotation: asset.technicalMetadata?.rotation ?? 0),
               !Task.isCancelled else {
             return
@@ -468,6 +473,7 @@ struct LoupeZoomStageView: View {
 private struct StagePreviewLoadKey: Equatable {
     var url: URL?
     var cacheGeneration: Int
+    var rotation: Int
 }
 
 private struct FullResolutionRequestKey: Equatable {

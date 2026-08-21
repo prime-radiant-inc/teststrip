@@ -21,9 +21,9 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.generatePreview(assetID: asset.id, level: .medium))
+        let result = try executor.execute(.generatePreviews(assetID: asset.id, levels: [.medium]))
 
-        XCTAssertEqual(result, .completed("generated medium preview for source.jpg"))
+        XCTAssertEqual(result, .completed("generated medium previews for source.jpg"))
         let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .medium))
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
         let dimensions = try PreviewRenderer().dimensions(of: previewURL)
@@ -50,9 +50,9 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.generatePreview(assetID: asset.id, level: .original))
+        let result = try executor.execute(.generatePreviews(assetID: asset.id, levels: [.original]))
 
-        XCTAssertEqual(result, .completed("generated original preview for source.jpg"))
+        XCTAssertEqual(result, .completed("generated original previews for source.jpg"))
         let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .original))
         let dimensions = try PreviewRenderer().dimensions(of: previewURL)
         XCTAssertEqual(dimensions, PreviewDimensions(width: 1600, height: 1000))
@@ -81,7 +81,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
             previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         )
 
-        _ = try executor.execute(.generatePreview(assetID: asset.id, level: .grid))
+        _ = try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid]))
 
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
@@ -108,7 +108,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
             previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         )
 
-        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+        XCTAssertThrowsError(try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid])))
 
         let failureState = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
         XCTAssertEqual(failureState.attemptCount, 1)
@@ -140,7 +140,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
             previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         )
 
-        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+        XCTAssertThrowsError(try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid])))
 
         XCTAssertEqual(try repository.asset(id: asset.id).availability, .offline)
         // Blocked-by-availability is still a failed attempt: it must burn
@@ -175,7 +175,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
             previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         )
 
-        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+        XCTAssertThrowsError(try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid])))
 
         XCTAssertEqual(try repository.asset(id: asset.id).availability, .missing)
         let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
@@ -206,7 +206,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+        XCTAssertThrowsError(try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid])))
 
         XCTAssertEqual(try repository.asset(id: asset.id).availability, .stale)
         let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
@@ -252,7 +252,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         )
 
         for attempt in 1...3 {
-            XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+            XCTAssertThrowsError(try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid])))
             let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
             XCTAssertEqual(state.attemptCount, attempt)
         }
@@ -1623,6 +1623,68 @@ final class WorkerCommandExecutorTests: XCTestCase {
                 provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
             )
         )
+    }
+
+    func testGeneratePreviewsBatchCommandRendersAllLevelsFromOneSource() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-batch-previews")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 3200, height: 2400)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: source),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        _ = try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid, .large, .original]))
+
+        let gridURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        let largeURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large))
+        let fullURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .original))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: gridURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: largeURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fullURL.path))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
+    }
+
+    func testGeneratePreviewsMarksAllDerivedLevelsAsGenerated() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-batch-derived-levels")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 3200, height: 2400)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: source),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending([
+            PreviewGenerationItem(assetID: asset.id, level: .micro),
+            PreviewGenerationItem(assetID: asset.id, level: .grid),
+            PreviewGenerationItem(assetID: asset.id, level: .medium),
+            PreviewGenerationItem(assetID: asset.id, level: .large),
+            PreviewGenerationItem(assetID: asset.id, level: .original),
+        ])
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        _ = try executor.execute(.generatePreviews(assetID: asset.id, levels: [.grid, .large, .original]))
+
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
 }
 

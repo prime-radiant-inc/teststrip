@@ -27,7 +27,7 @@ final class ConcurrentCommandLoopTests: XCTestCase {
             }
         )
 
-        loop.submit(request(itemID: "A", command: .generatePreview(assetID: AssetID(rawValue: "a"), level: .grid)))
+        loop.submit(request(itemID: "A", command: .generatePreviews(assetID: AssetID(rawValue: "a"), levels: [.grid])))
         loop.submit(request(itemID: "B", command: .runEvaluation(assetID: AssetID(rawValue: "b"), provider: "test")))
 
         wait(for: [laneBWritten], timeout: 5)

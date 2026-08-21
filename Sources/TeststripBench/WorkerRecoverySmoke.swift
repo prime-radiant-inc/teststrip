@@ -67,7 +67,7 @@ public struct WorkerRecoverySmoke {
                     completedUnitCount: 0,
                     totalUnitCount: 1
                 ),
-                command: WorkerCommand.generatePreview(assetID: pendingItem.assetID, level: pendingItem.level),
+                command: WorkerCommand.generatePreviews(assetID: pendingItem.assetID, levels: [pendingItem.level]),
                 placement: BackgroundWorkQueuePlacement.back
             )
         })

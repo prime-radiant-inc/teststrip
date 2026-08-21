@@ -213,30 +213,41 @@ public struct WorkerCommandExecutor {
                 skippedSourceFileCount: result.skippedSourceFileCount,
                 skippedSourceFiles: result.skippedSourceFiles
             )
-        case .generatePreview(let assetID, let level):
+        case .generatePreviews(let assetID, let levels):
             let asset = try repository.asset(id: assetID)
             if let availability = try markPreviewBlockingAvailabilityIfNeeded(asset) {
-                try recordBlockedAvailabilityFailureAndThrow(availability, assetID: assetID, level: level, asset: asset)
+                try recordBlockedAvailabilityFailureAndThrow(availability, assetID: assetID, level: levels.first ?? .grid, asset: asset)
             }
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("teststrip-preview-source-\(UUID().uuidString)")
             do {
-                try renderer.render(
-                    sourceURL: asset.originalURL,
-                    level: level,
-                    destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+                try FileManager.default.copyItem(at: asset.originalURL, to: tempURL)
+                try renderer.renderLevels(
+                    fromLocalSource: tempURL,
+                    levels: levels,
+                    destinationProvider: { level in
+                        previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+                    }
                 )
             } catch {
+                try? FileManager.default.removeItem(at: tempURL)
                 if let availability = try markPreviewBlockingAvailabilityIfNeeded(asset) {
-                    try recordBlockedAvailabilityFailureAndThrow(availability, assetID: assetID, level: level, asset: asset)
+                    try recordBlockedAvailabilityFailureAndThrow(availability, assetID: assetID, level: levels.first ?? .grid, asset: asset)
                 }
-                try repository.recordPreviewGenerationFailure(
-                    assetID: assetID,
-                    level: level,
-                    errorMessage: error.localizedDescription
-                )
+                for level in levels {
+                    try repository.recordPreviewGenerationFailure(
+                        assetID: assetID,
+                        level: level,
+                        errorMessage: error.localizedDescription
+                    )
+                }
                 throw error
             }
-            try repository.markPreviewGenerated(assetID: assetID, level: level)
-            return .completed("generated \(level.rawValue) preview for \(Self.displayName(for: asset))")
+            try? FileManager.default.removeItem(at: tempURL)
+            for level in Self.allLevelsServedBy(levels) {
+                try repository.markPreviewGenerated(assetID: assetID, level: level)
+            }
+            return .completed("generated \(levels.map(\.rawValue).joined(separator: ",")) previews for \(Self.displayName(for: asset))")
         case .syncMetadata(let assetID):
             return try syncMetadata(assetID: assetID)
         case .refreshAvailability(let assetID):
@@ -276,6 +287,23 @@ public struct WorkerCommandExecutor {
     private static func displayName(for asset: Asset) -> String {
         let name = asset.originalURL.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? asset.id.rawValue : name
+    }
+
+    private static func allLevelsServedBy(_ levels: [PreviewLevel]) -> [PreviewLevel] {
+        var result = Set<PreviewLevel>()
+        for level in levels {
+            switch level {
+            case .micro, .grid:
+                result.insert(.micro)
+                result.insert(.grid)
+            case .medium, .large:
+                result.insert(.medium)
+                result.insert(.large)
+            case .original:
+                result.insert(.original)
+            }
+        }
+        return PreviewLevel.allCases.filter { result.contains($0) }
     }
 
     private func markPreviewBlockingAvailabilityIfNeeded(_ asset: Asset) throws -> SourceAvailability? {
@@ -444,7 +472,7 @@ public struct WorkerCommandExecutor {
     }
 
     private func cachedPreviewURL(for assetID: AssetID) -> URL? {
-        for level in [PreviewLevel.large, .medium, .grid, .micro] {
+        for level in [PreviewLevel.large, .grid, .original] {
             let url = previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
             if FileManager.default.fileExists(atPath: url.path) {
                 return url

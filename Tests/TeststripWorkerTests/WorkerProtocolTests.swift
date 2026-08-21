@@ -5,11 +5,11 @@ import XCTest
 
 final class WorkerProtocolTests: XCTestCase {
     func testDecodesLiteralGeneratePreviewCommandEnvelope() throws {
-        let line = #"{ "command": "generatePreview", "assetID": "asset-1", "level": "large" }"# + "\n"
+        let line = #"{ "command": "generatePreviews", "assetID": "asset-1", "levels": ["large"] }"# + "\n"
 
         let decoded = try WorkerProtocolEncoder.decode(line)
 
-        XCTAssertEqual(decoded, .generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .large))
+        XCTAssertEqual(decoded, .generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.large]))
     }
 
     func testDecodesLiteralPauseCommandEnvelope() throws {
@@ -225,7 +225,7 @@ final class WorkerProtocolTests: XCTestCase {
     }
 
     func testWorkerCommandRoundTripsThroughJSONLine() throws {
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .large)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.large])
 
         let line = try WorkerProtocolEncoder.encode(command)
         let decoded = try WorkerProtocolEncoder.decode(line)

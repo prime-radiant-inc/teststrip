@@ -60,7 +60,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "importFolder",
                 assetID: nil,
-                level: nil,
+                levels: nil,
                 provider: nil,
                 rootURL: root.path,
                 sourceURL: nil,
@@ -74,7 +74,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "importCard",
                 assetID: nil,
-                level: nil,
+                levels: nil,
                 provider: nil,
                 rootURL: nil,
                 sourceURL: source.path,
@@ -86,11 +86,11 @@ public enum WorkerProtocolEncoder {
                 selectedFiles: selectedFiles?.map(\.path).sorted(),
                 preIngestThumbnails: preIngestThumbnails?.path
             )
-        case .generatePreview(let assetID, let level):
+        case .generatePreviews(let assetID, let levels):
             envelope = WorkerCommandEnvelope(
-                command: "generatePreview",
+                command: "generatePreviews",
                 assetID: assetID.rawValue,
-                level: level.rawValue,
+                levels: levels.map(\.rawValue),
                 provider: nil,
                 rootURL: nil,
                 sourceURL: nil,
@@ -101,7 +101,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "syncMetadata",
                 assetID: assetID.rawValue,
-                level: nil,
+                levels: nil,
                 provider: nil,
                 rootURL: nil,
                 sourceURL: nil,
@@ -112,7 +112,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "refreshAvailability",
                 assetID: assetID.rawValue,
-                level: nil,
+                levels: nil,
                 provider: nil,
                 rootURL: nil,
                 sourceURL: nil,
@@ -123,7 +123,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "refreshAvailabilityBatch",
                 assetID: nil,
-                level: nil,
+                levels: nil,
                 provider: nil,
                 rootURL: nil,
                 sourceURL: nil,
@@ -135,7 +135,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "runEvaluation",
                 assetID: assetID.rawValue,
-                level: nil,
+                levels: nil,
                 provider: provider,
                 rootURL: nil,
                 sourceURL: nil,
@@ -146,7 +146,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "reverseGeocodeBatch",
                 assetID: nil,
-                level: nil,
+                levels: nil,
                 provider: nil,
                 rootURL: nil,
                 sourceURL: nil,
@@ -158,7 +158,7 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(
                 command: "backfillCoordinates",
                 assetID: nil,
-                level: nil,
+                levels: nil,
                 provider: nil,
                 rootURL: nil,
                 sourceURL: nil,
@@ -167,11 +167,11 @@ public enum WorkerProtocolEncoder {
                 assetIDs: assetIDs.map(\.rawValue)
             )
         case .pause:
-            envelope = WorkerCommandEnvelope(command: "pause", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
+            envelope = WorkerCommandEnvelope(command: "pause", assetID: nil, levels: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         case .resume:
-            envelope = WorkerCommandEnvelope(command: "resume", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
+            envelope = WorkerCommandEnvelope(command: "resume", assetID: nil, levels: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         case .cancelAll:
-            envelope = WorkerCommandEnvelope(command: "cancelAll", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
+            envelope = WorkerCommandEnvelope(command: "cancelAll", assetID: nil, levels: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         }
 
         let data = try encoder.encode(envelope)
@@ -276,10 +276,10 @@ public enum WorkerProtocolEncoder {
                 selectedFiles: envelope.selectedFiles.map { Set($0.map { URL(fileURLWithPath: $0) }) },
                 preIngestThumbnails: envelope.preIngestThumbnails.map { URL(fileURLWithPath: $0) }
             )
-        case "generatePreview":
+        case "generatePreviews":
             let assetID = try envelope.requiredAssetID()
-            let level = try envelope.requiredPreviewLevel()
-            command = .generatePreview(assetID: assetID, level: level)
+            let levels = try envelope.requiredPreviewLevels()
+            command = .generatePreviews(assetID: assetID, levels: levels)
         case "syncMetadata":
             command = .syncMetadata(assetID: try envelope.requiredAssetID())
         case "refreshAvailability":
@@ -355,7 +355,7 @@ public enum WorkerProtocolEncoder {
     private struct WorkerCommandEnvelope: Codable {
         var command: String
         var assetID: String?
-        var level: String?
+        var levels: [String]?
         var provider: String?
         var rootURL: String?
         var sourceURL: String?
@@ -387,17 +387,19 @@ public enum WorkerProtocolEncoder {
             return limit
         }
 
-        func requiredPreviewLevel() throws -> PreviewLevel {
-            let rawValue = try requiredField(level, key: .level)
-            guard let level = PreviewLevel(rawValue: rawValue) else {
-                throw DecodingError.dataCorrupted(
-                    DecodingError.Context(
-                        codingPath: [CodingKeys.level],
-                        debugDescription: "Unknown preview level: \(rawValue)"
+        func requiredPreviewLevels() throws -> [PreviewLevel] {
+            let rawValues = try requiredField(levels, key: .levels)
+            return try rawValues.map { rawValue in
+                guard let level = PreviewLevel(rawValue: rawValue) else {
+                    throw DecodingError.dataCorrupted(
+                        DecodingError.Context(
+                            codingPath: [CodingKeys.levels],
+                            debugDescription: "Unknown preview level: \(rawValue)"
+                        )
                     )
-                )
+                }
+                return level
             }
-            return level
         }
 
         func requiredProvider() throws -> String {

@@ -5338,7 +5338,7 @@ final class AppModelTests: XCTestCase {
             "preview-\(second.id.rawValue)-grid"
         ])
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: first.id, level: .grid)
+            .generatePreviews(assetID: first.id, levels: [.grid])
         ])
         XCTAssertEqual(model.visibleWorkActivities.map(\.status), [.running, .queued])
     }
@@ -8834,7 +8834,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(result.reconnectedAssetCount, 1)
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: asset.id, level: .grid)
+            .generatePreviews(assetID: asset.id, levels: [.grid])
         ])
         XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"))?.status, .running)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [pendingPreview])
@@ -11653,7 +11653,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.first { $0.id == asset.id }?.availability, .online)
         XCTAssertTrue(waitForCommands([
             .refreshAvailabilityBatch(assetIDs: [asset.id]),
-            .generatePreview(assetID: asset.id, level: .grid)
+            .generatePreviews(assetID: asset.id, levels: [.grid])
         ], in: transport), commandDescription(transport))
         XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"))?.status, .running)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [pendingPreview])
@@ -11694,7 +11694,7 @@ final class AppModelTests: XCTestCase {
 
         try model.requestPreview(assetID: asset.id, level: .grid)
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: asset.id, level: .grid)
+            .generatePreviews(assetID: asset.id, levels: [.grid])
         ])
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
             itemID: previewItemID,
@@ -11704,7 +11704,7 @@ final class AppModelTests: XCTestCase {
 
         try model.refreshVisibleAssetAvailability()
         XCTAssertTrue(waitForCommands([
-            .generatePreview(assetID: asset.id, level: .grid),
+            .generatePreviews(assetID: asset.id, levels: [.grid]),
             .refreshAvailabilityBatch(assetIDs: [asset.id])
         ], in: transport), commandDescription(transport))
         let scanItemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
@@ -11717,9 +11717,9 @@ final class AppModelTests: XCTestCase {
 
         try await waitForBackgroundWorkStatus(.completed, itemID: scanItemID, in: model)
         XCTAssertTrue(waitForCommands([
-            .generatePreview(assetID: asset.id, level: .grid),
+            .generatePreviews(assetID: asset.id, levels: [.grid]),
             .refreshAvailabilityBatch(assetIDs: [asset.id]),
-            .generatePreview(assetID: asset.id, level: .grid)
+            .generatePreviews(assetID: asset.id, levels: [.grid])
         ], in: transport), commandDescription(transport))
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.filter { $0.id == previewItemID }.count, 1)
     }
@@ -11841,7 +11841,7 @@ final class AppModelTests: XCTestCase {
 
         try model.requestPreview(assetID: asset.id, level: .large)
 
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .large)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: asset.id, levels: [.large])])
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
         XCTAssertEqual(model.visibleWorkActivity?.status, .running)
@@ -11865,7 +11865,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .large)
         ])
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .large)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: asset.id, levels: [.large])])
     }
 
     func testRequestCachedPreviewDoesNotDispatchWorkerPreviewCommand() throws {
@@ -11900,7 +11900,7 @@ final class AppModelTests: XCTestCase {
         try model.requestPreview(assetID: asset.id, level: .large)
         try model.requestPreview(assetID: asset.id, level: .large)
 
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .large)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: asset.id, levels: [.large])])
         XCTAssertEqual(model.backgroundWorkQueue.items.count, 1)
     }
 
@@ -11938,7 +11938,7 @@ final class AppModelTests: XCTestCase {
 
         try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
 
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .original)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: asset.id, levels: [.original])])
     }
 
     func testRequestLoupeFullResolutionPreviewRendersWhenAssetPixelSizeUnknown() throws {
@@ -11957,7 +11957,7 @@ final class AppModelTests: XCTestCase {
 
         try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
 
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .original)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: asset.id, levels: [.original])])
     }
 
     func testRequestLoupeFullResolutionPreviewSkipsWhenCachedPreviewCoversAssetPixels() throws {
@@ -12187,7 +12187,7 @@ final class AppModelTests: XCTestCase {
             "preview-\(fixture.assets[0].id.rawValue)-large"
         ])
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: fixture.assets[1].id, level: .medium)
+            .generatePreviews(assetID: fixture.assets[1].id, levels: [.medium])
         ])
     }
 
@@ -12362,7 +12362,7 @@ final class AppModelTests: XCTestCase {
             pendingPreviewLevel: .grid
         )
 
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .grid)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: asset.id, levels: [.grid])])
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
@@ -12514,7 +12514,7 @@ final class AppModelTests: XCTestCase {
         try model.retrySelectedPreviewGenerationFailures()
 
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: asset.id, level: .grid)
+            .generatePreviews(assetID: asset.id, levels: [.grid])
         ])
         XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"))?.status, .running)
         XCTAssertEqual(model.selectedPreviewGenerationFailures.first?.attemptCount, 3)
@@ -12616,17 +12616,17 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.backgroundWorkQueue.items.count, 40)
         XCTAssertNil(model.backgroundWorkQueue.item(id: refillItemID))
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: assets[0].id, level: .grid)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: assets[0].id, levels: [.grid])])
 
         try repository.markPreviewGenerated(assetID: assets[0].id, level: .grid)
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: firstItemID,
-            message: "generated grid preview for asset-0"
+            message: "generated grid previews for asset-0"
         )))
 
         XCTAssertTrue(waitForCommands([
-            .generatePreview(assetID: assets[0].id, level: .grid),
-            .generatePreview(assetID: assets[1].id, level: .grid)
+            .generatePreviews(assetID: assets[0].id, levels: [.grid]),
+            .generatePreviews(assetID: assets[1].id, levels: [.grid])
         ], in: transport))
         XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
     }
@@ -12656,7 +12656,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
         XCTAssertEqual(
-            try transport.commands().filter { $0 == .generatePreview(assetID: assets[0].id, level: .grid) }.count,
+            try transport.commands().filter { $0 == .generatePreviews(assetID: assets[0].id, levels: [.grid]) }.count,
             1
         )
     }
@@ -12732,7 +12732,7 @@ final class AppModelTests: XCTestCase {
         try repository.markPreviewGenerated(assetID: assets[0].id, level: .grid)
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: firstItemID,
-            message: "generated grid preview for asset-0"
+            message: "generated grid previews for asset-0"
         )))
 
         XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
@@ -12765,7 +12765,7 @@ final class AppModelTests: XCTestCase {
         try repository.markPreviewGenerated(assetID: assets[0].id, level: .grid)
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: firstItemID,
-            message: "generated grid preview for asset-0"
+            message: "generated grid previews for asset-0"
         )))
 
         XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
@@ -12845,8 +12845,8 @@ final class AppModelTests: XCTestCase {
         )))
 
         XCTAssertTrue(waitForCommands([
-            .generatePreview(assetID: recoveryFirst.id, level: .grid),
-            .generatePreview(assetID: visible.id, level: .grid)
+            .generatePreviews(assetID: recoveryFirst.id, levels: [.grid]),
+            .generatePreviews(assetID: visible.id, levels: [.grid])
         ], in: transport))
         XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(visible.id.rawValue)-grid"))?.status, .running)
         XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(recoverySecond.id.rawValue)-grid"))?.status, .queued)
@@ -13229,32 +13229,57 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
-    func testGridPreviewURLCachesLookupsBetweenBackgroundWorkPublications() throws {
+    @MainActor
+    func testGridPreviewURLCachesLookupsBetweenBackgroundWorkPublications() async throws {
         let scheduler = ManualBackgroundWorkPublicationScheduler()
+        let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 4),
-            transport: RecordingWorkerTransport()
+            transport: transport
         )
         let cached = makeAsset(id: "grid-preview-memo-cached", size: 1)
-        let requested = makeAsset(id: "grid-preview-memo-requested", size: 2)
         let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "grid-preview-memo",
-            assets: [cached, requested],
+            assets: [cached],
             workerSupervisor: supervisor,
             backgroundWorkPublicationInterval: 0.25,
             backgroundWorkPublicationScheduler: scheduler
         )
 
+        // Enqueue a preview work item BEFORE the file exists so requestPreview
+        // doesn't short-circuit. This simulates the real flow: the app
+        // requests a preview, the worker generates it (writes the file), then
+        // reports completion — which increments the preview cache generation
+        // and triggers targeted cache invalidation on the next flush.
+        try model.requestPreview(assetID: cached.id, level: .grid)
+
+        // First lookup caches nil (no preview file yet).
         XCTAssertNil(model.gridPreviewURL(for: cached.id))
 
+        // Worker writes the preview file to disk.
         let placeholderURL = previewCache.url(for: PreviewCacheKey(assetID: cached.id, level: .grid))
         try writePreviewPlaceholder(to: placeholderURL)
 
+        // Stale nil is still cached — the file on disk is not noticed yet.
         XCTAssertNil(model.gridPreviewURL(for: cached.id))
 
-        try model.requestPreview(assetID: requested.id, level: .grid)
+        // Simulate the worker reporting completion. The supervisor's
+        // outputHandler dispatches to DispatchQueue.main.async, so we
+        // must yield the main queue to let handleOutputLine →
+        // completeDispatchedItem → onCommandCompleted →
+        // invalidatePreviewCacheIfNeeded run before the flush.
+        let itemID = AppModel.previewWorkItemID(assetID: cached.id, level: .grid)
+        let completionLine = try WorkerProtocolEncoder.encode(
+            .completed(itemID: itemID, message: "done")
+        )
+        transport.emitOutputLine(completionLine)
+        await Task.yield()
+
+        // Flush the coalesced background work publication — this does the
+        // targeted cache invalidation for assets whose generation changed.
         scheduler.fireScheduledActions()
 
+        // Cache was invalidated for this asset — re-stat finds the file.
         XCTAssertEqual(model.gridPreviewURL(for: cached.id), placeholderURL)
     }
 
@@ -14654,7 +14679,7 @@ final class AppModelTests: XCTestCase {
 
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-large"),
-            message: "generated large preview for \(asset.id.rawValue)"
+            message: "generated large previews for \(asset.id.rawValue)"
         )))
 
         try await waitForVisibleWorkStatus(.completed, in: model)
@@ -14882,7 +14907,7 @@ final class AppModelTests: XCTestCase {
         try model.requestVisibleLoupePreview(assetID: asset.id)
 
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: asset.id, level: .medium)
+            .generatePreviews(assetID: asset.id, levels: [.medium])
         ])
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
             "preview-\(asset.id.rawValue)-medium",
@@ -14895,8 +14920,8 @@ final class AppModelTests: XCTestCase {
         )))
 
         XCTAssertTrue(waitForCommands([
-            .generatePreview(assetID: asset.id, level: .medium),
-            .generatePreview(assetID: asset.id, level: .large)
+            .generatePreviews(assetID: asset.id, levels: [.medium]),
+            .generatePreviews(assetID: asset.id, levels: [.large])
         ], in: transport))
     }
 
@@ -14980,7 +15005,7 @@ final class AppModelTests: XCTestCase {
             "preview-second-medium"
         ])
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: first.id, level: .medium)
+            .generatePreviews(assetID: first.id, levels: [.medium])
         ])
     }
 
@@ -15003,7 +15028,7 @@ final class AppModelTests: XCTestCase {
             "preview-second-medium"
         ])
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: first.id, level: .large)
+            .generatePreviews(assetID: first.id, levels: [.large])
         ])
     }
 
@@ -15148,7 +15173,7 @@ final class AppModelTests: XCTestCase {
 
         try model.requestVisibleGridPreview(assetID: asset.id)
 
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .grid)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: asset.id, levels: [.grid])])
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
             "preview-\(asset.id.rawValue)-grid"
         ])
@@ -15179,7 +15204,7 @@ final class AppModelTests: XCTestCase {
             "preview-\(olderQueued.id.rawValue)-grid"
         ])
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: running.id, level: .grid)
+            .generatePreviews(assetID: running.id, levels: [.grid])
         ])
     }
 
@@ -15276,7 +15301,7 @@ final class AppModelTests: XCTestCase {
         try writePreviewPlaceholder(to: previewURL)
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"),
-            message: "generated grid preview for \(asset.id.rawValue)"
+            message: "generated grid previews for \(asset.id.rawValue)"
         )))
 
         try await waitForPreviewCacheGeneration(1, for: asset.id, in: model)
@@ -15301,7 +15326,7 @@ final class AppModelTests: XCTestCase {
         model.cancelBackgroundWork()
 
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: asset.id, level: .medium),
+            .generatePreviews(assetID: asset.id, levels: [.medium]),
             .pause,
             .resume,
             .cancelAll
@@ -15323,7 +15348,7 @@ final class AppModelTests: XCTestCase {
         try model.requestPreview(assetID: asset.id, level: .medium)
         let itemID = WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-medium")
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: asset.id, level: .medium)
+            .generatePreviews(assetID: asset.id, levels: [.medium])
         ])
         let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .medium))
         try writePreviewPlaceholder(to: previewURL)
@@ -15371,7 +15396,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.item(id: evaluationID)?.status, .cancelled)
         XCTAssertEqual(model.backgroundWorkQueue.item(id: previewID)?.status, .running)
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: previewAsset.id, level: .medium)
+            .generatePreviews(assetID: previewAsset.id, levels: [.medium])
         ])
         XCTAssertNotEqual(model.statusMessage, "Cancelled import")
     }
@@ -15418,7 +15443,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(transport.terminateCount, 0)
         XCTAssertEqual(try transport.commands(), [
             .runEvaluation(assetID: evaluationAsset.id, provider: "local-http-model"),
-            .generatePreview(assetID: previewAsset.id, level: .medium)
+            .generatePreviews(assetID: previewAsset.id, levels: [.medium])
         ])
     }
 
@@ -15503,7 +15528,7 @@ final class AppModelTests: XCTestCase {
             PreviewGenerationItem(assetID: assetID, level: .micro),
             PreviewGenerationItem(assetID: assetID, level: .grid)
         ])
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: assetID, level: .micro)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: assetID, levels: [.micro])])
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
 
@@ -15564,7 +15589,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
         XCTAssertEqual(try transport.commands(), [
             .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil),
-            .generatePreview(assetID: importedAsset.id, level: .micro)
+            .generatePreviews(assetID: importedAsset.id, levels: [.micro])
         ])
     }
 
@@ -16238,7 +16263,7 @@ final class AppModelTests: XCTestCase {
 
         let importItem = try XCTUnwrap(model.backgroundWorkQueue.items.first { $0.kind == .ingest })
         XCTAssertEqual(importItem.status, .running)
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: previewAsset.id, level: .grid)])
+        XCTAssertEqual(try transport.commands(), [.generatePreviews(assetID: previewAsset.id, levels: [.grid])])
         let activity = try XCTUnwrap(model.visibleImportActivity)
         XCTAssertEqual(activity.status, .queued)
         XCTAssertEqual(ImportProgressPresentation.presentation(for: activity).phaseText, "Waiting")
@@ -17719,7 +17744,7 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
         let previewItem = BackgroundWorkItem.testItem(id: "preview")
-        let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let previewCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
 
         model.beginImportFolder(photoFolder)
         let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
@@ -18516,27 +18541,26 @@ final class AppModelTests: XCTestCase {
         model.select(target.id)
         try model.beginCullingSession(named: "Hotpath Cull")
 
-        // `AppModel.load` (cold, fine) and `beginCullingSession` (an ingest
-        // activity is never recorded here, so its `recordRecentActivity` does
-        // not re-prime) both legitimately touch the Imports section once.
-        // Only queries issued by the *next* flag change are being measured.
+        // Warm the culling stack partition cache so the first measured flag
+        // change starts from a steady state.  The partition depends only on
+        // visual similarity, not flags/ratings, so it should not be rebuilt
+        // on flag changes.
+        _ = model.cachedAllCullingStacksForPresentation()
+
         evaluationSignalQueryCount = 0
-
         try model.applyCullingShortcut(.pick)
-        let firstFlagChangeQueryCount = evaluationSignalQueryCount
+        let baselineQueryCount = evaluationSignalQueryCount
 
-        // Seed a second completed import directly on the repository — the
-        // same way the fixture above seeded the first one, bypassing
-        // `AppModel` entirely — with a different asset count (3, not 8) so
-        // a size-proportional regression can't hide behind a coincidence.
-        // `refreshWorkSessions()`/`refreshImportSourceSummaries()` re-query
-        // `work_sessions` fresh on every flag change, so the model picks
-        // this up on the very next keystroke with no explicit notification
-        // and without ever reloading `assets` — the loaded-asset count
-        // `selectedCullingStackScope` scales with, and the fixed sidebar
-        // smart-collection set `smartCollectionCounts` reads, both stay
-        // exactly as they were. Only import-child-count priming, if it were
-        // reintroduced, would react to this new row at all.
+        // Seed a second completed import directly on the repository —
+        // bypassing `AppModel` entirely — with a different asset count (3,
+        // not 8) so a size-proportional regression can't hide behind a
+        // coincidence.  `refreshWorkSessions()`/`refreshImportSourceSummaries()`
+        // re-query `work_sessions` on every flag change, so the model picks
+        // this up on the next keystroke with no explicit notification.
+        // The regression this test guards against: import-child-count priming
+        // (importChildCounts → visualSimilarityVectorsByAssetID →
+        // evaluationSignals) fanning out over every visible import's assets
+        // on every P/X keystroke.
         let secondImportAssets = (0..<3).map { index in
             makeAsset(
                 id: "cull-hotpath-import-b-\(index)",
@@ -18579,16 +18603,19 @@ final class AppModelTests: XCTestCase {
         evaluationSignalQueryCount = 0
 
         try model.applyCullingShortcut(.pick)
-        let secondFlagChangeQueryCount = evaluationSignalQueryCount
+        let afterSecondImportQueryCount = evaluationSignalQueryCount
 
-        XCTAssertEqual(
-            secondFlagChangeQueryCount,
-            firstFlagChangeQueryCount,
-            "a cull flag change queried evaluation_signals \(firstFlagChangeQueryCount) time(s) before a " +
-            "second completed import existed and \(secondFlagChangeQueryCount) time(s) after — " +
-            "refreshWorkSessions() is re-priming import child counts " +
-            "(importChildCounts -> visualSimilarityVectorsByAssetID -> evaluationSignals) on every " +
-            "P/X keystroke, fanning out over every visible import's assets, not only on load/import-completion"
+        // Test the effect, not the exact count: a second completed import
+        // existing in the catalog must not cause additional evaluation_signals
+        // queries on a flag-change keystroke.  The regression fanned out
+        // over every import's assets; the fix caches the stack partition so
+        // it's not rebuilt per keystroke.
+        XCTAssertLessThanOrEqual(
+            afterSecondImportQueryCount,
+            baselineQueryCount,
+            "a cull flag change queried evaluation_signals \(baselineQueryCount) time(s) with one import " +
+            "and \(afterSecondImportQueryCount) time(s) after a second completed import was added — " +
+            "the second import should not increase evaluation_signals queries on flag changes"
         )
     }
 

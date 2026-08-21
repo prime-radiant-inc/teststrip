@@ -12,8 +12,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
 
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
@@ -34,8 +34,8 @@ final class WorkerSupervisorTests: XCTestCase {
         supervisor.onQueueChanged = { queueSnapshots.append($0) }
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
 
         try supervisor.enqueue([
             (item: first, command: firstCommand, placement: .back),
@@ -78,9 +78,9 @@ final class WorkerSupervisorTests: XCTestCase {
         let first = BackgroundWorkItem.testItem(id: "first")
         let olderQueued = BackgroundWorkItem.testItem(id: "older")
         let visible = BackgroundWorkItem.testItem(id: "visible")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
-        let olderCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .grid)
-        let visibleCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-3"), level: .grid)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
+        let olderCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.grid])
+        let visibleCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-3"), levels: [.grid])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(olderQueued, command: olderCommand)
         try supervisor.enqueue(visible, command: visibleCommand)
@@ -101,19 +101,19 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: first.id,
-            message: "generated medium preview for asset-1"
+            message: "generated medium previews for asset-1"
         )))
 
         XCTAssertTrue(waitUntil {
             supervisor.queue.item(id: first.id)?.status == .completed &&
-                supervisor.queue.item(id: first.id)?.detail == "generated medium preview for asset-1" &&
+                supervisor.queue.item(id: first.id)?.detail == "generated medium previews for asset-1" &&
                 supervisor.queue.item(id: second.id)?.status == .running
         })
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
@@ -231,7 +231,7 @@ final class WorkerSupervisorTests: XCTestCase {
             transport: transport
         )
         let item = BackgroundWorkItem.testItem(id: "preview-work")
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
 
         try supervisor.enqueue(item, command: command)
 
@@ -248,8 +248,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
@@ -270,8 +270,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
@@ -296,8 +296,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
@@ -308,7 +308,7 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(transport.launchCount, 2)
         XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .failed)
-        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds: generate medium preview for asset-1")
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds: generate medium previews for asset-1")
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
@@ -321,8 +321,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
@@ -347,8 +347,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
@@ -357,7 +357,7 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(transport.launchCount, 2)
         XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .failed)
-        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds: generate medium preview for asset-1")
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds: generate medium previews for asset-1")
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
@@ -372,14 +372,14 @@ final class WorkerSupervisorTests: XCTestCase {
             timeoutScheduler: timeoutScheduler
         )
         let item = BackgroundWorkItem.testItem(id: "preview")
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
         try supervisor.enqueue(item, command: command)
 
         timeoutScheduler.fireNext()
 
         XCTAssertEqual(
             supervisor.queue.item(id: item.id)?.detail,
-            "Worker command timed out after 30 seconds: generate medium preview for asset-1"
+            "Worker command timed out after 30 seconds: generate medium previews for asset-1"
         )
     }
 
@@ -393,7 +393,7 @@ final class WorkerSupervisorTests: XCTestCase {
             timeoutScheduler: timeoutScheduler
         )
         let item = BackgroundWorkItem.testItem(id: "preview")
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
         try supervisor.enqueue(item, command: command)
 
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
@@ -420,7 +420,7 @@ final class WorkerSupervisorTests: XCTestCase {
             timeoutScheduler: timeoutScheduler
         )
         let item = BackgroundWorkItem.testItem(id: "preview")
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
         try supervisor.enqueue(item, command: command)
 
         try supervisor.pause()
@@ -430,7 +430,7 @@ final class WorkerSupervisorTests: XCTestCase {
 
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .failed)
-        XCTAssertEqual(supervisor.queue.item(id: item.id)?.detail, "Worker command timed out after 30 seconds: generate medium preview for asset-1")
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.detail, "Worker command timed out after 30 seconds: generate medium previews for asset-1")
     }
 
     func testPauseResumeAndCancelSendExplicitControlCommands() throws {
@@ -440,7 +440,7 @@ final class WorkerSupervisorTests: XCTestCase {
             transport: transport
         )
         let item = BackgroundWorkItem.testItem(id: "first")
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
         try supervisor.enqueue(item, command: command)
 
         try supervisor.pause()
@@ -465,7 +465,7 @@ final class WorkerSupervisorTests: XCTestCase {
             transport: transport
         )
         let item = BackgroundWorkItem.testItem(id: "preview")
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
         try supervisor.enqueue(item, command: command)
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: item.id,
@@ -492,7 +492,7 @@ final class WorkerSupervisorTests: XCTestCase {
             transport: transport
         )
         let item = BackgroundWorkItem.testItem(id: "preview")
-        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let command = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.medium])
         try supervisor.enqueue(item, command: command)
 
         XCTAssertTrue(supervisor.isWorkerProcessRunning)
@@ -513,7 +513,7 @@ final class WorkerSupervisorTests: XCTestCase {
         let importItem = BackgroundWorkItem.testItem(id: "import")
         let previewItem = BackgroundWorkItem.testItem(id: "preview")
         let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true), duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil)
-        let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let previewCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
         try supervisor.enqueue(importItem, command: importCommand)
         try supervisor.enqueue(previewItem, command: previewCommand)
 
@@ -552,8 +552,8 @@ final class WorkerSupervisorTests: XCTestCase {
         let previewItem = BackgroundWorkItem.testItem(id: "preview")
         let queuedItem = BackgroundWorkItem.testItem(id: "queued")
         let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true), duplicateHandling: .importAll, selectedFiles: nil, preIngestThumbnails: nil)
-        let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
-        let queuedCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .grid)
+        let previewCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
+        let queuedCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.grid])
         try supervisor.enqueue(importItem, command: importCommand)
         try supervisor.enqueue(previewItem, command: previewCommand)
         try supervisor.enqueue(queuedItem, command: queuedCommand)
@@ -596,8 +596,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
@@ -620,8 +620,8 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
@@ -636,7 +636,7 @@ final class WorkerSupervisorTests: XCTestCase {
         })
         XCTAssertEqual(
             supervisor.queue.item(id: first.id)?.detail,
-            "Worker exited unexpectedly: generate grid preview for asset-1"
+            "Worker exited unexpectedly: generate grid previews for asset-1"
         )
         XCTAssertEqual(try transport.commands(), [firstCommand, firstCommand, secondCommand])
     }
@@ -648,7 +648,7 @@ final class WorkerSupervisorTests: XCTestCase {
             transport: transport
         )
         let first = BackgroundWorkItem.testItem(id: "first")
-        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let firstCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-1"), levels: [.grid])
         try supervisor.enqueue(first, command: firstCommand)
 
         transport.simulateUnexpectedTermination()
@@ -657,7 +657,7 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertTrue(waitUntil { supervisor.queue.item(id: first.id)?.status == .completed })
 
         let second = BackgroundWorkItem.testItem(id: "second")
-        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        let secondCommand = WorkerCommand.generatePreviews(assetID: AssetID(rawValue: "asset-2"), levels: [.large])
         try supervisor.enqueue(second, command: secondCommand)
 
         // A fresh item that dies once must still get its own retry, not inherit

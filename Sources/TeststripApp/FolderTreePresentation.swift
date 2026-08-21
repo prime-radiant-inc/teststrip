@@ -30,6 +30,7 @@ enum FolderTreePresentation {
     static let maxRowsPerLevel = 100
 
     static func build(from folders: [CatalogFolder]) -> [FolderTreeNode] {
+        DevSignpost.trace("FolderTreePresentation.build") {
         let root = TrieNode()
         for folder in folders {
             let components = folder.path.split(separator: "/").map(String.init)
@@ -48,6 +49,7 @@ enum FolderTreePresentation {
         }
         return sortedEntries(root.children).map { name, node in
             buildNode(name: name, node: node, ancestorComponents: [])
+        }
         }
     }
 

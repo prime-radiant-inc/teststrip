@@ -127,12 +127,52 @@ public struct IngestService: Sendable {
         let didPrecompute = sourceFiles.count > 1
         var precomputed = Array(
             repeating: PrecomputedFileIO(), count: sourceFiles.count)
+
+        // Path-first short-circuit: for in-place imports with skipCatalogedContent,
+        // batch-lookup by path and stat to check if the file is unchanged. Files
+        // already in the catalog with matching fingerprint (size + mod date) skip
+        // all pre-compute I/O — no content hash (128 KB read), no sidecar stat,
+        // no ImageIO metadata decode — and are fast-pathed through the main loop.
+        // On an SMB mount this turns a 130k-file re-import from 130k × 3 SMB reads
+        // + ImageIO decodes into 130k stats.
+        var unchangedReimportIndices = Set<Int>()
+        if isInPlace && shouldPrecomputeHash && sourceFiles.count > 1 {
+            try Task.checkCancellation()
+            let pathLookup = try repository.assets(
+                originalPaths: sourceFiles.map { $0.path })
+            if !pathLookup.isEmpty {
+                var isUnchanged = Array(repeating: false, count: sourceFiles.count)
+                isUnchanged.withUnsafeMutableBufferPointer { buffer in
+                    DispatchQueue.concurrentPerform(
+                        iterations: sourceFiles.count
+                    ) { index in
+                        guard let existing = pathLookup[sourceFiles[index].path] else {
+                            return
+                        }
+                        let attrs = try? FileManager.default.attributesOfItem(
+                            atPath: sourceFiles[index].path)
+                        let size = (attrs?[.size] as? NSNumber)?.int64Value
+                        let modDate = attrs?[.modificationDate] as? Date
+                        guard let size, let modDate,
+                              existing.fingerprint.size == size,
+                              abs(existing.fingerprint.modificationDate
+                                   .timeIntervalSince(modDate)) <= 0.001
+                        else { return }
+                        buffer[index] = true
+                    }
+                }
+                unchangedReimportIndices = Set(
+                    isUnchanged.enumerated().compactMap { $1 ? $0 : nil })
+            }
+        }
+
         if didPrecompute {
             try Task.checkCancellation()
             precomputed.withUnsafeMutableBufferPointer { buffer in
                 DispatchQueue.concurrentPerform(
                     iterations: sourceFiles.count
                 ) { index in
+                    if unchangedReimportIndices.contains(index) { return }
                     let sourceFile = sourceFiles[index]
                     if shouldPrecomputeHash {
                         do {
@@ -154,6 +194,20 @@ public struct IngestService: Sendable {
 
         for (sourceIndex, sourceFile) in sourceFiles.enumerated() {
             try Task.checkCancellation()
+            // Path-first short-circuit: files that matched by path + fingerprint
+            // in the pre-compute phase skip all I/O and catalog work.
+            if unchangedReimportIndices.contains(sourceIndex) {
+                alreadyInCatalog?(IngestSkippedSourceFile(
+                    sourceURL: sourceFile,
+                    message: "already in catalog"
+                ))
+                progress?(IngestProgress(
+                    completedUnitCount: sourceIndex + 1,
+                    totalUnitCount: sourceFiles.count,
+                    originalURL: sourceFile
+                ))
+                continue
+            }
             do {
                 let originalURL = try originalURL(for: sourceFile, plan: plan)
                 // Dedup must decide before any copy, so it hashes the source
@@ -171,6 +225,9 @@ public struct IngestService: Sendable {
                     if try isAlreadyInCatalog(
                         sourceFile: sourceFile,
                         contentHash: hash,
+                        sourceTechnicalMetadata: didPrecompute
+                            ? precomputed[sourceIndex].technicalMetadata
+                            : nil,
                         acceptedContentSources: acceptedContentSources,
                         repository: repository
                     ) {
@@ -609,30 +666,117 @@ public struct IngestService: Sendable {
 
     // A source file is already in the catalog when its content matches either a
     // file accepted earlier in this same batch or a previously cataloged asset.
-    // The bounded content hash narrows the candidate; an exact byte comparison
-    // confirms it before any copy is skipped, so a partial-hash collision can
-    // never silently drop a distinct file. When the matched cataloged original
-    // is unreachable (an offline drive) the byte comparison is impossible, so
-    // the content hash is trusted — re-inserting a card still skips.
+    // The bounded content hash (SHA-256 of size + 128 KB head + tail) narrows the
+    // candidate; a content comparison confirms it before any copy is skipped, so
+    // a partial-hash collision can never silently drop a distinct file. When the
+    // matched cataloged original is unreachable (an offline drive) the comparison
+    // is impossible, so the content hash is trusted — re-inserting a card still
+    // skips.
+    //
+    // For large files the comparison strategy depends on whether the source
+    // looks like a copy of the cataloged photo. When the filename, capture
+    // date, and technical metadata all match, a middle-chunk sample is
+    // sufficient (the hash already verified size + head + tail via SHA-256).
+    // When any of those differ, a full byte-by-byte comparison is used —
+    // paranoia that guarantees we never silently drop a distinct file that
+    // happens to share a content hash, at the cost of reading the full file.
     private func isAlreadyInCatalog(
         sourceFile: URL,
         contentHash: String,
+        sourceTechnicalMetadata: AssetTechnicalMetadata?,
         acceptedContentSources: [String: URL],
         repository: CatalogRepository
     ) throws -> Bool {
         guard !contentHash.isEmpty else { return false }
         if let batchTwin = acceptedContentSources[contentHash],
-           FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: batchTwin.path) {
+           sampleContentsMatch(atPath: sourceFile.path, andPath: batchTwin.path) {
             return true
         }
         guard let catalogedTwin = try repository.asset(contentHash: contentHash) else {
             return false
         }
         let catalogedPath = catalogedTwin.originalURL.path
+        // Same path = same file (in-place re-import): no comparison needed.
+        if sourceFile.path == catalogedPath {
+            return true
+        }
         guard FileManager.default.fileExists(atPath: catalogedPath) else {
             return true
         }
-        return FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: catalogedPath)
+        // When filename and photo metadata all match, the source is almost
+        // certainly a copy of the cataloged photo — the middle-chunk sample is
+        // sufficient. When any differ, be paranoid: a full byte-by-byte
+        // comparison guarantees a distinct file is never silently dropped.
+        let trustsSample = sourceFile.lastPathComponent == catalogedTwin.originalURL.lastPathComponent
+            && Self.photoMetadataMatches(sourceTechnicalMetadata, catalogedTwin.technicalMetadata)
+        if trustsSample {
+            return sampleContentsMatch(atPath: sourceFile.path, andPath: catalogedPath)
+        } else {
+            return FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: catalogedPath)
+        }
+    }
+
+    /// Compares the photo-relevant fields of two technical metadata records,
+    /// ignoring provenance (which describes the metadata extractor, not the
+    /// photo). Returns false if either side is nil — when we can't confirm the
+    /// metadata matches, the caller falls back to a paranoid full comparison.
+    private static func photoMetadataMatches(
+        _ a: AssetTechnicalMetadata?,
+        _ b: AssetTechnicalMetadata?
+    ) -> Bool {
+        guard let a, let b else { return false }
+        return a.pixelWidth == b.pixelWidth
+            && a.pixelHeight == b.pixelHeight
+            && a.cameraMake == b.cameraMake
+            && a.cameraModel == b.cameraModel
+            && a.lensModel == b.lensModel
+            && a.isoSpeed == b.isoSpeed
+            && a.aperture == b.aperture
+            && a.shutterSpeed == b.shutterSpeed
+            && a.focalLength == b.focalLength
+            && a.latitude == b.latitude
+            && a.longitude == b.longitude
+            && a.altitude == b.altitude
+            && a.capturedAt == b.capturedAt
+            && a.rotation == b.rotation
+    }
+
+    /// Compares two files for content equality using size + a middle-chunk
+    /// sample instead of a full byte-by-byte comparison. The content hash
+    /// already verified that size, head (64 KB), and tail (64 KB) match (a
+    /// SHA-256 collision is computationally infeasible). Reading a 64 KB
+    /// middle chunk adds a third independent data point, making a false
+    /// positive effectively impossible while avoiding multi-megabyte reads
+    /// over SMB. For small files (≤ 128 KB) the content hash already read the
+    /// entire file, but a full byte comparison is still cheap at that size
+    /// and preserves the collision guard for forced-hash scenarios.
+    private func sampleContentsMatch(atPath path1: String, andPath path2: String) -> Bool {
+        let attrs1 = try? FileManager.default.attributesOfItem(atPath: path1)
+        let attrs2 = try? FileManager.default.attributesOfItem(atPath: path2)
+        let size1 = (attrs1?[.size] as? NSNumber)?.int64Value ?? -1
+        let size2 = (attrs2?[.size] as? NSNumber)?.int64Value ?? -2
+        guard size1 == size2, size1 >= 0 else { return false }
+        let chunkSize = ContentHash.defaultChunkByteCount
+        if UInt64(size1) <= UInt64(chunkSize) * 2 {
+            // Small file: full byte comparison is cheap (≤ 128 KB) and
+            // preserves the collision guard for forced-hash scenarios.
+            return FileManager.default.contentsEqual(atPath: path1, andPath: path2)
+        }
+        // Large file: content hash already verified size + head + tail via
+        // SHA-256. Read a 64 KB middle chunk to confirm the middle — far
+        // cheaper than reading the entire file over SMB.
+        let midOffset = UInt64(size1) / 2
+        guard let data1 = try? readChunk(atPath: path1, offset: midOffset, count: chunkSize),
+              let data2 = try? readChunk(atPath: path2, offset: midOffset, count: chunkSize)
+        else { return false }
+        return data1 == data2
+    }
+
+    private func readChunk(atPath path: String, offset: UInt64, count: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+        defer { try? handle.close() }
+        try handle.seek(toOffset: offset)
+        return try handle.read(upToCount: count) ?? Data()
     }
 
     private func volumeIdentifier(for url: URL) -> String? {

@@ -31,7 +31,7 @@ final class SupervisorConcurrentDispatchTests: XCTestCase {
             totalUnitCount: 1
         )
 
-        try supervisor.enqueue(previewItem, command: .generatePreview(assetID: AssetID(rawValue: "a"), level: .micro))
+        try supervisor.enqueue(previewItem, command: .generatePreviews(assetID: AssetID(rawValue: "a"), levels: [.micro]))
         try supervisor.enqueue(evaluationItem, command: .runEvaluation(assetID: AssetID(rawValue: "a"), provider: "local-image-metrics"))
 
         XCTAssertTrue(supervisor.isCommandDispatched(for: previewItem.id))
@@ -39,7 +39,7 @@ final class SupervisorConcurrentDispatchTests: XCTestCase {
         XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .running)
         XCTAssertEqual(supervisor.queue.item(id: evaluationItem.id)?.status, .running)
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: AssetID(rawValue: "a"), level: .micro),
+            .generatePreviews(assetID: AssetID(rawValue: "a"), levels: [.micro]),
             .runEvaluation(assetID: AssetID(rawValue: "a"), provider: "local-image-metrics")
         ])
     }

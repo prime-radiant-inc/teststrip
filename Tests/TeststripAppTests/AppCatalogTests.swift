@@ -146,9 +146,9 @@ final class AppCatalogTests: XCTestCase {
 
         XCTAssertTrue(waitUntil { file(workerOutputURL, contains: "--catalog \(paths.catalogURL.path)") })
         XCTAssertTrue(file(workerOutputURL, contains: "--preview-cache \(paths.previewCacheRoot.path)"))
-        XCTAssertTrue(waitUntil { file(workerOutputURL, contains: "\"command\":\"generatePreview\"") })
+        XCTAssertTrue(waitUntil { file(workerOutputURL, contains: "\"command\":\"generatePreviews\"") })
         XCTAssertTrue(file(workerOutputURL, contains: "\"assetID\":\"worker-asset\""))
-        XCTAssertTrue(file(workerOutputURL, contains: "\"level\":\"large\""))
+        XCTAssertTrue(file(workerOutputURL, contains: "\"levels\":[\"large\"]"))
     }
 
     private func writeRecordingWorkerScript(to url: URL, outputURL: URL) throws {

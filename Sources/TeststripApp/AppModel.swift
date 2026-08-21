@@ -1661,6 +1661,18 @@ private final class BackgroundWorkPublicationFlush: @unchecked Sendable {
     }
 }
 
+private final class SidebarCountRefreshFlush: @unchecked Sendable {
+    private let flush: () -> Void
+
+    init(_ flush: @escaping () -> Void) {
+        self.flush = flush
+    }
+
+    func callAsFunction() {
+        flush()
+    }
+}
+
 private struct BatchKeywordAccumulator {
     var keyword: String
     var assetCount: Int
@@ -2083,6 +2095,7 @@ public final class AppModel {
     /// One sidebar, every lens. Sources are nouns; lenses are verbs; the
     /// sidebar lists nouns, so it does not vary with the lens.
     func buildSidebarSections() -> [SidebarSection] {
+        DevSignpost.trace("buildSidebarSections") {
         UnifiedSidebarPresentation.sections(
             totalAssetCount: libraryAssetCount,
             importSummaries: importSourceSummaries,
@@ -2105,6 +2118,7 @@ public final class AppModel {
                 ? (selectedAssetID != nil ? 1 : 0)
                 : selectedBatchAssetIDs.count
         )
+        }
     }
 
     /// The cull sub-mode to return to when the Cull lens is re-entered. The
@@ -2136,7 +2150,13 @@ public final class AppModel {
         didSet {
             if oldValue != selectedAssetID {
                 abContenderAssetID = nil
-                invalidateCullingStackScopeCache()
+                // Selection change only affects which stack the selected asset
+                // belongs to — the stack *partition* itself (based on visual
+                // similarity vectors) doesn't change.  Invalidating the full
+                // partition caches here forces allCullingStacks(for: 130k assets)
+                // to recompute on every body evaluation, beachballing the main
+                // thread on every arrow-key press.
+                invalidateCullingStackScope()
             }
             persistSessionState()
         }
@@ -2524,6 +2544,18 @@ public final class AppModel {
     @ObservationIgnored
     private var backgroundWorkPublicationTimer: (any WorkerTimeoutCancellation)?
 
+    /// Coalesced sidebar-count refresh timer.  Per-item metadata changes (rating,
+    /// flag, keyword) each trigger `refreshCatalogSidebarCounts()` which runs 12+
+    /// DB queries — debouncing through this timer means rapid edits coalesce into
+    /// one refresh instead of beachballing on every keystroke.
+    @ObservationIgnored
+    private var sidebarCountRefreshTimer: (any WorkerTimeoutCancellation)?
+
+    /// O(1) asset ID → array-index lookup, rebuilt whenever `assets` is replaced.
+    /// Replaces O(n) `assets.firstIndex(where: { $0.id == id })` scans over 130k items.
+    @ObservationIgnored
+    private var assetIndexByID: [AssetID: Int] = [:]
+
     @ObservationIgnored
     private var currentPreviewCacheGenerationsByAssetID: [AssetID: Int]
 
@@ -2878,7 +2910,7 @@ public final class AppModel {
 
     public var selectedAssetPosition: Int? {
         guard let selectedAssetID,
-              let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+              let selectedIndex = assetIndexByID[selectedAssetID] else {
             return nil
         }
         return selectedIndex + 1
@@ -3702,7 +3734,7 @@ public final class AppModel {
             return "\(batchAssetIDs.count) Selected Photos"
         }
         if let batchAssetID = batchAssetIDs.first,
-           let batchAsset = assets.first(where: { $0.id == batchAssetID }) {
+           let batchAsset = assetIndexByID[batchAssetID].map({ assets[$0] }) {
             return Self.manualSetName(for: batchAsset)
         }
         if batchAssetIDs.count == 1 {
@@ -4541,6 +4573,8 @@ public final class AppModel {
         self.backgroundWorkPublicationScheduler = backgroundWorkPublicationScheduler
         self.sessionRestoreDefaults = sessionRestoreDefaults
         self.backgroundWorkPublicationTimer = nil
+        self.sidebarCountRefreshTimer = nil
+        self.assetIndexByID = Dictionary(uniqueKeysWithValues: assets.enumerated().map { ($1.id, $0) })
         self.currentPreviewCacheGenerationsByAssetID = [:]
         self.lastProcessedBackgroundWorkQueue = nil
         self.pendingPreviewGenerationQueueStatesRefresh = false
@@ -4606,7 +4640,7 @@ public final class AppModel {
                 if let armedID = self.armedStackCommitAssetID,
                    newFailedPreviewItemIDs.contains(Self.previewWorkItemID(assetID: armedID, level: .large)) {
                     self.disarmStackCommit()
-                    if let asset = self.assets.first(where: { $0.id == armedID }) {
+                    if let asset = assetIndexByID[armedID].map({ self.assets[$0] }) {
                         self.lastCullingMetadataDecision = Self.renderUnavailableFeedback(asset: asset)
                     }
                 }
@@ -4919,7 +4953,7 @@ public final class AppModel {
 
     public func setBatchSelection(_ assetID: AssetID, isSelected: Bool) {
         if isSelected {
-            guard let loadedIndex = assets.firstIndex(where: { $0.id == assetID }) else { return }
+            guard let loadedIndex = assetIndexByID[assetID] else { return }
             if selectedBatchAssetIDs.insert(assetID).inserted {
                 selectedBatchAssetIDOrder.append(assetID)
                 selectedBatchAssetSortKeys[assetID] = loadedIndex
@@ -4937,9 +4971,9 @@ public final class AppModel {
     }
 
     public func selectBatchRange(to assetID: AssetID) {
-        guard let targetIndex = assets.firstIndex(where: { $0.id == assetID }) else { return }
+        guard let targetIndex = assetIndexByID[assetID] else { return }
         let anchorID = selectedBatchRangeAnchorID(fallback: assetID)
-        guard let anchorIndex = assets.firstIndex(where: { $0.id == anchorID }) else { return }
+        guard let anchorIndex = assetIndexByID[anchorID] else { return }
         let lowerIndex = min(anchorIndex, targetIndex)
         let upperIndex = max(anchorIndex, targetIndex)
         for asset in assets[lowerIndex...upperIndex] {
@@ -5013,11 +5047,11 @@ public final class AppModel {
     }
 
     private func selectedBatchRangeAnchorID(fallback: AssetID) -> AssetID {
-        if let selectedAssetID, assets.contains(where: { $0.id == selectedAssetID }) {
+        if let selectedAssetID, assetIndexByID[selectedAssetID] != nil {
             return selectedAssetID
         }
         if let latestVisibleBatchID = selectedBatchAssetIDOrder.reversed().first(where: { batchID in
-            assets.contains(where: { $0.id == batchID })
+            assetIndexByID[batchID] != nil
         }) {
             return latestVisibleBatchID
         }
@@ -5201,6 +5235,8 @@ public final class AppModel {
     /// Deliberately never touches `selectedView` except for the one spec'd
     /// exception: a source the current lens disables on falls back to Grid.
     private func applySource(_ source: LibrarySource) throws {
+        let _signpost = DevSignpost.begin("applySource")
+        defer { DevSignpost.end(_signpost, "applySource") }
         // A catalog-less model has no scope to apply. Nothing in Sources/
         // constructs one and then selects a source — this is a genuine
         // precondition failure, not a state worth special-casing, so it
@@ -5841,6 +5877,8 @@ public final class AppModel {
     }
 
     private func refreshImportSourceSummaries(recomputeAssetCounts: Bool) throws {
+        let _signpost = DevSignpost.begin("refreshImportSourceSummaries")
+        defer { DevSignpost.end(_signpost, "refreshImportSourceSummaries") }
         guard let catalog else { return }
         let sessions = try catalog.repository.workSessions(kind: .ingest, statuses: [.completed])
         if recomputeAssetCounts {
@@ -6496,7 +6534,7 @@ public final class AppModel {
             selectedView = .loupe
         } else {
             try applyAssetSet(id: inputSetID)
-            if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
+            if let previousSelection, assetIndexByID[previousSelection] != nil {
                 selectedAssetID = previousSelection
             }
             selectedView = .loupe
@@ -6843,7 +6881,7 @@ public final class AppModel {
     private func candidateStackAssets(limit: Int, anchor: AssetID?) -> [Asset]? {
         guard !assets.isEmpty else { return nil }
         guard let selectedAssetID = anchor,
-              assets.contains(where: { $0.id == selectedAssetID }) else {
+              assetIndexByID[selectedAssetID] != nil else {
             return nil
         }
         let stack = stackBuilder()
@@ -6956,7 +6994,7 @@ public final class AppModel {
             return
         }
         guard let currentSelection = selectedAssetID,
-              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+              let index = assetIndexByID[currentSelection] else {
             selectAssetID(assets.first?.id)
             return
         }
@@ -6969,7 +7007,7 @@ public final class AppModel {
             return
         }
         guard let currentSelection = selectedAssetID,
-              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+              let index = assetIndexByID[currentSelection] else {
             selectAssetID(assets.first?.id)
             return
         }
@@ -7117,7 +7155,7 @@ public final class AppModel {
     private func armStackCommit(stagedAssetID: AssetID, asset: Asset?) throws {
         // Stored availability, not a fresh probe: the same gate the prefetch
         // paths use. If the render can never succeed, arming would hang forever.
-        let stored = assets.first(where: { $0.id == stagedAssetID })
+        let stored = assetIndexByID[stagedAssetID].map { assets[$0] }
         let canRender = try stored?.availability.isAvailableForPreviewGeneration == true
             && !previewGenerationAttemptsExhausted(assetID: stagedAssetID, level: .large)
         guard canRender else {
@@ -7647,7 +7685,7 @@ public final class AppModel {
                 stackAssetIDs: stackAssetIDs,
                 after: currentIndex,
                 isUndecided: { assetID in
-                    assets.first(where: { $0.id == assetID })?.metadata.confirmedProjection.flag == nil
+                    assetIndexByID[assetID].map { assets[$0] }?.metadata.confirmedProjection.flag == nil
                 }
             ) {
                 selectAssetID(nextUndecidedID)
@@ -7697,7 +7735,7 @@ public final class AppModel {
             return
         }
         guard let selectedAssetID,
-              let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+              let index = assetIndexByID[selectedAssetID] else {
             selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
             return
         }
@@ -7776,11 +7814,13 @@ public final class AppModel {
     /// the given assets, in scope order — used by the filmstrip's dividers,
     /// which need every frame accounted for, not just multi-frame stacks.
     public func allCullingStacks(for assets: [Asset]) -> [AssetStack] {
+        DevSignpost.trace("allCullingStacks") {
         stackBuilder()
             .stacks(
                 from: assets,
                 visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID(for: assets)
             )
+        }
     }
 
     // T7.5: the traversal unit for ←/→ (and H/L) stack-to-stack navigation
@@ -7797,20 +7837,21 @@ public final class AppModel {
     }
 
     public func selectedCullingStackEvaluationSignals() -> [AssetID: [EvaluationSignal]] {
+        let assetIDs: [AssetID]
         if let selectedAssetID,
            let selectedWorkStackAssetIDs,
            selectedWorkStackAssetIDs.contains(selectedAssetID) {
-            return Dictionary(uniqueKeysWithValues: selectedWorkStackAssetIDs.map { assetID in
-                (assetID, evaluationSignals(for: assetID))
-            })
+            assetIDs = selectedWorkStackAssetIDs
+        } else {
+            guard let selectedAssetID,
+                  let stack = cullingStacks().first(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+                return [:]
+            }
+            assetIDs = stack.assetIDs
         }
-        guard let selectedAssetID,
-              let stack = cullingStacks().first(where: { $0.assetIDs.contains(selectedAssetID) }) else {
-            return [:]
-        }
-        return Dictionary(uniqueKeysWithValues: stack.assetIDs.map { assetID in
-            (assetID, evaluationSignals(for: assetID))
-        })
+        guard let catalog else { return [:] }
+        let signals = (try? catalog.repository.evaluationSignals(forAssetIDs: assetIDs)) ?? [:]
+        return Dictionary(uniqueKeysWithValues: assetIDs.map { ($0, signals[$0] ?? []) })
     }
 
     // One row per persisted stack in the active stack-cull session; empty
@@ -7922,6 +7963,13 @@ public final class AppModel {
         _cachedAllCullingStacks = nil
     }
 
+    /// Clears only the scope cache (which stack the selected asset is in)
+    /// without nuking the stack partition caches.  Used on selection changes
+    /// and metadata updates that don't alter the visual-similarity partition.
+    private func invalidateCullingStackScope() {
+        _cachedCullingStackScope = nil
+    }
+
     private func selectNextStackForCulling() throws {
         if try selectPersistedCullingStack(.next) {
             return
@@ -8028,7 +8076,7 @@ public final class AppModel {
         guard !indexedStacks.isEmpty else { return }
 
         guard let selectedAssetID,
-              let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+              let selectedIndex = assetIndexByID[selectedAssetID] else {
             let fallbackStack = direction == .next ? indexedStacks.first : indexedStacks.last
             if let fallbackStack {
                 selectAssetID(recommendedStackLandingAssetID(for: fallbackStack.stack))
@@ -8093,7 +8141,7 @@ public final class AppModel {
             return
         }
         guard let selectedAssetID,
-              let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+              let index = assetIndexByID[selectedAssetID] else {
             selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
             return
         }
@@ -8194,9 +8242,9 @@ public final class AppModel {
         try catalog.repository.updateRotation(assetID: selectedAssetID, rotation: newRotation)
         let updatedAsset = try catalog.repository.asset(id: selectedAssetID)
         try syncMetadataSidecar(for: updatedAsset)
-        if let index = assets.firstIndex(where: { $0.id == selectedAssetID }) {
+        if let index = assetIndexByID[selectedAssetID] {
             assets[index] = updatedAsset
-            invalidateCullingStackScopeCache()
+            invalidateCullingStackScope()
         }
         statusMessage = newRotation == 0 ? "Rotated back to original" : "Rotated \(newRotation)°"
     }
@@ -8590,7 +8638,7 @@ public final class AppModel {
                 )
             }
         )
-        try refreshCatalogSidebarCounts()
+        scheduleSidebarCountRefresh()
         statusMessage = "Applied batch metadata to \(Self.photoCountDescription(changes.count))"
         return changes.count
     }
@@ -9019,12 +9067,17 @@ public final class AppModel {
     }
 
     private func batchKeywordSuggestions(for assets: [Asset]) -> [BatchKeywordSuggestion] {
+        guard let catalog else { return [] }
+        let signalsByAssetID = (try? catalog.repository.evaluationSignals(
+            forAssetIDs: assets.map(\.id)
+        )) ?? [:]
+
         var accumulatorsByKey: [String: BatchKeywordAccumulator] = [:]
 
         for asset in assets {
             let existingKeys = Set(asset.metadata.keywords.map(Self.keywordKey).filter { !$0.isEmpty })
             var assetKeys = Set<String>()
-            for signal in evaluationSignals(for: asset.id) {
+            for signal in signalsByAssetID[asset.id] ?? [] {
                 for label in Self.objectLabels(from: signal) {
                     let keyword = Self.cleanedKeyword(label)
                     let key = Self.keywordKey(keyword)
@@ -9217,7 +9270,7 @@ public final class AppModel {
         // and the likely-pick queue that keys off a null flag), so the sidebar
         // has to be told — the confirmed-write path already does this via
         // `applyMetadataSnapshot`.
-        try refreshCatalogSidebarCounts()
+        scheduleSidebarCountRefresh()
     }
 
     private static func removedAILabelValue(for field: MetadataField, in metadata: AssetMetadata) -> String {
@@ -9243,10 +9296,10 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let updatedAsset = try catalog.repository.asset(id: assetID)
-        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+        if let index = assetIndexByID[assetID] {
             assets[index] = updatedAsset
         }
-        invalidateCullingStackScopeCache()
+        invalidateCullingStackScope()
     }
 
     private static func objectLabels(from signal: EvaluationSignal) -> [String] {
@@ -9325,12 +9378,12 @@ public final class AppModel {
         }
         let updatedAsset = try catalog.repository.asset(id: assetID)
         try syncMetadataSidecar(for: updatedAsset)
-        try refreshCatalogSidebarCounts()
-        guard let index = assets.firstIndex(where: { $0.id == assetID }) else {
+        scheduleSidebarCountRefresh()
+        guard let index = assetIndexByID[assetID] else {
             return
         }
         assets[index] = updatedAsset
-        invalidateCullingStackScopeCache()
+        invalidateCullingStackScope()
     }
 
     private func syncMetadataSidecar(for asset: Asset) throws {
@@ -9339,26 +9392,41 @@ public final class AppModel {
         }
         let generation = try catalog.repository.catalogGeneration(assetID: asset.id)
         let lastFingerprint = try catalog.repository.lastMetadataSyncFingerprint(assetID: asset.id)
-        let pendingItem = MetadataSyncItem(
-            assetID: asset.id,
-            sidecarURL: catalog.metadataSidecarStore.sidecarURL(forOriginalAt: asset.originalURL),
-            catalogGeneration: generation,
-            lastSyncedFingerprint: lastFingerprint
-        )
         if workerSupervisor != nil {
+            // When the worker is present, use the default sidecar URL (pure
+            // path computation, no filesystem I/O) instead of sidecarURL(_:)
+            // which does FileManager.fileExists over SMB. The worker resolves
+            // the actual sidecar URL itself during the write.
+            let pendingItem = MetadataSyncItem(
+                assetID: asset.id,
+                sidecarURL: catalog.metadataSidecarStore.defaultSidecarURL(forOriginalAt: asset.originalURL),
+                catalogGeneration: generation,
+                lastSyncedFingerprint: lastFingerprint
+            )
             try catalog.repository.recordMetadataSyncPending(pendingItem)
             upsertPendingMetadataSyncItem(pendingItem)
             try cancelStaleQueuedMetadataSyncWrites(
                 keeping: asset.id,
                 generation: generation
             )
-            guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
+            // Skip canAutomaticallyRetryMetadataSync here — it does
+            // FileManager.isWritableFile over SMB. For the rating path we use
+            // defaultSidecarURL (same directory as the original), so if the
+            // asset is online the directory is writable. Offline assets are
+            // caught by the availability check alone.
+            guard !asset.availability.requiresCachedPreviewOnly else {
                 statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
                 return
             }
             try enqueueMetadataSyncWork(pendingItem: pendingItem)
             return
         }
+        let pendingItem = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: catalog.metadataSidecarStore.sidecarURL(forOriginalAt: asset.originalURL),
+            catalogGeneration: generation,
+            lastSyncedFingerprint: lastFingerprint
+        )
         do {
             let result = try catalog.metadataSidecarStore.write(
                 metadata: asset.metadata,
@@ -9438,10 +9506,10 @@ public final class AppModel {
             catalogGeneration: generation,
             fingerprint: XMPSidecarStore.fingerprint(for: sidecarData)
         )
-        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+        if let index = assetIndexByID[assetID] {
             assets[index] = updatedAsset
         }
-        try refreshCatalogSidebarCounts()
+        scheduleSidebarCountRefresh()
         if originalAsset.metadata != mergedMetadata {
             recordMetadataChangeGroup(label: "Resolved XMP conflict", changes: [MetadataChange(
                 assetID: assetID,
@@ -9479,10 +9547,10 @@ public final class AppModel {
             lastSyncedFingerprint: conflict.lastSyncedFingerprint
         )
 
-        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+        if let index = assetIndexByID[assetID] {
             assets[index] = updatedAsset
         }
-        try refreshCatalogSidebarCounts()
+        scheduleSidebarCountRefresh()
         if originalAsset.metadata != mergedMetadata {
             recordMetadataChangeGroup(label: "Resolved XMP conflict", changes: [MetadataChange(
                 assetID: assetID,
@@ -9720,7 +9788,11 @@ public final class AppModel {
 
     private func refreshPreviewGenerationQueueStates() throws {
         guard let catalog else { return }
-        clearPreviewLookupCaches()
+        // Do NOT call clearPreviewLookupCaches() here — the flush already
+        // invalidates individual entries for assets whose preview generation
+        // changed. Clearing all caches forces every visible grid cell to
+        // re-stat preview URLs on the next render, which beachballs the main
+        // thread during large imports.
         previewGenerationQueueStates = try Self.previewGenerationQueueStates(
             repository: catalog.repository,
             selectedAssetID: selectedAssetID
@@ -9729,7 +9801,10 @@ public final class AppModel {
 
     private func refreshSelectedPreviewGenerationQueueStates(for assetID: AssetID) throws {
         guard let catalog else { return }
-        clearPreviewLookupCaches()
+        // Only clear the specific asset's cache entry, not all caches.
+        gridPreviewURLCacheByAssetID.removeValue(forKey: assetID)
+        gridPreviewStatusCacheByAssetID.removeValue(forKey: assetID)
+        faceReportPreviewSourceCacheByAssetID.removeValue(forKey: assetID)
         try Self.mergePreviewGenerationQueueStates(
             for: assetID,
             repository: catalog.repository,
@@ -9905,7 +9980,7 @@ public final class AppModel {
         )
         try workerSupervisor.enqueue(
             item,
-            command: .generatePreview(assetID: assetID, level: level),
+            command: .generatePreviews(assetID: assetID, levels: [level]),
             placement: placement
         )
         syncBackgroundWorkQueueFromSupervisor()
@@ -9965,7 +10040,7 @@ public final class AppModel {
             )
             requests.append((
                 item: workItem,
-                command: .generatePreview(assetID: pendingItem.assetID, level: pendingItem.level),
+                command: .generatePreviews(assetID: pendingItem.assetID, levels: [pendingItem.level]),
                 placement: .back
             ))
             existingPreviewWorkItemIDs.insert(itemID)
@@ -10185,7 +10260,7 @@ public final class AppModel {
     }
 
     public func requestVisibleGridPreview(assetID: AssetID) throws {
-        if let asset = assets.first(where: { $0.id == assetID }),
+        if let asset = assetIndexByID[assetID].map({ assets[$0] }),
            !asset.availability.isAvailableForPreviewGeneration {
             return
         }
@@ -10239,7 +10314,7 @@ public final class AppModel {
     // frames whose originals are unreachable are skipped.
     private func prefetchLoupeNeighborLargePreviews(around assetID: AssetID) throws {
         guard workerSupervisor != nil else { return }
-        guard let index = assets.firstIndex(where: { $0.id == assetID }) else { return }
+        guard let index = assetIndexByID[assetID] else { return }
         for neighborIndex in [index + 1, index - 1] where assets.indices.contains(neighborIndex) {
             let neighbor = assets[neighborIndex]
             guard neighbor.availability.isAvailableForPreviewGeneration else { continue }
@@ -10276,7 +10351,7 @@ public final class AppModel {
         }
         for wantedAssetID in wants {
             guard previewURL(for: wantedAssetID, levels: [.large]) == nil else { continue }
-            guard let asset = assets.first(where: { $0.id == wantedAssetID }),
+            guard let asset = assetIndexByID[wantedAssetID].map({ assets[$0] }),
                   asset.availability.isAvailableForPreviewGeneration else { continue }
             guard try !previewGenerationAttemptsExhausted(assetID: wantedAssetID, level: .large) else { continue }
             let itemID = Self.previewWorkItemID(assetID: wantedAssetID, level: .large)
@@ -10324,7 +10399,7 @@ public final class AppModel {
         ) else {
             return
         }
-        guard let asset = assets.first(where: { $0.id == assetID }),
+        guard let asset = assetIndexByID[assetID].map({ assets[$0] }),
               asset.availability.isAvailableForPreviewGeneration else {
             return
         }
@@ -10345,7 +10420,7 @@ public final class AppModel {
         ) else {
             return .satisfied
         }
-        if let asset = assets.first(where: { $0.id == assetID }),
+        if let asset = assetIndexByID[assetID].map({ assets[$0] }),
            asset.availability.requiresCachedPreviewOnly {
             return .unavailable
         }
@@ -10357,7 +10432,7 @@ public final class AppModel {
     }
 
     private func assetMaxPixelDimension(for assetID: AssetID) -> Int? {
-        guard let metadata = assets.first(where: { $0.id == assetID })?.technicalMetadata else {
+        guard let metadata = assetIndexByID[assetID].map({ assets[$0] })?.technicalMetadata else {
             return nil
         }
         return max(metadata.pixelWidth, metadata.pixelHeight)
@@ -10842,7 +10917,7 @@ public final class AppModel {
         let revertedAsset = try catalog.repository.asset(id: change.assetID)
         if beforeRevertMetadata.confirmedProjection != revertedAsset.metadata.confirmedProjection {
             try syncMetadataSidecar(for: revertedAsset)
-            try refreshCatalogSidebarCounts()
+            scheduleSidebarCountRefresh()
         }
         try refreshInMemoryAsset(change.assetID)
     }
@@ -11027,6 +11102,8 @@ public final class AppModel {
     }
 
     private func flushBackgroundWorkPublication() {
+        let _signpost = DevSignpost.begin("flushBackgroundWorkPublication")
+        defer { DevSignpost.end(_signpost, "flushBackgroundWorkPublication") }
         let queue = currentBackgroundWorkQueue
         let generationsChanged = currentPreviewCacheGenerationsByAssetID != previewCacheGenerationsByAssetID
         if generationsChanged {
@@ -11072,6 +11149,19 @@ public final class AppModel {
         gridPreviewURLCacheByAssetID.removeAll(keepingCapacity: true)
         gridPreviewStatusCacheByAssetID.removeAll(keepingCapacity: true)
         faceReportPreviewSourceCacheByAssetID.removeAll(keepingCapacity: true)
+    }
+
+    /// Invalidates preview URL cache entries for the given asset IDs.
+    /// Used after local import completion — the import writes preview files
+    /// to disk, but gridPreviewURL may have cached nil before the files
+    /// existed. This targeted invalidation replaces the old blanket
+    /// clearPreviewLookupCaches() that nuked all 130k entries on every flush.
+    private func invalidatePreviewLookupCaches(forAssetIDs assetIDs: [AssetID]) {
+        for assetID in assetIDs {
+            gridPreviewURLCacheByAssetID.removeValue(forKey: assetID)
+            gridPreviewStatusCacheByAssetID.removeValue(forKey: assetID)
+            faceReportPreviewSourceCacheByAssetID.removeValue(forKey: assetID)
+        }
     }
 
     // Defers the repository-backed queue-state refresh to the coalesced publication
@@ -11269,7 +11359,7 @@ public final class AppModel {
         do {
             for assetID in assetIDs {
                 let updatedAsset = try catalog.repository.asset(id: assetID)
-                if let index = assets.firstIndex(where: { $0.id == assetID }) {
+                if let index = assetIndexByID[assetID] {
                     assets[index] = updatedAsset
                 }
             }
@@ -11300,7 +11390,7 @@ public final class AppModel {
         }
         do {
             let updatedAsset = try catalog.repository.asset(id: assetID)
-            if let index = assets.firstIndex(where: { $0.id == assetID }) {
+            if let index = assetIndexByID[assetID] {
                 assets[index] = updatedAsset
             }
         } catch {
@@ -11376,7 +11466,7 @@ public final class AppModel {
         return nil
     }
 
-    private static func previewWorkItemID(assetID: AssetID, level: PreviewLevel) -> WorkSessionID {
+    static func previewWorkItemID(assetID: AssetID, level: PreviewLevel) -> WorkSessionID {
         WorkSessionID(rawValue: "preview-\(assetID.rawValue)-\(level.rawValue)")
     }
 
@@ -11587,7 +11677,7 @@ public final class AppModel {
                let catalog {
                 do {
                     try catalog.repository.recordEvaluationFailure(assetID: assetID, provider: provider, message: item.detail)
-                    try refreshCatalogSidebarCounts()
+                    scheduleSidebarCountRefresh()
                     if providerFailuresFilter {
                         try reload()
                     }
@@ -11708,6 +11798,8 @@ public final class AppModel {
     }
 
     public func reload() throws {
+        let _signpost = DevSignpost.begin("reload")
+        defer { DevSignpost.end(_signpost, "reload") }
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -12220,10 +12312,20 @@ public final class AppModel {
         let availability = SourceAvailabilityProbe().availability(for: asset)
         try catalog.repository.updateAvailability(assetID: assetID, availability: availability)
         let updatedAsset = try catalog.repository.asset(id: assetID)
-        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+        if let index = assetIndexByID[assetID] {
             assets[index] = updatedAsset
         }
         return availability
+    }
+
+    /// Rebuilds the `assetIndexByID` lookup from the current `assets` array.
+    /// Called by `replaceAssets` and anywhere `assets` is wholesale replaced.
+    private func rebuildAssetIndexByID() {
+        assetIndexByID.removeAll(keepingCapacity: true)
+        assetIndexByID.reserveCapacity(assets.count)
+        for (index, asset) in assets.enumerated() {
+            assetIndexByID[asset.id] = index
+        }
     }
 
     private func replaceAssets(
@@ -12239,10 +12341,11 @@ public final class AppModel {
 
         let previousSelection = selectedAssetID
         assets = loadedAssets
+        rebuildAssetIndexByID()
         invalidateCullingStackScopeCache()
-        if let preferredSelection, assets.contains(where: { $0.id == preferredSelection }) {
+        if let preferredSelection, assetIndexByID[preferredSelection] != nil {
             selectedAssetID = preferredSelection
-        } else if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
+        } else if let previousSelection, assetIndexByID[previousSelection] != nil {
             selectedAssetID = previousSelection
         } else {
             selectedAssetID = assets.first?.id
@@ -12271,6 +12374,8 @@ public final class AppModel {
     }
 
     private func loadCatalogPage(preferredSelection: AssetID?) throws {
+        let _signpost = DevSignpost.begin("loadCatalogPage")
+        defer { DevSignpost.end(_signpost, "loadCatalogPage") }
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -14093,10 +14198,8 @@ public final class AppModel {
     }
 
     private func visualSimilarityVectorsByAssetID(for assets: [Asset]) -> [AssetID: [Double]] {
-        guard catalog != nil else { return [:] }
-        return visualSimilarityVectorsByAssetID(for: assets) { assetID in
-            evaluationSignals(for: assetID)
-        }
+        guard let catalog else { return [:] }
+        return visualSimilarityVectorsByAssetID(for: assets, repository: catalog.repository)
     }
 
     private func visualSimilarityVectorsByAssetID(
@@ -14240,12 +14343,16 @@ public final class AppModel {
         // every background-queue republication — usually compose an
         // identical sidebar, and `@Observable` notifies on assignment
         // rather than on change.
-        let sections = buildSidebarSections()
-        guard sections != sidebarSections else { return }
-        sidebarSections = sections
+        DevSignpost.trace("rebuildSidebarSections") {
+            let sections = buildSidebarSections()
+            guard sections != sidebarSections else { return }
+            sidebarSections = sections
+        }
     }
 
     private func refreshCatalogFolders() {
+        let _signpost = DevSignpost.begin("refreshCatalogFolders")
+        defer { DevSignpost.end(_signpost, "refreshCatalogFolders") }
         guard let catalog else { return }
         do {
             catalogFolders = try catalog.repository.folders()
@@ -14285,6 +14392,8 @@ public final class AppModel {
     }
 
     private func refreshCatalogSidebarCounts() throws {
+        let _signpost = DevSignpost.begin("refreshCatalogSidebarCounts")
+        defer { DevSignpost.end(_signpost, "refreshCatalogSidebarCounts") }
         guard let catalog else { return }
         libraryAssetCount = try catalog.repository.assetCount()
         smartCollectionCounts = try Self.smartCollectionCounts(repository: catalog.repository)
@@ -14296,6 +14405,32 @@ public final class AppModel {
                 (try? importChildCounts(sessionID: WorkSessionID(rawValue: sessionID))) ?? ImportChildCounts()
         }
         rebuildSidebarSections()
+    }
+
+    /// Coalesces `refreshCatalogSidebarCounts()` calls so rapid per-item
+    /// metadata edits (rating, flag, keyword) don't each trigger 12+ DB
+    /// queries.  The first call schedules a refresh after 0.3s; subsequent
+    /// calls are absorbed into the pending one.  Source-change callers
+    /// (`reload`, import completion) use the synchronous `refreshCatalogSidebarCounts()`
+    /// directly since they need fresh counts immediately.
+    private func scheduleSidebarCountRefresh() {
+        // In test mode (no publication interval configured), refresh
+        // synchronously so tests checking sidebar state after metadata
+        // changes don't need to wait for a timer.
+        guard backgroundWorkPublicationInterval != nil else {
+            try? refreshCatalogSidebarCounts()
+            return
+        }
+        guard sidebarCountRefreshTimer == nil else { return }
+        let refresh = SidebarCountRefreshFlush { [weak self] in
+            self?.sidebarCountRefreshTimer = nil
+            try? self?.refreshCatalogSidebarCounts()
+        }
+        sidebarCountRefreshTimer = backgroundWorkPublicationScheduler.schedule(
+            after: 0.3
+        ) {
+            refresh()
+        }
     }
 
     private func refreshAutopilotGhostAssetIDs() throws {
@@ -14535,6 +14670,9 @@ public final class AppModel {
                 try self.loadCatalogPage(
                     preferredSelection: output.result.importedAssets.first?.id
                 )
+                self.invalidatePreviewLookupCaches(
+                    forAssetIDs: output.result.importedAssets.map(\.id)
+                )
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -14677,6 +14815,9 @@ public final class AppModel {
                 guard let self, self.activeWork?.id == activityID else { return }
                 try self.loadCatalogPage(
                     preferredSelection: output.result.importedAssets.first?.id
+                )
+                self.invalidatePreviewLookupCaches(
+                    forAssetIDs: output.result.importedAssets.map(\.id)
                 )
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
@@ -15214,7 +15355,8 @@ public final class AppModel {
     }
 
     public func rotationForAsset(id assetID: AssetID) -> Int {
-        assets.first { $0.id == assetID }?.technicalMetadata?.rotation ?? 0
+        guard let index = assetIndexByID[assetID] else { return 0 }
+        return assets[index].technicalMetadata?.rotation ?? 0
     }
 
     func gridPreviewStatus(for assetID: AssetID) -> AssetGridPreviewStatusPresentation? {
@@ -15289,9 +15431,13 @@ public final class AppModel {
 
     public func previewURL(for assetID: AssetID, levels: [PreviewLevel]) -> URL? {
         guard let catalog else { return nil }
+        var seen = Set<String>()
         for level in levels {
             let url = catalog.previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
-            if FileManager.default.fileExists(atPath: url.path) {
+            let path = url.path
+            if seen.contains(path) { continue }
+            seen.insert(path)
+            if FileManager.default.fileExists(atPath: path) {
                 return url
             }
         }
@@ -15326,6 +15472,8 @@ public final class AppModel {
     ]
 
     private static func smartCollectionCounts(repository: CatalogRepository) throws -> [SmartCollection: Int] {
+        let _signpost = DevSignpost.begin("smartCollectionCounts")
+        defer { DevSignpost.end(_signpost, "smartCollectionCounts") }
         var counts: [SmartCollection: Int] = [:]
         for collection in smartCollectionSidebarOrder {
             counts[collection] = try repository.assetCount(matching: collection.query)

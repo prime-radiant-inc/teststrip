@@ -22,7 +22,7 @@ public enum WorkerCommand: Equatable, Sendable {
         selectedFiles: Set<URL>?,
         preIngestThumbnails: URL?
     )
-    case generatePreview(assetID: AssetID, level: PreviewLevel)
+    case generatePreviews(assetID: AssetID, levels: [PreviewLevel])
     case syncMetadata(assetID: AssetID)
     case refreshAvailability(assetID: AssetID)
     case refreshAvailabilityBatch(assetIDs: [AssetID])
@@ -38,7 +38,7 @@ public enum WorkerCommand: Equatable, Sendable {
         case .pause: return .pause
         case .resume: return .resume
         case .cancelAll: return .cancelAll
-        case .importFolder, .importCard, .generatePreview, .syncMetadata, .refreshAvailability, .refreshAvailabilityBatch, .runEvaluation, .reverseGeocodeBatch, .backfillCoordinates: return nil
+        case .importFolder, .importCard, .generatePreviews, .syncMetadata, .refreshAvailability, .refreshAvailabilityBatch, .runEvaluation, .reverseGeocodeBatch, .backfillCoordinates: return nil
         }
     }
 
@@ -71,8 +71,8 @@ public enum WorkerCommand: Equatable, Sendable {
             return "import folder \(root.lastPathComponent)"
         case .importCard(let source, let destinationRoot, _, _, _, _, _):
             return "import card \(source.lastPathComponent) to \(destinationRoot.lastPathComponent)"
-        case .generatePreview(let assetID, let level):
-            return "generate \(level.rawValue) preview for \(assetID.rawValue)"
+        case .generatePreviews(let assetID, let levels):
+            return "generate \(levels.map(\.rawValue).joined(separator: ",")) previews for \(assetID.rawValue)"
         case .syncMetadata(let assetID):
             return "sync metadata for \(assetID.rawValue)"
         case .refreshAvailability(let assetID):

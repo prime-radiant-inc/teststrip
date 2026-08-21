@@ -196,6 +196,8 @@ public struct LibraryImportService: Sendable {
         preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler?
     ) throws -> LibraryImportResult {
+        let _signpost = DevSignpost.begin("importAssets")
+        defer { DevSignpost.end(_signpost, "importAssets") }
         try Task.checkCancellation()
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
@@ -316,11 +318,13 @@ public struct LibraryImportService: Sendable {
             }
             // Check existing preview states BEFORE ingest for this batch so we
             // can distinguish new from existing (re-import) assets.
-            let batchExistingStates = try existingGridPreviewStates(
-                for: batch,
-                plan: plan,
-                repository: repository
-            )
+            let batchExistingStates = try DevSignpost.trace("existingGridPreviewStates") {
+                try existingGridPreviewStates(
+                    for: batch,
+                    plan: plan,
+                    repository: repository
+                )
+            }
             for (id, state) in batchExistingStates {
                 allExistingPreviewStates[id] = state
             }
@@ -334,31 +338,33 @@ public struct LibraryImportService: Sendable {
                 detail: catalogingDetail(batch.count),
                 catalogedAssetIDs: []
             ))
-            let assets = try ingestService.ingest(
-                files: batch,
-                plan: plan,
-                repository: repository,
-                skippedSourceFile: skippedSourceFileHandler,
-                secondCopyFailure: secondCopyFailureHandler,
-                alreadyInCatalog: { _ in alreadyInCatalogCount += 1 },
-                progress: { ingestProgress in
-                    let cumulativeCompleted = cumulativeIngestCount.count + ingestProgress.completedUnitCount
-                    if ingestProgressCoalescer.shouldReport(
-                        completedCount: cumulativeCompleted,
-                        totalCount: scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount
-                    ) {
-                        progress?(LibraryImportProgress(
-                            completedUnitCount: cumulativeCompleted,
-                            totalUnitCount: scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount,
-                            detail: perFileDetail(
-                                cumulativeCompleted,
-                                scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount
-                            ),
-                            catalogedAssetIDs: ingestProgress.catalogedAssetIDs
-                        ))
+            let assets = try DevSignpost.trace("ingestBatch") {
+                try ingestService.ingest(
+                    files: batch,
+                    plan: plan,
+                    repository: repository,
+                    skippedSourceFile: skippedSourceFileHandler,
+                    secondCopyFailure: secondCopyFailureHandler,
+                    alreadyInCatalog: { _ in alreadyInCatalogCount += 1 },
+                    progress: { ingestProgress in
+                        let cumulativeCompleted = cumulativeIngestCount.count + ingestProgress.completedUnitCount
+                        if ingestProgressCoalescer.shouldReport(
+                            completedCount: cumulativeCompleted,
+                            totalCount: scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount
+                        ) {
+                            progress?(LibraryImportProgress(
+                                completedUnitCount: cumulativeCompleted,
+                                totalUnitCount: scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount,
+                                detail: perFileDetail(
+                                    cumulativeCompleted,
+                                    scanTotal > 0 ? scanTotal : ingestProgress.totalUnitCount
+                                ),
+                                catalogedAssetIDs: ingestProgress.catalogedAssetIDs
+                            ))
+                        }
                     }
-                }
-            )
+                )
+            }
             allAssets.append(contentsOf: assets)
             cumulativeIngestCount.count += assets.count
         }
@@ -516,20 +522,14 @@ public struct LibraryImportService: Sendable {
         progress: LibraryImportProgressHandler? = nil
     ) throws -> [AssetID: ExistingGridPreviewState] {
         var states: [AssetID: ExistingGridPreviewState] = [:]
-        let heartbeatCoalescer = ScanProgressCoalescer(
-            interval: Int.max,
-            heartbeat: Self.ingestProgressHeartbeat
-        )
+        // Batch lookup: a single WHERE original_path IN (...) query replaces
+        // per-file repository.asset(originalURL:) calls — 256 DB round-trips
+        // per batch become 1.
+        let originalPaths = try sourceFiles.map { try ingestService.originalURL(for: $0, plan: plan).path }
+        let existingAssets = try repository.assets(originalPaths: originalPaths)
         for (index, sourceFile) in sourceFiles.enumerated() {
-            if heartbeatCoalescer.shouldReportScanCount(index) {
-                progress?(LibraryImportProgress(
-                    completedUnitCount: index,
-                    totalUnitCount: sourceFiles.count,
-                    detail: "Checking existing previews: \(index) of \(sourceFiles.count)"
-                ))
-            }
-            let originalURL = try ingestService.originalURL(for: sourceFile, plan: plan)
-            guard let existingAsset = try repository.asset(originalURL: originalURL) else {
+            let originalPath = originalPaths[index]
+            guard let existingAsset = existingAssets[originalPath] else {
                 continue
             }
             let previewURL = previewCache.url(for: PreviewCacheKey(assetID: existingAsset.id, level: .grid))

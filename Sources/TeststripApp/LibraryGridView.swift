@@ -4078,8 +4078,8 @@ private struct LoupeView: View {
     }
 
     var body: some View {
-        let stackPresentation = cullingStackPresentation
         let presentation = loupePresentation
+        let stackPresentation: CullingStackRailPresentation? = presentation.showsCullChrome ? cullingStackPresentation : nil
         let completion = presentation.showsCullChrome ? cullCompletion : nil
         VStack(spacing: 0) {
             if presentation.showsCullChrome {
@@ -4099,7 +4099,7 @@ private struct LoupeView: View {
                 }
             }
             HStack(spacing: 0) {
-                if presentation.showsCullChrome {
+                if presentation.showsCullChrome, let stackPresentation {
                     cullingStackRail(presentation: stackPresentation)
                 }
                 VStack(spacing: 0) {
@@ -4141,7 +4141,7 @@ private struct LoupeView: View {
                     }
                 }
             }
-            if presentation.showsCullChrome {
+            if presentation.showsCullChrome, let stackPresentation {
                 runStrip(isStackActive: stackPresentation.isMultiFrameStack)
             } else {
                 libraryLoupeNavBar

@@ -144,4 +144,37 @@ final class CatalogRepositoryContentHashTests: XCTestCase {
 
         XCTAssertEqual(try repository.asset(contentHash: "abc")?.originalURL.path, "/Photos/2025/one.cr2")
     }
+
+    func testBatchPathLookupReturnsAllMatches() throws {
+        let repository = try makeRepository(named: "batch-path-lookup")
+        try repository.upsert(asset(path: "/Photos/2025/one.cr2", contentHash: "aaa"))
+        try repository.upsert(asset(path: "/Photos/2025/two.cr2", contentHash: "bbb"))
+
+        let results = try repository.assets(originalPaths: [
+            "/Photos/2025/one.cr2",
+            "/Photos/2025/two.cr2",
+            "/Photos/2025/absent.cr2",
+        ])
+
+        XCTAssertEqual(results.count, 2)
+        XCTAssertNotNil(results["/Photos/2025/one.cr2"])
+        XCTAssertNotNil(results["/Photos/2025/two.cr2"])
+        XCTAssertNil(results["/Photos/2025/absent.cr2"])
+    }
+
+    func testBatchPathLookupEmptyInputReturnsEmpty() throws {
+        let repository = try makeRepository(named: "batch-path-empty")
+        let results = try repository.assets(originalPaths: [])
+        XCTAssertEqual(results, [:])
+    }
+
+    func testBatchPathLookupHandlesMoreThanChunkSize() throws {
+        let repository = try makeRepository(named: "batch-path-chunks")
+        for i in 0..<600 {
+            try repository.upsert(asset(path: "/Photos/\(i).jpg", contentHash: "hash-\(i)"))
+        }
+        let paths = (0..<600).map { "/Photos/\($0).jpg" }
+        let results = try repository.assets(originalPaths: paths)
+        XCTAssertEqual(results.count, 600)
+    }
 }

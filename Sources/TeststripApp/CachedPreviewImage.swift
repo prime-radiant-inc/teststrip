@@ -60,6 +60,7 @@ struct CachedPreviewImage: View {
     @State private var image: NSImage?
     @State private var loadedURL: URL?
     @State private var loadedGeneration: Int?
+    @State private var loadedRotation: Int?
 
     var body: some View {
         content
@@ -95,12 +96,13 @@ struct CachedPreviewImage: View {
             loadedGeneration = cacheGeneration
             return
         }
-        guard loadedURL != previewURL || loadedGeneration != cacheGeneration else { return }
+        guard loadedURL != previewURL || loadedGeneration != cacheGeneration || loadedRotation != rotation else { return }
         if !PreviewImageTransition.shouldRetainCurrentImage(loadedURL: loadedURL, nextURL: previewURL) {
             image = nil
         }
         loadedURL = previewURL
         loadedGeneration = cacheGeneration
+        loadedRotation = rotation
         guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL, rotation: rotation), !Task.isCancelled else {
             return
         }

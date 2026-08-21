@@ -173,6 +173,33 @@ public final class CatalogRepository {
         return try rows.first.map(decodeAsset)
     }
 
+    /// Batch lookup of assets by original path. Returns a dictionary keyed
+    /// by path string for O(1) membership checks during import — the path-first
+    /// short-circuit uses this to skip SMB I/O for files already in the catalog
+    /// before computing content hashes or reading metadata.
+    public func assets(originalPaths paths: [String]) throws -> [String: Asset] {
+        guard !paths.isEmpty else { return [:] }
+        // SQLite has a variable limit (default 999); chunk to stay safe.
+        var result: [String: Asset] = [:]
+        let chunkSize = 500
+        var offset = 0
+        while offset < paths.count {
+            let chunk = Array(paths[offset..<min(offset + chunkSize, paths.count)])
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                "SELECT * FROM assets WHERE original_path IN (\(placeholders))",
+                bindings: chunk
+            )
+            for row in rows {
+                if let asset = try? decodeAsset(row) {
+                    result[asset.originalURL.path] = asset
+                }
+            }
+            offset += chunkSize
+        }
+        return result
+    }
+
     /// The first cataloged asset whose content matches `contentHash`, regardless
     /// of where it lives — the basis for recognizing a photo already in the
     /// library when it arrives again under a different name or folder. An empty
