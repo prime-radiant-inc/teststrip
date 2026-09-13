@@ -28,8 +28,8 @@ over from any older card):
   (`cullStackRailDecisionOverlay`, `:4905-4922`: `.picked` →
   `DesignGlyph.pick.symbolName` ("flag.fill", green); `.rejected` → literal
   SF Symbol `"xmark.circle.fill"` (red) plus 0.45 opacity dim
-  (`CullingFilmstripPresentation.DecisionState.isDimmed`,
-  `:6343`, true only for `.rejected`); a `✦` recommended marker
+  (`CullingStackRailPresentation.DecisionState.isDimmed`,
+  `:6703`, true only for `.rejected`); a `✦` recommended marker
   (top-trailing overlay, orange-on-black, `:4857-4865`) rendered when
   `item.isRecommended`; a selection-highlight stroke (orange, 2pt) when
   `item.isSelected`; and, **below** the thumbnail (a sibling in the outer

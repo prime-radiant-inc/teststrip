@@ -33,12 +33,14 @@ Covers:
   N"` when more than one asset changed, `"Flag"` otherwise, `:6968-6969`) —
   this is the atomicity the story hinges on.
 - The rail's "Keep" button is the identical code path, not a parallel
-  reimplementation: `CullingStackListView`'s `.keepSelectedAndRejectAlternates`
-  action -> `keepSelectedStackFrame()` -> `model.promoteCurrentFrameAndRejectSiblings()`
-  (`Sources/TeststripApp/LibraryGridView.swift:5065-5070`, wired from the
-  action enum at `:6575-6580` and the rail presentation's button title/help
-  at `:6475-6484`, `"Keep frame N · cut M"` / `"Keep selected frame and
-  reject stack alternates"`).
+  reimplementation: `cullingStackRail`'s primary-action button
+  (`Sources/TeststripApp/LibraryGridView.swift:5097-5100`) ->
+  `keepSelectedStackFrame()` (`:5425-5431`) ->
+  `model.promoteCurrentFrameAndRejectSiblings()`. The same behavior is the
+  `.keepSelectedAndRejectAlternates` case of `CullingStackAction` (enum at
+  `:6956-6961`, dispatched at `:5448-5449`), and the rail presentation's
+  button title/help are built at `:6857-6858`, `"Keep frame N · cut M"` /
+  `"Keep selected frame and reject stack alternates"`.
 - Return's key binding: `CullingShortcut.init(event:)` maps the Return/keypad-
   Enter keycodes to `.promoteAndRejectSiblings`
   (`CullingKeyCaptureView.swift:164-165`), dispatched at

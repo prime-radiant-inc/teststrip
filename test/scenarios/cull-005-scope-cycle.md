@@ -54,10 +54,12 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
    "Scope: Unrated only" (`script/ax_drive.sh find --contains "Scope: Unrated only"`
    within the 2s toast window — the scope change must not be silent;
    persona-8 defect), that the scope chip now reads "Unrated"
-   (`script/ax_drive.sh find --contains "Unrated"`), and the filmstrip/grid's
-   visible frame count matches `N_UNRATED` (via the filmstrip position text
-   `"frame X / N_UNRATED"` from `CullFilmstripPresentation.positionText`, or
-   by counting visible tiles). Because the starting scope is `.all`, every
+   (`script/ax_drive.sh find --contains "Unrated"`), and the run strip's
+   reported frame total matches `N_UNRATED` (via the status bar's triple
+   counter, whose first segment reads `"<i> of N_UNRATED"` —
+   `CullFilmstripPresentation.tripleCounterText`, or by summing the frame
+   counts of the run strip's stops, one stop per stack). Because the starting
+   scope is `.all`, every
    asset (including `SELECTED0`) was in scope beforehand; if `SELECTED0`'s
    flag was NULL, assert selection stayed on it, otherwise assert
    reselection landed on some unrated asset (confirm its flag via SQL,
@@ -123,19 +125,18 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
 UNRUN — SQL not yet dry-run against a live catalog; needs human-present
 execution per test/scenarios/README.md.
 
-**Found but NOT fixed (2026-08-09, Task 13 review follow-up)**: Step 4's
-`CullFilmstripPresentation.positionText` citation (line 59) is dead —
+**Fixed 2026-09-13 (scenario-card/LEDGER hygiene pass)**: Step 4's
+`CullFilmstripPresentation.positionText` citation was dead —
 `CullFilmstripPresentation` (`Sources/TeststripApp/CullFilmstripPresentation.swift:6-78`)
-has no `positionText` property; a separate, larger "run strip" redesign
-(predating unified-shell — see `cull-013-filmstrip.md`'s own 2026-08-09 note
-for the same finding) replaced it with a single `tripleCounterText`
-property in a different format ("N of T · stack S of Σ · frame F of M",
-not "frame X / N"). Not fixed here because verifying what the correct
-current assertion should be requires the same dedicated run-strip-vs-old-
-filmstrip audit `cull-013` needs, not a citation-only patch — this card's
-own fallback ("or by counting visible tiles") is unaffected and still
-sound. Needs a fresh VM run after that audit, using the fallback method in
-the meantime.
+has no `positionText` property; the run-strip redesign replaced it with a
+single `tripleCounterText` property in a different format ("N of T · stack S
+of Σ · frame F of M", not "frame X / N"). Step 4 now cites
+`tripleCounterText`; its first segment still reports the scoped total, so the
+frame-count assertion is unchanged (the run strip's stops are one-per-stack,
+so the counter, not a stop count, is the direct frame-total read). The full
+run-strip-vs-old-filmstrip rewrite this note used to defer to is done in
+`cull-013-filmstrip.md` (rewritten against the current run-strip code in this
+same pass). Still needs a fresh VM run.
 
 **Reconciled 2026-08-09 (Task 13, unified-shell preamble sweep)**: Step 1's
 ⌘1 preamble is unchanged in effect (⌘1 selects the Cull lens under
