@@ -336,11 +336,22 @@ struct LoupeZoomStageView: View {
         if LensChromePolicy.showsInspector(model.selectedView), model.isInspectorVisible {
             let rows = model.photoFacesPresentation(for: asset.id).rows
             if !rows.isEmpty {
+                // `image` is already rotated by the asset's override, so its
+                // pixel size is the displayed size. Face boxes are normalized
+                // against the unrotated preview, so hand the geometry that
+                // base size plus the rotation to transform back.
+                let rotation = asset.technicalMetadata?.rotation ?? 0
+                let normalizedRotation = FaceBoxOverlayGeometry.normalizedRotation(rotation)
+                let displayPixelSize = image.previewPixelSize
+                let basePixelSize = (normalizedRotation == 90 || normalizedRotation == 270)
+                    ? CGSize(width: displayPixelSize.height, height: displayPixelSize.width)
+                    : displayPixelSize
                 FaceBoxOverlayView(
                     model: model,
                     rows: rows,
-                    imagePixelSize: zoomGeometry(viewportSize: viewportSize, image: image).imagePixelSize,
-                    containerSize: viewportSize
+                    imagePixelSize: basePixelSize,
+                    containerSize: viewportSize,
+                    rotation: rotation
                 )
             }
         }

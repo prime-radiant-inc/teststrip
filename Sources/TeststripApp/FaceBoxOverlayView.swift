@@ -6,6 +6,11 @@ import TeststripCore
 /// normalized bounding box to the point rect within the aspect-fitted
 /// (scaledToFit) image frame inside a container, so boxes track the actual
 /// displayed (letterboxed) image rather than the raw container bounds.
+///
+/// The box is normalized against the unrotated image the analyzer saw;
+/// `rotation` (clockwise degrees) is the display-time override the image is
+/// rotated by at load time (`PreviewImageDataLoader`), so the same rotation is
+/// applied to the normalized box and to the fitted frame's dimensions.
 enum FaceBoxOverlayGeometry {
     /// `boundingBox` is Vision's convention straight off
     /// `VNFaceObservation.boundingBox` (see `AppleVisionAnalyzer.analyze`):
@@ -13,32 +18,96 @@ enum FaceBoxOverlayGeometry {
     /// origin, so the y axis flips here — the same flip
     /// `FaceCropGeometry.pixelCropRect` applies when cropping avatar
     /// thumbnails out of the same observations.
+    ///
+    /// `imagePixelSize` is the *unrotated* image's pixel size (the space
+    /// `boundingBox` is normalized against); quarter turns swap the displayed
+    /// frame's width/height before fitting. `rotation` is normalized to
+    /// 0/90/180/270.
     static func displayRect(
         boundingBox: FaceBoundingBox,
         imagePixelSize: CGSize,
-        containerSize: CGSize
+        containerSize: CGSize,
+        rotation: Int = 0
     ) -> CGRect? {
         guard imagePixelSize.width > 0, imagePixelSize.height > 0,
               containerSize.width > 0, containerSize.height > 0 else {
             return nil
         }
+        let normalizedRotation = normalizedRotation(rotation)
+        let rotatedDimensions = RotationTransform.rotatedDimensions(
+            width: Int(imagePixelSize.width.rounded()),
+            height: Int(imagePixelSize.height.rounded()),
+            rotation: normalizedRotation
+        )
+        let displayedPixelSize = CGSize(
+            width: CGFloat(rotatedDimensions.width),
+            height: CGFloat(rotatedDimensions.height)
+        )
         let scale = min(
-            containerSize.width / imagePixelSize.width,
-            containerSize.height / imagePixelSize.height
+            containerSize.width / displayedPixelSize.width,
+            containerSize.height / displayedPixelSize.height
         )
         guard scale > 0 else { return nil }
-        let fittedSize = CGSize(width: imagePixelSize.width * scale, height: imagePixelSize.height * scale)
+        let fittedSize = CGSize(width: displayedPixelSize.width * scale, height: displayedPixelSize.height * scale)
         let origin = CGPoint(
             x: (containerSize.width - fittedSize.width) / 2,
             y: (containerSize.height - fittedSize.height) / 2
         )
-        let topLeftY = 1.0 - boundingBox.y - boundingBox.height
-        return CGRect(
-            x: origin.x + boundingBox.x * fittedSize.width,
-            y: origin.y + topLeftY * fittedSize.height,
-            width: boundingBox.width * fittedSize.width,
-            height: boundingBox.height * fittedSize.height
+        let box = rotatedNormalizedBox(
+            topLeftX: boundingBox.x,
+            topLeftY: 1.0 - boundingBox.y - boundingBox.height,
+            width: boundingBox.width,
+            height: boundingBox.height,
+            rotation: normalizedRotation
         )
+        return CGRect(
+            x: origin.x + box.x * fittedSize.width,
+            y: origin.y + box.y * fittedSize.height,
+            width: box.width * fittedSize.width,
+            height: box.height * fittedSize.height
+        )
+    }
+
+    /// Reduces any degree count to one of the four quarter turns the display
+    /// pipeline supports.
+    static func normalizedRotation(_ rotation: Int) -> Int {
+        let wrapped = ((rotation % 360) + 360) % 360
+        switch wrapped {
+        case 90, 180, 270:
+            return wrapped
+        default:
+            return 0
+        }
+    }
+
+    /// Rotates a normalized, top-left-origin box clockwise by `rotation`
+    /// (0/90/180/270) within the unit square. A quarter turn swaps the box's
+    /// width and height.
+    static func rotatedNormalizedBox(
+        topLeftX: Double,
+        topLeftY: Double,
+        width: Double,
+        height: Double,
+        rotation: Int
+    ) -> (x: Double, y: Double, width: Double, height: Double) {
+        switch normalizedRotation(rotation) {
+        case 90:
+            // (x, y) -> (1 - y, x); corners (x, y) and (x+w, y+h).
+            return (x: 1.0 - topLeftY - height, y: topLeftX, width: height, height: width)
+        case 180:
+            // (x, y) -> (1 - x, 1 - y).
+            return (
+                x: 1.0 - topLeftX - width,
+                y: 1.0 - topLeftY - height,
+                width: width,
+                height: height
+            )
+        case 270:
+            // (x, y) -> (y, 1 - x).
+            return (x: topLeftY, y: 1.0 - topLeftX - width, width: height, height: width)
+        default:
+            return (x: topLeftX, y: topLeftY, width: width, height: height)
+        }
     }
 }
 
@@ -64,13 +133,17 @@ struct FaceBoxOverlayView: View {
     var rows: [PhotoFaceRow]
     var imagePixelSize: CGSize
     var containerSize: CGSize
+    /// Clockwise display rotation override of the asset, so overlays track
+    /// the rotated image.
+    var rotation: Int = 0
 
     var body: some View {
         ForEach(rows) { row in
             if let rect = FaceBoxOverlayGeometry.displayRect(
                 boundingBox: row.boundingBox,
                 imagePixelSize: imagePixelSize,
-                containerSize: containerSize
+                containerSize: containerSize,
+                rotation: rotation
             ) {
                 faceBox(rect: rect, row: row)
             }
