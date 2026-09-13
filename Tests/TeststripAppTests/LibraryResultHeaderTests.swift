@@ -60,10 +60,10 @@ final class LibraryResultHeaderTests: XCTestCase {
         XCTAssertEqual(presentation.interpretation, "No filter matched — searching file names and photo text for “sunset”")
     }
 
-    func testUnquotedMultiWordTokenSplitExposesStructuredTokenAndResidual() {
-        // "camera:SmokeCam 1" commits as a `camera:SmokeCam` token plus a
-        // residual bare word "1" — the interpretation line must name both,
-        // not just the residual, so the silent split is visible to the user.
+    func testUnquotedMultiWordValueIsFullyStructuredWithNoInterpretation() {
+        // Greedy consume folds the trailing "1" into the camera value, so
+        // "camera:SmokeCam 1" is a single structured token with no residual
+        // plain text — there is nothing to "read as" free text.
         let presentation = LibraryResultHeaderPresentation(
             totalAssetCount: 8,
             librarySearchText: "camera:SmokeCam 1",
@@ -72,7 +72,22 @@ final class LibraryResultHeaderTests: XCTestCase {
             canSaveManualSet: false
         )
 
-        XCTAssertEqual(presentation.interpretation, "read as Camera: SmokeCam + plain text \"1\"")
+        XCTAssertNil(presentation.interpretation)
+    }
+
+    func testStructuredTokenWithTrailingPlainTextNamesBothHalves() {
+        // A value-constrained field cannot absorb the trailing plain word, so
+        // a residual remains and the interpretation line still names both the
+        // structured token and the plain text rather than hiding the split.
+        let presentation = LibraryResultHeaderPresentation(
+            totalAssetCount: 14,
+            librarySearchText: "iso:800 beach",
+            canSaveDynamicSet: true,
+            canSaveSnapshotSet: true,
+            canSaveManualSet: false
+        )
+
+        XCTAssertEqual(presentation.interpretation, "read as ISO >= 800 + plain text \"beach\"")
     }
 
     func testSaveActionsMapToTheThreeDistinctSaveSemantics() {
