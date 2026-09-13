@@ -1,5 +1,7 @@
 import XCTest
+import AppKit
 @testable import TeststripApp
+@testable import TeststripCore
 
 final class ImportSelectionViewTests: XCTestCase {
     @MainActor
@@ -63,6 +65,43 @@ final class ImportSelectionViewTests: XCTestCase {
         XCTAssertEqual(model.selectedURLs.count, 4)
     }
 
+    @MainActor
+    func testLoadThumbnailPopulatesFromCacheWithoutRendering() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("selection-thumb-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cache = PreIngestThumbnailCache(directoryURL: dir)
+        let entries = makeEntries(count: 1, duplicateIndices: [])
+        let url = entries[0].url
+        try cache.storeThumbnail(try makeImageData(), for: url)
+        let model = ImportSelectionModel(entries: entries, duplicateURLs: [], thumbnailCache: cache)
+
+        model.loadThumbnail(for: url)
+
+        XCTAssertNotNil(model.thumbnails[url])
+        XCTAssertFalse(model.isRendering)
+    }
+
+    @MainActor
+    func testLoadThumbnailKeepsAlreadyLoadedImage() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("selection-thumb-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cache = PreIngestThumbnailCache(directoryURL: dir)
+        let entries = makeEntries(count: 1, duplicateIndices: [])
+        let url = entries[0].url
+        try cache.storeThumbnail(try makeImageData(), for: url)
+        let model = ImportSelectionModel(entries: entries, duplicateURLs: [], thumbnailCache: cache)
+        let sentinel = NSImage(size: NSSize(width: 2, height: 2))
+        model.thumbnails[url] = sentinel
+
+        model.loadThumbnail(for: url)
+
+        XCTAssertTrue(model.thumbnails[url] === sentinel)
+    }
+
     private func makeEntries(count: Int, duplicateIndices: Set<Int>) -> [ImportSelectionEntry] {
         (0..<count).map { i in
             ImportSelectionEntry(
@@ -71,5 +110,14 @@ final class ImportSelectionViewTests: XCTestCase {
                 isDuplicate: duplicateIndices.contains(i)
             )
         }
+    }
+
+    private func makeImageData() throws -> Data {
+        let image = NSImage(size: NSSize(width: 4, height: 4))
+        image.lockFocus()
+        NSColor.red.setFill()
+        NSRect(x: 0, y: 0, width: 4, height: 4).fill()
+        image.unlockFocus()
+        return try XCTUnwrap(image.tiffRepresentation)
     }
 }

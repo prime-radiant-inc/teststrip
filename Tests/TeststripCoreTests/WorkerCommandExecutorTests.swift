@@ -1684,6 +1684,104 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
+
+    // MARK: - Orientation provider integration
+
+    func testRunEvaluationWritesOrientationRotationToCatalog() throws {
+        let (repository, asset, executor) = try makeOrientationExecutor(
+            named: "worker-orientation-write",
+            initialRotation: nil,
+            outcome: OrientationEvaluationOutcome(rotation: 90)
+        )
+
+        let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "stub-orientation"))
+
+        XCTAssertEqual(result, .completed("evaluated source.jpg with stub-orientation"))
+        XCTAssertEqual(try repository.asset(id: asset.id).technicalMetadata?.rotation, 90)
+    }
+
+    func testRunEvaluationLeavesRotationUnchangedWhenOrientationProviderReturnsNil() throws {
+        let (repository, asset, executor) = try makeOrientationExecutor(
+            named: "worker-orientation-nil",
+            initialRotation: 180,
+            outcome: OrientationEvaluationOutcome(rotation: nil)
+        )
+
+        _ = try executor.execute(.runEvaluation(assetID: asset.id, provider: "stub-orientation"))
+
+        XCTAssertEqual(try repository.asset(id: asset.id).technicalMetadata?.rotation, 180)
+    }
+
+    private func makeOrientationExecutor(
+        named name: String,
+        initialRotation: Int?,
+        outcome: OrientationEvaluationOutcome
+    ) throws -> (CatalogRepository, Asset, WorkerCommandExecutor) {
+        let root = try TestDirectories.makeTemporaryDirectory(named: name)
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: source),
+            availability: .online,
+            metadata: AssetMetadata(),
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1600,
+                pixelHeight: 1000,
+                provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "default"),
+                rotation: initialRotation
+            )
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        // runEvaluation only checks that a cached preview file exists; the stub
+        // provider never decodes it.
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try FileManager.default.createDirectory(at: previewURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("preview".utf8).write(to: previewURL)
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: previewCache,
+            evaluationProviders: [StubOrientationEvaluationProvider(name: "stub-orientation", outcome: outcome)]
+        )
+        return (repository, asset, executor)
+    }
+
+    // MARK: - Sidecar rotation sync
+
+    func testSyncMetadataAppliesSidecarRotationToCatalog() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-sidecar-rotation")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: source),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        // A rotation-only sidecar with no prior sync must import as
+        // .importSidecar, which writes ts:Rotation back to the catalog.
+        _ = try XMPSidecarStore().write(metadata: AssetMetadata(), rotation: 180, forOriginalAt: source)
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+
+        _ = try executor.execute(.syncMetadata(assetID: asset.id))
+
+        XCTAssertEqual(try repository.asset(id: asset.id).technicalMetadata?.rotation, 180)
+    }
 }
 
 private struct FakeReverseGeocoder: ReverseGeocoder {
@@ -1725,6 +1823,19 @@ private struct StubFaceEvaluationProvider: FaceObservationEvaluationProvider {
     }
 
     func evaluateWithFaces(assetID: AssetID, previewURL: URL) throws -> FaceEvaluationOutcome {
+        outcome
+    }
+}
+
+private struct StubOrientationEvaluationProvider: OrientationEvaluationProvider {
+    var name: String
+    var outcome: OrientationEvaluationOutcome
+
+    func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
+        outcome.signals
+    }
+
+    func evaluateWithOrientation(assetID: AssetID, previewURL: URL) throws -> OrientationEvaluationOutcome {
         outcome
     }
 }
