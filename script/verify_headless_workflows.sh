@@ -12,7 +12,7 @@ REAL_CORPUS_DIR="${TESTSTRIP_REAL_CORPUS_DIR:-$ROOT_DIR/sample-data/photos/jesse
 
 real_corpus_available() {
   [[ -d "$REAL_CORPUS_DIR" ]] \
-    && [[ -n "$(find "$REAL_CORPUS_DIR" -maxdepth 1 -type f -print -quit)" ]]
+    && [[ -n "$(find "$REAL_CORPUS_DIR" -type f -print -quit 2>/dev/null)" ]]
 }
 
 skip_real_corpus_legs() {
