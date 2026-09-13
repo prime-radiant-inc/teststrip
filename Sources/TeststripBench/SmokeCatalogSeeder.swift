@@ -53,19 +53,106 @@ public enum BurstFixtureLayout {
     }
 }
 
+/// Opt-in synthetic evaluation-signal fixtures the smoke/burst seeders can
+/// attach, so scenario cards that depend on AI reads — the inspector's
+/// suggested-keyword chips, the frame/rail flaw badges — can be driven from a
+/// freshly seeded catalog without first running the evaluation lane.
+///
+/// The default (`[]`) writes no `evaluation_signals` rows at all, so every
+/// scenario that asserts a baseline-relative count on the plain `--smoke` seed
+/// is unaffected. See `SmokeSeedSignalLayout` for the documented subsets.
+public struct SmokeSeedEvaluationFixtures: OptionSet, Equatable, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+
+    /// `.object` label signals on `SmokeSeedSignalLayout.keywordSignalAssetIndices`,
+    /// driving the inspector's suggested-keyword chips (inspect-006).
+    public static let keywordSuggestions = SmokeSeedEvaluationFixtures(rawValue: 1 << 0)
+
+    /// Below-threshold `.focus`/`.eyesOpen` signals on every frame
+    /// `AssetStackBuilder` groups into a multi-frame stack, driving the
+    /// EYES CLOSED / SOFT flaw badges (cull-021, cull-004).
+    public static let stackFlaws = SmokeSeedEvaluationFixtures(rawValue: 1 << 1)
+
+    /// Parses the `seed-*-catalog` CLI's trailing fixture tokens. Unknown
+    /// tokens are ignored so the seed commands stay forward-compatible.
+    public static func parse(_ tokens: [String]) -> SmokeSeedEvaluationFixtures {
+        var fixtures: SmokeSeedEvaluationFixtures = []
+        for token in tokens {
+            switch token {
+            case "keyword-signals":
+                fixtures.insert(.keywordSuggestions)
+            case "stack-flaws":
+                fixtures.insert(.stackFlaws)
+            default:
+                continue
+            }
+        }
+        return fixtures
+    }
+}
+
+/// The documented, bounded subsets `SmokeSeedEvaluationFixtures` writes into.
+/// Asset indexes are into the `count` photos the seeder creates (asset id
+/// `smoke-<index>`); every constant here is the single source of truth the
+/// fixture tests assert against.
+public enum SmokeSeedSignalLayout {
+    /// The photos that carry `.object` keyword signals. Index 0 is included
+    /// because the keyword cards locate their target with
+    /// `SELECT ... ORDER BY id LIMIT 1`, which resolves to `smoke-0`.
+    public static let keywordSignalAssetIndices = [0, 1, 3]
+
+    /// Keyword labels written per asset index, one `.object` signal per label.
+    /// Deliberately disjoint from the seed's own `metadata.keywords`
+    /// (["smoke", "batch-N"]) so each label surfaces as an unaccepted
+    /// suggestion rather than being suppressed as already-present.
+    public static let keywordSignalsByAssetIndex: [Int: [String]] = [
+        0: ["autumn", "leaves"],
+        1: ["street", "market"],
+        3: ["mountain", "lake"]
+    ]
+
+    public static let keywordSignalConfidence = 0.9
+
+    /// Highest focus score handed to a flaw-frame — comfortably at or below
+    /// the app's `CompareSurveyPresentation.softFocusBadgeThreshold` (0.4), so
+    /// every seeded stack frame earns the SOFT badge.
+    public static let highestFocusScore = 0.39
+
+    /// Per-stack focus-score step. Descending scores give each multi-frame
+    /// stack a unique ranking leader (no too-close-to-call tie) while keeping
+    /// every frame badged; the floor stops the step from crossing zero.
+    public static let focusScoreStep = 0.06
+
+    /// Round-robin focus score for a frame at `position` within its stack.
+    public static func focusScore(atStackPosition position: Int) -> Double {
+        max(highestFocusScore - focusScoreStep * Double(position), 0.03)
+    }
+}
+
 public struct SmokeCatalogSeeder {
     public var applicationSupportDirectory: URL
     public var count: Int
     /// Per-index capture-time offsets (seconds from the seed epoch). Nil keeps
     /// the default 15-minute spacing, which never auto-stacks.
     public var captureOffsets: [TimeInterval]?
+    /// Opt-in synthetic evaluation-signal fixtures. Empty (the default) keeps
+    /// the baseline seed byte-for-byte identical: no `evaluation_signals` rows,
+    /// so every scenario that asserts a baseline-relative count is unaffected.
+    public var evaluationFixtures: SmokeSeedEvaluationFixtures
 
     private let renderedLevels: [PreviewLevel] = [.grid, .large]
 
-    public init(applicationSupportDirectory: URL, count: Int, captureOffsets: [TimeInterval]? = nil) {
+    public init(
+        applicationSupportDirectory: URL,
+        count: Int,
+        captureOffsets: [TimeInterval]? = nil,
+        evaluationFixtures: SmokeSeedEvaluationFixtures = []
+    ) {
         self.applicationSupportDirectory = applicationSupportDirectory
         self.count = max(0, count)
         self.captureOffsets = captureOffsets
+        self.evaluationFixtures = evaluationFixtures
     }
 
     public func run() throws -> SmokeCatalogSeederResult {
@@ -86,23 +173,22 @@ public struct SmokeCatalogSeeder {
         let repository = CatalogRepository(database: database)
         let renderer = PreviewRenderer()
         var sourceImageCount = 0
-        var pickAssetIDs: [AssetID] = []
+        var seededAssets: [Asset] = []
 
         for index in 0..<count {
             let assetID = AssetID(rawValue: "smoke-\(index)")
             let sourceURL = sourceRoot.appendingPathComponent("\(assetID.rawValue).jpg")
             try Self.writeSmokeJPEG(to: sourceURL, index: index)
             sourceImageCount += 1
-            if index % 6 >= 4 {
-                pickAssetIDs.append(assetID)
-            }
 
-            try repository.upsert(asset(
+            let seeded = asset(
                 id: assetID,
                 originalURL: sourceURL,
                 index: index,
-                fingerprint: fingerprint(for: sourceURL)
-            ))
+                fingerprint: try fingerprint(for: sourceURL)
+            )
+            try repository.upsert(seeded)
+            seededAssets.append(seeded)
 
             try renderer.renderLevels(
                 fromLocalSource: sourceURL,
@@ -112,6 +198,9 @@ public struct SmokeCatalogSeeder {
                 }
             )
         }
+        let pickAssetIDs = seededAssets.enumerated()
+            .filter { $0.offset % 6 >= 4 }
+            .map { $0.element.id }
         if !pickAssetIDs.isEmpty {
             try repository.upsert(AssetSet(
                 id: AssetSetID(rawValue: "smoke-picks"),
@@ -121,6 +210,8 @@ public struct SmokeCatalogSeeder {
             ))
         }
 
+        try recordEvaluationFixtures(for: seededAssets, repository: repository)
+
         return SmokeCatalogSeederResult(
             catalogURL: catalogURL,
             previewCacheRoot: previewCache.root,
@@ -129,6 +220,97 @@ public struct SmokeCatalogSeeder {
             cachedPreviewCount: try PreviewCacheFileCounter.count(root: previewCache.root)
         )
     }
+
+    /// Writes the opt-in signal fixtures (see `SmokeSeedEvaluationFixtures`)
+    /// into the freshly seeded catalog. No-op for the default empty set.
+    private func recordEvaluationFixtures(for assets: [Asset], repository: CatalogRepository) throws {
+        var signals: [EvaluationSignal] = []
+
+        if evaluationFixtures.contains(.keywordSuggestions) {
+            signals.append(contentsOf: Self.keywordSignals(for: assets))
+        }
+        if evaluationFixtures.contains(.stackFlaws) {
+            signals.append(contentsOf: Self.stackFlawSignals(for: assets))
+        }
+
+        try repository.recordEvaluationSignals(signals)
+    }
+
+    /// `.object` label signals on `SmokeSeedSignalLayout.keywordSignalAssetIndices`
+    /// only. The labels are disjoint from the seed's own metadata keywords
+    /// (["smoke", "batch-N"]), so every one surfaces as an unaccepted
+    /// suggested-keyword chip.
+    static func keywordSignals(for assets: [Asset]) -> [EvaluationSignal] {
+        assets.enumerated().flatMap { index, asset -> [EvaluationSignal] in
+            guard let labels = SmokeSeedSignalLayout.keywordSignalsByAssetIndex[index] else { return [] }
+            return labels.map { label in
+                EvaluationSignal(
+                    assetID: asset.id,
+                    kind: .object,
+                    value: .label(label),
+                    confidence: SmokeSeedSignalLayout.keywordSignalConfidence,
+                    provenance: objectFixtureProvenance
+                )
+            }
+        }
+    }
+
+    /// Below-threshold `.focus`/`.eyesOpen` signals on every frame
+    /// `AssetStackBuilder` groups into a multi-frame stack — the same grouping
+    /// the app uses — so the flawed frames really are stack frames. Standalone
+    /// photos get nothing. Focus scores descend by position within each stack
+    /// (all at or below the app's SOFT threshold), giving every stack a unique
+    /// leader while every frame still earns a flaw badge.
+    static func stackFlawSignals(for assets: [Asset]) -> [EvaluationSignal] {
+        var signals: [EvaluationSignal] = []
+        let stacks = AssetStackBuilder().stacks(from: assets)
+        for stack in stacks where stack.assetIDs.count > 1 {
+            for (position, assetID) in stack.assetIDs.enumerated() {
+                signals.append(EvaluationSignal(
+                    assetID: assetID,
+                    kind: .focus,
+                    value: .score(SmokeSeedSignalLayout.focusScore(atStackPosition: position)),
+                    confidence: 1,
+                    provenance: focusFixtureProvenance
+                ))
+                if position == stack.assetIDs.count - 1 {
+                    signals.append(EvaluationSignal(
+                        assetID: assetID,
+                        kind: .eyesOpen,
+                        value: .score(0),
+                        confidence: 1,
+                        provenance: faceFixtureProvenance
+                    ))
+                }
+            }
+        }
+        return signals
+    }
+
+    /// The calibrated focus-family provider identity. `CatalogRepository`
+    /// treats focus-family rows from any other provenance version as stale and
+    /// hides them, so the fixture writes the real provider name + version to
+    /// stay readable through the same path production reads use.
+    private static let focusFixtureProvenance = ProviderProvenance(
+        provider: LocalImageMetricsEvaluationProvider.providerName,
+        model: "preview-color-focus-metrics",
+        version: LocalImageMetricsEvaluationProvider.provenanceVersion,
+        settingsHash: "default"
+    )
+
+    private static let faceFixtureProvenance = ProviderProvenance(
+        provider: FaceExpressionEvaluationProvider.providerName,
+        model: "CIDetectorFace",
+        version: FaceExpressionEvaluationProvider.provenanceVersion,
+        settingsHash: "default"
+    )
+
+    private static let objectFixtureProvenance = ProviderProvenance(
+        provider: "teststrip-bench-fixtures",
+        model: "smoke-keyword-fixture",
+        version: "1",
+        settingsHash: "default"
+    )
 
     private func asset(id: AssetID, originalURL: URL, index: Int, fingerprint: FileFingerprint) -> Asset {
         let colorLabels = ColorLabel.allCases
