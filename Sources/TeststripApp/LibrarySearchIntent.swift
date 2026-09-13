@@ -35,6 +35,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         }
 
         let tokens = Self.searchTokens(from: text)
+        let tokenTexts = tokens.map(\.text)
         var residualTokens: [String] = []
         var predicates: [SetQuery.Predicate] = []
         var chips: [String] = []
@@ -42,20 +43,20 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         var index = 0
 
         while index < tokens.count {
-            let token = tokens[index]
+            let token = tokens[index].text
             let normalizedToken = Self.normalizedToken(token)
 
-            if let field = Self.fieldPredicates(from: token) {
-                for predicate in field.predicates {
+            if let parsed = Self.fieldPredicates(in: tokens, texts: tokenTexts, at: index) {
+                for predicate in parsed.fields.predicates {
                     Self.append(predicate, to: &predicates)
                 }
-                for chip in field.chips {
+                for chip in parsed.fields.chips {
                     Self.append(chip, to: &chips)
                 }
-                for namePart in field.nameParts {
+                for namePart in parsed.fields.nameParts {
                     Self.append(namePart, to: &nameParts)
                 }
-                index += 1
+                index += parsed.consumedTokenCount
                 continue
             }
 
@@ -68,7 +69,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
                 continue
             }
 
-            if let rating = Self.ratingPredicate(in: tokens, at: index) {
+            if let rating = Self.ratingPredicate(in: tokenTexts, at: index) {
                 Self.removeRatingPredicates(from: &predicates)
                 Self.append(.ratingAtLeast(rating.value), to: &predicates)
                 Self.append("Rating >= \(rating.value)", to: &chips)
@@ -77,7 +78,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
                 continue
             }
 
-            if let phrase = Self.phrasePredicate(in: tokens, at: index) {
+            if let phrase = Self.phrasePredicate(in: tokenTexts, at: index) {
                 Self.append(phrase.predicate, to: &predicates)
                 Self.append(phrase.chip, to: &chips)
                 Self.append(phrase.namePart, to: &nameParts)
@@ -104,12 +105,60 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         var nameParts: [String]
     }
 
+    /// Parses the `field:` token at `index`, greedily folding following
+    /// unquoted tokens into the value until the next token that starts a new
+    /// clause (a recognized field, flag, rating, or phrase), a quoted token,
+    /// or the end of input. Quoted values keep their explicit boundaries, and
+    /// a token that would invalidate a value-constrained field is left as
+    /// residual text rather than absorbed.
+    private static func fieldPredicates(
+        in tokens: [SearchToken],
+        texts: [String],
+        at index: Int
+    ) -> (fields: FieldPredicates, consumedTokenCount: Int)? {
+        guard let fieldToken = fieldToken(from: tokens[index].text),
+              let base = fieldPredicates(field: fieldToken.field, value: fieldToken.value) else {
+            return nil
+        }
+
+        var fields = base
+        var value = fieldToken.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        var consumedTokenCount = 1
+        var next = index + 1
+
+        while texts.indices.contains(next),
+              !tokens[next].isQuoted,
+              !beginsNewClause(in: texts, at: next),
+              let extended = fieldPredicates(field: fieldToken.field, value: value + " " + texts[next]) {
+            value += " " + texts[next]
+            fields = extended
+            consumedTokenCount += 1
+            next += 1
+        }
+
+        return (fields, consumedTokenCount)
+    }
+
+    private static func beginsNewClause(in texts: [String], at index: Int) -> Bool {
+        guard texts.indices.contains(index) else { return false }
+        if fieldPredicates(from: texts[index]) != nil { return true }
+        let normalized = normalizedToken(texts[index])
+        if flagPredicate(for: normalized) != nil { return true }
+        if ratingPredicate(in: texts, at: index) != nil { return true }
+        if phrasePredicate(in: texts, at: index) != nil { return true }
+        return false
+    }
+
     private static func fieldPredicates(from token: String) -> FieldPredicates? {
         guard let fieldToken = fieldToken(from: token) else {
             return nil
         }
-        let field = normalizedToken(fieldToken.field)
-        let value = fieldToken.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return fieldPredicates(field: fieldToken.field, value: fieldToken.value)
+    }
+
+    private static func fieldPredicates(field fieldToken: String, value rawValue: String) -> FieldPredicates? {
+        let field = normalizedToken(fieldToken)
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
             return nil
         }
@@ -400,9 +449,18 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             .joined(separator: " ")
     }
 
-    private static func searchTokens(from text: String) -> [String] {
-        var tokens: [String] = []
+    /// A whitespace-delimited token plus whether any part of it was written
+    /// inside quotes. The flag lets greedy field-value consumption respect an
+    /// explicitly quoted boundary instead of folding a quoted phrase in.
+    private struct SearchToken {
+        var text: String
+        var isQuoted: Bool
+    }
+
+    private static func searchTokens(from text: String) -> [SearchToken] {
+        var tokens: [SearchToken] = []
         var current = ""
+        var currentIsQuoted = false
         var quotedBy: Character?
 
         for character in text {
@@ -417,24 +475,30 @@ public struct LibrarySearchIntent: Equatable, Sendable {
 
             if character == "\"" || character == "'" {
                 quotedBy = character
+                currentIsQuoted = true
                 continue
             }
 
             if isWhitespace(character) {
-                appendCurrentToken(&current, to: &tokens)
+                appendCurrentToken(&current, isQuoted: currentIsQuoted, to: &tokens)
+                currentIsQuoted = false
             } else {
                 current.append(character)
             }
         }
 
-        appendCurrentToken(&current, to: &tokens)
+        appendCurrentToken(&current, isQuoted: currentIsQuoted, to: &tokens)
         return tokens
     }
 
-    private static func appendCurrentToken(_ current: inout String, to tokens: inout [String]) {
+    private static func appendCurrentToken(
+        _ current: inout String,
+        isQuoted: Bool,
+        to tokens: inout [SearchToken]
+    ) {
         let token = current.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
-            tokens.append(token)
+            tokens.append(SearchToken(text: token, isQuoted: isQuoted))
         }
         current = ""
     }

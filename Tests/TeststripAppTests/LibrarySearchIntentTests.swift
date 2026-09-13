@@ -167,21 +167,34 @@ final class LibrarySearchIntentTests: XCTestCase {
     }
 
     func testParsesPersonFilterTokens() {
+        // Unquoted trailing words fold into the preceding field value (greedy
+        // consume), so `person:Ben ceremony` is one two-word person value, not
+        // a `person:Ben` token plus residual "ceremony".
         let intent = LibrarySearchIntent.parse("person:\"Anna Lee\" person:Ben ceremony")
 
-        XCTAssertEqual(intent.residualText, "ceremony")
+        XCTAssertNil(intent.residualText)
         XCTAssertEqual(intent.predicates, [
             .person("Anna Lee"),
-            .person("Ben")
+            .person("Ben ceremony")
         ])
         XCTAssertEqual(intent.chips, [
             "Person: Anna Lee",
-            "Person: Ben"
+            "Person: Ben ceremony"
         ])
         XCTAssertEqual(intent.nameParts, [
             "Anna Lee",
-            "Ben"
+            "Ben ceremony"
         ])
+    }
+
+    func testQuotedTrailingPhraseStaysResidualAfterFieldValue() {
+        // A quoted token is an explicit boundary, so it is never absorbed into
+        // a preceding field value.
+        let intent = LibrarySearchIntent.parse("person:Ben \"quiet ceremony\"")
+
+        XCTAssertEqual(intent.residualText, "quiet ceremony")
+        XCTAssertEqual(intent.predicates, [.person("Ben")])
+        XCTAssertEqual(intent.chips, ["Person: Ben"])
     }
 
     func testSearchFieldHelpDocumentsPersonIntersection() {
@@ -210,6 +223,49 @@ final class LibrarySearchIntentTests: XCTestCase {
         XCTAssertEqual(intent.predicates, [.isoAtLeast(1600)])
         XCTAssertEqual(intent.chips, ["ISO >= 1600"])
         XCTAssertEqual(intent.nameParts, ["ISO 1600+"])
+    }
+
+    func testGreedilyConsumesUnquotedMultiWordFieldValueToEndOfInput() {
+        let intent = LibrarySearchIntent.parse("camera:SmokeCam 1")
+
+        XCTAssertNil(intent.residualText)
+        XCTAssertEqual(intent.predicates, [.camera("SmokeCam 1")])
+        XCTAssertEqual(intent.chips, ["Camera: SmokeCam 1"])
+        XCTAssertEqual(intent.nameParts, ["SmokeCam 1"])
+    }
+
+    func testGreedilyConsumesUnquotedMultiWordFieldValueBeforeAnotherFieldToken() {
+        let intent = LibrarySearchIntent.parse("camera:SmokeCam 1 rating:3")
+
+        XCTAssertNil(intent.residualText)
+        XCTAssertEqual(intent.predicates, [.camera("SmokeCam 1"), .ratingAtLeast(3)])
+        XCTAssertEqual(intent.chips, ["Camera: SmokeCam 1", "Rating >= 3"])
+    }
+
+    func testGreedilyConsumesUnquotedMultiWordValueAtEndOfInput() {
+        let intent = LibrarySearchIntent.parse("keyword:golden hour")
+
+        XCTAssertNil(intent.residualText)
+        XCTAssertEqual(intent.predicates, [.keyword("golden hour")])
+        XCTAssertEqual(intent.chips, ["Keyword: golden hour"])
+        XCTAssertEqual(intent.nameParts, ["golden hour"])
+    }
+
+    func testQuotedMultiWordFieldValueStillParsesAsSingleValue() {
+        let intent = LibrarySearchIntent.parse("camera:\"SmokeCam 1\"")
+
+        XCTAssertNil(intent.residualText)
+        XCTAssertEqual(intent.predicates, [.camera("SmokeCam 1")])
+        XCTAssertEqual(intent.chips, ["Camera: SmokeCam 1"])
+        XCTAssertEqual(intent.nameParts, ["SmokeCam 1"])
+    }
+
+    func testConstrainedFieldValueDoesNotAbsorbTrailingPlainText() {
+        let intent = LibrarySearchIntent.parse("iso:800 beach")
+
+        XCTAssertEqual(intent.residualText, "beach")
+        XCTAssertEqual(intent.predicates, [.isoAtLeast(800)])
+        XCTAssertEqual(intent.chips, ["ISO >= 800"])
     }
 
     private static func utcDate(year: Int, month: Int, day: Int) -> Date {
