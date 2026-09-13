@@ -45,6 +45,18 @@ public struct ProposedPersonFace: Equatable, Sendable {
     }
 }
 
+/// The raw-flag membership a culling pass is narrowed to, mirroring the App
+/// layer's `CullScope.matches(_:)` at the repository boundary so scoped counts
+/// can be answered in SQL rather than from the loaded page. Membership is the
+/// RAW flag: an AI-tentative flag is a `.picks`/`.rejects` frame for scope
+/// purposes even though it is never a confirmed decision.
+public enum CatalogCullScope: String, CaseIterable, Equatable, Sendable {
+    case unrated
+    case picks
+    case rejects
+    case all
+}
+
 /// A person's single best (highest `captureQuality`) CONFIRMED face — the
 /// People-card key photo. See `CatalogRepository.keyFacesByPerson`.
 public struct PersonKeyFace: Equatable, Sendable {
@@ -648,6 +660,113 @@ public final class CatalogRepository {
             count += chunkCount
         }
         return count
+    }
+
+    /// Count of frames matching `query` that fall inside the culling `scope`.
+    /// Scope membership is the RAW flag (see `CatalogCullScope`), so an
+    /// AI-tentative flag is a picks/rejects frame here even though it is not a
+    /// confirmed decision. Bonded secondaries are excluded, like every other
+    /// display-facing count.
+    public func assetCount(matching query: SetQuery, cullScope scope: CatalogCullScope) throws -> Int {
+        var (clauses, bindings) = try compileClauses(query)
+        let scopeClauses = Self.scopeClauses(scope)
+        clauses.append(contentsOf: scopeClauses.clauses)
+        bindings.append(contentsOf: scopeClauses.bindings)
+        clauses.append("bonded_to_asset_id IS NULL")
+        let whereSQL = " WHERE " + clauses.joined(separator: " AND ")
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(whereSQL)", bindings: bindings)
+        guard let countString = rows.first?["count"], let count = Int(countString) else {
+            throw CatalogError.sqlite("scoped asset count query returned no count")
+        }
+        return count
+    }
+
+    /// Confirmed-only counterpart of `assetCount(matching:cullScope:)`: frames
+    /// in `scope` whose raw flag is `flag` AND which are user-confirmed. The
+    /// scope already pins the raw flag, so this is non-zero only when `flag`
+    /// matches the scope's flag; an AI-unconfirmed flag never counts.
+    public func assetCount(
+        matching query: SetQuery,
+        cullScope scope: CatalogCullScope,
+        confirmedFlag flag: PickFlag
+    ) throws -> Int {
+        var (clauses, bindings) = try compileClauses(query)
+        let scopeClauses = Self.scopeClauses(scope)
+        clauses.append(contentsOf: scopeClauses.clauses)
+        bindings.append(contentsOf: scopeClauses.bindings)
+        clauses.append("json_extract(metadata_json, '$.flag') = ?")
+        bindings.append(flag.rawValue)
+        clauses.append(Self.confirmedFieldClauseSQL)
+        bindings.append(MetadataField.flag.rawValue)
+        clauses.append("bonded_to_asset_id IS NULL")
+        let whereSQL = " WHERE " + clauses.joined(separator: " AND ")
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(whereSQL)", bindings: bindings)
+        guard let countString = rows.first?["count"], let count = Int(countString) else {
+            throw CatalogError.sqlite("scoped confirmed-flag count query returned no count")
+        }
+        return count
+    }
+
+    /// ID-set counterpart of `assetCount(matching:cullScope:)` for explicit
+    /// (manual/snapshot) sources that have no query of their own.
+    public func assetCount(ids: [AssetID], cullScope scope: CatalogCullScope) throws -> Int {
+        let scopeClauses = Self.scopeClauses(scope)
+        var count = 0
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            var clauses = ["id IN (\(placeholders))"]
+            clauses.append(contentsOf: scopeClauses.clauses)
+            let rows = try database.rows(
+                "SELECT COUNT(*) AS count FROM assets WHERE " + clauses.joined(separator: " AND "),
+                bindings: chunk.map(\.rawValue) + scopeClauses.bindings
+            )
+            guard let countString = rows.first?["count"], let chunkCount = Int(countString) else {
+                throw CatalogError.sqlite("asset ID scoped count query returned no count")
+            }
+            count += chunkCount
+        }
+        return count
+    }
+
+    /// Confirmed-only counterpart of `assetCount(ids:cullScope:)`.
+    public func assetCount(ids: [AssetID], cullScope scope: CatalogCullScope, confirmedFlag flag: PickFlag) throws -> Int {
+        let scopeClauses = Self.scopeClauses(scope)
+        var count = 0
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            var clauses = [
+                "id IN (\(placeholders))",
+                "json_extract(metadata_json, '$.flag') = ?",
+                Self.confirmedFieldClauseSQL,
+            ]
+            clauses.append(contentsOf: scopeClauses.clauses)
+            let rows = try database.rows(
+                "SELECT COUNT(*) AS count FROM assets WHERE " + clauses.joined(separator: " AND "),
+                bindings: chunk.map(\.rawValue)
+                    + [flag.rawValue, MetadataField.flag.rawValue]
+                    + scopeClauses.bindings
+            )
+            guard let countString = rows.first?["count"], let chunkCount = Int(countString) else {
+                throw CatalogError.sqlite("asset ID scoped confirmed-flag count query returned no count")
+            }
+            count += chunkCount
+        }
+        return count
+    }
+
+    /// The AND-able predicates selecting `scope`'s frames by their raw flag.
+    /// `.all` contributes nothing; `.unrated` matches a missing/null flag.
+    private static func scopeClauses(_ scope: CatalogCullScope) -> (clauses: [String], bindings: [String]) {
+        switch scope {
+        case .all:
+            return ([], [])
+        case .unrated:
+            return (["json_extract(metadata_json, '$.flag') IS NULL"], [])
+        case .picks:
+            return (["json_extract(metadata_json, '$.flag') = ?"], [PickFlag.pick.rawValue])
+        case .rejects:
+            return (["json_extract(metadata_json, '$.flag') = ?"], [PickFlag.reject.rawValue])
+        }
     }
 
     public func assetCount(includeBondedSecondaries: Bool = false) throws -> Int {

@@ -4650,7 +4650,7 @@ private struct LoupeView: View {
                         .frame(width: 10, height: 10)
                         .accessibilityLabel("\(colorLabel.rawValue.capitalized) label")
                 }
-                Text(presentation.sessionClusterText)
+                Text(presentation.scopeClusterText)
                     .font(.caption.monospacedDigit().weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

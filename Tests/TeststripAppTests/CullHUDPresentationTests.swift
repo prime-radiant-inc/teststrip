@@ -150,10 +150,10 @@ final class CullHUDPresentationTests: XCTestCase {
         XCTAssertTrue(makePresentation(colorLabel: .green).showsLabelDot)
     }
 
-    func testSessionClusterTextFormatsPicksRejectsAndUndecided() {
+    func testScopeClusterTextFormatsPicksRejectsAndUndecided() {
         let presentation = makePresentation(pickCount: 38, rejectCount: 71, totalCount: 318)
         // undecided = 318 - 38 - 71 = 209
-        XCTAssertEqual(presentation.sessionClusterText, "\u{2713} 38 \u{00B7} \u{2715} 71 \u{00B7} 209 left")
+        XCTAssertEqual(presentation.scopeClusterText, "\u{2713} 38 \u{00B7} \u{2715} 71 \u{00B7} 209 left")
     }
 
     func testUndecidedDefaultScopeFrameShowsOnlyFilenameAndCluster() {
@@ -169,7 +169,37 @@ final class CullHUDPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.showsScopeChip)
         XCTAssertFalse(presentation.showsRating)
         XCTAssertFalse(presentation.showsLabelDot)
-        XCTAssertEqual(presentation.sessionClusterText, "\u{2713} 3 \u{00B7} \u{2715} 2 \u{00B7} 5 left")
+        XCTAssertEqual(presentation.scopeClusterText, "\u{2713} 3 \u{00B7} \u{2715} 2 \u{00B7} 5 left")
+    }
+
+    /// In a scoped pass the cluster must carry the scope's numbers, not the
+    /// whole session's: a picks-only pass shows 0 rejects even when the session
+    /// has rejects, and "left" is the scope's undecided remainder.
+    func testClusterUsesScopedCountsNotSessionCounts() {
+        let summary = CullingProgressSummary(
+            selectedPosition: nil,
+            positionText: nil,
+            pickCount: 15,
+            rejectCount: 5,
+            totalCount: 854,
+            scopedCounts: CullScopeCounts(totalCount: 20, pickCount: 15, rejectCount: 0),
+            viewedCount: 10
+        )
+
+        let presentation = CullHUDPresentation(
+            filename: "IMG_0001.CR2",
+            rating: 0,
+            colorLabel: nil,
+            summary: summary,
+            scope: .picks
+        )
+
+        XCTAssertEqual(presentation.pickCount, 15)
+        XCTAssertEqual(presentation.rejectCount, 0)
+        XCTAssertEqual(presentation.undecidedCount, 5)
+        XCTAssertEqual(presentation.scopeClusterText, "\u{2713} 15 \u{00B7} \u{2715} 0 \u{00B7} 5 left")
+        // Progress is also scoped: 10 of the scope's 20, not of the session's 854.
+        XCTAssertEqual(presentation.progressFraction, 0.5, accuracy: 0.0001)
     }
 
     // MARK: - Rating echo discrimination on the decision feedback

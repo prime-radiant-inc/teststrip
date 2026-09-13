@@ -47,12 +47,40 @@ public enum CullingCommand: Equatable, Sendable {
     case clearFlag
 }
 
+/// Scope-filtered counts for the Cull HUD's ✓/✕/left cluster: how many frames
+/// the CURRENT cull scope holds and how many of them are confirmed picks and
+/// rejects. Computed from the catalog rather than the loaded page because a
+/// scope filter still narrows a fully loaded catalog, and it is deliberately
+/// distinct from the session-wide counts the scope line reports.
+public struct CullScopeCounts: Equatable, Sendable {
+    public var totalCount: Int
+    public var pickCount: Int
+    public var rejectCount: Int
+
+    /// Frames in scope that are not a confirmed pick or reject — undecided,
+    /// including any AI-tentative flag, which is never a decision.
+    public var undecidedCount: Int {
+        max(totalCount - pickCount - rejectCount, 0)
+    }
+
+    public init(totalCount: Int, pickCount: Int, rejectCount: Int) {
+        self.totalCount = totalCount
+        self.pickCount = pickCount
+        self.rejectCount = rejectCount
+    }
+}
+
 public struct CullingProgressSummary: Equatable, Sendable {
     public var selectedPosition: Int?
     public var positionText: String?
     public var pickCount: Int
     public var rejectCount: Int
     public var totalCount: Int
+
+    /// Scope-filtered pick/reject/total for the Cull HUD. Defaults to the
+    /// session-wide counts so direct constructions (and the `.all` scope,
+    /// where the two coincide) are unchanged.
+    public var scopedCounts: CullScopeCounts
 
     // SP-D Task 5: loud accounting fields for the scope line's coverage
     // readout. Defaults of 0 keep existing call sites working.
@@ -72,6 +100,7 @@ public struct CullingProgressSummary: Equatable, Sendable {
         pickCount: Int,
         rejectCount: Int,
         totalCount: Int,
+        scopedCounts: CullScopeCounts? = nil,
         viewedCount: Int = 0,
         skippedCount: Int = 0,
         neverViewedCount: Int = 0,
@@ -83,6 +112,11 @@ public struct CullingProgressSummary: Equatable, Sendable {
         self.pickCount = pickCount
         self.rejectCount = rejectCount
         self.totalCount = totalCount
+        self.scopedCounts = scopedCounts ?? CullScopeCounts(
+            totalCount: totalCount,
+            pickCount: pickCount,
+            rejectCount: rejectCount
+        )
         self.viewedCount = viewedCount
         self.skippedCount = skippedCount
         self.neverViewedCount = neverViewedCount
@@ -2926,6 +2960,7 @@ public final class AppModel {
 
     public var cullingProgressSummary: CullingProgressSummary {
         let decisionCounts = cullingDecisionCounts()
+        let scopedCounts = cullingScopedCounts()
         // SP-D Task 5: loud accounting fields.
         let scopedAssetIDs = Set(CullScopeOrdering.filteredAssets(assets, scope: cullScope).map(\.id))
         let viewedCount = cullRunTracker.viewedAssetIDs.intersection(scopedAssetIDs).count
@@ -2943,12 +2978,66 @@ public final class AppModel {
             pickCount: decisionCounts.pickCount,
             rejectCount: decisionCounts.rejectCount,
             totalCount: totalAssetCount,
+            scopedCounts: scopedCounts,
             viewedCount: viewedCount,
             skippedCount: skippedCount,
             neverViewedCount: neverViewedCount,
             awaitingReviewCount: awaitingReviewCount,
             hiddenByLensCount: hiddenByLensCount
         )
+    }
+
+    /// The Cull HUD's ✓/✕/undecided cluster, scoped to the current `cullScope`
+    /// and answered by the catalog so a scope filter over a fully loaded
+    /// catalog cannot drift from the visible set. Falls back to the loaded
+    /// assets when there is no catalog.
+    private func cullingScopedCounts() -> CullScopeCounts {
+        guard let catalog else {
+            return loadedScopedCullingCounts()
+        }
+        do {
+            return try cullingScopedCounts(repository: catalog.repository)
+        } catch {
+            return loadedScopedCullingCounts()
+        }
+    }
+
+    private func cullingScopedCounts(repository: CatalogRepository) throws -> CullScopeCounts {
+        let scope = catalogCullScope
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            return CullScopeCounts(
+                totalCount: try repository.assetCount(ids: explicitAssetIDs, cullScope: scope),
+                pickCount: try repository.assetCount(ids: explicitAssetIDs, cullScope: scope, confirmedFlag: .pick),
+                rejectCount: try repository.assetCount(ids: explicitAssetIDs, cullScope: scope, confirmedFlag: .reject)
+            )
+        }
+        let query = SetQuery(predicates: currentLibraryQuery()?.predicates ?? [])
+        return CullScopeCounts(
+            totalCount: try repository.assetCount(matching: query, cullScope: scope),
+            pickCount: try repository.assetCount(matching: query, cullScope: scope, confirmedFlag: .pick),
+            rejectCount: try repository.assetCount(matching: query, cullScope: scope, confirmedFlag: .reject)
+        )
+    }
+
+    private func loadedScopedCullingCounts() -> CullScopeCounts {
+        // Scope membership is the RAW flag, mirroring `CullScope.matches(_:)`:
+        // an AI-tentative flag is in the picks/rejects scope but is still
+        // undecided, so only confirmed flags satisfy the pick/reject counts.
+        let scopedAssets = CullScopeOrdering.filteredAssets(assets, scope: cullScope)
+        return CullScopeCounts(
+            totalCount: scopedAssets.count,
+            pickCount: scopedAssets.filter { $0.metadata.confirmedProjection.flag == .pick }.count,
+            rejectCount: scopedAssets.filter { $0.metadata.confirmedProjection.flag == .reject }.count
+        )
+    }
+
+    private var catalogCullScope: CatalogCullScope {
+        switch cullScope {
+        case .unrated: return .unrated
+        case .picks: return .picks
+        case .rejects: return .rejects
+        case .all: return .all
+        }
     }
 
     private func cullingDecisionCounts() -> (pickCount: Int, rejectCount: Int) {
