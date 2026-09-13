@@ -25,7 +25,9 @@ struct TeststripApplication: App {
         } catch {
             fatalError("Unable to open Teststrip catalog: \(error.localizedDescription)")
         }
-        _ = Updater.shared   // start Sparkle's background update checks
+        // Start Sparkle's background update checks; suppressed for isolated
+        // launches via UpdateCheckPolicy (see Updater.swift).
+        _ = Updater.shared
     }
 
     var body: some Scene {
