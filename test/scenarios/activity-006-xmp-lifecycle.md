@@ -165,7 +165,7 @@ Quit the launched instance.
 - `MetadataSyncPlanner.decision` is a pure function with a small, fully
   enumerated case table (`MetadataSyncPlanner.swift:55-67`) — worth unit-test
   coverage independent of this end-to-end card if it doesn't already exist;
-  not verified whether `MetadataSyncPlannerTests` covers the `(true, true,
+  not verified whether `MetadataSyncTests` covers the `(true, true,
   _)` conflict case specifically.
 
 ## Run status

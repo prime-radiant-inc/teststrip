@@ -231,7 +231,7 @@ later card in the same session that needs the pristine baseline.
    Cross-check the HUD: `ax find --role AXStaticText --contains "$CONF_PICK
    picks, $CONF_REJECT rejects"` should match (10 left: 18 total - 8
    confirmed). This corroborates
-   `CullCompletionTests.testTentativeOnlyFlagCountsAsUndecidedAndSparkleAwaitingNeverPickedOrRejected`
+   `CullCompletionTests.testTentativeOnlyFlagCountsAsUndecidedNeverPickedOrRejected`
    live.
 3. **Triple counter, multi-frame shape.** With `smoke-0` still selected
    (part of group1, a 3-frame stop — no navigation yet), read the triple

@@ -125,7 +125,8 @@ script/ax_drive.sh find --role AXButton
 
 After deselecting one:
 - Footer updates: "23 of 24 selected"
-  (`model.selectedCount` decrements via `toggleSelection`)
+  (`model.selectedCount` decrements via `ImportSelectionModel.toggle(_:)`,
+  `ImportSelectionView.swift:66-72`)
 - Primary button updates: "Import 23 Photos"
   (`ImportSelectionView.swift:149`: `Button("Import \(model.selectedCount) Photos")`)
 

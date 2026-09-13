@@ -8,7 +8,7 @@ form; `Workspace` has had two cases since People became a Library sub-view,
 and this push deleted it outright. ⌘1–⌘6 now select one of six lenses
 (`LibraryLens`: Cull/Grid/Loupe/Timeline/Map/People) over a single sidebar
 and source, via the toolbar `lensSwitcher` (`Sources/TeststripApp/
-LibraryGridView.swift:499-526`). See `app-019-lens-shell.md` for the current
+LibraryGridView.swift:528-555`). See `app-019-lens-shell.md` for the current
 switcher/keyboard/session-restore contract this card used to own.
 
 This file is kept (rather than deleted) so its LEDGER row and inbound

@@ -51,10 +51,12 @@ baseline, not against "0 rated" assumption.
    a `key`/`keystroke` verb and use that if present). Assert selection moved
    to index 1 (its cell now reads `"Selected"`, index 0 reads
    `"Not selected"`).
-4. Send Down arrow; assert selection moved by the live column count (query
-   `model.libraryColumnCount`-equivalent — cross-check by noting which row the
-   focus visually lands on, or infer from the grid's column count at the
-   current window width).
+4. Send Down arrow; assert selection moved by the live column count (the grid
+   view's `gridColumnCount` state, `LibraryGridView.swift:113`, derived by
+   `LibraryGridColumnCount.columns(availableWidth:minimumItemWidth:spacing:)`
+   at `:3651` / `GridKeyCaptureView.swift:146-152` — cross-check by noting
+   which row the focus visually lands on, or infer from the grid's column
+   count at the current window width).
 5. Send End; assert the last asset (id order from
    `SELECT id FROM assets ORDER BY rowid`) is selected. Send Home; assert
    index 0 is selected again.

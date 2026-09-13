@@ -1,125 +1,158 @@
-# cull-013-filmstrip: The Cull filmstrip is scope-filtered, shows stack position, and tiles carry decision badges
+# cull-013-filmstrip: The Cull run strip is scope-filtered, shows stack position via the triple counter, and marks decided stops
 
-**What this covers**: As a photographer scanning a burst I want the filmstrip
-beneath the loupe to show only the frames in my current scope, tell me where
-I am within an auto-grouped stack, and let me jump to any tile while seeing
-at a glance which ones are already decided. Covered inventory items 36
-(scope-filtered with dividers exactly between stacks), 37 ("frame X/N · stack
-A/B" label), 38 (tile badges: recommended-marker/decision-bar/dim-if-decided/
-click-to-select). Source: `cullingFilmstrip` at
-`Sources/TeststripApp/LibraryGridView.swift:3919-3966`, `CullFilmstripPresentation`
-(divider placement + position text) at
-`Sources/TeststripApp/CullFilmstripPresentation.swift:6-37`, tile rendering
-(`filmstripTile`/`filmstripDecisionBar`) at `LibraryGridView.swift:4109-4171`.
+**What this covers**: As a photographer scanning a burst I want the run strip
+beneath the loupe to show only the stops in my current scope, tell me where I
+am within the stack sequence, and let me jump to any stop while seeing at a
+glance which stops are already fully decided. This card covers inventory
+items 36 (scope-filtered, one stop per auto-grouped stack), 37 (the position
+counter), and 38 (a stop's current/done marks and click-to-select) **as
+re-scoped to the run-strip redesign**: the flat per-frame filmstrip those
+items originally named — `cullingFilmstrip` as a live view,
+`filmstripTile`/`filmstripDecisionBar` as tile renderers, and
+`CullFilmstripPresentation.positionText` — was replaced by one stop per
+auto-grouped stack. See Run status.
 
-**Exact position-text format** (read from source, corrects the assignment's
-guessed format): `"frame \(frameIndex+1) / \(totalFrames) · stack
-\(stackIndex+1) / \(stacks.count)"` — lowercase "frame"/"stack", `/` not
-"of", only rendered when there's a selection *and* the selected asset is
-inside one of the auto-grouped stacks; otherwise it falls back to `"N
-frame(s)"` (plural handling per `CullFilmstripPresentation.positionText`
-line 33).
-
-**Frame numbers are catalog-wide in the unscoped view.** When the cull
-scope is All and the catalog exceeds one 120-asset page, the caption's frame
-number and total come from the page offset and `model.totalAssetCount`
-(`frameNumberOffset`/`totalFrameCount` on `CullFilmstripPresentation`), so
-it agrees with the header's "Frame X of Y" — assert the caption's total
-equals `SELECT count(*) FROM assets`, never the loaded-page size (the
-persona-7 "frame 1 / 120 vs Frame 1 of 130" drift). Scoped views
-(picks/rejects/unrated) stay scope-local by design.
-
-**Stack grouping is auto-derived, not the persisted `asset_sets` rows.** The
-filmstrip's stacks come from `model.allCullingStacks(for: scopedAssets)` —
-the in-memory `AssetStackBuilder` clustering by capture-time proximity
-(`model.burstIntervalSeconds`, a persisted Settings preference — default
-`AssetStackBuilder.defaultMaximumCaptureGap = 2` seconds,
-`AppModel.swift:2523`), the same builder that backs the sidebar's
-"Stacks · Auto-Grouped" section (`SidebarView.swift:46-53`, Cull-lens-only).
-This is a
-**different mechanism** from the `work-stack-` `asset_sets` rows used by the
-Return-gesture card (`cull-pass-scope-and-undo.md`). **`--smoke`'s synthetic
-photos are seeded 900 seconds apart** (`SmokeCatalogSeeder.swift:105`), which
-is far outside the 2-second auto-grouping window — so `--smoke` will show
-**zero multi-frame auto-stacks** and the divider/position-text-with-stack
-assertions are untestable on it. Use the `burst` seed variant
-(`TeststripBench seed-burst-catalog`), which guarantees 4 multi-frame
-auto-stacks (3/4/3/4 frames, capture times 1s apart) plus 4 singles.
+Source (re-verified against the working tree **2026-09-13**; every symbol
+below was re-grepped fresh):
+- **Container + scope filter**, `runStrip(isStackActive:)`
+  (`Sources/TeststripApp/LibraryGridView.swift:4844-4880`): renders in place
+  of `libraryLoupeNavBar` whenever `presentation.showsCullChrome`
+  (`:4144-4148`). Scoped assets are
+  `CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope)`
+  (`Sources/TeststripApp/AppModel.swift:320-322`), then partitioned into
+  stops by `model.allCullingStacks(for: scopedAssets)`
+  (`AppModel.swift:7816-7824`). So the strip shows **one stop per
+  auto-grouped stack *and* per standalone** in the active scope — never one
+  tile per frame.
+- **Stops + windowing**,
+  `CullRunStripPresentation.stops(assets:stacks:selectedAssetID:visibleLimit:)`
+  (`Sources/TeststripApp/CullRunStripPresentation.swift:25-52`),
+  `defaultVisibleLimit = 12` (`:9`), windowing via
+  `CullStripWindowing.centeredWindow(count:anchorIndex:limit:)` (`:60-68`).
+  The full stop/windowing contract is owned by
+  `cull-025-run-strip-completion.md`; this card does not re-derive it.
+- **Position counter**, `CullFilmstripPresentation.tripleCounterText`
+  (`Sources/TeststripApp/CullFilmstripPresentation.swift:11`, computed by the
+  static `tripleCounterText(resolved:stacks:frameNumberOffset:fallback:)` at
+  `:60-77`). Format:
+  `"<frameNumberOffset+frameIndex+1> of <totalFrames> · stack <stackIndex+1> of <stacks.count>"`,
+  **plus** `" · frame <withinStackIndex+1> of <stackAssetIDs.count>"` **only
+  when** the selected asset's stack has more than one member (`:71-74`).
+  With no selection (or an empty scope) it falls back to `"N frame(s)"`
+  (`:55-58`). In the unscoped view (`model.cullScope == .all`) `runStrip`
+  passes `totalFrameCount: model.totalAssetCount` (`:4851-4857`), so the
+  first segment is catalog-wide and agrees with the header's "Frame X of Y";
+  scoped views (picks/rejects/unrated) stay scope-local by design. This is
+  the exact `"N of T · stack S of Σ · frame F of M"` format — **not** the old
+  `"frame X / N"`.
+- **Decision / current marks on a stop**, `runStripStop`
+  (`LibraryGridView.swift:4919-4935`): a `Button` with
+  `.accessibilityLabel("Stop \(stop.label)")` and
+  `.accessibilityValue(runStripStopAccessibilityValue(stop))` (`:4947-4953`),
+  whose value is `["Current" if isCurrent] + ["Done" if isDone] +
+  "N frame(s)"` joined by `", "`. `isDone` requires **every** member's
+  `metadata.confirmedProjection.flag != nil` — confirmed flags only, so a
+  tentative AI flag does not mark a stop done
+  (`CullRunStripPresentation.swift:37`; `CullRunStripPresentationTests
+  .testTentativeAIFlagKeepsTheStopUndone` pins this). Visually
+  `runStripThumbnailFace` (`:4961-4994`) draws a green checkmark overlay when
+  `isDone` (`:4982-4988`) and an orange 2pt selection ring when `isCurrent`
+  (`:4990-4993`); `runStripStackThumb` (`:5005-5039`) adds a bottom-trailing
+  frame-count badge for a multi-frame stop. There is **no** per-stop decision
+  bar or dim on the run strip — the `filmstripDecisionBar` helper now renders
+  only on the stack-rail cell (`:5244`, defined `:5312`), not here.
+- **Click-to-land**, `selectRunStripStopLanding(_:)` (`:4943-4945`) →
+  `model.selectStackLanding(for: stop.assetIDs)`
+  (`AppModel.swift:8131-8136`), the same preference-gated recommended-or-first
+  landing `H`/`L`/`←`/`→` and Return's post-commit advance use — a click never
+  disagrees with keyboard arrival.
+- **Status bar**, `runStripStatusBar(tripleCounterText:isStackActive:)`
+  (`:4882-4906`): the counter text (`:4889`), the auto-advance chip
+  (`runStripAutoAdvanceChip`, `:4908-4917`, text "Auto-advance on"/"off"), the
+  scope chip when `model.cullScope != .all` (`cullHUDScopeChip`, `:4893-4895`
+  / `:4673-4680`, AX label `"Cull filter: \(scope.label)"`), the nav legend
+  (`CullingNavLegendPresentation.legendText`, `:4897` / `:6605-6615`), and a
+  `ProgressView` whose fraction comes from `model.cullingProgressSummary`
+  (`:4883-4886`).
 
 ## Pre-state
 ```bash
 # The `burst` variant guarantees multi-frame auto-stacks (4 groups of
-# 3/4/3/4 frames with capture times 1s apart, inside AssetStackBuilder's
-# 2s gap) plus 4 singles:
+# 3/4/3/4 frames with capture times ~1s apart, inside AssetStackBuilder's 2s
+# gap) plus 4 singles = 8 stops over 18 assets. `--smoke`'s default 900s
+# spacing (SmokeCatalogSeeder.swift:136) is far outside the adjacency window,
+# so on `--smoke` every stop is a standalone and the multi-frame assertions
+# below cannot run.
 script/vm_scenario_run.sh sync burst && script/vm_scenario_run.sh launch burst
 script/vm_scenario_run.sh ax wait-vended
 # ground truth via: script/vm_scenario_run.sh sql burst "..."
 # (Host equivalent: swift run TeststripBench seed-burst-catalog <appsupport>.)
 ```
+Then ⌘1 for Cull (lands in the loupe sub-mode, where `showsCullChrome`
+renders the run strip in place of `libraryLoupeNavBar`).
 
 ## Steps
-1. Cycle scope with `S` to "All" and record the scope's ground-truth tile
-   count (same query pattern `cull-005`-style cards use — total assets in
-   the active `CullScope` predicate):
+1. **Scope = All: total and stops.** Record the SQL total:
    ```bash
-   TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")
+   TOTAL=$(script/vm_scenario_run.sh sql burst "SELECT count(*) FROM assets;")
    ```
-   Assert the filmstrip renders exactly `TOTAL` tiles (count `AXButton`
-   children under the filmstrip region — inspect the AX subtree first to
-   find the right container role before writing the final `find`/count
-   command).
-2. Cycle scope with `S` to "Picks". Recompute:
+   Assert the status bar's triple-counter first segment total equals `TOTAL`
+   (the unscoped view passes `totalFrameCount: model.totalAssetCount`), and
+   count the run strip's stops as the `AXButton`s whose accessibility label
+   begins `"Stop "` (one per stack; 8 on pristine `burst`). Inspect the AX
+   subtree first to scope the count to the strip's container — the loupe and
+   rail also carry `AXButton`s (rating stars, rail cells, the auto-advance
+   chip's static text is not a button but the scope chip is `Text`).
+2. **Scope = Picks: the strip filters, the counter stays scope-local.** Cycle
+   `S` to Picks and recompute:
    ```bash
-   PICKS=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.flag')='pick';")
+   PICKS=$(script/vm_scenario_run.sh sql burst "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.flag')='pick';")
    ```
-   Assert the filmstrip's visible tile count matches `PICKS`.
-3. **If an auto-stack of 2+ frames exists** in the current scope (verify via
-   `model.allCullingStacks` behavior indirectly — no direct SQL for
-   in-memory clustering; infer from close EXIF capture timestamps in the
-   `--faces` fixture, or just watch for a divider rendering), select a frame
-   inside it and assert the position label matches the exact format:
+   Assert the counter's first-segment total now equals `PICKS` (not `TOTAL` —
+   scoped views are scope-local) and the scope chip reads "Picks"
+   (`cullHUDScopeChip`). A stack partially filtered by scope yields a stop over
+   only its in-scope members, so do not assume the Picks stop count equals the
+   All stop count.
+3. **Triple-counter format, multi-frame vs standalone.** With a frame in a
+   multi-frame stack selected, read the counter
+   (`script/ax_drive.sh find --role AXStaticText --contains "stack "`), read
+   its full text, and assert it matches
+   `"<i> of <T> · stack <S> of <Σ> · frame <F> of <M>"` — three `" of "`
+   segments. Select a standalone stop's frame (e.g. `smoke-14`) and assert the
+   text has **no** trailing `"frame …"` segment. **Fails if** the separator is
+   `"/"`, the wording is `"frame X / N"`, or the third segment renders on a
+   standalone.
+4. **Click a stop lands the loupe on that stop.** Press a stop other than the
+   current one:
    ```bash
-   script/ax_drive.sh find --contains "frame " # then read full text, compare against "frame N / TOTAL · stack S / C"
+   script/ax_drive.sh press --role AXButton --contains "Stop "
    ```
-   If no auto-stack forms in this scope with this fixture, **do not** fake
-   this assertion — mark it skipped and say so plainly in the run log.
-4. Click a filmstrip tile directly (not the currently-selected one):
-   ```bash
-   script/ax_drive.sh press --role AXButton --label "<other-frame-filename>"
-   ```
-   Assert the loupe's focused asset changed to that tile's asset — cross
-   check via the HUD filename text (per `cull-011-hud.md`) or:
-   ```bash
-   sqlite3 "$DB" "SELECT id FROM assets WHERE ..." # confirm the clicked tile's id now == model.selectedAssetID via AX filename match
-   ```
-5. Pick one currently-undecided tile (`P`) and assert its own filmstrip tile
-   now shows the decision bar/dim styling that a still-undecided neighbor
-   tile does not:
-   ```bash
-   script/ax_drive.sh find --role AXButton --label "<picked-filename>"
-   ```
-   Read the `AXValue`/accessibility-value text of that tile
-   (`filmstripTileAccessibilityValue`) and compare it against an undecided
-   tile's — the picked one should read a "Picked" decision-state segment
-   (confirm the exact string emitted by
-   `filmstripTileAccessibilityValue`/`filmstripDecisionOverlay` — not fully
-   read in this pass, read it before asserting the literal string).
+   Assert the focused asset changed to a member of that stop (cross-check the
+   HUD filename text per `cull-011-hud.md`, or via `selectStackLanding`'s
+   recommended-or-first rule). **Fails if** it is a no-op or lands outside the
+   stop.
+5. **Decision marking is per-stop and confirmed-only.** Decide every member of
+   one stop (`P`/`X`) and assert that stop's accessibility value now contains
+   `"Done"`; assert a stop with any undecided member does **not** contain
+   `"Done"`. Read the value off the stop's AX element
+   (`runStripStopAccessibilityValue`, `:4947-4953`) — this is the only reliable
+   AX read of `isDone`/`isCurrent` (the checkmark glyph and orange ring are not
+   independently AX-findable). **Fails if** a stop reads "Done" with an
+   undecided member, or if the value never updates after a decision.
 
 ## Expected
-- Step 1/2: filmstrip tile count == scope's sqlite-derived count exactly.
-  **Fails if** the filmstrip shows all frames regardless of scope, or lags a
-  scope change.
-- Step 3: label text matches the exact `"frame X / N · stack A / B"` format
-  when a selection sits inside a multi-frame auto-stack; falls back to `"N
-  frame(s)"` otherwise. **Fails if** the format differs from source (e.g.
-  uses "of" instead of "/"), or if a divider appears *within* a stack's own
-  tiles rather than exactly at its boundary — same-scope adjacent frames
-  from the same stack must render with no divider between them.
-- Step 4: clicking a tile moves loupe focus to that exact asset.
-  **Fails if** it's a no-op or focuses the wrong asset.
-- Step 5: a decided tile visibly differs (dim + decision-bar/value) from an
-  undecided one. **Fails if** the decision state doesn't propagate to the
-  filmstrip after a P/X keystroke without a scope refresh.
+- Steps 1/2: the counter's first-segment total equals the scope's SQL count
+  exactly, and the strip re-renders on the scope change. **Fails if** the strip
+  shows all frames regardless of scope, or the total lags a scope change.
+- Step 3: the counter matches the `"N of T · stack S of Σ[ · frame F of M]"`
+  shape; the third segment appears iff the selected stop is multi-frame.
+  **Fails if** the format differs from source.
+- Step 4: clicking a stop moves loupe focus to a member of that stop.
+  **Fails if** it is a no-op or lands on an unrelated asset.
+- Step 5: a stop's `"Done"` mark appears exactly when all its members carry a
+  confirmed flag. **Fails if** an undecided member still yields "Done" (the
+  strip is reading tentative/partial state), or the mark never propagates after
+  a decision without a scope refresh.
 
 ## Cleanup
 ```bash
@@ -127,64 +160,32 @@ script/vm_scenario_run.sh ax wait-vended
 ```
 
 ## Sharp edges
-- **`--smoke`'s 900-second seed spacing makes auto-stacking untestable on
-  it** — this card must use `--faces` (or another fixture with genuinely
-  close capture timestamps) and even then auto-stack formation is not
-  guaranteed; verify before trusting step 3, and report honestly if no
-  auto-stack ever forms rather than weakening the assertion or borrowing the
-  unrelated `work-stack-` persisted-set fixture (that mechanism is
-  independent of the filmstrip's grouping, per source).
-- Step 3's divider-boundary assertion in "Expected" needs a scope with at
-  **least two distinct auto-stacks** to be meaningful (a divider check
-  against a single-stack scope can't distinguish "correctly placed" from
-  "never rendered"); this may need `--real-corpus` instead of `--faces` if
-  `--faces`'s handful of photos cluster into only one stack.
-- The exact accessibility-value string for a "picked" filmstrip tile (step 5)
-  was not read from `filmstripTileAccessibilityValue`'s full switch in this
-  pass beyond seeing the `decisionState` cases (`undecided`/`picked`/
-  `rejected`) — read the full function before hard-coding the expected
-  string in a runner.
-- AX container/role for counting filmstrip tiles (step 1/2) wasn't
-  independently confirmed against a live AX dump — `filmstripTile` is a
-  plain `Button`, so `--role AXButton` scoped to the filmstrip's frame
-  region is the working assumption; verify against the live tree since the
-  loupe also has other `AXButton`s (rating stars, etc.) that a blind
-  `find`-count could double-count.
+- **`--smoke`'s 900-second seed spacing makes multi-frame stops untestable on
+  it** (`SmokeCatalogSeeder.swift:136`) — use `burst` (or `--faces`/
+  `--real-corpus`) for Steps 3 and 5. Report honestly if no multi-frame stop
+  forms rather than weakening the assertion.
+- **Counting stops is AX-role-scoped, not frame-scoped.** Each stop is a plain
+  `Button` (`runStripStop`), so a blind `--role AXButton` count over the whole
+  window would also catch rating stars and rail cells; scope the count to the
+  strip's container after inspecting the live tree.
+- **A partial scope yields partial stops.** `filteredAssets` filters at the
+  frame level *before* `allCullingStacks` re-partitions, so a stack with some
+  members out of scope becomes a smaller stop. Derive expected stop counts from
+  the scoped frame set, not from the unscoped cluster count.
+- **`isDone` is confirmed-only by construction**; a tentative AI flag keeps a
+  stop undone (`CullRunStripPresentation.swift:37`). Step 5 is the live mirror
+  of the unit test that pins it.
 
 ## Run status
-UNRUN — needs human-present execution per test/scenarios/README.md
-
-**Reconciled 2026-08-09 (Task 13 review follow-up, unified-shell push)**:
-fixed one orphan citation — "the same builder that backs the auto-grouped
-rows in `CullSidebarView`" named a type deleted by this push. Corrected to
-"the sidebar's 'Stacks · Auto-Grouped' section" (`SidebarView.swift:46-53`,
-Cull-lens-only), the real successor, and fixed an adjacent drifted line
-citation (`AppModel.swift:2543` → `:2447` for `burstIntervalSeconds`) found
-while re-reading the same paragraph.
-**Found but explicitly NOT fixed — flagging per the "name it, don't silently
-fix" discipline**: while verifying the `CullSidebarView` citation, every
-other symbol this card's intro cites for the filmstrip itself
-(`cullingFilmstrip`, `filmstripTile`/`filmstripDecisionBar`'s claimed
-`:4109-4171` range, and `CullFilmstripPresentation`'s claimed `positionText`
-property and its exact "frame X/N · stack A/B" format) no longer exists.
-`LibraryGridView.swift`'s own comment at its "Task 6" doc block (immediately
-above `runStrip(isStackActive:)`, `:4480-4524`) says this flat filmstrip was
-**replaced** by a "run strip" of one stop per auto-grouped stack — a
-different, larger redesign than anything in the unified-shell push, and
-apparently predating it (`cull-025-run-strip-completion.md` already exists
-and covers the run strip's stops/windowing). `CullFilmstripPresentation`
-itself is still live but now exposes a single `tripleCounterText` property
-computed from a different format string ("N of T · stack S of Σ · frame F of
-M", `CullFilmstripPresentation.swift:6-78`) — not the `positionText`/
-`frameNumberOffset`/`totalFrameCount` stored-properties shape or the "frame
-X/N" wording this card's intro, Pre-state, and presumably its Steps describe
-throughout. This is a pre-existing staleness independent of unified-shell
-(like `app-003`/`app-005` in the original Task 13 sweep) that a full read of
-this card's Steps/Expected would very likely confirm runs much deeper than
-the two citations fixed above — it needs a dedicated rewrite against the
-current `runStrip`/`CullRunStripPresentation`/`CullFilmstripPresentation`
-code, not a citation-only patch, and is out of scope for this pass.
-**Supersedes prior status**: the LEDGER's "Verified"/"final-verify run PASS"
-status is itself inconsistent with this card's own UNRUN line above; neither
-is valid evidence now that the filmstrip UI they describe has been replaced.
-Needs a fresh VM run — after the run-strip rewrite, not before.
+**Rewritten 2026-09-13 (scenario-card/LEDGER hygiene pass)** against the
+current run-strip code. The card previously described a flat per-frame
+filmstrip (`cullingFilmstrip` as a live view, `filmstripTile`,
+`filmstripDecisionBar` as a tile element, and
+`CullFilmstripPresentation.positionText` with a `"frame X / N"` format) that a
+"run strip" redesign (`CullRunStripPresentation`,
+`CullFilmstripPresentation.tripleCounterText`) had already replaced in
+`Sources/`; none of those symbols describe the current UI. Supersedes prior
+status: the LEDGER's old "Verified"/"final-verify run PASS" describes the flat
+filmstrip this branch no longer implements, and already disagreed with the
+card's own prior "UNRUN" line. **UNRUN** — needs human-present VM execution
+per `test/scenarios/README.md`, after this rewrite, not before.
