@@ -315,6 +315,28 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: result.sidecarURL)).metadata, metadata)
     }
 
+    func testSidecarStoreBindsSameDirectorySidecarBesideNonOriginalSiblings() throws {
+        // Only another catalogable original can make a basename-shared sidecar
+        // ambiguous. Same-stem files Teststrip never catalogs as photos — an
+        // Apple `.AAE` adjustments sidecar, a Live Photo's `.MOV` — sit in the
+        // directory too, but neither can own the photo's XMP. They must not
+        // block binding the sidecar that is right there in the same directory.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-non-original-siblings")
+        let originalURL = directory.appendingPathComponent("IMG_1234.HEIC")
+        let adobeStyleSidecarURL = directory.appendingPathComponent("IMG_1234.xmp")
+        try Data("original heic bytes".utf8).write(to: originalURL)
+        try Data("apple adjustments".utf8).write(to: directory.appendingPathComponent("IMG_1234.AAE"))
+        try Data("live photo video".utf8).write(to: directory.appendingPathComponent("IMG_1234.MOV"))
+        try XMPPacket(metadata: AssetMetadata(rating: 3, keywords: ["external"])).xmlData().write(to: adobeStyleSidecarURL)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+
+        let result = try XMPSidecarStore().write(metadata: metadata, forOriginalAt: originalURL)
+
+        XCTAssertEqual(result.sidecarURL, adobeStyleSidecarURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.appendingPathExtension("xmp").path))
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: adobeStyleSidecarURL)).metadata, metadata)
+    }
+
     func testSidecarStorePreservesUnmanagedXMPPropertiesWhenWritingPortableMetadata() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-merge")
         let originalURL = directory.appendingPathComponent("frame.cr2")

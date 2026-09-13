@@ -111,7 +111,14 @@ public struct XMPSidecarStore: Sendable {
             guard candidateURL.deletingPathExtension().lastPathComponent == originalBasename else {
                 return false
             }
-            return candidateURL.pathExtension.lowercased() != "xmp"
+            // Only another catalogable original makes the basename ambiguous.
+            // A same-stem file Teststrip would never import as a photo — a
+            // Live Photo's `.MOV`, Apple's `.AAE` adjustments sidecar, a
+            // layered `.PSD` edit — sits in the directory too but cannot own
+            // the photo's XMP, so it must not block binding the sidecar that
+            // is right there beside the original.
+            return ImageIODecodeProvider.catalogableExtensions
+                .contains(candidateURL.pathExtension.lowercased())
         }
     }
 }
