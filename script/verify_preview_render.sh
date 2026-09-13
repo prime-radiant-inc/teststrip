@@ -15,7 +15,7 @@ summary_payload="$(extract_benchmark_summary_payload "$output")"
 assert_preview_render_summary "$summary_payload" "$COUNT" "$MAX_SECONDS"
 
 emit_preview_render_metric "requested_source_images" "$COUNT"
-emit_preview_render_metric "expected_previews" "$((COUNT * 4))"
+emit_preview_render_metric "expected_previews" "$((COUNT * 2))"
 emit_preview_render_metric "max_seconds" "$MAX_SECONDS"
 
 metric_keys=(

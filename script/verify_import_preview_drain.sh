@@ -16,7 +16,7 @@ summary_payload="$(extract_benchmark_summary_payload "$output")"
 assert_import_preview_drain_summary "$summary_payload" "$COUNT" "$MAX_IMPORT_SECONDS" "$MAX_DRAIN_SECONDS"
 
 emit_import_preview_drain_metric "asset_count" "$COUNT"
-emit_import_preview_drain_metric "expected_previews" "$((COUNT * 2))"
+emit_import_preview_drain_metric "expected_previews" "$COUNT"
 emit_import_preview_drain_metric "max_import_seconds" "$MAX_IMPORT_SECONDS"
 emit_import_preview_drain_metric "max_drain_seconds" "$MAX_DRAIN_SECONDS"
 

@@ -15,7 +15,7 @@ summary_payload="$(extract_benchmark_summary_payload "$output")"
 assert_card_import_smoke_summary "$summary_payload" "$COUNT" "$MAX_SECONDS"
 
 emit_card_import_smoke_metric "asset_count" "$COUNT"
-emit_card_import_smoke_metric "expected_previews" "$((COUNT * 2))"
+emit_card_import_smoke_metric "expected_previews" "$COUNT"
 emit_card_import_smoke_metric "max_seconds" "$MAX_SECONDS"
 
 metric_keys=(
