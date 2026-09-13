@@ -124,4 +124,27 @@ final class ScopeLinePresentationTests: XCTestCase {
             XCTAssertEqual(line.sourceTitle, "2026", "\(lens)")
         }
     }
+
+    /// The scope line stays session-wide: it renders the summary's session
+    /// pick/reject counts even when the Cull HUD's `scopedCounts` are narrower.
+    func testScopeLineReportsSessionCountsNotScopedCounts() {
+        let line = ScopeLinePresentation.line(
+            source: .allPhotos,
+            lens: .cull,
+            resultCount: 854,
+            activeFilterChips: [],
+            cullProgress: CullingProgressSummary(
+                selectedPosition: 1,
+                positionText: "1 of 854",
+                pickCount: 15,
+                rejectCount: 5,
+                totalCount: 854,
+                scopedCounts: CullScopeCounts(totalCount: 20, pickCount: 15, rejectCount: 0),
+                viewedCount: 20
+            ),
+            stackCount: 0
+        )
+
+        XCTAssertEqual(line.statusText, "854 photos · ✓ 15 · ✕ 5 · 834 left")
+    }
 }

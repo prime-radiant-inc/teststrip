@@ -29,11 +29,11 @@ struct CullHUDPresentation: Equatable {
         self.filename = filename
         self.rating = rating
         self.colorLabel = colorLabel
-        self.pickCount = summary.pickCount
-        self.rejectCount = summary.rejectCount
-        self.undecidedCount = max(summary.totalCount - summary.pickCount - summary.rejectCount, 0)
-        self.progressFraction = summary.totalCount > 0
-            ? Double(summary.reviewedCount) / Double(summary.totalCount)
+        self.pickCount = summary.scopedCounts.pickCount
+        self.rejectCount = summary.scopedCounts.rejectCount
+        self.undecidedCount = summary.scopedCounts.undecidedCount
+        self.progressFraction = summary.scopedCounts.totalCount > 0
+            ? Double(summary.reviewedCount) / Double(summary.scopedCounts.totalCount)
             : 0
         self.scope = scope
         self.isRatingEchoActive = isRatingEchoActive
@@ -50,8 +50,10 @@ struct CullHUDPresentation: Equatable {
     /// Label dot only renders once a color label is actually set.
     var showsLabelDot: Bool { colorLabel != nil }
 
-    /// Merged pick/reject/undecided session cluster, e.g. "✓ 38 · ✕ 71 · 209 left".
-    var sessionClusterText: String {
+    /// Merged pick/reject/undecided cluster for the CURRENT scope, e.g.
+    /// "✓ 38 · ✕ 71 · 209 left". In a scoped pass these are the scope's
+    /// numbers, not the whole session's.
+    var scopeClusterText: String {
         "\u{2713} \(pickCount) \u{00B7} \u{2715} \(rejectCount) \u{00B7} \(undecidedCount) left"
     }
 }
