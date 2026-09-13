@@ -290,7 +290,8 @@ struct ActivityCenterView: View {
                             reviewIssues(receipt)
                         }
                         .font(.caption)
-                        .buttonStyle(.link)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .accessibilityLabel("Review issues")
                     }
                     if receipt.canStartCulling {
@@ -298,7 +299,8 @@ struct ActivityCenterView: View {
                             startCulling(receipt)
                         }
                         .font(.caption)
-                        .buttonStyle(.link)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .accessibilityLabel("Start culling")
                     }
                 }
