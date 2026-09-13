@@ -43,9 +43,27 @@ case .seedDupFixtures(let directory):
 case .samplePreviewRender(let photoDirectory):
     try runSamplePreviewRenderBenchmark(photoDirectory: photoDirectory, root: root)
 case .seedAppCatalog(let applicationSupportDirectory, let count):
-    try runSeedAppCatalog(applicationSupportDirectory: applicationSupportDirectory, count: count)
+        try runSeedAppCatalog(
+            applicationSupportDirectory: applicationSupportDirectory,
+            count: count,
+            evaluationFixtures: []
+        )
+    case .seedAppCatalogWithFixtures(let applicationSupportDirectory, let count, let fixtures):
+        try runSeedAppCatalog(
+            applicationSupportDirectory: applicationSupportDirectory,
+            count: count,
+            evaluationFixtures: fixtures
+        )
 case .seedBurstCatalog(let applicationSupportDirectory):
-    try runSeedBurstCatalog(applicationSupportDirectory: applicationSupportDirectory)
+        try runSeedBurstCatalog(
+            applicationSupportDirectory: applicationSupportDirectory,
+            evaluationFixtures: []
+        )
+    case .seedBurstCatalogWithFixtures(let applicationSupportDirectory, let fixtures):
+        try runSeedBurstCatalog(
+            applicationSupportDirectory: applicationSupportDirectory,
+            evaluationFixtures: fixtures
+        )
 case .seedRealCorpusCatalog(let applicationSupportDirectory, let photoDirectory):
     try runSeedRealCorpusCatalog(applicationSupportDirectory: applicationSupportDirectory, photoDirectory: photoDirectory)
 case .seedSampleCatalog(let applicationSupportDirectory, let photoDirectory):
@@ -414,16 +432,22 @@ private func runSeedDupFixtures(directory: URL) throws {
     print("card2 frames: \(result.card2FrameCount)")
 }
 
-private func runSeedAppCatalog(applicationSupportDirectory: URL, count: Int) throws {
+private func runSeedAppCatalog(
+    applicationSupportDirectory: URL,
+    count: Int,
+    evaluationFixtures: SmokeSeedEvaluationFixtures
+) throws {
     var recorder = BenchmarkSummaryRecorder(benchmark: "seed_app_catalog", count: count)
 
     print("TeststripBench seed app catalog")
     print("application support: \(applicationSupportDirectory.path)")
     print("count: \(count)")
+    print("evaluation fixtures: \(describe(evaluationFixtures))")
     let result = try measure("seed app catalog", recorder: &recorder, key: "seed_app_catalog") {
         try SmokeCatalogSeeder(
             applicationSupportDirectory: applicationSupportDirectory,
-            count: count
+            count: count,
+            evaluationFixtures: evaluationFixtures
         ).run()
     }
     recorder.recordMetric("source_images", result.sourceImageCount)
@@ -437,18 +461,23 @@ private func runSeedAppCatalog(applicationSupportDirectory: URL, count: Int) thr
     try printMachineReadableSummary(recorder.summary)
 }
 
-private func runSeedBurstCatalog(applicationSupportDirectory: URL) throws {
+private func runSeedBurstCatalog(
+    applicationSupportDirectory: URL,
+    evaluationFixtures: SmokeSeedEvaluationFixtures
+) throws {
     let count = BurstFixtureLayout.totalAssetCount
     var recorder = BenchmarkSummaryRecorder(benchmark: "seed_burst_catalog", count: count)
 
     print("TeststripBench seed burst catalog")
     print("application support: \(applicationSupportDirectory.path)")
     print("burst groups: \(BurstFixtureLayout.burstFrameCounts) + \(BurstFixtureLayout.singleCount) singles")
+    print("evaluation fixtures: \(describe(evaluationFixtures))")
     let result = try measure("seed burst catalog", recorder: &recorder, key: "seed_burst_catalog") {
         try SmokeCatalogSeeder(
             applicationSupportDirectory: applicationSupportDirectory,
             count: count,
-            captureOffsets: BurstFixtureLayout.captureOffsets()
+            captureOffsets: BurstFixtureLayout.captureOffsets(),
+            evaluationFixtures: evaluationFixtures
         ).run()
     }
     recorder.recordMetric("source_images", result.sourceImageCount)
@@ -528,4 +557,12 @@ private func measure<T>(
 
 private func printMachineReadableSummary(_ summary: BenchmarkSummary) throws {
     print(try summary.machineReadableLine())
+}
+
+private func describe(_ fixtures: SmokeSeedEvaluationFixtures) -> String {
+    guard !fixtures.isEmpty else { return "none" }
+    var names: [String] = []
+    if fixtures.contains(.keywordSuggestions) { names.append("keyword-signals") }
+    if fixtures.contains(.stackFlaws) { names.append("stack-flaws") }
+    return names.joined(separator: ", ")
 }

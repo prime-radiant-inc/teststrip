@@ -21,7 +21,9 @@ public enum BenchmarkCommand: Equatable {
     case seedDupFixtures(directory: URL)
     case samplePreviewRender(photoDirectory: URL)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
+    case seedAppCatalogWithFixtures(applicationSupportDirectory: URL, count: Int, fixtures: SmokeSeedEvaluationFixtures)
     case seedBurstCatalog(applicationSupportDirectory: URL)
+    case seedBurstCatalogWithFixtures(applicationSupportDirectory: URL, fixtures: SmokeSeedEvaluationFixtures)
     case seedRealCorpusCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
     case seedSampleCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
 
@@ -99,11 +101,28 @@ public enum BenchmarkCommand: Equatable {
         if firstArgument == "seed-app-catalog" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
             let count = Int(userArguments.dropFirst(2).first ?? "24") ?? 24
-            return .seedAppCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory), count: count)
+            let fixtures = SmokeSeedEvaluationFixtures.parse(Array(userArguments.dropFirst(3)))
+            let applicationSupportDirectory = URL(fileURLWithPath: directory)
+            if fixtures.isEmpty {
+                return .seedAppCatalog(applicationSupportDirectory: applicationSupportDirectory, count: count)
+            }
+            return .seedAppCatalogWithFixtures(
+                applicationSupportDirectory: applicationSupportDirectory,
+                count: count,
+                fixtures: fixtures
+            )
         }
         if firstArgument == "seed-burst-catalog" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
-            return .seedBurstCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory))
+            let fixtures = SmokeSeedEvaluationFixtures.parse(Array(userArguments.dropFirst(2)))
+            let applicationSupportDirectory = URL(fileURLWithPath: directory)
+            if fixtures.isEmpty {
+                return .seedBurstCatalog(applicationSupportDirectory: applicationSupportDirectory)
+            }
+            return .seedBurstCatalogWithFixtures(
+                applicationSupportDirectory: applicationSupportDirectory,
+                fixtures: fixtures
+            )
         }
         if firstArgument == "seed-real-corpus-catalog" {
             let applicationSupportDirectory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath

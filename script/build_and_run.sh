@@ -18,6 +18,8 @@ ISOLATED_APPLICATION_SUPPORT=""
 SANDBOXED=0
 SMOKE=0
 SMOKE_ASSET_COUNT="${TESTSTRIP_SMOKE_ASSET_COUNT:-24}"
+SMOKE_KEYWORDS=0
+BURST=0
 SAMPLE_PHOTOS=0
 SAMPLE_PHOTOS_DIR="${TESTSTRIP_SAMPLE_PHOTOS_DIR:-}"
 SAMPLE_PHOTOS_MANIFEST="${TESTSTRIP_SAMPLE_PHOTOS_MANIFEST:-}"
@@ -43,7 +45,7 @@ APP_ENTITLEMENTS="$ROOT_DIR/config/macos/Teststrip.entitlements"
 WORKER_ENTITLEMENTS="$ROOT_DIR/config/macos/TeststripWorker.entitlements"
 
 usage() {
-  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--faces|--verify-faces|--face-stack|--verify-face-stack|--real-corpus|--verify-real-corpus|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--smoke-keywords|--verify-smoke-keywords|--burst|--verify-burst|--sample-photos|--verify-sample-photos|--faces|--verify-faces|--face-stack|--verify-face-stack|--real-corpus|--verify-real-corpus|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -81,6 +83,12 @@ open_app() {
     prepare_isolated_catalog
     if [[ "$SMOKE" == "1" ]]; then
       seed_smoke_catalog
+    fi
+    if [[ "$SMOKE_KEYWORDS" == "1" ]]; then
+      seed_smoke_keyword_catalog
+    fi
+    if [[ "$BURST" == "1" ]]; then
+      seed_burst_catalog
     fi
     if [[ "$SAMPLE_PHOTOS" == "1" ]]; then
       seed_sample_catalog
@@ -138,6 +146,16 @@ prepare_isolated_catalog() {
 seed_smoke_catalog() {
   cd "$ROOT_DIR"
   swift run "$BENCH_PRODUCT_NAME" seed-app-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SMOKE_ASSET_COUNT"
+}
+
+seed_smoke_keyword_catalog() {
+  cd "$ROOT_DIR"
+  swift run "$BENCH_PRODUCT_NAME" seed-app-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SMOKE_ASSET_COUNT" keyword-signals
+}
+
+seed_burst_catalog() {
+  cd "$ROOT_DIR"
+  swift run "$BENCH_PRODUCT_NAME" seed-burst-catalog "$ISOLATED_APPLICATION_SUPPORT" stack-flaws
 }
 
 seed_sample_catalog() {
@@ -210,6 +228,26 @@ case "$MODE" in
     MODE="--verify"
     ISOLATED=1
     SMOKE=1
+    ;;
+  --smoke-keywords|smoke-keywords)
+    MODE="run"
+    ISOLATED=1
+    SMOKE_KEYWORDS=1
+    ;;
+  --verify-smoke-keywords|verify-smoke-keywords)
+    MODE="--verify"
+    ISOLATED=1
+    SMOKE_KEYWORDS=1
+    ;;
+  --burst|burst)
+    MODE="run"
+    ISOLATED=1
+    BURST=1
+    ;;
+  --verify-burst|verify-burst)
+    MODE="--verify"
+    ISOLATED=1
+    BURST=1
     ;;
   --sample-photos|sample-photos)
     MODE="run"
