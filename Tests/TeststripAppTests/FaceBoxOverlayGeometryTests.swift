@@ -78,4 +78,69 @@ final class FaceBoxOverlayGeometryTests: XCTestCase {
             containerSize: .zero
         ))
     }
+
+    // MARK: - Rotation-aware mapping
+
+    /// The same top-left face on a square image, mapped through each display
+    /// rotation: a clockwise quarter turn carries the top-left quarter of the
+    /// image to the top-right, half a turn to the bottom-right, three quarters
+    /// to the bottom-left. Square image → square fitted rect, so the corners
+    /// are easy to assert exactly.
+    private func topLeftFaceRect(rotation: Int) -> CGRect {
+        // Vision bottom-left origin: y 0.75...1.0 is the TOP quarter, x
+        // 0...0.25 the LEFT quarter. 1000x1000 image into a 500x500 container
+        // fits exactly (no letterbox); each quarter is 125pt.
+        FaceBoxOverlayGeometry.displayRect(
+            boundingBox: FaceBoundingBox(x: 0, y: 0.75, width: 0.25, height: 0.25),
+            imagePixelSize: CGSize(width: 1000, height: 1000),
+            containerSize: CGSize(width: 500, height: 500),
+            rotation: rotation
+        )!
+    }
+
+    func testTopLeftFaceStaysTopLeftWithNoRotation() {
+        assertEqual(topLeftFaceRect(rotation: 0), CGRect(x: 0, y: 0, width: 125, height: 125))
+    }
+
+    func testTopLeftFaceMovesToTopRightWith90DegreeRotation() {
+        assertEqual(topLeftFaceRect(rotation: 90), CGRect(x: 375, y: 0, width: 125, height: 125))
+    }
+
+    func testTopLeftFaceMovesToBottomRightWith180DegreeRotation() {
+        assertEqual(topLeftFaceRect(rotation: 180), CGRect(x: 375, y: 375, width: 125, height: 125))
+    }
+
+    func testTopLeftFaceMovesToBottomLeftWith270DegreeRotation() {
+        assertEqual(topLeftFaceRect(rotation: 270), CGRect(x: 0, y: 375, width: 125, height: 125))
+    }
+
+    func testQuarterTurnSwapsTheFittedFrameAndTheBox() {
+        // 1000x500 image (2:1) into a 400x400 container: unrotated it fits
+        // 400x200 with a 100pt top/bottom band; rotated 90° it becomes 500x1000,
+        // fitting 200x400 with a 100pt left/right band.
+        let unrotated = FaceBoxOverlayGeometry.displayRect(
+            boundingBox: FaceBoundingBox(x: 0, y: 0.75, width: 0.25, height: 0.25),
+            imagePixelSize: CGSize(width: 1000, height: 500),
+            containerSize: CGSize(width: 400, height: 400)
+        )!
+        assertEqual(unrotated, CGRect(x: 0, y: 100, width: 100, height: 50))
+
+        let rotated = FaceBoxOverlayGeometry.displayRect(
+            boundingBox: FaceBoundingBox(x: 0, y: 0.75, width: 0.25, height: 0.25),
+            imagePixelSize: CGSize(width: 1000, height: 500),
+            containerSize: CGSize(width: 400, height: 400),
+            rotation: 90
+        )!
+        assertEqual(rotated, CGRect(x: 250, y: 0, width: 50, height: 100))
+    }
+
+    func testNormalizesRotationDegreesToQuarterTurns() {
+        XCTAssertEqual(FaceBoxOverlayGeometry.normalizedRotation(0), 0)
+        XCTAssertEqual(FaceBoxOverlayGeometry.normalizedRotation(90), 90)
+        XCTAssertEqual(FaceBoxOverlayGeometry.normalizedRotation(180), 180)
+        XCTAssertEqual(FaceBoxOverlayGeometry.normalizedRotation(270), 270)
+        XCTAssertEqual(FaceBoxOverlayGeometry.normalizedRotation(360), 0)
+        XCTAssertEqual(FaceBoxOverlayGeometry.normalizedRotation(450), 90)
+        XCTAssertEqual(FaceBoxOverlayGeometry.normalizedRotation(-90), 270)
+    }
 }
