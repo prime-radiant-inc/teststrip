@@ -252,4 +252,123 @@ final class ImportSheetWiringTests: XCTestCase {
         // The cache was accepted without error (typed parameter match).
         XCTAssertTrue(model.pendingImportFolders.isEmpty)
     }
+
+    // MARK: - Concurrent import queue (spec §3: serial ingest, concurrent review)
+
+    /// Builds a catalog-backed model whose import task blocks until cancelled,
+    /// so `isImporting` stays true for the duration of the test.
+    @MainActor
+    private func makeImportingModel(in root: URL) throws -> AppModel {
+        let paths = AppCatalog.defaultPaths(
+            applicationSupportDirectory: root.appendingPathComponent("app-support", isDirectory: true)
+        )
+        let catalog = try AppCatalog.open(paths: paths)
+        return try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, _, _, _, _ in
+                Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+    }
+
+    private func makeFolder(_ name: String, in parent: URL) throws -> URL {
+        let url = parent.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @MainActor
+    private func waitForImportToStop(in model: AppModel, timeout: TimeInterval = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while model.isImporting && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    /// Spec §3: committing an import while another ingest runs joins
+    /// `pendingImportFolders` and is shown as Queued — it must NOT hard-reject
+    /// with "Another import is already running".
+    @MainActor
+    func testBeginImportFolderWhileImportingJoinsQueueInsteadOfRejecting() throws {
+        let root = try makeTemporaryDirectory(named: "import-queue-join")
+        let model = try makeImportingModel(in: root)
+        let running = try makeFolder("running", in: root)
+        let queued = try makeFolder("queued", in: root)
+        let queuedSelection: Set<URL> = [queued.appendingPathComponent("x.jpg")]
+        let queuedCache = PreIngestThumbnailCache()
+
+        model.beginImportFolder(running)
+        XCTAssertTrue(model.isImporting)
+        XCTAssertTrue(model.pendingImportFolders.isEmpty)
+
+        model.beginImportFolder(
+            queued,
+            importNewOnly: false,
+            selectedFiles: queuedSelection,
+            preIngestThumbnailCache: queuedCache
+        )
+
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.pendingImportFolders.count, 1)
+        let pending = try XCTUnwrap(model.pendingImportFolders.first)
+        XCTAssertEqual(pending.url, queued)
+        XCTAssertFalse(pending.importNewOnly)
+        XCTAssertEqual(pending.selectedFiles, queuedSelection)
+        XCTAssertEqual(pending.preIngestThumbnailCache, queuedCache)
+        // The running import is untouched; the queued commit did not start.
+        XCTAssertTrue(model.isImporting)
+
+        model.cancelImportWork()
+    }
+
+    /// Spec §3: a multi-folder commit while an ingest runs queues every folder,
+    /// preserving the commit's `selectedFiles` on the primary (first) folder.
+    @MainActor
+    func testBeginImportFoldersWhileImportingQueuesEveryFolder() throws {
+        let root = try makeTemporaryDirectory(named: "import-queue-multi")
+        let model = try makeImportingModel(in: root)
+        let running = try makeFolder("running", in: root)
+        let first = try makeFolder("first", in: root)
+        let second = try makeFolder("second", in: root)
+        let selection: Set<URL> = [URL(fileURLWithPath: "/tmp/import-queue-multi/only.jpg")]
+
+        model.beginImportFolder(running)
+        XCTAssertTrue(model.isImporting)
+
+        model.beginImportFolders([first, second], selectedFiles: selection)
+
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.pendingImportFolders.map(\.url), [first, second])
+        XCTAssertEqual(model.pendingImportFolders[0].selectedFiles, selection)
+        XCTAssertNil(model.pendingImportFolders[1].selectedFiles)
+        XCTAssertTrue(model.isImporting)
+
+        model.cancelImportWork()
+    }
+
+    /// Spec §3: cancelling the current ingest doesn't cancel queued imports.
+    @MainActor
+    func testCancellingRunningImportLeavesQueuedFoldersIntact() async throws {
+        let root = try makeTemporaryDirectory(named: "import-queue-cancel")
+        let model = try makeImportingModel(in: root)
+        let running = try makeFolder("running", in: root)
+        let queued = try makeFolder("queued", in: root)
+
+        model.beginImportFolder(running)
+        model.beginImportFolder(queued)
+        XCTAssertEqual(model.pendingImportFolders.map(\.url), [queued])
+
+        model.cancelImportWork()
+        await waitForImportToStop(in: model)
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(model.pendingImportFolders.map(\.url), [queued])
+    }
 }

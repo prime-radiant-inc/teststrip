@@ -16020,7 +16020,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testRejectedConcurrentFolderImportKeepsInFlightAutoEvaluationEnabled() async throws {
+    func testQueuedConcurrentFolderImportKeepsInFlightAutoEvaluationEnabled() async throws {
         let directory = try makeTemporaryDirectory(named: "auto-eval-rejected-folder-import")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         let otherFolder = directory.appendingPathComponent("photos-other", isDirectory: true)
@@ -16037,10 +16037,12 @@ final class AppModelTests: XCTestCase {
         model.beginImportFolder(photoFolder, evaluateAfterImport: true)
         let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
 
-        // A rejected concurrent import must not change the in-flight import's
-        // auto-evaluation setting.
+        // Spec §3: a concurrent import joins the queue instead of being
+        // rejected, and must not change the in-flight import's auto-evaluation
+        // setting (it keeps its own, queued, evaluation flag).
         model.beginImportFolder(otherFolder, evaluateAfterImport: false)
-        XCTAssertEqual(model.errorMessage, "Another import is already running")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.pendingImportFolders.map(\.url), [otherFolder])
 
         let importedAsset = Asset(
             id: AssetID(rawValue: "auto-eval-rejected-folder"),
@@ -16293,7 +16295,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testBeginImportFolderDoesNotEnqueueDuplicateImportWhileRunning() throws {
+    func testConcurrentFolderImportWhileWorkerImportRunsQueuesWithoutSecondWorkerJob() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-folder-import-duplicate")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -16309,7 +16311,11 @@ final class AppModelTests: XCTestCase {
         model.beginImportFolder(photoFolder)
         model.beginImportFolder(photoFolder)
 
-        XCTAssertEqual(model.errorMessage, "Another import is already running")
+        // Spec §3: the concurrent commit joins the app-side queue (shown as
+        // Queued) instead of being rejected, and still never enqueues a second
+        // worker ingest job.
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.pendingImportFolders.map(\.url), [photoFolder])
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
         XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent, selectedFiles: nil, preIngestThumbnails: nil)])
     }
@@ -16341,7 +16347,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testBeginImportFolderRejectsDuplicateImportBeforeCoalescedQueuePublication() throws {
+    func testConcurrentFolderImportQueuesBeforeCoalescedQueuePublication() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-folder-import-duplicate-coalesced")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -16365,7 +16371,8 @@ final class AppModelTests: XCTestCase {
         model.beginImportFolder(photoFolder)
         model.beginImportFolder(photoFolder)
 
-        XCTAssertEqual(model.errorMessage, "Another import is already running")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.pendingImportFolders.map(\.url), [photoFolder])
 
         scheduler.fireScheduledActions()
 

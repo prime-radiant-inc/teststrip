@@ -14662,7 +14662,22 @@ public final class AppModel {
     ) {
         guard let firstFolder = folderURLs.first else { return }
         let rest = Array(folderURLs.dropFirst())
-        pendingImportFolders = rest.map {
+        // Spec §3: while an ingest runs the commit joins the queue instead of
+        // starting. The primary source keeps the commit's selection/cache; the
+        // additional folders never went through the selection window.
+        if isImporting {
+            pendingImportFolders.append(
+                PendingImportFolder(
+                    url: firstFolder,
+                    evaluateAfterImport: evaluateAfterImport,
+                    importNewOnly: importNewOnly,
+                    autopilotAfterImport: autopilotAfterImport,
+                    selectedFiles: selectedFiles,
+                    preIngestThumbnailCache: preIngestThumbnailCache
+                )
+            )
+        }
+        pendingImportFolders.append(contentsOf: rest.map {
             PendingImportFolder(
                 url: $0,
                 evaluateAfterImport: evaluateAfterImport,
@@ -14671,7 +14686,8 @@ public final class AppModel {
                 selectedFiles: nil,
                 preIngestThumbnailCache: nil
             )
-        }
+        })
+        guard !isImporting else { return }
         beginImportFolder(
             firstFolder,
             evaluateAfterImport: evaluateAfterImport,
@@ -14695,12 +14711,26 @@ public final class AppModel {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
         }
-        guard !isImporting else {
-            errorMessage = "Another import is already running"
+        // Spec §3: committing while another ingest runs joins
+        // `pendingImportFolders` (surfaced as Queued) and runs when the current
+        // import finishes — it must not be rejected. The guard stays on the
+        // commit so the review window stays open during an ingest.
+        if isImporting {
+            pendingImportFolders.append(
+                PendingImportFolder(
+                    url: folderURL,
+                    evaluateAfterImport: evaluateAfterImport,
+                    importNewOnly: importNewOnly,
+                    autopilotAfterImport: autopilotAfterImport,
+                    selectedFiles: selectedFiles,
+                    preIngestThumbnailCache: preIngestThumbnailCache
+                )
+            )
             return
         }
-        // Set only after the concurrency guard so a rejected call cannot change
-        // the in-flight import's auto-evaluation outcome.
+        // Set only after the concurrency guard so a call that joined the queue
+        // (or was rejected) cannot change the in-flight import's
+        // auto-evaluation outcome.
         importAutoEvaluationEnabled = evaluateAfterImport
         let duplicateHandling: DuplicateHandling = importNewOnly ? .skipCatalogedContent : .importAll
         autopilotArmedForActiveImport = autopilotAfterImport
@@ -14772,14 +14802,12 @@ public final class AppModel {
                 guard let self, self.activeWork?.id == activityID else { return }
                 self.cancelImportActivity(folderURL: folderURL)
                 self.activeImportTask = nil
-                self.pendingImportFolders = []
             } catch {
                 guard let self, self.activeWork?.id == activityID else { return }
                 self.statusMessage = nil
                 self.errorMessage = error.localizedDescription
                 self.failImportActivity(folderURL: folderURL, error: error)
                 self.activeImportTask = nil
-                self.pendingImportFolders = []
             }
         }
     }
