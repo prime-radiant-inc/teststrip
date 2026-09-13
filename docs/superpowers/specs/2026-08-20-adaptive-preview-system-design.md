@@ -2,12 +2,12 @@
 
 ## Problem
 
-The current preview system generates 5 separate JPEG files per asset —
-micro (160px), grid (512px), medium (1600px), large (3200px), and original
-(full-res) — each produced by a separate read of the original from SMB. For a
-130k-photo library that's mostly RAW, this means up to 5 SMB reads per asset,
-JPEG files that are 3–5x larger than necessary, and no quality control on the
-JPEG encoder (ImageIO's default ~0.8 quality).
+Before this redesign, the preview system generated 5 separate JPEG files per
+asset — micro (160px), grid (512px), medium (1600px), large (3200px), and
+original (full-res) — each produced by a separate read of the original from
+SMB. For a 130k-photo library that's mostly RAW, that meant up to 5 SMB reads
+per asset, JPEG files that were 3–5x larger than necessary, and no quality
+control on the JPEG encoder (ImageIO's default ~0.8 quality).
 
 ## Solution
 
@@ -57,8 +57,8 @@ to physical file is internal to `PreviewCache` and `PreviewRenderer`.
 
 ### Write path: copy-once, batch generation
 
-Current: each level calls `renderer.render(sourceURL: asset.originalURL, ...)`
-separately — N levels = N reads of the original from SMB.
+Previously: each level called `renderer.render(sourceURL: asset.originalURL,
+...)` separately — N levels = N reads of the original from SMB.
 
 New: copy the original to a local temp file once, generate all needed levels
 from that temp, delete the temp. One SMB read regardless of how many levels.
@@ -107,8 +107,8 @@ thumbnails.
 
 ### PreviewCache (`Sources/TeststripCore/Preview/PreviewCache.swift`)
 
-New method: `physicalFileURL(for: PreviewLevel) -> URL` maps a logical level
-to its physical file:
+New method: `physicalFile(for: PreviewLevel) -> String` maps a logical level to
+its physical file name (`url(for:)` combines it with the per-asset directory):
 
 ```swift
 private static func physicalFile(for level: PreviewLevel) -> String {
