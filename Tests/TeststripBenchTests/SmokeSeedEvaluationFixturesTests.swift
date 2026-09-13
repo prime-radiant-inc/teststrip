@@ -108,9 +108,13 @@ final class SmokeSeedEvaluationFixturesTests: XCTestCase {
                 XCTAssertNil(byAsset[assetID], "smoke-\(index) must get no keyword signals")
                 continue
             }
-            let labels = (byAsset[assetID] ?? []).compactMap { signal -> String? in
-                guard signal.kind == .object, case .label(let label) = signal.value else { return nil }
-                return label
+            let labels = (byAsset[assetID] ?? []).flatMap { signal -> [String] in
+                guard signal.kind == .object else { return [] }
+                switch signal.value {
+                case .label(let label): return [label]
+                case .labels(let labels): return labels
+                default: return []
+                }
             }
             XCTAssertEqual(labels.sorted(), expected.sorted(), "smoke-\(index) labels")
         }
@@ -135,12 +139,17 @@ final class SmokeSeedEvaluationFixturesTests: XCTestCase {
                 continue
             }
 
-            let objectLabels = signals.compactMap { signal -> String? in
-                guard signal.kind == .object, case .label(let label) = signal.value else { return nil }
-                return label
+            let objectLabels = signals.flatMap { signal -> [String] in
+                guard signal.kind == .object else { return [] }
+                switch signal.value {
+                case .label(let label): return [label]
+                case .labels(let labels): return labels
+                default: return []
+                }
             }
             XCTAssertEqual(objectLabels.sorted(), expectedLabels.sorted(), "smoke-\(index) labels")
-            XCTAssertEqual(signals.count, expectedLabels.count, "smoke-\(index) signal count")
+            // One `.object` signal per asset carries all of its labels.
+            XCTAssertEqual(signals.count, 1, "smoke-\(index) signal count")
 
             // The fixture only guarantees a chip if the label isn't already a
             // metadata keyword — the inspector suppresses those.

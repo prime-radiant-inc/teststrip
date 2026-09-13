@@ -241,17 +241,21 @@ public struct SmokeCatalogSeeder {
     /// (["smoke", "batch-N"]), so every one surfaces as an unaccepted
     /// suggested-keyword chip.
     static func keywordSignals(for assets: [Asset]) -> [EvaluationSignal] {
-        assets.enumerated().flatMap { index, asset -> [EvaluationSignal] in
-            guard let labels = SmokeSeedSignalLayout.keywordSignalsByAssetIndex[index] else { return [] }
-            return labels.map { label in
-                EvaluationSignal(
-                    assetID: asset.id,
-                    kind: .object,
-                    value: .label(label),
-                    confidence: SmokeSeedSignalLayout.keywordSignalConfidence,
-                    provenance: objectFixtureProvenance
-                )
-            }
+        // One `.object` signal per asset, carrying every label — the shape the
+        // real AppleVision provider emits. Emitting one `.label` signal per
+        // label would collide on the catalog's
+        // (asset, kind, provider, model, version, settingsHash) key and keep
+        // only the last.
+        assets.enumerated().compactMap { index, asset -> EvaluationSignal? in
+            guard let labels = SmokeSeedSignalLayout.keywordSignalsByAssetIndex[index],
+                  !labels.isEmpty else { return nil }
+            return EvaluationSignal(
+                assetID: asset.id,
+                kind: .object,
+                value: labels.count == 1 ? .label(labels[0]) : .labels(labels),
+                confidence: SmokeSeedSignalLayout.keywordSignalConfidence,
+                provenance: objectFixtureProvenance
+            )
         }
     }
 
