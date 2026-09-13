@@ -76,4 +76,23 @@ final class PreviewCacheTests: XCTestCase {
         XCTAssertNotEqual(gridURL, fullURL)
         XCTAssertNotEqual(largeURL, fullURL)
     }
+
+    func testAllLevelsServedByExpandsEachLevelToItsCoLocatedSiblings() {
+        // grid.heic serves both .micro and .grid; large.heic serves .medium
+        // and .large; full.heic serves only .original.
+        XCTAssertEqual(PreviewCache.allLevelsServedBy([.micro]), [.micro, .grid])
+        XCTAssertEqual(PreviewCache.allLevelsServedBy([.grid]), [.micro, .grid])
+        XCTAssertEqual(PreviewCache.allLevelsServedBy([.medium]), [.medium, .large])
+        XCTAssertEqual(PreviewCache.allLevelsServedBy([.large]), [.medium, .large])
+        XCTAssertEqual(PreviewCache.allLevelsServedBy([.original]), [.original])
+    }
+
+    func testAllLevelsServedByDeduplicatesAndOrdersByCaseOrder() {
+        XCTAssertEqual(
+            PreviewCache.allLevelsServedBy([.large, .micro, .grid, .medium, .original]),
+            [.micro, .grid, .medium, .large, .original]
+        )
+        XCTAssertEqual(PreviewCache.allLevelsServedBy([.grid, .micro]), [.micro, .grid])
+        XCTAssertEqual(PreviewCache.allLevelsServedBy([]), [])
+    }
 }

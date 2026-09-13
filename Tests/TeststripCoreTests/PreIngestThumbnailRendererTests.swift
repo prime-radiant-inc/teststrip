@@ -1,4 +1,5 @@
 import XCTest
+import ImageIO
 @testable import TeststripCore
 
 final class PreIngestThumbnailRendererTests: XCTestCase {
@@ -46,11 +47,32 @@ final class PreIngestThumbnailRendererTests: XCTestCase {
         cache.cleanup()
     }
 
-    private func writeTestJPEG() throws -> URL {
+    func testRenderBoundsThumbnailToMicroPixelDimension() throws {
+        let sourceURL = try writeTestJPEG(width: 1200, height: 800)
+        let cache = PreIngestThumbnailCache(directoryURL: makeTempDir())
+        let renderer = PreIngestThumbnailRenderer()
+
+        try renderer.render(sourceURL: sourceURL, cache: cache)
+
+        let thumbnailURL = cache.thumbnailURL(for: sourceURL)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(thumbnailURL as CFURL, nil))
+        let properties = try XCTUnwrap(
+            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        )
+        let width = try XCTUnwrap(properties[kCGImagePropertyPixelWidth] as? Int)
+        let height = try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? Int)
+        XCTAssertLessThanOrEqual(
+            max(width, height),
+            PreviewLevel.micro.maxPixelDimension!,
+            "pre-ingest thumbnails must render at .micro's 160px bound"
+        )
+        cache.cleanup()
+    }
+
+    private func writeTestJPEG(width: Int = 4, height: Int = 4) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).jpg")
-        // 4x4 red JPEG
-        let cgImage = createTestCGImage(width: 4, height: 4)
+        let cgImage = createTestCGImage(width: width, height: height)
         let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil)!
         CGImageDestinationAddImage(dest, cgImage, nil)
         CGImageDestinationFinalize(dest)

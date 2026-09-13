@@ -44,6 +44,29 @@ final class ImportSheetWiringTests: XCTestCase {
         XCTAssertTrue(model.pendingImportFolders.isEmpty)
     }
 
+    @MainActor
+    func testDrainPendingImportFolderStartsFirstQueuedFolder() {
+        let model = AppModel.demo()
+        let urls = [
+            URL(fileURLWithPath: "/tmp/import-sheet/drain-a", isDirectory: true),
+            URL(fileURLWithPath: "/tmp/import-sheet/drain-b", isDirectory: true),
+            URL(fileURLWithPath: "/tmp/import-sheet/drain-c", isDirectory: true)
+        ]
+        model.beginImportFolders(urls)
+        XCTAssertEqual(model.pendingImportFolders.count, 2)
+
+        model.drainPendingImportFolder()
+
+        XCTAssertEqual(model.pendingImportFolders.map(\.url), [urls[2]])
+    }
+
+    @MainActor
+    func testDrainPendingImportFolderIsNoopWhenQueueEmpty() {
+        let model = AppModel.demo()
+        model.drainPendingImportFolder()
+        XCTAssertTrue(model.pendingImportFolders.isEmpty)
+    }
+
     // MARK: - ImportSheetState state-machine (Task 9 fix #3)
 
     /// Helper: builds a minimal `ImportSelectionData` with a real draft

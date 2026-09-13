@@ -4039,6 +4039,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.loupeZoomFocus, .center)
     }
 
+    func testPreviewURLReturnsFirstExistingLevelInPreferenceOrder() throws {
+        let asset = makeAsset(id: "preview-url-order", size: 1)
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "preview-url-order",
+            assets: [asset]
+        )
+        let cache = previewCache
+        let gridURL = cache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        let largeURL = cache.url(for: PreviewCacheKey(assetID: asset.id, level: .large))
+
+        // No physical file yet: every requested level misses.
+        XCTAssertNil(model.previewURL(for: asset.id, levels: [.large, .grid]))
+
+        // Only grid.heic exists: the grid level wins even though .large was
+        // requested first.
+        try writePreviewPlaceholder(to: gridURL)
+        XCTAssertEqual(model.previewURL(for: asset.id, levels: [.large, .grid]), gridURL)
+
+        // large.heic appears: the higher-preference level now wins.
+        try writePreviewPlaceholder(to: largeURL)
+        XCTAssertEqual(model.previewURL(for: asset.id, levels: [.large, .grid]), largeURL)
+    }
+
     func testToggleZoomKeepsSelectionAndMetadataDecisionFeedback() throws {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)
