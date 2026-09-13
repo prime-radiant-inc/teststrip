@@ -23,7 +23,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    ```
    Call these `FC` and `FQ`. Per `reviewCards`, "Unnamed faces" only appears
    when `photosWithDetectedFaces > 0` (`= FC` if `FC > 0` else `FQ`, per
-   `PeoplePresentation.init:554`), and "Face quality checks" only appears when
+   `PeopleView.swift:618`), and "Face quality checks" only appears when
    `FQ > 0`.
 2. `script/ax_drive.sh wait-vended Teststrip`; press ⌘6 for the People lens
    (People is one of the six top-level `LibraryLens` cases, reached directly
@@ -38,13 +38,15 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    "Face quality checks" shows `photoCountDescription(FQ)`.
 5. `script/ax_drive.sh press --role AXButton --help "Review faces"` (or the
    card's button, matched by its `suggestedActionTitle` help text) — assert
-   the app navigates via `model.selectSource(_:)` (`PeopleView.swift:560-566`,
-   `AppModel.swift:4930-4933`) to the card's `target: LibrarySource?`
-   (`PeopleView.swift:900`): "Unnamed faces" routes to
-   `.smartCollection(.facesFound)` when `faceSignalKind == .faceCount`, else
-   `.evaluationKind(faceSignalKind, titled:)`; "Face quality checks" routes
-   to `.evaluationKind(.faceQuality, titled:)` (`PeopleView.swift:762-786`).
-   Confirm post-navigation the grid is scoped to the matching source.
+   the app navigates via `applyConfirmAction(card.reviewAction)`
+   (`PeopleView.swift:190-196`) → `PeopleQueueConfirmAction.selectReview`
+   (`PeopleQueuePresentation.swift:108`) → `model.selectPeopleSignal(_:)`
+   (`AppModel.swift:12068`), which appends `.evaluationKind(kind)` to the
+   current People scope predicates, calls `selectSource(.search(...))`, then
+   `selectLens(.grid)`. Each card's `filterKind` (`PeopleView.swift:767-789`)
+   is `faceSignalKind` for "Unnamed faces" and `.faceQuality` for "Face
+   quality checks". Confirm post-navigation the grid is scoped to that
+   evaluation kind.
 6. **Disabled/empty-state check.** This fixture is expected to produce both
    `FC > 0` and `FQ > 0` (both providers run over the same 11-photo corpus),
    so neither card is reachable in a disabled state from `--faces` alone. To
@@ -55,8 +57,8 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    assert the card is grayed (`isActionEnabled == false` → title uses
    `.secondary` foreground, no trailing arrow glyph) and its `AXHelp` reads
    "Face naming is not built yet" (the generic disabled string applied to
-   *all* review cards, per `PeopleView.swift:200-208` (disabled/help) and
-   `PeopleView.swift:527-550` (title/arrow) — not a per-card
+   *all* review cards, per `PeopleView.swift:195-197` (disabled/help) and
+   `PeopleView.swift:534-543` (title/arrow) — not a per-card
    message).
 
 ## Expected
@@ -92,7 +94,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Card gating and
-routing confirmed by static read of `Sources/TeststripApp/PeopleView.swift:762-789`
+routing confirmed by static read of `Sources/TeststripApp/PeopleView.swift:765-790`
 (`reviewCards`) and `:182-183`/`:496-503` (disabled state, tap handler,
 `selectSidebarTarget`). Needs a human-present re-run. All SQL in this card
 was run headlessly against a seeded --faces catalog on 2026-07-10 (schema per
@@ -104,12 +106,17 @@ already left the top-level ⌘3 workspace slot but was reached as a Library
 sub-view toggle rather than its own key — fixed to ⌘6 (or the toolbar lens
 switcher's "People" segment). Also, `selectSidebarTarget` no longer exists
 anywhere in `Sources/` (`grep -rn "selectSidebarTarget" Sources/` → nothing)
-— the review cards' tap handler is `selectPeopleReviewCard`
-(`PeopleView.swift:560-566`), which calls `model.selectSource(_:)`
-(`AppModel.swift:4930`) on the card's `target: LibrarySource?`
-(`PeopleView.swift:900`), itself built from `.smartCollection(.facesFound)`/
-`.evaluationKind(_:titled:)` (`PeopleView.swift:762-786`), not a
-`.reviewQueue`/`.evaluationKind` sidebar-target enum. Rewrote Step 5
-accordingly. Supersedes prior status: no prior run evidence exists to
+— and neither does the `selectPeopleReviewCard` handler this note first
+cited (corrected 2026-09-13; `grep -rn "selectPeopleReviewCard" Sources/` →
+nothing). The review card is now a `Button` whose action calls
+`applyConfirmAction(card.reviewAction)` (`PeopleView.swift:190-196`);
+`applyConfirmAction(_:)` (`PeopleView.swift:98`) routes
+`.selectReview(let kind)` → `try model.selectPeopleSignal(kind)`
+(`AppModel.swift:12068`), from `PeopleReviewCard.reviewAction`
+(`PeopleView.swift:902`, `filterKind.map(PeopleQueueConfirmAction.selectReview)
+?? .none`; `PeopleQueuePresentation.swift:108`). There is no
+`selectSidebarTarget`, `selectPeopleReviewCard`, or `model.selectSource(_:)`
+in this path. Rewrote Step 5 accordingly. Supersedes prior status: no prior
+run evidence exists to
 invalidate (still BLOCKED-CONSOLE); the citation/routing-mechanism fixes
 only affect what a future runner would read as ground truth.

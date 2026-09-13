@@ -81,8 +81,8 @@ Keep the app warm during the evaluation wait (re-assert frontmost each poll).
 applied, deviating from the task brief.** The brief called for this card's
 three uses of "proposals" (Steps 4/5, Sharp edges) to become "ghosts", on
 the assumption they referred to autopilot's proposal mechanism. Source
-check: `ReviewQueue.potentialPicks` compiles to `SetQuery(predicates:
-[.likelyPick])` (`Sources/TeststripCore/Catalog/CatalogRepository.swift:3274-3294`)
+check: `SmartCollection.potentialPicks.query` compiles to `SetQuery(predicates:
+[.likelyPick])` (`Sources/TeststripApp/AppModel.swift:709-714`)
 — a quality-score threshold query (`json_extract(metadata_json,'$.flag')
 IS NULL AND EXISTS (... evaluation_signals ...)`) with no reference to
 `AutopilotProposal`, `autopilot_proposals`, or `AutopilotGhost` anywhere.

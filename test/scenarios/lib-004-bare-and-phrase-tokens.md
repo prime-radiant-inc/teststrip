@@ -11,7 +11,7 @@ These are parsed by `flagPredicate(for:)` (`LibrarySearchIntent.swift:272-281`),
 a token, so a bare word never shadows a `field:value` token typed elsewhere
 in the same query. Unit coverage:
 `LibrarySearchIntentTests.testParsesPhotographerFilterTermsAndKeepsResidualSearchText`,
-`.testParsesReviewQueueTerms`, `.testParsesRatingFieldFilter`. This card is
+`.testParsesSmartCollectionTerms`, `.testParsesRatingFieldFilter`. This card is
 the AX-level companion.
 
 ## Pre-state

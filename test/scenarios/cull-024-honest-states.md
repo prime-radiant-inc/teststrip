@@ -550,7 +550,9 @@ with an empty row list, an honest-states violation (a caveat claiming a
 signal this card shows nothing for). Fixed in
 `CullReadsCardPresentation.swift` (falls back to "No read yet" when
 `signalRows(for:)` is empty) with a red-proofed unit test
-(`testSingleFaceSpecificSignalFallsBackToNoReadYetNotAPhantomCaveat`), and
+(retired with the fallback itself; its current successor is
+`CullReadsCardPresentationTests.testExactlyOneScoredKindOfAnyKindIsAPartialRead`,
+which now asserts a lone face-specific kind also renders a PARTIAL read), and
 every passage in this card asserting "exactly one scored kind → PARTIAL
 read" unqualified (Source, Step 4, Step 6, Expected, Sharp edges) was
 re-qualified to distinguish the whole-photo case (PARTIAL read) from the
