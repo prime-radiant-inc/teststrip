@@ -49,7 +49,7 @@
 **Interfaces:**
 - Produces: `PreviewCache.url(for:)` now returns `grid.heic` / `large.heic` / `full.heic` paths instead of per-level `.jpg` paths. No signature change — the return type is still `URL`. Callers that check `url(for: .micro)` and `url(for: .grid)` will see the same path.
 
-- [ ] **Step 1: Write failing tests for physical file mapping**
+- [x] **Step 1: Write failing tests for physical file mapping**
 
 Add to `Tests/TeststripCoreTests/PreviewCacheTests.swift`:
 
@@ -106,12 +106,12 @@ func testThreePhysicalFilesAreDistinct() throws {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `swift test --filter PreviewCacheTests`
 Expected: FAIL — `url(for:)` still returns `.jpg` paths with per-level names.
 
-- [ ] **Step 3: Implement physical file mapping**
+- [x] **Step 3: Implement physical file mapping**
 
 Replace `Sources/TeststripCore/Preview/PreviewCache.swift` line 25 (`"\(key.level.rawValue).jpg"`) with the physical file mapping:
 
@@ -133,12 +133,12 @@ private static func physicalFile(for level: PreviewLevel) -> String {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `swift test --filter PreviewCacheTests`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/TeststripCore/Preview/PreviewCache.swift Tests/TeststripCoreTests/PreviewCacheTests.swift
@@ -156,7 +156,7 @@ git commit -m "feat: map PreviewCache logical levels to 3 physical HEIC files"
 **Interfaces:**
 - Produces: `PreviewRenderer.render(sourceURL:level:destinationURL:)` now outputs HEIC with `kCGImageDestinationLossyCompressionQuality`. Signature unchanged.
 
-- [ ] **Step 1: Write failing tests for HEIC output and quality**
+- [x] **Step 1: Write failing tests for HEIC output and quality**
 
 Add to `Tests/TeststripCoreTests/PreviewRendererTests.swift`:
 
@@ -206,12 +206,12 @@ func testOriginalPreviewIsFullResolution() throws {
 
 Add `import UniformTypeIdentifiers` at the top of the test file if not already present.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `swift test --filter PreviewRendererTests`
 Expected: FAIL — output is still JPEG, and HEIC type check fails.
 
-- [ ] **Step 3: Implement HEIC output with quality control**
+- [x] **Step 3: Implement HEIC output with quality control**
 
 In `Sources/TeststripCore/Preview/PreviewRenderer.swift`, replace the `render` method (lines 18–49):
 
@@ -264,12 +264,12 @@ private static func compressionQuality(for level: PreviewLevel) -> Double {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `swift test --filter PreviewRendererTests`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/TeststripCore/Preview/PreviewRenderer.swift Tests/TeststripCoreTests/PreviewRendererTests.swift
@@ -287,7 +287,7 @@ git commit -m "feat: render previews as HEIC with per-level quality control"
 **Interfaces:**
 - Produces: `PreviewRenderer.renderLevels(fromLocalSource:levels:destinationProvider:)` — generates multiple physical files from one local source URL. Deduplicates levels that map to the same physical file.
 
-- [ ] **Step 1: Write failing test for batch render**
+- [x] **Step 1: Write failing test for batch render**
 
 Add to `Tests/TeststripCoreTests/PreviewRendererTests.swift`:
 
@@ -353,12 +353,12 @@ func testRenderLevelsDeduplicatesLevelsMappingToSamePhysicalFile() throws {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `swift test --filter PreviewRendererTests`
 Expected: FAIL — `renderLevels` does not exist.
 
-- [ ] **Step 3: Implement renderLevels**
+- [x] **Step 3: Implement renderLevels**
 
 Add to `Sources/TeststripCore/Preview/PreviewRenderer.swift` after the `render` method:
 
@@ -398,12 +398,12 @@ private static func physicalFile(for level: PreviewLevel) -> String {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `swift test --filter PreviewRendererTests`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/TeststripCore/Preview/PreviewRenderer.swift Tests/TeststripCoreTests/PreviewRendererTests.swift
@@ -424,7 +424,7 @@ git commit -m "feat: add batch renderLevels for generating multiple previews fro
 - The `levels` array uses the logical levels that the caller wants generated. The executor deduplicates to physical files and marks all served logical levels as generated.
 - **Important:** keep the old `generatePreview` case temporarily for migration — the executor handles both. Remove it in Task 8 after all callers are updated. Actually, since we're deleting all existing previews and regenerating, we can replace it outright. But test files reference `.generatePreview` — update those too.
 
-- [ ] **Step 1: Write failing test for batch command**
+- [x] **Step 1: Write failing test for batch command**
 
 Add to `Tests/TeststripCoreTests/WorkerCommandExecutorTests.swift`:
 
@@ -496,12 +496,12 @@ func testGeneratePreviewsMarksAllDerivedLevelsAsGenerated() throws {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `swift test --filter WorkerCommandExecutorTests`
 Expected: FAIL — `.generatePreviews` does not exist.
 
-- [ ] **Step 3: Add the batch command to WorkerCommand**
+- [x] **Step 3: Add the batch command to WorkerCommand**
 
 In `Sources/TeststripCore/Worker/WorkerCommand.swift`:
 
@@ -525,7 +525,7 @@ case .generatePreviews(let assetID, let levels):
     return "generate \(levels.map(\.rawValue).joined(separator: ",")) previews for \(assetID.rawValue)"
 ```
 
-- [ ] **Step 4: Update WorkerProtocol encode/decode**
+- [x] **Step 4: Update WorkerProtocol encode/decode**
 
 In `Sources/TeststripCore/Worker/WorkerProtocol.swift`:
 
@@ -579,7 +579,7 @@ Update `CodingKeys` to replace `level` with `levels` if the enum uses explicit c
 
 **Important:** Update every place in `WorkerProtocol.swift` that sets `level:` to `level: nil` — change those to `levels: nil`. There are about 10 such occurrences across the other command cases.
 
-- [ ] **Step 5: Update WorkerCommandExecutor**
+- [x] **Step 5: Update WorkerCommandExecutor**
 
 In `Sources/TeststripCore/Worker/WorkerCommandExecutor.swift`, replace the `.generatePreview` case (lines 216–239) with:
 
@@ -650,7 +650,7 @@ private static func allLevelsServedBy(_ levels: [PreviewLevel]) -> [PreviewLevel
 
 **Important:** Check `recordBlockedAvailabilityFailureAndThrow` — it takes a `level: PreviewLevel` parameter. We pass `levels.first ?? .grid` as a representative level for the failure record. This is fine — the failure is per-asset, not per-level; the queue tracks each level independently and will re-queue them all.
 
-- [ ] **Step 6: Update existing tests that reference .generatePreview**
+- [x] **Step 6: Update existing tests that reference .generatePreview**
 
 In `Tests/TeststripCoreTests/WorkerCommandExecutorTests.swift`, update all existing tests that use `.generatePreview(assetID:level:)` to use `.generatePreviews(assetID:levels:)`. For example, change:
 
@@ -666,12 +666,12 @@ And update the expected result message from `"generated medium preview for sourc
 
 Do this for all existing tests in the file that use `.generatePreview`. The pattern is: `.generatePreview(assetID: X, level: Y)` → `.generatePreviews(assetID: X, levels: [Y])`.
 
-- [ ] **Step 7: Run tests to verify they pass**
+- [x] **Step 7: Run tests to verify they pass**
 
 Run: `swift test --filter WorkerCommandExecutorTests`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add Sources/TeststripCore/Worker/WorkerCommand.swift Sources/TeststripCore/Worker/WorkerProtocol.swift Sources/TeststripCore/Worker/WorkerCommandExecutor.swift Tests/TeststripCoreTests/WorkerCommandExecutorTests.swift
@@ -690,7 +690,7 @@ git commit -m "feat: replace generatePreview with batch generatePreviews command
 - Consumes: `WorkerCommand.generatePreviews(assetID:levels:)` from Task 4
 - Produces: `requestPreview(assetID:level:)` now enqueues `.generatePreviews` with a single-element levels array. `previewURL(for:levels:)` deduplicates physical file checks.
 
-- [ ] **Step 1: Write failing test for previewURL dedup**
+- [x] **Step 1: Write failing test for previewURL dedup**
 
 If there's a test file for AppModel preview URL logic, add there. Otherwise add to an existing preview-related test file. The test should verify that `previewURL(for:levels: [.micro, .grid])` returns the grid.heic URL if it exists, and stats the filesystem only once for the duplicate.
 
@@ -698,7 +698,7 @@ Since AppModel tests require a full catalog setup, this is better tested as an i
 
 Skip a separate test here — the dedup is a performance optimization, not a behavior change. The existing tests that call `previewURL(for:levels:)` will verify correctness. Move to implementation.
 
-- [ ] **Step 2: Update previewURL dedup**
+- [x] **Step 2: Update previewURL dedup**
 
 In `Sources/TeststripApp/AppModel.swift`, update `previewURL(for:levels:)` (line 15432):
 
@@ -719,7 +719,7 @@ public func previewURL(for assetID: AssetID, levels: [PreviewLevel]) -> URL? {
 }
 ```
 
-- [ ] **Step 3: Update requestPreview to use generatePreviews**
+- [x] **Step 3: Update requestPreview to use generatePreviews**
 
 In `Sources/TeststripApp/AppModel.swift`, line 9983, change:
 
@@ -731,7 +731,7 @@ to:
 command: .generatePreviews(assetID: assetID, levels: [level]),
 ```
 
-- [ ] **Step 4: Update enqueuePendingPreviewGeneration**
+- [x] **Step 4: Update enqueuePendingPreviewGeneration**
 
 In `Sources/TeststripApp/AppModel.swift`, line 10043, change:
 
@@ -743,12 +743,12 @@ to:
 command: .generatePreviews(assetID: pendingItem.assetID, levels: [pendingItem.level]),
 ```
 
-- [ ] **Step 5: Run existing tests to verify nothing breaks**
+- [x] **Step 5: Run existing tests to verify nothing breaks**
 
 Run: `swift test`
 Expected: PASS (some tests may need updating if they check for `.generatePreview` in command assertions — fix those inline)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Sources/TeststripApp/AppModel.swift
@@ -767,9 +767,11 @@ git commit -m "feat: update AppModel to use batch generatePreviews and dedup pre
 - Consumes: `PreviewRenderer.renderLevels` from Task 3, `PreviewCache` physical mapping from Task 1
 - Produces: `importPreviewLevels` is `[.grid]` (not `[.micro, .grid]`). PreIngest thumbnail promotion is removed. Import uses copy-once path.
 
-- [ ] **Step 1: Write failing test for import generating grid only**
+- [x] **Step 1: Write failing test for import generating grid only**
 
 Add to `Tests/TeststripCoreTests/LibraryImportServiceTests.swift` (or the existing import test file). The test should verify that after import with a `preIngestThumbnailCache` present, `grid.heic` exists (not `micro.jpg`), and both `.grid` and `.micro` are marked generated in the queue:
+
+> **Note (reconciled 2026-09-13):** Landed as `testAddFolderCatalogsSupportedImagesAndGeneratesGridPreview` (`Tests/TeststripCoreTests/LibraryImportServiceTests.swift:5`), which asserts `grid.heic` is produced at the grid dimension. The derived-level queue marking is covered by `testAllLevelsServedByExpandsEachLevelToItsCoLocatedSiblings` (`PreviewCacheTests.swift:80`) and `testGeneratePreviewsMarksAllDerivedLevelsAsGenerated` (`WorkerCommandExecutorTests.swift:1657`).
 
 ```swift
 func testImportGeneratesGridHeicAndMarksMicroAndGridGenerated() throws {
@@ -813,7 +815,7 @@ func testImportGeneratesGridHeicAndMarksMicroAndGridGenerated() throws {
 }
 ```
 
-- [ ] **Step 2: Update importPreviewLevels**
+- [x] **Step 2: Update importPreviewLevels**
 
 In `Sources/TeststripCore/Ingest/LibraryImportService.swift`, line 116, change:
 
@@ -825,9 +827,11 @@ to:
 private static let importPreviewLevels: [PreviewLevel] = [.grid]
 ```
 
-- [ ] **Step 3: Remove preIngest thumbnail promotion**
+- [x] **Step 3: Remove preIngest thumbnail promotion**
 
 In `Sources/TeststripCore/Ingest/LibraryImportService.swift`, lines 465–483, remove the `if let cache = preIngestThumbnailCache` block that promotes the temp thumbnail to the `.micro` slot. The import now always renders from the original via the copy-once path.
+
+> **Note (reconciled 2026-09-13):** The promotion block is gone and `generatePreviews` renders via `renderer.renderLevels` (`LibraryImportService.swift:489`). The now-unused `preIngestThumbnailCache` parameter was retained (still threaded through at lines 138–455); it is not read in the generation body.
 
 The `generatePreviews` method (line 452) should be updated to use `renderer.renderLevels` with the copy-once path:
 
@@ -897,12 +901,12 @@ private static func allLevelsServedBy(_ level: PreviewLevel) -> [PreviewLevel] {
 
 Remove the `preIngestThumbnailCache` parameter from `generatePreviews` since it's no longer used. Check all call sites and remove the argument.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `swift test`
 Expected: PASS (update any tests that passed `preIngestThumbnailCache` or checked for `.micro` files)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/TeststripCore/Ingest/LibraryImportService.swift
@@ -920,7 +924,7 @@ git commit -m "feat: import generates grid.heic only, removes preIngest thumbnai
 **Interfaces:**
 - Produces: `PreviewImageDataLoader.loadImage(from:maxPixelDimension:rotation:)` — downsamples in memory via `CGImageSourceCreateThumbnailAtIndex` when `maxPixelDimension` is non-nil. Falls back to existing `loadImage(from:rotation:)` when nil.
 
-- [ ] **Step 1: Write failing test for downsampling**
+- [x] **Step 1: Write failing test for downsampling**
 
 Add to `Tests/TeststripAppTests/CachedPreviewImageTests.swift`:
 
@@ -992,12 +996,12 @@ func testLoadImageWithoutMaxPixelDimensionLoadsFullSize() async throws {
 
 Add `import UniformTypeIdentifiers` to the test file.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `swift test --filter CachedPreviewImageTests`
 Expected: FAIL — `loadImage(from:maxPixelDimension:rotation:)` does not exist.
 
-- [ ] **Step 3: Implement downsampling loader**
+- [x] **Step 3: Implement downsampling loader**
 
 Add to `Sources/TeststripApp/CachedPreviewImage.swift` in the `PreviewImageDataLoader` enum:
 
@@ -1040,12 +1044,12 @@ static func loadImage(
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `swift test --filter CachedPreviewImageTests`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/TeststripApp/CachedPreviewImage.swift Tests/TeststripAppTests/CachedPreviewImageTests.swift
@@ -1065,11 +1069,11 @@ git commit -m "feat: add in-memory downsampling for derived preview levels"
 - Modify: `Sources/TeststripBench/PreviewRenderBenchmark.swift`
 - Modify: any other file that references `.generatePreview` or constructs preview paths with `.jpg`
 
-- [ ] **Step 1: Find all remaining references to .generatePreview**
+- [x] **Step 1: Find all remaining references to .generatePreview**
 
 Run: `grep -rn "\.generatePreview" Sources/ Tests/`
 
-- [ ] **Step 2: Update each reference**
+- [x] **Step 2: Update each reference**
 
 Replace `.generatePreview(assetID: X, level: Y)` with `.generatePreviews(assetID: X, levels: [Y])` in:
 - `Sources/TeststripBench/WorkerRecoverySmoke.swift:70`
@@ -1079,13 +1083,15 @@ Replace `.generatePreview(assetID: X, level: Y)` with `.generatePreviews(assetID
 
 In benchmark files, update any code that generates `[.micro, .grid]` to `[.grid]` and any code that constructs preview paths with `.jpg` to use `PreviewCache.url(for:)` instead.
 
+> **Not applied (reconciled 2026-09-13):** `Sources/TeststripBench/RealCorpusSmoke.swift:111` still seeds `[.micro, .grid]` rather than `[.grid]`. The remaining `.jpg` paths (`PreviewRenderBenchmark.swift:37`, `SmokeCatalogSeeder.swift:180`) are source-image fixtures written by the seeders, not preview destinations, so the `PreviewCache.url(for:)` change does not apply to them. Preview destinations already resolve through `PreviewCache.url(for:)`.
+
 In `Sources/TeststripBench/PreviewRenderBenchmark.swift:37`, the line:
 ```swift
 let sourceURL = sourceRoot.appendingPathComponent("\(assetID.rawValue).jpg")
 ```
 should use the PreviewCache URL mapping instead of hardcoding `.jpg`.
 
-- [ ] **Step 4: Run full build**
+- [x] **Step 4: Run full build**
 
 Run: `swift build`
 Expected: SUCCESS
@@ -1095,12 +1101,12 @@ If there are compile errors, fix them inline. Common issues:
 - Any file that references `.generatePreview` — use `.generatePreviews`
 - Any test that checks for a `.micro.jpg` file — it's now `grid.heic`
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `swift test`
 Expected: All tests pass. If tests fail because they expect `.jpg` extensions or per-level files, update them to expect `.heic` and the physical file mapping.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -1116,7 +1122,7 @@ git commit -m "feat: update all callers for batch generatePreviews and HEIC prev
 
 The `cachedPreviewURL(for:)` method (line 447) iterates `[.large, .medium, .grid, .micro]` and stats each. With the new mapping, `.large` and `.medium` are the same file, and `.grid` and `.micro` are the same file. This means it stats the same file twice, but the behavior is correct — it returns the first file that exists.
 
-- [ ] **Step 1: Update cachedPreviewURL to dedup**
+- [x] **Step 1: Update cachedPreviewURL to dedup**
 
 In `Sources/TeststripCore/Worker/WorkerCommandExecutor.swift`, line 447, update:
 
@@ -1134,12 +1140,12 @@ private func cachedPreviewURL(for assetID: AssetID) -> URL? {
 
 This iterates one level per physical file (large → large.heic, grid → grid.heic, original → full.heic) instead of 4 levels with duplicates.
 
-- [ ] **Step 2: Run tests to verify**
+- [x] **Step 2: Run tests to verify**
 
 Run: `swift test --filter WorkerCommandExecutorTests`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Sources/TeststripCore/Worker/WorkerCommandExecutor.swift
@@ -1158,7 +1164,7 @@ git commit -m "refactor: dedup cachedPreviewURL to one check per physical file"
 - Consumes: `PreviewCache.root` directory to find and delete `.jpg` files
 - Produces: A migration that deletes all `.jpg` files in the preview cache root and resets `preview_generation_queue` to re-queue all logical levels for all assets.
 
-- [ ] **Step 1: Write failing test for JPEG deletion migration**
+- [x] **Step 1: Write failing test for JPEG deletion migration**
 
 Add to `Tests/TeststripCoreTests/CatalogMigrationTests.swift`:
 
@@ -1215,12 +1221,12 @@ func testMigrationResetsPreviewGenerationQueue() throws {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `swift test --filter CatalogMigrationTests`
 Expected: FAIL — `PreviewMigration` does not exist.
 
-- [ ] **Step 3: Implement PreviewMigration**
+- [x] **Step 3: Implement PreviewMigration**
 
 Create `Sources/TeststripCore/Preview/PreviewMigration.swift`:
 
@@ -1252,7 +1258,7 @@ public enum PreviewMigration {
 }
 ```
 
-- [ ] **Step 4: Add resetAllPreviewGenerationQueue to CatalogRepository**
+- [x] **Step 4: Add resetAllPreviewGenerationQueue to CatalogRepository**
 
 In `Sources/TeststripCore/Catalog/CatalogRepository.swift`, add:
 
@@ -1276,14 +1282,16 @@ private func allAssetIDs() throws -> [AssetID] {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `swift test --filter CatalogMigrationTests`
 Expected: PASS
 
-- [ ] **Step 6: Wire migration into app launch**
+- [x] **Step 6: Wire migration into app launch**
 
 In `Sources/TeststripApp/AppModel.swift`, find the catalog open/migrate path and add after migration:
+
+> **Note (reconciled 2026-09-13):** Wired in `AppCatalog.open(paths:)` (`Sources/TeststripApp/AppCatalog.swift:114-120`) under the `preview-heic-migration-done` `UserDefaults` guard, not in `AppModel.swift`.
 
 ```swift
 // One-time: delete old JPEG previews and re-queue generation
@@ -1302,7 +1310,7 @@ if !UserDefaults.standard.bool(forKey: migrationKey) {
 }
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add Sources/TeststripCore/Preview/PreviewMigration.swift Sources/TeststripCore/Catalog/CatalogRepository.swift Sources/TeststripApp/AppModel.swift Tests/TeststripCoreTests/CatalogMigrationTests.swift
@@ -1313,12 +1321,12 @@ git commit -m "feat: add migration to delete JPEG previews and re-queue for HEIC
 
 ## Task 11: Full test suite verification
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 Run: `swift test`
 Expected: All tests pass (2700+ tests, 0 failures)
 
-- [ ] **Step 2: Fix any remaining failures**
+- [x] **Step 2: Fix any remaining failures**
 
 If any tests fail, they are likely due to:
 - Hardcoded `.jpg` extensions in test fixtures — update to `.heic`
@@ -1328,12 +1336,12 @@ If any tests fail, they are likely due to:
 
 Fix each failure inline.
 
-- [ ] **Step 3: Run again to confirm**
+- [x] **Step 3: Run again to confirm**
 
 Run: `swift test`
 Expected: All tests pass
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
