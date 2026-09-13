@@ -257,6 +257,7 @@ public struct IngestService: Sendable {
                 }
                 let fingerprint = try fingerprint(for: originalURL, precomputedContentHash: sourceContentHash)
                 var metadata = existingAsset?.metadata ?? AssetMetadata()
+                var importedSidecarRotation: Int?
                 let existingSidecar: URL?
                 if isInPlace && didPrecompute {
                     existingSidecar = precomputed[sourceIndex].existingSidecarURL
@@ -283,8 +284,9 @@ public struct IngestService: Sendable {
                             sidecarData: sidecarData,
                             sidecarModificationDate: sidecarModificationDate
                         )
-                        if case .importSidecar(let sidecarMetadata, _) = decision {
+                        if case .importSidecar(let sidecarMetadata, let rotation) = decision {
                             metadata = metadata.mergingConfirmedSidecar(sidecarMetadata)
+                            importedSidecarRotation = rotation
                             importedSidecars.append(ImportedSidecarSync(
                                 assetID: assetID,
                                 sidecarURL: sidecarURL,
@@ -315,6 +317,25 @@ public struct IngestService: Sendable {
                         ))
                     }
                 }
+                var technicalMetadata = isInPlace && didPrecompute
+                    ? precomputed[sourceIndex].technicalMetadata ?? existingAsset?.technicalMetadata
+                    : technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
+                if let importedSidecarRotation {
+                    // A pre-existing sidecar's rotation override is authoritative
+                    // over the decode-derived orientation, mirroring the worker's
+                    // `.importSidecar` handler. A sidecar carrying only rotation
+                    // still needs a record to hold it, so fall back to the same
+                    // placeholder shape `updateRotation` uses.
+                    if technicalMetadata == nil {
+                        technicalMetadata = AssetTechnicalMetadata(
+                            pixelWidth: 0,
+                            pixelHeight: 0,
+                            provenance: ProviderProvenance(
+                                provider: "rotation", model: "", version: "", settingsHash: "")
+                        )
+                    }
+                    technicalMetadata?.rotation = importedSidecarRotation
+                }
                 let asset = Asset(
                     id: assetID,
                     originalURL: originalURL,
@@ -322,9 +343,7 @@ public struct IngestService: Sendable {
                     fingerprint: fingerprint,
                     availability: .online,
                     metadata: metadata,
-                    technicalMetadata: isInPlace && didPrecompute
-                        ? precomputed[sourceIndex].technicalMetadata ?? existingAsset?.technicalMetadata
-                        : technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
+                    technicalMetadata: technicalMetadata
                 )
                 assets.append(asset)
                 pendingCatalogAssets.append(asset)
