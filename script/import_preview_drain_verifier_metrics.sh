@@ -18,7 +18,11 @@ import sys
 
 payload = json.loads(os.environ["TESTSTRIP_BENCHMARK_SUMMARY_PAYLOAD"])
 expected_count = int(os.environ["TESTSTRIP_IMPORT_PREVIEW_DRAIN_EXPECTED_COUNT"])
-expected_preview_count = expected_count * 2
+# Deferred import queues one logical level per asset (.grid); the drain renders
+# grid.heic once per asset. pending/generated are logical queue-item counts and
+# cached is the physical .heic file count (PreviewCacheFileCounter) — all one
+# per asset.
+expected_preview_count = expected_count
 
 checks = {
     "benchmark": "import_preview_drain",

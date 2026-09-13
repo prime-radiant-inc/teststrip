@@ -32,14 +32,17 @@ checks = {
     "metrics.catalog_assets": expected_count,
     "metrics.previewed_assets": expected_previewed,
     "metrics.deferred_assets": expected_deferred,
-    "metrics.preview_work_items": expected_deferred * 2,
+    # Deferred import queues one logical level per asset (.grid); the drain
+    # renders grid.heic once per asset, so one preview work item per deferred
+    # asset and one physical .heic file per asset overall.
+    "metrics.preview_work_items": expected_deferred,
     "metrics.evaluation_work_items": expected_previewed,
     # The core regression guard: at least one sample caught a
     # .previewGeneration item and a .recognition item both running (and both
     # actually dispatched to the worker) at once.
     "metrics.overlap_observed": 1,
     "metrics.pending_previews_after_drain": 0,
-    "metrics.cached_previews": expected_count * 2,
+    "metrics.cached_previews": expected_count,
     "metrics.evaluation_signal_assets": expected_previewed,
     "metrics.worker_process_started": 1,
 }

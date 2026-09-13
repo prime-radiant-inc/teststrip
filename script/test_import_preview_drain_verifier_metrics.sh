@@ -14,10 +14,10 @@ assert_equal() {
   fi
 }
 
-summary_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":0.451,"preview_drain":1.551},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":200,"generated_previews":200,"preview_failures":0,"pending_previews_after_drain":0,"cached_previews":200}}'
-pending_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":0.451,"preview_drain":1.551},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":200,"generated_previews":199,"preview_failures":0,"pending_previews_after_drain":1,"cached_previews":199}}'
-slow_import_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":9.5,"preview_drain":1.551},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":200,"generated_previews":200,"preview_failures":0,"pending_previews_after_drain":0,"cached_previews":200}}'
-slow_drain_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":0.451,"preview_drain":9.5},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":200,"generated_previews":200,"preview_failures":0,"pending_previews_after_drain":0,"cached_previews":200}}'
+summary_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":0.451,"preview_drain":1.551},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":100,"generated_previews":100,"preview_failures":0,"pending_previews_after_drain":0,"cached_previews":100}}'
+pending_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":0.451,"preview_drain":1.551},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":100,"generated_previews":99,"preview_failures":0,"pending_previews_after_drain":1,"cached_previews":99}}'
+slow_import_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":9.5,"preview_drain":1.551},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":100,"generated_previews":100,"preview_failures":0,"pending_previews_after_drain":0,"cached_previews":100}}'
+slow_drain_payload='{"benchmark":"import_preview_drain","count":100,"measurements":{"import_deferred":0.451,"preview_drain":9.5},"metrics":{"imported_assets":100,"catalog_assets":100,"pending_previews_before_drain":100,"generated_previews":100,"preview_failures":0,"pending_previews_after_drain":0,"cached_previews":100}}'
 
 test_assert_import_preview_drain_summary_passes() {
   assert_import_preview_drain_summary "$summary_payload" 100 2 2
@@ -28,7 +28,7 @@ test_assert_import_preview_drain_summary_fails_with_pending_previews() {
     echo "expected pending preview failure" >&2
     exit 1
   fi
-  if ! grep -q "metrics.generated_previews expected 200" /tmp/teststrip-import-preview-drain-pending.err; then
+  if ! grep -q "metrics.generated_previews expected 100" /tmp/teststrip-import-preview-drain-pending.err; then
     echo "pending preview failure should name generated_previews" >&2
     exit 1
   fi
