@@ -14,9 +14,9 @@ assert_equal() {
   fi
 }
 
-summary_payload='{"benchmark":"card_import_smoke","count":12,"measurements":{"card_import_smoke":1.25},"metrics":{"imported_assets":12,"catalog_assets":12,"destination_originals":12,"cached_previews":24,"source_originals_unchanged":12,"source_roots":1,"destination_catalog_assets":12}}'
-missing_preview_payload='{"benchmark":"card_import_smoke","count":12,"measurements":{"card_import_smoke":1.25},"metrics":{"imported_assets":12,"catalog_assets":12,"destination_originals":12,"cached_previews":23,"source_originals_unchanged":12,"source_roots":1,"destination_catalog_assets":12}}'
-slow_payload='{"benchmark":"card_import_smoke","count":12,"measurements":{"card_import_smoke":9.5},"metrics":{"imported_assets":12,"catalog_assets":12,"destination_originals":12,"cached_previews":24,"source_originals_unchanged":12,"source_roots":1,"destination_catalog_assets":12}}'
+summary_payload='{"benchmark":"card_import_smoke","count":12,"measurements":{"card_import_smoke":1.25},"metrics":{"imported_assets":12,"catalog_assets":12,"destination_originals":12,"cached_previews":12,"source_originals_unchanged":12,"source_roots":1,"destination_catalog_assets":12}}'
+missing_preview_payload='{"benchmark":"card_import_smoke","count":12,"measurements":{"card_import_smoke":1.25},"metrics":{"imported_assets":12,"catalog_assets":12,"destination_originals":12,"cached_previews":11,"source_originals_unchanged":12,"source_roots":1,"destination_catalog_assets":12}}'
+slow_payload='{"benchmark":"card_import_smoke","count":12,"measurements":{"card_import_smoke":9.5},"metrics":{"imported_assets":12,"catalog_assets":12,"destination_originals":12,"cached_previews":12,"source_originals_unchanged":12,"source_roots":1,"destination_catalog_assets":12}}'
 
 test_assert_card_import_smoke_summary_passes() {
   assert_card_import_smoke_summary "$summary_payload" 12 2
@@ -27,7 +27,7 @@ test_assert_card_import_smoke_summary_fails_with_missing_cached_preview() {
     echo "expected missing cached preview failure" >&2
     exit 1
   fi
-  if ! grep -q "metrics.cached_previews expected 24" /tmp/teststrip-card-import-smoke-cache.err; then
+  if ! grep -q "metrics.cached_previews expected 12" /tmp/teststrip-card-import-smoke-cache.err; then
     echo "missing cached preview failure should name cached_previews" >&2
     exit 1
   fi

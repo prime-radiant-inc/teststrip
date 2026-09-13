@@ -17,7 +17,10 @@ import sys
 
 payload = json.loads(os.environ["TESTSTRIP_BENCHMARK_SUMMARY_PAYLOAD"])
 expected_count = int(os.environ["TESTSTRIP_CARD_IMPORT_SMOKE_EXPECTED_COUNT"])
-expected_preview_count = expected_count * 2
+# Import generates only grid.heic (micro is derived in memory), so the
+# physical .heic file count is one per asset. PreviewCacheFileCounter counts
+# physical .heic files.
+expected_preview_count = expected_count
 
 checks = {
     "benchmark": "card_import_smoke",

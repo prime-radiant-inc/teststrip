@@ -14,9 +14,9 @@ assert_equal() {
   fi
 }
 
-summary_payload='{"benchmark":"preview_render","count":100,"measurements":{"preview_render":1.551},"metrics":{"source_images":100,"rendered_previews":400,"cached_previews":400}}'
-missing_cache_payload='{"benchmark":"preview_render","count":100,"measurements":{"preview_render":1.551},"metrics":{"source_images":100,"rendered_previews":400,"cached_previews":399}}'
-slow_payload='{"benchmark":"preview_render","count":100,"measurements":{"preview_render":9.5},"metrics":{"source_images":100,"rendered_previews":400,"cached_previews":400}}'
+summary_payload='{"benchmark":"preview_render","count":100,"measurements":{"preview_render":1.551},"metrics":{"source_images":100,"rendered_previews":200,"cached_previews":200}}'
+missing_cache_payload='{"benchmark":"preview_render","count":100,"measurements":{"preview_render":1.551},"metrics":{"source_images":100,"rendered_previews":200,"cached_previews":199}}'
+slow_payload='{"benchmark":"preview_render","count":100,"measurements":{"preview_render":9.5},"metrics":{"source_images":100,"rendered_previews":200,"cached_previews":200}}'
 
 test_assert_preview_render_summary_passes() {
   assert_preview_render_summary "$summary_payload" 100 2
@@ -27,7 +27,7 @@ test_assert_preview_render_summary_fails_with_missing_cached_preview() {
     echo "expected missing cached preview failure" >&2
     exit 1
   fi
-  if ! grep -q "metrics.cached_previews expected 400" /tmp/teststrip-preview-render-cache.err; then
+  if ! grep -q "metrics.cached_previews expected 200" /tmp/teststrip-preview-render-cache.err; then
     echo "missing cached preview failure should name cached_previews" >&2
     exit 1
   fi
