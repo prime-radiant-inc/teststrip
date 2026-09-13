@@ -34,8 +34,8 @@ Source (re-verified against the working tree on this branch, **2026-07-16**):
   json_each(metadata_json,'$.aiUnconfirmedFields') WHERE json_each.value =
   ?)` (the `confirmedFieldClauseSQL`, `CatalogRepository.swift:3062-3069`) —
   a tentative reject is structurally excluded from `rejectCount`. The HUD
-  renders this as `sessionClusterText`
-  (`CullHUDPresentation.swift:54-56`, "✓ N · ✕ M · K left") with an explicit
+  renders this as `scopeClusterText`
+  (`CullHUDPresentation.swift:56-58`, "✓ N · ✕ M · K left") with an explicit
   `.accessibilityLabel("\(pickCount) picks, \(rejectCount) rejects,
   \(undecidedCount) left")` (`LibraryGridView.swift:4296-4302`). The
   progress bar's fill fraction is `reviewedCount / totalCount` where

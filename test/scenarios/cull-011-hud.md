@@ -35,7 +35,7 @@ step 4 and Source section cite the same `CullReadsCardPresentation`/
 incorrectly, attributed to the HUD). Source: `cullHUD`, `cullHUDPresentation`,
 and `isRatingEchoActive` in `Sources/TeststripApp/LibraryGridView.swift`;
 `CullHUDPresentation` (`showsScopeChip`/`showsRating`/`showsLabelDot`/
-`sessionClusterText`) in `Sources/TeststripApp/CullHUDPresentation.swift`;
+`scopeClusterText`) in `Sources/TeststripApp/CullHUDPresentation.swift`;
 `CullingProgressSummary` at `Sources/TeststripApp/AppModel.swift:50-68` +
 `cullingProgressSummary` at `:2768-2777` (line numbers drift as the file grows;
 re-grep `struct CullingProgressSummary`/`var cullingProgressSummary` if these
@@ -51,7 +51,7 @@ Exact computation (read from source, not guessed):
 - `pickCount`/`rejectCount` come from `cullingDecisionCounts()`, which counts
   over the **current scope's query** (`currentLibraryQuery()` + a `.flag`
   predicate), not the whole catalog — so these numbers are scope-relative.
-- `sessionClusterText = "✓ \(pickCount) · ✕ \(rejectCount) · \(undecidedCount) left"`,
+- `scopeClusterText = "✓ \(pickCount) · ✕ \(rejectCount) · \(undecidedCount) left"`,
   rendered with `.monospacedDigit()`.
 - `showsScopeChip = (scope != .all)`.
 - `showsRating = (rating > 0) || isRatingEchoActive`, where

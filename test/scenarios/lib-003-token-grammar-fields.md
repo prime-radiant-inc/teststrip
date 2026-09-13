@@ -190,21 +190,26 @@ ground truth or to keep this card's Steps bounded:
 ```
 
 ## Sharp edges
-- **Multi-word field values REQUIRE quotes** — the tokenizer
-  (`LibrarySearchIntent`'s quote-aware splitter, unit-tested in
-  `testParsesQuotedFieldValuesAndImportBatch`) treats an unquoted space as a
-  token boundary, so `camera:SmokeCam 1` commits as `camera:SmokeCam`
-  (matching every SmokeCam-N) and the trailing " 1" becomes a separate bare
-  residual token — **not dropped**. Confirmed live in run-lib-iter1. Ruling
-  (2026-07-10, Jesse): keep the quoted grammar as-is, but the split must be
-  visible rather than silent. `LibraryResultHeaderPresentation.interpretation`
-  now names both halves whenever residual text coexists with parsed tokens:
-  `camera:SmokeCam 1` renders as `read as Camera: SmokeCam + plain text "1"`
-  (`LibraryResultHeaderTests.testUnquotedMultiWordTokenSplitExposesStructuredTokenAndResidual`).
-  Cards must still use the quoted form to get the intended narrowing (the
-  unquoted form narrows to the field's prefix match plus a no-op residual
-  text search, not to the full multi-word value) but can now assert the
-  interpretation line explicitly instead of treating it as unobservable.
+- **Unquoted multi-word values are greedily consumed, so quotes are no
+  longer required for the trailing word to join the value.** The tokenizer
+  (`LibrarySearchIntent`'s quote-aware splitter) consumes an unquoted field
+  value up to end-of-input or the next recognized field token, so
+  `camera:SmokeCam 1` is a single `camera("SmokeCam 1")` token with **no**
+  residual (`LibrarySearchIntentTests
+  .testGreedilyConsumesUnquotedMultiWordFieldValueToEndOfInput`;
+  `LibraryResultHeaderTests
+  .testUnquotedMultiWordValueIsFullyStructuredWithNoInterpretation` pins
+  that the header shows no `read as … + plain text …` line because there is
+  nothing residual). This supersedes the old 2026-07-10 "unquoted space is a
+  token boundary / `camera:SmokeCam 1` splits into `camera:SmokeCam` plus a
+  bare residual `1`" behavior. **Value-constrained** fields (rating/iso/date/
+  color/…) never absorb trailing plain text — `iso:800 beach` leaves
+  `beach` as residual and the header names both halves
+  (`LibrarySearchIntentTests.testConstrainedFieldValueDoesNotAbsorbTrailingPlainText`;
+  `LibraryResultHeaderTests
+  .testStructuredTokenWithTrailingPlainTextNamesBothHalves`). Quoting still
+  forces a single value regardless of kind
+  (`testQuotedMultiWordFieldValueStillParsesAsSingleValue`).
 - The grid is lazily virtualized — off-screen rows aren't in the AX tree, so
   don't rely on scanning for a filename; use the result-count header instead.
 - Keep the app frontmost/warm while typing multi-character tokens — an

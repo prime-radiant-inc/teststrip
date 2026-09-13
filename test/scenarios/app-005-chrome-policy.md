@@ -2,18 +2,18 @@
 
 **What this covers**: Jesse lives in this chrome every session; the
 simplification sweep must hold in the assembled window, not just in unit
-tests. `LensChromePolicy` (`Sources/TeststripApp/LibraryGridView.swift:8260-
-8316`) — the successor to `WorkspaceChromePolicy` after the workspace shell
-was deleted — exposes ten chrome booleans (`showsBrowseChrome` plus nine
-delegates: `showsSearchField`, `showsFilterTokens`, `showsImportButton`,
-`showsFooter`, `showsInspector`, `showsImportMenu`, `showsCullButton`,
+tests. `LensChromePolicy` (`Sources/TeststripApp/LibraryGridView.swift:8733-
+8786`) — the successor to `WorkspaceChromePolicy` after the workspace shell
+was deleted — exposes nine chrome booleans (`showsBrowseChrome` plus eight
+delegates: `showsSearchField`, `showsFilterTokens`, `showsFooter`,
+`showsInspector`, `showsImportMenu`, `showsCullButton`,
 `showsExportButton`, `showsMoreMenu`), all gated on `view.lens`, not on a
 `Workspace` case (`Workspace` no longer exists). Every delegate except
 `showsInspector` is a bare call to `showsBrowseChrome`, which is `true` for
 the four browse lenses (Grid/Loupe/Timeline/Map) and `false` for **both**
 Cull and People — the "two focused lenses carry none of it" the enum's own
 doc comment states. `showsInspector` is unconditionally `true` for every
-lens, wired at `Sources/TeststripApp/main.swift:39-40`. Also the
+lens, wired at `Sources/TeststripApp/main.swift:41`. Also the
 UX-simplification sweep (spec `docs/superpowers/specs/2026-07-08-
 teststrip-ux-simplification-proposal.md`) is a legibility pass over working
 machinery — most of it only exists in the assembled AppKit chrome, where
