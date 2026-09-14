@@ -3,8 +3,6 @@ import Foundation
 
 /// Temporary thumbnail cache for pre-ingest selection review.
 /// Keyed by source file path; stores JPEGs in a temp directory.
-/// After import, thumbnails can be promoted to the permanent
-/// PreviewCache, avoiding re-rendering.
 public struct PreIngestThumbnailCache: Sendable, Equatable {
     public let directoryURL: URL
 
@@ -40,21 +38,6 @@ public struct PreIngestThumbnailCache: Sendable, Equatable {
         let url = thumbnailURL(for: sourceURL)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         return try? Data(contentsOf: url)
-    }
-
-    /// Copy a temp thumbnail to a permanent PreviewCache location.
-    /// No-op when no temp thumbnail exists for the source URL.
-    public func promote(from sourceURL: URL, to destinationURL: URL) throws {
-        let src = thumbnailURL(for: sourceURL)
-        guard FileManager.default.fileExists(atPath: src.path) else { return }
-        try? FileManager.default.createDirectory(
-            at: destinationURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-        try FileManager.default.copyItem(at: src, to: destinationURL)
     }
 
     public func cleanup() {

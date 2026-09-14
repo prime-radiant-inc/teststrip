@@ -32,7 +32,6 @@ enum ImportSheetState: Identifiable {
         let nonDuplicateURLs = Set(d.fileURLs).subtracting(d.duplicateURLs)
         let deselectedNonDuplicates = nonDuplicateURLs.subtracting(selectedURLs)
         draft.selectedFiles = deselectedNonDuplicates.isEmpty ? nil : selectedURLs
-        draft.preIngestThumbnailCache = d.thumbnailCache
         return .confirmation(draft)
     }
 
@@ -2903,8 +2902,7 @@ struct LibraryGridView: View {
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
                 autopilotAfterImport: draft.autopilotAfterImport,
-                selectedFiles: draft.selectedFiles,
-                preIngestThumbnailCache: draft.preIngestThumbnailCache
+                selectedFiles: draft.selectedFiles
             )
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
@@ -2919,8 +2917,7 @@ struct LibraryGridView: View {
                 evaluateAfterImport: draft.evaluateAfterImport,
                 importNewOnly: draft.importNewOnly,
                 autopilotAfterImport: draft.autopilotAfterImport,
-                selectedFiles: draft.selectedFiles,
-                preIngestThumbnailCache: draft.preIngestThumbnailCache
+                selectedFiles: draft.selectedFiles
             )
         }
     }
@@ -2958,16 +2955,14 @@ struct LibraryGridView: View {
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
         autopilotAfterImport: Bool = false,
-        selectedFiles: Set<URL>? = nil,
-        preIngestThumbnailCache: PreIngestThumbnailCache? = nil
+        selectedFiles: Set<URL>? = nil
     ) {
         model.beginImportFolders(
             folderURLs,
             evaluateAfterImport: evaluateAfterImport,
             importNewOnly: importNewOnly,
             autopilotAfterImport: autopilotAfterImport,
-            selectedFiles: selectedFiles,
-            preIngestThumbnailCache: preIngestThumbnailCache
+            selectedFiles: selectedFiles
         )
     }
 
@@ -2993,8 +2988,7 @@ struct LibraryGridView: View {
         evaluateAfterImport: Bool = true,
         importNewOnly: Bool = true,
         autopilotAfterImport: Bool = false,
-        selectedFiles: Set<URL>? = nil,
-        preIngestThumbnailCache: PreIngestThumbnailCache? = nil
+        selectedFiles: Set<URL>? = nil
     ) {
         model.beginImportCard(
             source: source,
@@ -3004,8 +2998,7 @@ struct LibraryGridView: View {
             evaluateAfterImport: evaluateAfterImport,
             importNewOnly: importNewOnly,
             autopilotAfterImport: autopilotAfterImport,
-            selectedFiles: selectedFiles,
-            preIngestThumbnailCache: preIngestThumbnailCache
+            selectedFiles: selectedFiles
         )
     }
 

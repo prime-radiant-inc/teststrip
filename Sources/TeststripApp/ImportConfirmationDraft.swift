@@ -316,7 +316,6 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var dedupPreview: ImportDedupPreview?
     var autopilotAfterImport = false
     var selectedFiles: Set<URL>? = nil
-    var preIngestThumbnailCache: PreIngestThumbnailCache? = nil
 
     var id: String {
         [

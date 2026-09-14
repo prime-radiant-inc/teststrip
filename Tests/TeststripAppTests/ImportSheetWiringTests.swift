@@ -107,7 +107,7 @@ final class ImportSheetWiringTests: XCTestCase {
     }
 
     /// Verifies that `confirmingSelection` on a `.selection` sheet transitions
-    /// to `.confirmation` with `selectedFiles` and `preIngestThumbnailCache` set.
+    /// to `.confirmation` with `selectedFiles` set.
     /// This would FAIL against the original buggy code that checked
     /// `if case .confirmation = importSheet` (false on `.selection`) and
     /// fell through to `importSheet = nil`.
@@ -117,7 +117,7 @@ final class ImportSheetWiringTests: XCTestCase {
             URL(fileURLWithPath: "/tmp/import-sheet/test/b.jpg"),
             URL(fileURLWithPath: "/tmp/import-sheet/test/c.jpg")
         ]
-        let (data, cache) = makeSelectionData(fileURLs: fileURLs)
+        let (data, _) = makeSelectionData(fileURLs: fileURLs)
         let sheet: ImportSheetState = .selection(data)
         let selectedURLs: Set<URL> = [fileURLs[0], fileURLs[2]]
 
@@ -128,7 +128,6 @@ final class ImportSheetWiringTests: XCTestCase {
             return
         }
         XCTAssertEqual(confirmedDraft.selectedFiles, selectedURLs)
-        XCTAssertEqual(confirmedDraft.preIngestThumbnailCache, cache)
         XCTAssertTrue(confirmedDraft.hasSelectionFilter)
         XCTAssertEqual(confirmedDraft.selectedCount, 2)
     }
@@ -148,7 +147,6 @@ final class ImportSheetWiringTests: XCTestCase {
             return
         }
         XCTAssertNil(restoredDraft.selectedFiles)
-        XCTAssertNil(restoredDraft.preIngestThumbnailCache)
         XCTAssertFalse(restoredDraft.hasSelectionFilter)
     }
 
@@ -226,8 +224,7 @@ final class ImportSheetWiringTests: XCTestCase {
         XCTAssertNil(ImportSheetState.cancellingSelection(nil))
     }
 
-    /// Verifies that PreIngestThumbnailCache is Equatable (required for
-    /// ImportConfirmationDraft's Equatable conformance with the new field).
+    /// Verifies that PreIngestThumbnailCache is Equatable.
     func testPreIngestThumbnailCacheIsEquatable() {
         let dirA = URL(fileURLWithPath: "/tmp/cache-eq-a", isDirectory: true)
         let dirB = URL(fileURLWithPath: "/tmp/cache-eq-b", isDirectory: true)
@@ -236,21 +233,6 @@ final class ImportSheetWiringTests: XCTestCase {
         let cache1Copy = PreIngestThumbnailCache(directoryURL: dirA)
         XCTAssertEqual(cache1, cache1Copy)
         XCTAssertNotEqual(cache1, cache2)
-    }
-
-    /// Verifies the cache is threaded through to beginImportFolder/beginImportCard.
-    @MainActor
-    func testBeginImportFoldersThreadsPreIngestThumbnailCache() {
-        let model = AppModel.demo()
-        let cache = PreIngestThumbnailCache()
-        model.beginImportFolders(
-            [URL(fileURLWithPath: "/tmp/import-sheet/only", isDirectory: true)],
-            selectedFiles: [URL(fileURLWithPath: "/tmp/x.jpg")],
-            preIngestThumbnailCache: cache
-        )
-        // The first folder starts immediately; pending is empty.
-        // The cache was accepted without error (typed parameter match).
-        XCTAssertTrue(model.pendingImportFolders.isEmpty)
     }
 
     // MARK: - Concurrent import queue (spec §3: serial ingest, concurrent review)
@@ -265,7 +247,7 @@ final class ImportSheetWiringTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         return try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _, _, _, _ in
+            importTaskFactory: { _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -302,7 +284,6 @@ final class ImportSheetWiringTests: XCTestCase {
         let running = try makeFolder("running", in: root)
         let queued = try makeFolder("queued", in: root)
         let queuedSelection: Set<URL> = [queued.appendingPathComponent("x.jpg")]
-        let queuedCache = PreIngestThumbnailCache()
 
         model.beginImportFolder(running)
         XCTAssertTrue(model.isImporting)
@@ -311,8 +292,7 @@ final class ImportSheetWiringTests: XCTestCase {
         model.beginImportFolder(
             queued,
             importNewOnly: false,
-            selectedFiles: queuedSelection,
-            preIngestThumbnailCache: queuedCache
+            selectedFiles: queuedSelection
         )
 
         XCTAssertNil(model.errorMessage)
@@ -321,7 +301,6 @@ final class ImportSheetWiringTests: XCTestCase {
         XCTAssertEqual(pending.url, queued)
         XCTAssertFalse(pending.importNewOnly)
         XCTAssertEqual(pending.selectedFiles, queuedSelection)
-        XCTAssertEqual(pending.preIngestThumbnailCache, queuedCache)
         // The running import is untouched; the queued commit did not start.
         XCTAssertTrue(model.isImporting)
 
