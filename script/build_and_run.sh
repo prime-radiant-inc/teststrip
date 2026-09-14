@@ -9,12 +9,18 @@ APP_NAME="Teststrip"
 BUNDLE_ID="com.teststrip.app"
 MIN_SYSTEM_VERSION="14.0"
 APPLICATION_SUPPORT_ENV_KEY="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"
+# The installed app is sandboxed, so its Application Support lives inside its
+# container. Non-isolated dev runs are unsandboxed and would otherwise open the
+# orphaned ~/Library/Application Support/Teststrip; point them at the container
+# library instead so the dev build and the installed app share one catalog.
+CANONICAL_APPLICATION_SUPPORT_DIRECTORY="${HOME}/Library/Containers/${BUNDLE_ID}/Data/Library/Application Support"
 REQUIRED_SECURITY_SCOPE_ENV_KEY="TESTSTRIP_REQUIRE_SECURITY_SCOPED_IMPORTS"
 CARD_IMPORT_ROUTE_ENV_KEY="TESTSTRIP_CARD_IMPORT_ROUTE"
 REJECT_DESTINATION_ENV_KEY="TESTSTRIP_REJECT_DESTINATION_DIR"
 EXPORT_DESTINATION_ENV_KEY="TESTSTRIP_EXPORT_DESTINATION_DIR"
 ISOLATED=0
 ISOLATED_APPLICATION_SUPPORT=""
+CANONICAL_APPLICATION_SUPPORT_IN_USE=""
 SANDBOXED=0
 SMOKE=0
 SMOKE_ASSET_COUNT="${TESTSTRIP_SMOKE_ASSET_COUNT:-24}"
@@ -101,6 +107,16 @@ open_app() {
     fi
     open_args=(--env "$APPLICATION_SUPPORT_ENV_KEY=$ISOLATED_APPLICATION_SUPPORT" "${open_args[@]}")
   fi
+  # Non-isolated unsandboxed runs (make run, --logs, --telemetry, --verify) share
+  # the installed app's container library. The sandboxed dev build resolves its
+  # container natively, and isolated/scenario modes keep their temp libraries.
+  if [[ "$ISOLATED" == "0" && "$SANDBOXED" == "0" ]]; then
+    local canonical_directory
+    if canonical_directory="$(canonical_application_support_directory)"; then
+      CANONICAL_APPLICATION_SUPPORT_IN_USE="$canonical_directory"
+      open_args=(--env "$APPLICATION_SUPPORT_ENV_KEY=$canonical_directory" "${open_args[@]}")
+    fi
+  fi
   if [[ -n "${TESTSTRIP_CARD_IMPORT_ROUTE:-}" ]]; then
     open_args=(--env "$CARD_IMPORT_ROUTE_ENV_KEY=$TESTSTRIP_CARD_IMPORT_ROUTE" "${open_args[@]}")
   fi
@@ -126,6 +142,9 @@ verify_app() {
       if [[ "$ISOLATED" == "1" ]]; then
         echo "$APP_NAME is using isolated application support at $ISOLATED_APPLICATION_SUPPORT"
       fi
+      if [[ -n "$CANONICAL_APPLICATION_SUPPORT_IN_USE" ]]; then
+        echo "$APP_NAME is using the installed app library at $CANONICAL_APPLICATION_SUPPORT_IN_USE"
+      fi
       if [[ "$SANDBOXED" == "1" ]]; then
         echo "$APP_NAME is signed with sandbox entitlements"
       fi
@@ -141,6 +160,18 @@ prepare_isolated_catalog() {
   if [[ -z "$ISOLATED_APPLICATION_SUPPORT" ]]; then
     ISOLATED_APPLICATION_SUPPORT="$(mktemp -d "${TMPDIR:-/tmp}/teststrip-app-support.XXXXXX")"
   fi
+}
+
+canonical_application_support_directory() {
+  if [[ -d "$CANONICAL_APPLICATION_SUPPORT_DIRECTORY" ]]; then
+    echo "$CANONICAL_APPLICATION_SUPPORT_DIRECTORY"
+    return 0
+  fi
+  echo "warning: installed $APP_NAME container has no application-support directory at:" >&2
+  echo "  $CANONICAL_APPLICATION_SUPPORT_DIRECTORY" >&2
+  echo "launch the installed $APP_NAME.app once to create it; falling back to the unsandboxed" >&2
+  echo "library at ~/Library/Application Support/Teststrip." >&2
+  return 1
 }
 
 seed_smoke_catalog() {

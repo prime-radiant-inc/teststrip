@@ -8,7 +8,7 @@ For Jesse's first (and every subsequent) real-library session. One command to la
 ./script/build_and_run.sh
 ```
 
-Run from the repo root. This rebuilds `TeststripApp` and `TeststripWorker`, ad-hoc codesigns an unsigned dev bundle at `dist/Teststrip.app` (no sandbox entitlements), and opens it. With no flags it does **not** override the application-support directory or seed any sample/synthetic data, so it opens against your real catalog at `~/Library/Application Support/Teststrip`. Because it isn't sandboxed, the background worker is fully enabled (the sandboxed build disables worker-driven imports — don't switch builds mid-dogfood). This is the one command; every other flag (`--isolated`, `--sandboxed`, `--smoke`, `--sample-photos`, `--real-corpus`, `--build`, `--verify*`) is for development/testing, not daily use.
+Run from the repo root. This rebuilds `TeststripApp` and `TeststripWorker`, ad-hoc codesigns an unsigned dev bundle at `dist/Teststrip.app` (no sandbox entitlements), and opens it. With no flags it points `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` at the installed, sandboxed app's container library (`~/Library/Containers/com.teststrip.app/Data/Library/Application Support`), so the dev build opens the **same catalog the installed app uses** — one real library, no divergence — and seeds no sample/synthetic data. If that container directory does not exist yet, the script prints a warning telling you to launch the installed app once and falls back to `~/Library/Application Support/Teststrip` rather than failing silently. Because it isn't sandboxed, the background worker is fully enabled (the sandboxed build disables worker-driven imports — don't switch builds mid-dogfood). This is the one command; every other flag (`--isolated`, `--sandboxed`, `--smoke`, `--sample-photos`, `--real-corpus`, `--build`, `--verify*`) is for development/testing, not daily use. The `--sandboxed` dev build already resolves the same container natively, and the isolated/smoke/scenario flags keep their throwaway temp libraries.
 
 ## Sources and lenses
 
@@ -32,14 +32,16 @@ same 1000pt minimum window width.
 
 ## Where things live
 
-- Catalog root: `~/Library/Application Support/Teststrip/`
-- Catalog database: `~/Library/Application Support/Teststrip/catalog.sqlite`
-- Preview cache: `~/Library/Application Support/Teststrip/Previews/`
+- Catalog root: `~/Library/Containers/com.teststrip.app/Data/Library/Application Support/Teststrip/`
+- Catalog database: `~/Library/Containers/com.teststrip.app/Data/Library/Application Support/Teststrip/catalog.sqlite`
+- Preview cache: `~/Library/Containers/com.teststrip.app/Data/Library/Application Support/Teststrip/Previews/`
+
+Both the installed app and `make run` use this container library. The old unsandboxed location `~/Library/Application Support/Teststrip` is no longer used by either and is now orphaned.
 
 Back up the catalog before a big session (quit Teststrip first, then):
 
 ```bash
-mkdir -p ~/Backups/teststrip && cp ~/Library/Application\ Support/Teststrip/catalog.sqlite ~/Backups/teststrip/catalog-$(date +%Y%m%dT%H%M%S).sqlite
+mkdir -p ~/Backups/teststrip && cp ~/Library/Containers/com.teststrip.app/Data/Library/Application\ Support/Teststrip/catalog.sqlite ~/Backups/teststrip/catalog-$(date +%Y%m%dT%H%M%S).sqlite
 ```
 
 The database uses SQLite's default rollback-journal mode (no WAL), so copying the file while the app is closed is a clean snapshot.
