@@ -7185,8 +7185,11 @@ public final class AppModel {
 
     public func promoteCurrentFrameAndRejectSiblings() throws {
         guard let selectedAssetID else { return }
+        // Scoped, to match `selectedCullingStackScope` (the rail's membership):
+        // promoting in a filtered pass must only touch the visible siblings,
+        // never a frame the filter hid.
         let isInMultiFrameStack = selectedWorkStackAssetIDs?.contains(selectedAssetID) == true
-            || cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) })
+            || scopedCullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) })
         // Item 4: Return on a frame with no siblings used to silently do
         // nothing at all — three presses read as the app hanging. Show
         // decision feedback instead; no metadata write happens (there are no
@@ -8174,7 +8177,9 @@ public final class AppModel {
             stack = AssetStack(assetIDs: selectedWorkStackAssetIDs)
             nextAssetID = nil
         } else {
-            let stacks = cullingStacks()
+            // Same scoped partition the rail displays, so the membership
+            // Return writes can never diverge from what the rail showed.
+            let stacks = scopedCullingStacks()
             stack = stacks.first { $0.assetIDs.contains(selectedAssetID) }
             nextAssetID = stack.map(nextAssetID(after:)) ?? nil
         }

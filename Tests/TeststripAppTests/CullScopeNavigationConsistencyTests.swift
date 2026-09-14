@@ -122,6 +122,48 @@ final class CullScopeNavigationConsistencyTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    // (b) consequence, guarding the documented invariant that the rail's
+    // displayed membership is exactly what Return writes: in a scoped pass the
+    // rail shows only the visible siblings, and Promote must leave the hidden
+    // (out-of-scope) sibling untouched.
+    func testPromoteInScopedPassLeavesOutOfScopeSiblingUntouched() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let pickLead = makeAsset(id: "p1", path: "/Photos/Job/p1.cr2", capturedAt: capturedAt, flag: .pick)
+        let pickMate = makeAsset(id: "p2", path: "/Photos/Job/p2.cr2", capturedAt: capturedAt.addingTimeInterval(1), flag: .pick)
+        let hidden = makeAsset(id: "u1", path: "/Photos/Job/u1.cr2", capturedAt: capturedAt.addingTimeInterval(1.8), flag: nil)
+
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "scope-promote-parity",
+            assets: [pickLead, pickMate, hidden],
+            seedsLargePreviews: true
+        )
+        model.cycleCullScope() // .all -> .unrated
+        model.cycleCullScope() // .unrated -> .picks
+        XCTAssertEqual(model.cullScope, .picks)
+        model.select(pickLead.id)
+
+        let rail = CullingStackRailPresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID,
+            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
+            explicitStackScope: model.selectedCullingStackScope,
+            stackBuilder: model.stackBuilder(),
+            precomputedAllStacks: model.cachedAllCullingStacksForPresentation()
+        )
+        XCTAssertEqual(
+            rail.items.map(\.assetID),
+            [pickLead.id, pickMate.id],
+            "the rail must display only the visible siblings"
+        )
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertNil(
+            try repository.asset(id: hidden.id).metadata.flag,
+            "Promote must not touch a sibling the active scope filter hid"
+        )
+    }
+
     private func makeAsset(
         id: String,
         path: String,
