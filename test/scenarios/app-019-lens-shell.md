@@ -83,9 +83,13 @@ different catalog and invalidate restore assertions.
    `LibraryGridView.swift:525`) containing six buttons labelled `Cull`,
    `Grid`, `Loupe`, `Timeline`, `Map`, `People` in that order
    (`LibraryLens.allCases`/`.title`, `LibraryLens.swift:11-16,20-29`):
+   The switcher buttons vend `desc="<Name> lens"` (icon-only; the plain name is
+   in `AXHelp`), so `--label "<Name>"` matches nothing for Grid/Loupe/Timeline/
+   Map/People (it *does* false-match the toolbar's unrelated "Cull"/"Grid"
+   mode button). Match on the help text or the `<Name> lens` description:
    ```bash
    for name in Cull Grid Loupe Timeline Map People; do
-     script/vm_scenario_run.sh ax find --role AXButton --label "$name"
+     script/vm_scenario_run.sh ax find --role AXButton --help "$name"
    done
    ```
 3. Assert **absence** of the deleted controls:
@@ -537,3 +541,95 @@ stayed fully drivable — and was dismissed with `press --role AXButton --label
 "Remind Me Later"`. Subsequent launches were suppressed for the rest of the
 session with `defaults write com.teststrip.app SUEnableAutomaticChecks -bool
 NO` in the VM; no further modal appeared. No idle-wedge occurred.
+
+## Run status — 2026-09-14 (live VM run, batch 7)
+
+**TESTED-FAIL — Step 6's positive Stacks half fails on the current build via the
+card's own procedure (product defect, not a card-authoring gap); every other
+driven leg passed.** Tart VM `teststrip-e2e`, `script/vm_scenario_run.sh`.
+Legs: `launch smoke` (run dir `smoke-1789386131`) for Steps 1-5, 7-13; a fresh
+`launch empty` (run dir `empty-1789386305`) for Step 6's import leg.
+
+- **Steps 1-5 PASS** — `AXGroup desc="Lens"` holds six `AXButton`s in order
+  `Cull, Grid, Loupe, Timeline, Map, People` (desc `<Name> lens`, help `<Name>`,
+  `value` Selected/Not selected). No `Workspace` radio button, no "Library View".
+  ⌘1→`Loupe`, ⌘2→`Grid`, ⌘3→`Loupe`, ⌘4→`Timeline`, ⌘5→`Map`, ⌘6→`People`,
+  switcher selection tracking each; scope line held `All Photos, 24 photos`
+  across all six. With `Rejects` (5) selected, the scope title stayed
+  `Rejects, 5 photos` across all six (Cull omits the `· Reject` chip suffix —
+  unchanged from the historical note).
+- **Step 6 FAIL (positive half) — PRODUCT DEFECT.** The card's facestack leg:
+  imported `FacestackOriginals` into a fresh `empty` catalog (13 assets; the
+  four `stack-N-*.jpg` frames carry EXIF `DateTimeOriginal` 12:00:00–12:00:03,
+  i.e. 1 s apart, well inside `AssetStackBuilder.defaultMaximumCaptureGap` = 2 s,
+  and `technical_metadata_json.capturedAt` persisted them correctly). Right-click
+  the import row → **Cull stacks** produced **zero multi-frame stacks**: no
+  `work-stack-*` asset sets were written, the run strip showed all 12 stops at
+  `1 frame`, and **`Stacks · Auto-Grouped` was absent** in the Cull lens — exactly
+  the card's Step 6 failure condition. Root cause, proven by a minimal
+  intervention: `AssetStackBuilder.stacks(from:)` only merges *consecutive*
+  entries in the array it is handed (`AssetStackBuilder.swift:28-62`), and
+  `latestImportStackGroups` hands it the import's output-set membership in
+  stored order (`AppModel.swift:14478-14498`, `latestImportOutputAssetIDs`
+  `:14411-14426`) — which is an unordered `AssetSet` membership, not
+  capture-sorted. The 13 membership ids were verifiably in UUID order, so the
+  four 1 s-spaced frames were never adjacent. Rewriting only that stored
+  membership to capture-time order (no other change) made the identical
+  import→**Cull stacks** produce the expected single 4-frame stack:
+  `Stacks · Auto-Grouped` present, `Stack frame 1..4`, stop
+  `stack-1-face…stack-4-noface · 4 · 12:00 PM`, counter
+  `2 of 4 · stack 1 of 1 · frame 2 of 4`. **Defect: the import→stack path does
+  not capture-sort before stack-building, so real bursts never group on a
+  folder import.**
+- **Step 6 negative half PASS (non-vacuous)** — with that real stack session
+  active, `Stacks · Auto-Grouped` was present in the Cull lens (1) and absent in
+  all five other lenses (0 each, ⌘2–⌘6). The Cull-only gating holds.
+- **Step 7 PASS** — hand-seeded `evaluation_failures(test-provider)` surfaced
+  `Analysis Failures`; selecting it from the Cull lens fell back to Grid
+  (`Teststrip – Grid`, `Grid lens value=Selected`) and the Cull segment read
+  `value=Not selected help="Nothing here is cullable"`.
+- **Step 8 PASS** — reset to `All Photos`, `rating:5` search, exact-case
+  `Cull These` press entered the Cull lens with scope
+  `Rating >= 5, 4 photos · ✓ 0 · ✕ 1 · ◌ 3 unviewed · 3 left` and the catalog
+  gained `culling|Rating >= 5`.
+- **Step 9 PASS — the full six-cell restore matrix is now driven** (previously
+  only Timeline and Cull had historical evidence). With `SOURCE_TITLE` =
+  `Rating >= 5`: quit-and-relaunch the same catalog from **Grid → `Teststrip –
+  Grid`**, **Loupe → `Teststrip – Loupe`**, **Timeline → `Teststrip –
+  Timeline`**, **Map → `Teststrip – Map`**, **People → `Teststrip – People`** —
+  each restored its lens with the source `Rating >= 5, 4 photos` intact; quitting
+  from **Cull → `Teststrip – Grid`**, same source. All six cells green.
+- **Step 10 PASS** — saved a 2-photo static set `ScopeProbeSet` (catalog total
+  24). Map read `2 photos` / `0 locations · 0 geotagged`; Timeline read
+  `2 photos across 1 day` / `2 photos - 1 year`; People read `0 people · 2 photos`.
+  All three count the set, not the catalog.
+- **Step 11 PASS** — reopening the `Rating >= 5` culling session from Recent Work
+  while in Grid left the lens on Grid (`Grid value=Selected`), scope
+  `Rating >= 5, 4 photos · Session: 6DEDC9F1…`.
+- **Step 12 PASS — the revised exact zero-match / close-before-Sets leg is now
+  driven.** `zzzznotfound` produced the exact live text `No matches for
+  “zzzznotfound”`; Smart Collections' `+` (`AXHeading help="New from search…"`)
+  opened `New Smart Collection` with **no** `Select photos, then save them as a
+  set` hint, and Cancel closed it; in the same no-selection state the Sets `+`
+  (`AXHeading help="New Set from Selection…"`) showed the hint, which OK
+  dismissed; after restoring a nonempty result and selecting `smoke-0.jpg`, the
+  Sets `+` opened `Save Selection`.
+- **Step 13 (doc note)** — the View menu carries all six lens items
+  (`Cull, Grid, Loupe, Timeline, Map, People`, `LensCommands` `main.swift:167`,
+  shortcut block `:176`).
+
+**Citation drift (symbols alive, behavior as described):** `LibraryLens`
+keyEquivalent `:46-55`→`:35-43`, `defaultViewMode` `:58-67`→`:47-55`, enum/title
+`:10-29`→enum `:10-17` + title `:20-28`; `LibraryGridView` `lensSwitcher`
+`:499-526`→`.accessibilityLabel("Lens")` at `:557`; `AppModel` `selectLens`
+`:4938-4941`→`:5322`, `lensAvailabilities` `:4954-4956`→`:5338`, `applySource`
+`:5083-5090`→`:5408`; `LensRules.availability/.resolvedLens` `:106-145`→`:99`/`:126`;
+`main.swift` `LensCommands` `:164-196`→`:167`, shortcut block `:168-174`→`:176`.
+Step 2's matcher corrected to `--help "<Name>"` (the segments vend `<Name> lens`
+as their description, not a bare-name label).
+
+**Runner note (disclosed):** Step 6's fixture experiment rewrote the `empty`
+run-dir `asset_sets` membership in place (scratch run dir only; the repo and
+seed templates are untouched); an initial edit that wrote bare JSON strings into
+that scratch catalog caused a decode crash on relaunch and was corrected before
+continuing — it did not affect any assertion above.

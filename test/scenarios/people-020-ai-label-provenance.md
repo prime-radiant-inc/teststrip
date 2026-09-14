@@ -232,11 +232,18 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    GLENN_OFFICIAL_SUM=$(shasum "$GLENN_OFFICIAL_SRC" | awk '{print $1}')
    GLENN_1962_SUM=$(shasum "$GLENN_1962_SRC" | awk '{print $1}')
    ```
+   The inspector's People section renders off-screen until the inspector pane
+   is scrolled to it (`/tmp/scrollw` warped-scroll at the pane's x). The live
+   "Add name" control is a **popover** (`PhotoFacesSectionView`'s
+   `addNameButton` → `PersonAutocompleteField`), not the "New person…"/"Create
+   Person" sheet the pre-2026-09 card described: `Add name` opens a popover with
+   an auto-focused `Name` text field; typing a name that matches no candidate
+   yields a `Create "<name>"` row, and **Return** activates it (creating the
+   person). The live sequence driven:
    ```bash
-   ax press --role AXButton --label "Add name"
-   ax press --role AXMenuItem --label "New person…"
-   ax type --contains "Person name" --text "John Glenn"
-   ax press --role AXButton --label "Create Person"
+   ax press --role AXButton --label "Add name"     # opens the popover (field auto-focused)
+   key 'keystroke "John Glenn"'                    # typed into the focused field
+   key 'key code 36'                               # Return -> activates Create "John Glenn"
    ```
    ```bash
    JOHN_GLENN_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM people WHERE name='John Glenn';")
@@ -269,10 +276,15 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    `sample-data/faces.tsv` (e.g. a Ride pair) before concluding face
    promotion is broken, per `inspect-010`'s own caution that only *some* pair
    is guaranteed to cluster.
-10. **UI shows the ✨ suggestion with no extra refresh gesture needed**
-    (a genuinely simpler behavior than the old suggestion mechanism, since
-    `photoFacesPresentation` reads the persisted `person_faces` row directly
-    on every render): open `commons-glenn-1962.jpg` in the loupe/inspector.
+10. **UI shows the ✨ suggestion** — open `commons-glenn-1962.jpg` in the
+    loupe/inspector. The projection (`photoFacesPresentation`) does read the
+    persisted `person_faces` row directly (`AppModel.swift:4339-4367`), but the
+    SwiftUI body only re-renders when an *observed* state changes: live, the
+    row still read `Unnamed` immediately after the async `Evaluate Photo`
+    completed, and only showed `guess: John Glenn` after the selection was
+    changed and restored (a re-render). This is a view-refresh gap, not a
+    projection bug — assert the end state after one select-away/select-back
+    rather than expecting the row to update in place.
     Assert the People row reads **"guess: John Glenn"** with a ✨ marker and
     `Confirm`/`Remove` buttons (`ax find --role AXButton --label "Confirm"`
     scoped to the People section — see Sharp edges on ambiguous plain-text
@@ -297,7 +309,12 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
     MANUAL_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-armstrong-eva-training.jpg';")
     SRC_MANUAL=$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$MANUAL_ID';")
     MANUAL_SUM=$(shasum "$SRC_MANUAL" | awk '{print $1}')   # baseline for step 21's post-relocation content check
-    script/vm_scenario_run.sh sql faces "SELECT json_extract(metadata_json,'\$.flag'), json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id='$MANUAL_ID';"  # reject, NULL (no aiUnconfirmedFields key)
+    script/vm_scenario_run.sh sql faces "SELECT json_extract(metadata_json,'\$.flag') FROM assets WHERE id='$MANUAL_ID';"  # reject
+    # The direct gesture must never tag *this field* (flag) AI-origin. Assert the
+    # flag is absent from aiUnconfirmedFields rather than the whole key being
+    # NULL: the control asset may independently carry an unconfirmed AI caption
+    # from the same Evaluate Visible pass (it did live: ["caption"]).
+    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM assets WHERE id='$MANUAL_ID' AND EXISTS (SELECT 1 FROM json_each(metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"  # 0
     grep -q 'ts:Pick="reject"' "$SRC_MANUAL.xmp" && echo "confirmed reject synced"
     ```
 
@@ -445,12 +462,14 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
   trick, and confirming it flips origin to user + creates the `person_assets`
   link + still writes no sidecar. **Fails if** the suggestion never renders,
   or confirming it writes an `.xmp`.
-- Step 12: a direct Reject gesture writes `flag=reject` with **no**
-  `aiUnconfirmedFields` and a synced sidecar immediately (this is the
+- Step 12: a direct Reject gesture writes `flag=reject` with **`.flag` absent
+  from** `aiUnconfirmedFields` and a synced sidecar immediately (this is the
   pre-existing, unchanged user-gesture path — a control, not new behavior
-  under test). **Fails if** `aiUnconfirmedFields` is non-null for this asset
-  (a direct gesture must never be tagged AI-origin), or if the `.xmp` isn't
-  written immediately with `ts:Pick="reject"`.
+  under test). **Fails if** `.flag` appears in this asset's
+  `aiUnconfirmedFields` (a direct gesture must never be tagged AI-origin for
+  the field it wrote), or if the `.xmp` isn't written immediately with
+  `ts:Pick="reject"`. (The whole `aiUnconfirmedFields` key may legitimately be
+  non-null from an unrelated unconfirmed AI caption.)
 - Steps 13-15: Run Autopilot applies at least one tentative `.reject`
   in-catalog with **no** sidecar, and leaves the manual control's confirmed
   reject untouched (not re-marked tentative). **Fails if** autopilot writes a
@@ -557,3 +576,100 @@ own metadata). Step 18's Commit gesture is unaffected — it still calls
 `commitAutopilotProposals`. Supersedes prior status: this card was already
 NOT RUN, so there is no prior PASS to invalidate — noted for the record per
 house style. Needs a fresh VM run.
+
+**Note added 2026-09-14 (live VM run):** on the `faces` fixture Run Autopilot
+produced **0 flag ghosts** (only keyword ghosts) — the corpus has no persisted
+stacks, so `AutopilotProposalPlanner.cullProposals` never fires a pick/cut. The
+live run hand-seeded one tentative reject directly into `metadata_json`
+(`flag=reject`, `aiUnconfirmedFields=["flag"]`) per `cull-025`/`cull-029`'s
+accepted technique, then drove Steps 15-19 against it. The Autopilot **review
+banner** is run-time-only (it survives no relaunch, and none was generated), so
+Step 18's banner/`Commit 1` route was unavailable; the equivalent explicit
+confirm gesture (**`X`** on the selected tile — `setFlagForSelectedAssets`, a
+direct user gesture) was used instead and confirmed the same catalog outcome.
+
+## Run status — 2026-09-14 (live VM run, batch 7)
+
+**VERIFIED** (with two disclosed deviations and three corrected stale
+assertions). Tart VM `teststrip-e2e`, `script/vm_scenario_run.sh launch faces`,
+run dir `faces-1789385527` (11 assets). All executed legs passed.
+
+- **Section 1 PASS** — ⇧⌘E (`Evaluate Visible` menu item) drained
+  `evaluation_signals` to 11/11 distinct assets; `face_observations` = 11 (>0).
+- **Section 2 PASS** — 9/11 assets promoted keywords; picked
+  `commons-glenn-senator-portrait.jpg` (`392F3333…`), keyword `necktie`; raw
+  `.object` signal confidence **0.970 ≥ 0.5** with `necktie` in `value_json`.
+  Pre-confirm: no sidecar. The inspector showed `Confirm keyword necktie` /
+  `Remove keyword necktie`. After `Confirm keyword necktie`: `keywords` kept it,
+  `aiUnconfirmedKeywords` dropped it, `commons-glenn-senator-portrait.jpg.xmp`
+  appeared with `dc:subject/rdf:Bag/rdf:li=necktie` (only the confirmed
+  keyword — the confirmed-only projection), the Confirm button vanished, and the
+  original was byte-identical (`8f2f06d8…` before and after).
+- **Section 3 PASS** — named a face on `commons-glenn-official.jpg` as
+  `John Glenn` (popover: `Add name` → field → Return) → `person_faces.origin=user`,
+  `person_assets` = 1, no sidecar (identity never syncs). Re-ran `Evaluate Photo`
+  on `commons-glenn-1962.jpg` → a face-level `person_faces` row
+  `origin='ai'`, `person_id=John Glenn`, **`person_assets` = 0**, **no sidecar**.
+  The inspector People row then read `guess: John Glenn` with the ✨
+  (`AXImage desc="AI-suggested, unconfirmed"`) and `Confirm`/`Remove`
+  (`Remove` help `Remove this suggested match`). Pressing `Confirm` →
+  `origin=user`, `person_assets` = 1, still no sidecar.
+- **Section 4 PASS (assertion corrected)** — direct `Reject` on
+  `commons-armstrong-eva-training.jpg` → `flag=reject`, synced sidecar with
+  `ts:Pick="reject"`, and `.flag` **not** in `aiUnconfirmedFields`. The asset's
+  `aiUnconfirmedFields` was `["caption"]` (an unrelated unconfirmed AI caption
+  from the same evaluation), so the card's original "must be NULL" wording was
+  over-strict and is corrected above.
+- **Section 5 PASS (safety-critical)** — `rejectRelocationScope` split proven
+  live: with RAW_REJECT=2 (manual control + hand-seeded tentative ghost) and
+  CONFIRMED_REJECT=1, the Move Rejects preflight rendered exactly
+  `Move 1 reject photo to vm-rejects` (the tentative reject excluded). After the
+  move: the manual control relocated (gone from source, present at
+  `TESTSTRIP_REJECT_DESTINATION_DIR`, `relocation_manifest_entries` = 1) while
+  the tentative reject stayed at its original path, was absent from the
+  destination, and had `relocation_manifest_entries` = 0 — **zero
+  relocation/trash for the tentative asset**. Confirming it (`X`) cleared its
+  tentative marker (`aiUnconfirmedFields` → empty), wrote its sidecar
+  (`ts:Pick="reject"`), and the next Move Rejects pass relocated it identically
+  (manifest = 1). The `TESTSTRIP_REJECT_DESTINATION_DIR` relaunch workaround
+  (`open -n --env`) is **now proven live**.
+- **Step 21 PASS** — every untouched original byte-identical
+  (`glenn-senator-portrait` shasum pre==post; `glenn-official` and
+  `glenn-1962` md5s match `sample-data/faces.tsv`); both relocated originals
+  match their pre-move shasum **at the destination** (moved, not re-encoded).
+
+**Deviations (disclosed):** (1) no `sync` this batch (VM pre-synced) — the
+fixture used the existing `faces` seed, and the stray pre-existing `.xmp`
+sidecars in the VM's shared `sample-data/photos/faces/` (10 files left by an
+earlier batch; only `commons-aldrin-portrait.jpg.xmp` is repo-shipped) were moved
+aside so the card's "no sidecar yet" precondition held; they are **not** repo
+files. (2) Run Autopilot produced no flag ghost on `faces` (structural fixture
+gap — no stacks), so one tentative reject was hand-seeded as noted at Step 13.
+
+**Product finding (open, minor):** the inspector's People row does not refresh
+in place when an async `Evaluate Photo` lands an `origin='ai'` face match while
+that photo is already displayed; it requires a selection change to re-render
+(see the corrected Step 10). The projection itself reads the persisted row
+correctly. Not asserted as a failure here, but the card's former "no extra
+refresh gesture needed" claim is false as written.
+
+**Fixture gap (unchanged, not driven):** Step 20's exported/Picks-`AssetSet`
+tentative-pick exclusion still needs a persisted-stack fixture; the unit test
+remains the authoritative coverage.
+
+**Supersedes prior status:** first live run of this card (was NOT RUN).
+
+**Citation drift (symbols alive, behavior as described; corrected 2026-09-14):**
+the "Source" section's `AppModel.swift` line numbers are stale — `promoteMetadataLabels`
+`:8678-8705`→`:9401` (floor `objectKeywordConfidenceFloor` `:8285`→`:9392`);
+`promoteFaceMatches` `:3772-3795`→`:4246`; `confirmAIKeyword`/`removeAIKeyword`
+`:8328`/`:8343`→`:9435`/`~9449`; `confirmAIField`/`removeAIField`
+`:8358`/`:8378`→`:9465`/`:9485`; `confirmAIFace`/`rejectFaceSuggestion`
+`:3948`/`:3962`→`:4422`/`:4436`; `rejectRelocationScope` `:12561-12605`→`:13422`;
+`runAutopilotOnCurrentScope` `:10146-10158`→`:10901`; `applyTentativeAutopilotProposals`
+`:10086-10133`→`:10841`; `promoteEvaluationResults` `:10499-10509`→`:11680`;
+`photoFacesPresentation` (Step 10) `:4339-4367` (verified exact);
+`XMPPacket.swift` `confirmedProjection` apply `:62`→`:64`. UI affordances hold:
+`InspectorView` keyword chips at `:1123`/`:1140` (labels exact), AI caption row
+`:1167`; `PhotoFacesSectionView` `confirmAIFace` `:83`, Remove help
+`Remove this suggested match` `:91`.
