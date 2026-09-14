@@ -21792,6 +21792,36 @@ final class AppModelTests: XCTestCase {
         model.endGridExpand()
         XCTAssertNil(model.gridExpandTransition)
     }
+
+    // ⌘F from the Cull lens switches to Grid, but the focus token bump used to
+    // land in the same update as the lens switch — before the browse chrome's
+    // query field had been installed — so the freshly-mounted @FocusState
+    // assignment was dropped and the caret never entered the field (live
+    // lib-006 step 7). The request must stay pending until the browse field is
+    // on screen and consumes it.
+    func testFocusSearchFromCullStaysPendingUntilBrowseFieldConsumesIt() {
+        let model = AppModel.demo()
+        model.selectLens(.cull)
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertFalse(LensChromePolicy.showsSearchField(model.selectedView))
+        let originalToken = model.focusSearchRequestToken
+
+        model.requestFocusSearch()
+
+        // The lens switch lands immediately...
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertTrue(LensChromePolicy.showsSearchField(model.selectedView))
+        XCTAssertEqual(model.focusSearchRequestToken, originalToken + 1)
+        // ...but the focus request is still pending: that token bump fired
+        // while the grid's query field was still being installed.
+        XCTAssertTrue(model.isSearchFocusPending)
+
+        // The browse chrome consumes the pending request once its field
+        // appears, delivering a fresh token bump the field can adopt.
+        model.consumePendingSearchFocus()
+        XCTAssertFalse(model.isSearchFocusPending)
+        XCTAssertEqual(model.focusSearchRequestToken, originalToken + 2)
+    }
 }
 
 private extension WorkerCommand {

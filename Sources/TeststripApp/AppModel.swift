@@ -2751,10 +2751,28 @@ public final class AppModel {
     // browse lenses — not Cull, not People — so from anywhere that can't show
     // it, switch to the Grid lens first rather than silently doing nothing.
     public private(set) var focusSearchRequestToken = 0
+    // True while a ⌘F that switched lenses is still waiting for the browse
+    // chrome's query field to mount. `focusSearchRequestToken` is bumped in the
+    // same update as the lens switch, so that first bump is delivered while the
+    // grid's field is still being installed and the @FocusState assignment is
+    // dropped; the field consumes this pending request once it is on screen and
+    // re-delivers the bump so the caret actually lands.
+    public private(set) var isSearchFocusPending = false
     public func requestFocusSearch() {
-        if !LensChromePolicy.showsSearchField(selectedView) {
+        let fieldAlreadyVisible = LensChromePolicy.showsSearchField(selectedView)
+        if !fieldAlreadyVisible {
             selectLens(.grid)
         }
+        focusSearchRequestToken += 1
+        isSearchFocusPending = !fieldAlreadyVisible
+    }
+
+    /// Called by LibraryGridView's query field as it appears. Delivers a ⌘F
+    /// request that arrived from a lens whose field wasn't on screen yet, by
+    /// bumping `focusSearchRequestToken` only now that the field is mounted.
+    public func consumePendingSearchFocus() {
+        guard isSearchFocusPending else { return }
+        isSearchFocusPending = false
         focusSearchRequestToken += 1
     }
 
