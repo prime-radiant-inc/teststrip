@@ -25,7 +25,8 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         rating:, iso:, from:, before:, date:, color:, source:, signal:, xmp:. \
         person: matches a confirmed person's photos; repeat it to require every \
         person named, e.g. person:"Anna" person:"Ben" finds photos with both. \
-        Anything else is plain text search.
+        Anything else is plain text search over file names, keywords, captions, \
+        and other metadata.
         """
 
     public static func parse(_ text: String) -> LibrarySearchIntent {
