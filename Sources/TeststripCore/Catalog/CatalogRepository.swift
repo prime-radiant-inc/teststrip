@@ -444,8 +444,19 @@ public final class CatalogRepository {
         return try rows.map(decodeAssetID)
     }
 
-    public func assetIDs(matching query: SetQuery, includeBondedSecondaries: Bool = false) throws -> [AssetID] {
-        let compiledQuery = try compile(query)
+    /// Asset IDs matching `query`. `includingAssignedFaceAssets` widens the
+    /// face-signal review-queue predicates (`.evaluationKind(.faceCount)` /
+    /// `.faceQuality`) from "assets whose faces still need review" to "assets
+    /// that carry that face signal": the queue deliberately excludes any asset
+    /// already linked to a person, which is right for a review grid but wrong
+    /// for the People lens, whose scope must still reach the people those
+    /// assets belong to.
+    public func assetIDs(
+        matching query: SetQuery,
+        includeBondedSecondaries: Bool = false,
+        includingAssignedFaceAssets: Bool = false
+    ) throws -> [AssetID] {
+        let compiledQuery = try compile(query, includingAssignedFaceAssets: includingAssignedFaceAssets)
         let whereSQL = includeBondedSecondaries
             ? compiledQuery.whereSQL
             : Self.excludingSecondaries(compiledQuery.whereSQL)
@@ -3320,8 +3331,11 @@ public final class CatalogRepository {
     private static let confirmedFieldClauseSQL =
         "NOT EXISTS (SELECT 1 FROM json_each(metadata_json, '$.aiUnconfirmedFields') WHERE json_each.value = ?)"
 
-    private func compile(_ query: SetQuery) throws -> (whereSQL: String, bindings: [String]) {
-        let (clauses, bindings) = try compileClauses(query)
+    private func compile(
+        _ query: SetQuery,
+        includingAssignedFaceAssets: Bool = false
+    ) throws -> (whereSQL: String, bindings: [String]) {
+        let (clauses, bindings) = try compileClauses(query, includingAssignedFaceAssets: includingAssignedFaceAssets)
         guard !clauses.isEmpty else {
             return ("", [])
         }
@@ -3331,7 +3345,10 @@ public final class CatalogRepository {
     /// Same predicate compilation as `compile`, but returns the bare AND-able
     /// clauses (no leading `WHERE`) so callers can fold them into a larger
     /// hand-written WHERE clause, e.g. the geo queries' own coordinate filters.
-    private func compileClauses(_ query: SetQuery) throws -> (clauses: [String], bindings: [String]) {
+    private func compileClauses(
+        _ query: SetQuery,
+        includingAssignedFaceAssets: Bool = false
+    ) throws -> (clauses: [String], bindings: [String]) {
         var clauses: [String] = []
         var bindings: [String] = []
 
@@ -3450,9 +3467,12 @@ public final class CatalogRepository {
                 ])
             case .evaluationKind(let kind):
                 if kind == .faceCount || kind == .faceQuality {
-                    clauses.append(
-                        """
-                        EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)
+                    var clause = """
+                    EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)
+                    """
+                    if !includingAssignedFaceAssets {
+                        clause += """
+
                         AND NOT EXISTS (
                             SELECT 1
                             FROM dismissed_face_assets
@@ -3464,7 +3484,8 @@ public final class CatalogRepository {
                             WHERE person_assets.asset_id = assets.id
                         )
                         """
-                    )
+                    }
+                    clauses.append(clause)
                 } else {
                     clauses.append(
                         "EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)"
