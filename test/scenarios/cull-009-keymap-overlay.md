@@ -208,3 +208,43 @@ selectedView != .cullGrid` → `lens ==`, matching cull-001's rename),
 unrelated to the ⌘ preamble. Supersedes prior status: the 2026-07-13
 reconciliation and its NOT RUN status are otherwise unaffected — no
 assertion changed — but still need a fresh run per that note's own text.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789359590`, `launch smoke`): Steps 1-8 all PASS.**
+- Step 1: first ⌘1 into the Cull lens (the launch default lens is not Cull) →
+  caught `Press ? for keyboard shortcuts` in the toast window; ⌘2 away and ⌘1
+  back → hint absent (Cull confirmed active via `Frame 1 of 24`). PASS.
+- Step 2: `?` (`keystroke "?"`) → `Keyboard Shortcuts` heading appears. PASS.
+- Step 3: `NAVIGATION`, `FLAGS`, `LOUPE` all render (uppercased). PASS.
+- Step 4: `Promote Frame & Reject Siblings`, `Cycle EXIF Overlay` render
+  verbatim. PASS.
+- Step 5: all four Navigation titles render; `(Option)` and `⌥` both absent
+  (exit 1). PASS.
+- Step 6: while open, 6×Down then 6×Up left the selection unchanged
+  (`Frame 1 of 24` before and after each sweep) → the arrows are consumed by
+  the overlay, not leaked to `.nextCandidateInStack`. PASS on the load-bearing
+  assertion — with the caveat below.
+- Step 7: Esc (`key code 53`) dismissed the overlay (`Keyboard Shortcuts`
+  absent); keyboard routing recovered — `p` picked the focused frame (`smoke-0`
+  flag `reject`→`pick`, toast `✓ smoke-0.jpg picked — ⌘Z undoes`). PASS.
+- Step 8: `?` re-opened, a second `?` dismissed (heading absent). PASS.
+
+Caveats / stale citations:
+- **Step 6's "COMPARE becomes AX-findable after scrolling" is
+  non-discriminating on this build**: the overlay's AX tree vends all 7 section
+  headings (and every item row) regardless of the `ScrollView`'s visual scroll
+  offset — `COMPARE` matched before any ↓ press. The assertion that actually
+  distinguishes overlay-scroll from arrow pass-through is the selection-unchanged
+  one, which held. Reported rather than silently accepted.
+- Navigation key-column drift: the Source section says the rows key as plain
+  `↑`/`↓`/`←`/`→`; live renders dual-key `↑ / K`, `↓ / J`, `← / H`, `→ / L`
+  (`AppModel.swift:587-591`). Step 5 asserts titles only, so the PASS is
+  unaffected.
+- Stale line numbers (symbols alive, behaviour as described): `.showKeyMap`
+  dispatch `AppModel.swift:7084-7086`→`:7516-7518`; static key mapping
+  `:203-204`→`:262`; `CullingCommandMenuPresentation.sections` `:504-512`→`:585`;
+  `scrollKeyMapOverlay` `:7017-7033`→`:7608`; `KeyMapOverlayScrolling.nextIndex`
+  `:568-582`→`:648`; PgUp/PgDn no-op `:7103-7104`→`:7603`; `KeyMapOverlayView`
+  `LibraryGridView.swift:9043-9104`→`:9573`; `CullingKeyCaptureView.swift:145-147`
+  →`:148`. Supersedes prior status: fresh full VM re-run on the current build;
+  all 8 steps green.

@@ -1,3 +1,41 @@
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `faces-1789360579`, `launch faces`, 11 assets): all 5 steps PASS** on
+their literal assertions, using the card's own single-face fallback for the
+documented fixture gap.
+- Step 1: `person_assets`/`person_faces`/`dismissed_faces` = `0/0/0` before
+  any interaction. Menu item `Evaluate Matches` pressed → `face_observations`
+  populated (11 rows within ~10s). **Fixture gap reconfirmed**: `GROUP BY
+  asset_id HAVING count(*) >= 2` returns nothing — every one of the 11 assets
+  yields exactly 1 observation. Substituted
+  `commons-glenn-senator-portrait.jpg` (`392F3333-2E6E-4255-9BF5-B033CB6A655F`)
+  for Steps 2-5, per the card.
+- Step 2: ⌘1 Cull, selected the asset via its run-strip stop; `wait --contains
+  "CLOSE-UPS"` ok, `Face close-ups` found, `No faces` **absent** — a crop
+  rendered. PASS.
+- Step 3: ⌘3 Loupe lens — window `Teststrip – Loupe`, same asset
+  (`commons-glenn-senator-portrait.jpg`); `Face close-ups` **absent**. The
+  rail is Cull-chrome-only. PASS.
+- Step 4 (+ sticky-empty-state regression re-check): ⌘1 back — rail
+  repopulated immediately (`Face close-ups` found, `No faces` absent), no
+  "No faces" stuck state. The crop interaction (`ax press --contains "Face"`)
+  landed on the panel (`pressed: Faces Found`), matching the card's prediction
+  that the decorative crop carries no button/tap target. `person_assets`/
+  `person_faces`/`dismissed_faces` stayed `0/0/0` after → nothing persisted.
+  PASS.
+- Step 5: the face tile's composed accessibility value,
+  `Clean, Eyes open, Smiling, Eyes 100%, Sharpness 65%, Facing 84%, Light 93%`
+  — all four chip readings present, internally consistent with the single
+  crop. Reconfirms the **AX-methodology finding**: the composed value lands on
+  **`AXValueDescription`** with `AXValue` absent and `AXRole = AXUnknown`, so
+  `ax find --label "Face"` matches but `ax find --contains "Eyes open"` does
+  **not** (both re-verified live this run). PASS.
+
+Consistency note (unchanged from the 2026-07-29 run, not re-litigated): the
+Reads card to the rail's left shows a partial face read for these assets after
+Evaluate, not `"No read yet"` — out of scope for this card's assertions.
+Supersedes prior status: fresh full VM run on the current build; all 5 steps
+green (single-face substitution, as the card prescribes).
 # cull-012-closeups-panel: Close-Ups face-crop rail is Cull-chrome-only and writes nothing
 
 **What this covers**: As a photographer culling a group shot I want to check

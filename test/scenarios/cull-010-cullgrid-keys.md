@@ -1,3 +1,58 @@
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789360059`, `launch smoke`, 24 assets): Steps 1-8 all PASS.**
+Grid order is numeric (`smoke-0`…`smoke-23`), which matches the on-screen
+sequence measured by arrowing; scope was already `.all` (no `Cull filter` chip
+rendered), so no `S` press was needed.
+- Step 2: 3×Right, then Return → `Frame 4 of 24` on `smoke-3.jpg` — focus
+  advances exactly one tile per press. PASS.
+- Step 3: End, Return → `Frame 24 of 24` on `smoke-23.jpg`. PASS.
+- Step 4: Home, Return → `Frame 1 of 24` on `smoke-0.jpg`. PASS.
+- Step 5: batch-select driven with a one-off warped modifier-click helper (see
+  the harness finding below) — plain-click `smoke-0` then shift-click
+  `smoke-2` → AX values show `smoke-0` `Selected, batch selected` and
+  `smoke-1`/`smoke-2` `Not selected, batch selected` (contiguous range). PASS.
+- Step 6: press `3` → SQL `smoke-0/1/2` ratings `3/3/3` (baseline `0/1/2`) in
+  one keystroke — the load-bearing batch-write assertion. PASS.
+- Step 7: a single ⌘Z → SQL back to `0/1/2` — one undo group for all three.
+  PASS.
+- Step 8: plain-click `smoke-5` (batch cleared), Return → `Frame 6 of 24` on
+  `smoke-5.jpg`. PASS.
+
+**Harness finding (not an app defect): `ax_drive.sh press --modifiers` cannot
+drive this card's step 5 as shipped.** Two defects, both reproduced live:
+1. It posts the synthetic `leftMouseDown`/`Up` at the element's AX center but —
+   unlike the `--button right` path — never warps the cursor first
+   (`CGWarpMouseCursorPosition`) or posts a `mouseMoved`. SwiftUI's grid tile
+   hit-test then misses the click entirely (element present, no selection
+   change). A warp+move makes the identical click land.
+2. It sets `flags` on the mouse events but never posts a flags-cleared
+   (`flagsChanged`) event, so the modifier is left **stuck** in the global
+   `NSEvent.modifierFlags` state. After one `--modifiers shift` attempt, a
+   following plain click was misread as a shift-click and range-selected. Any
+   card using this verb corrupts the next click.
+   The card's Sharp edge (a)/(b) was therefore correct: step 5 needed a
+   purpose-built driver. The one used here warps the cursor, posts a
+   `mouseMoved`, then flagged down/up, then a `flagsChanged` clear.
+
+**Environment geometry**: the VM display is **1024×768**, but the app window is
+1520×772 placed at `x=-248`, so grid columns past tile index ~5 (screen x >
+1024) are clipped off-screen and un-clickable even though their AX elements
+(with positions) are vended. On-screen tiles must be chosen for point clicks.
+
+**Fixture gap (honest, not a card weakening)**: a fully *unflagged+unrated*
+contiguous triple does not exist on `--smoke` — any 3 consecutive indices
+include a multiple of 3 (always `.pick`), and every `rating == 0` index is also
+a multiple of 3/6 (hence decided). The batch assertion this card exists to
+prove is "one keystroke writes all three; one ⌘Z reverts all three", which does
+not need an unflagged triple, so the run used contiguous `smoke-0/1/2`
+(ratings `0/1/2`, flags reject/null/null) and asserted the rating delta.
+
+Stale citation: `assetActivation` is at `LibraryGridView.swift:8021-8065`, not
+`:7521-7566` (that range is now the compare-survey body). Symbols
+(`selectBatchRange`/`toggleBatchSelection`) are alive and behave as the card
+describes. Supersedes prior status: fresh full VM re-run on the current build;
+all 8 steps green.
 # cull-010-cullgrid-keys: cull grid arrow/Home/End navigation and batch rating in one keystroke
 
 **What this covers**: as a photographer doing rapid grid-level triage, I

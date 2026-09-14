@@ -189,3 +189,47 @@ status: the LEDGER's old "Verified"/"final-verify run PASS" describes the flat
 filmstrip this branch no longer implements, and already disagreed with the
 card's own prior "UNRUN" line. **UNRUN** — needs human-present VM execution
 per `test/scenarios/README.md`, after this rewrite, not before.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `burst-1789360814`, `launch burst`, 18 assets): Steps 1-5 all PASS**
+against the current run-strip code the rewrite describes.
+- Step 1 (scope All): SQL `TOTAL=18`; counter `1 of 18 · stack 1 of 8 ·
+  frame 1 of 3` — first-segment total `18` == `TOTAL`; exactly **8** `AXButton`s
+  whose label begins `Stop ` (4 multi-frame stops `smoke-0–2`(3) /
+  `smoke-3–6`(4) / `smoke-7–9`(3) / `smoke-10–13`(4) + 4 standalones), which
+  matches the pristine-burst expectation. PASS.
+- Step 2 (scope Picks): SQL `PICKS=4`; after two `S` presses the chip reads
+  `Cull filter: Picks` and the counter is `1 of 4 · stack 1 of 4` — the
+  first-segment total is now the **scope-local** `4`, not `18`; the strip
+  re-renders to 4 stops. PASS.
+- Step 3 (format, both cases): multi-frame frame selected → `6 of 18 ·
+  stack 2 of 8 · frame 3 of 4` (three `" of "` segments); standalone `smoke-14`
+  → `15 of 18 · stack 5 of 8` (**no** trailing `frame …` segment); separator is
+  `"·"`/`" of "`, never `"/"`. PASS.
+- Step 4 (click-to-land): pressed `Stop smoke-7–9` → loupe focused `smoke-7`
+  (a member of that stop), counter `8 of 18 · stack 3 of 8 · frame 1 of 3`. Not
+  a no-op, landed inside the stop. PASS.
+- Step 5 (confirmed-only Done marking): initial stop values (from
+  `runStripStopAccessibilityValue`) — `Stop smoke-7–9` = `Current, 3 frames`
+  (has undecided members, **no** `Done`); `Stop smoke-15` = `Done, 1 frame`
+  (its only member was already decided). Decided every member of `smoke-7–9`
+  (`P` on `smoke-7`, then `P` on `smoke-8`; `smoke-9` already `pick`) → SQL all
+  three `pick`, and the stop value became `Done, 3 frames`. Every stop with an
+  undecided member (`smoke-0–2`, `smoke-3–6`, `smoke-10–13`, `smoke-14`,
+  `smoke-16`, `smoke-17`) still lacks `Done`. PASS.
+
+Not separately driven: the tentative-AI-flag-keeps-a-stop-undone property
+(`CullRunStripPresentationTests.testTentativeAIFlagKeepsTheStopUndone`) —
+`burst` carries no tentative ghost flags, so there is no live fixture for it;
+this card only mirrors the confirmed-flag case, which held.
+
+Stale line numbers (rewrite re-grepped 2026-09-13 but the file has since grown
+~34 lines; symbols alive, behaviour exactly as described): `runStrip`
+`LibraryGridView.swift:4844-4880`→`:4878`; `runStripStatusBar`
+`:4882-4906`→`:4916`; `selectRunStripStopLanding` `:4943-4945`→`:4977`;
+`runStripStopAccessibilityValue` `:4947-4953`→`:4981`; `runStripStop`
+`:4919-4935`→`:4953`; `runStripThumbnailFace` `:4961-4994`→`:4995`;
+`runStripStackThumb` `:5005-5039`→`:5039`. Exact still:
+`CullRunStripPresentation.swift:9`/`:25`, `CullFilmstripPresentation.swift:11`.
+Supersedes prior status: fresh full VM run on the current build; all 5 steps
+green.

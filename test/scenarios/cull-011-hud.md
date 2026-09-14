@@ -364,3 +364,59 @@ only; the assertions (session cluster, rating echo, hover-reveal controls)
 were not affected. Supersedes prior status: the 2026-07-28 PASS-WITH-
 CARD-FIXES evidence above is unaffected — it never depended on which
 convention doc the launch comment cited.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789360203`, `launch smoke`, 24 assets): Steps 1-6 all PASS —
+including step 6, which was BLOCKED in the 2026-07-28 run and is now
+unblocked.**
+- Step 1: ground truth `TOTAL=24`, `PICKS=6`, `REJECTS=5`, `UNDECIDED=13`
+  (`PICKS+REJECTS=11` matches the 11/24-flagged smoke split). PASS.
+- Step 2 (on `smoke-0`, scope `all`): cluster AX text `6 picks, 5 rejects,
+  13 left`; `Cull filter` absent (no scope chip at `all`); `Rating 0` absent
+  (rating 0); positive controls present — `Red label` (smoke-0), `Rating 1`
+  (5 `AXImage` hits) + `Yellow label` (smoke-1). Label-dot absence still NOT
+  EXECUTABLE (fixture gap: every smoke asset has a label). PASS.
+- Step 3: `P` on `smoke-1` (undecided) → SQL `pick`, auto-advance to Frame 3
+  (`smoke-2`), cluster `7 picks, 5 rejects, 12 left`; `X` on `smoke-2` → SQL
+  `reject`, cluster `7 picks, 6 rejects, 11 left`. Atomic, no double-count.
+  PASS.
+- Step 4: `A` toggled to `Auto-advance off`; on `smoke-6` (rating 0) `3` →
+  five `Rating 3` glyphs immediately, still present 3s later (rating > 0);
+  `0` (clear) → five `Rating 0` glyphs immediately, absent after 3s; frame
+  stayed at `Frame 7 of 24` throughout; SQL `smoke-6` rating `0`. PASS.
+- Step 5: scope `Unrated` (`Cull filter: Unrated`); selected `smoke-13` via
+  its run-strip stop → rendered `smoke-13.jpg`, `Rating 1`, `Blue label`, chip
+  `Cull filter: Unrated`; SQL `smoke-13` = rating 1 / colorLabel blue /
+  flag null. All four match. PASS.
+- Step 6: PASS on every sub-assertion. Reveal = warp the cursor into the loupe
+  stage and post a sweep of `mouseMoved` events at `.cghidEventTap`
+  (`CGWarpMouseCursorPosition` + `CGEvent(.mouseMoved)`); the AX group
+  `Cull decision controls` then appears. Confirmed live:
+  * appears on pointer movement (`true` after sweep);
+  * idle-hides: `true` at 1.0s, `false` at 2.2s (~1.5s + fade);
+  * a culling key hides it immediately — `Right` → `false` at 0.3s, and the
+    frame advanced (`Frame 15`→`17`), proving the key actually landed;
+  * its buttons carry the taught help — `Pick` = `Pick this photo (P)`,
+    `Reject` = `Reject this photo (X)`;
+  * `AXPress` on `Pick` wrote `flag='pick'` for the focused asset
+    (`smoke-13` null→`pick`) — the same catalog write as pressing `P`;
+  * in the **Loupe lens** (⌘3, window `Teststrip – Loupe`) a hover sweep
+    produced **no** `Cull decision controls` group.
+
+**Unblocks step 6 (was BLOCKED 2026-07-28).** The prior note tried CGEvent
+`mouseMoved` injections and saw nothing; the difference here is warping the
+cursor *and* posting the `mouseMoved` sweep through `.cghidEventTap` while the
+process is genuinely frontmost (re-asserted via System Events), and checking
+presence by walking the AX tree rather than a single `ax find`. `cliclick` is
+still not installed on the VM; the sweep above is the harness mechanism a
+future run can reuse (an `ax_drive.sh` `hover`/`move` verb would make it
+first-class). One probe read `true` at 0.3s after the keystroke before the AX
+node finished tearing down; the frame-advance-confirmed run read `false` at
+0.3s — treat keystroke-hide as immediate-with-fade.
+
+Stale line citations (symbols alive, behaviour as described): the card's
+`CullingProgressSummary`/`cullingProgressSummary` anchors re-grep cleanly;
+`CullHUDPresentation.showsScopeChip` (no chip at `all`) and the
+`"N picks, N rejects, N left"` AX-label override both verified live as
+written. Supersedes prior status: fresh full VM run on the current build, now
+6/6 steps — step 6's BLOCKED cap is lifted.

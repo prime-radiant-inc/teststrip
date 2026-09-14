@@ -1,3 +1,50 @@
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789359307`, `launch smoke`, 24 assets): Steps 1-8 all PASS.**
+- Step 1: ⌘1 selects the Cull lens, landing in its default loupe sub-mode —
+  header `Frame 1 of 24`, 24 run-strip stops (`Stop smoke-0 …`), **zero**
+  `AXTextField`s (the cull-loupe-negative `cull-001` relies on). PASS.
+- Step 2: `g` from the loupe → grid subview (`.cullGrid`): the `Frame 1 of 24`
+  / run-strip header disappears, two `AXScrollArea`s appear, and grid-tile
+  filenames (`smoke-0.jpg` … `smoke-23.jpg`) become AX-drivable. PASS.
+- Step 3: `c` from the grid → Compare: distinguishing chrome renders —
+  `Survey Compare` / `Compare set` / `8 frames` / `PRIMARY` / `REJECTED`
+  (the smoke catalog's 8-frame compare set). The card's <2-frame caveat does
+  not bind here: the survey render is specific enough to assert on. PASS.
+- Step 4: `b` → A/B: `ax find --contains "A/B"` matched (`A/B`,
+  `A/B Compare`, window title `Teststrip – A/B Compare`); body
+  `Comparing smoke-0 vs smoke-1`. PASS.
+- Step 5: `g` from A/B → grid (tiles + `AXScrollArea` back; `Comparing …`
+  gone). **Resolves the card's open question**: the culling-shortcut monitor
+  is active from `.abCompare`, exactly as
+  `CullingKeyCaptureGate.isActive(lens:selectedView:)`
+  (`CullingKeyCaptureView.swift:12`, `lens == .cull && selectedView !=
+  .cullGrid`) states. PASS.
+- Step 6: Return in `.cullGrid` opened the loupe on the **exact focused
+  tile** — strengthened past the first tile: two Right arrows focused tile 3,
+  Return → `Frame 3 of 24` + `smoke-2.jpg` (SQL: `assets` total 24, first row
+  `smoke-0`). PASS (no-op/wrong-asset failure modes both absent).
+- Step 7: `g` from the loupe → grid again. PASS.
+- Step 8: `key code 53` (Esc) from the grid → loupe (`Frame 1 of 24` back) —
+  identical effect to `g`, confirming the "G/Esc are synonyms in `.cullGrid`"
+  reading of `GridKeyCaptureView.swift:39-52`. PASS.
+- **Sharp-edge monitor-overlap question (double-fire): not observed.** Every
+  `g` produced exactly one transition (loupe↔grid, A/B→grid); no
+  loupe→grid→loupe bounce, despite both `NSEvent.addLocalMonitorForEvents`
+  observers being installed. The `guard isActive` short-circuit at
+  `CullingKeyCaptureView.swift:85` makes the culling monitor decline before
+  acting in `.cullGrid`, leaving only `GridKeyCaptureView`'s binding to fire.
+
+Stale line-number citations (symbols alive, behaviour exactly as described —
+the PASS is unaffected): `CullingShortcut` `"g"` mapping
+`AppModel.swift:233`→`:291` (case at `:226`); `applyGridKeyCommand`
+`:6693-6737`→`:7189`; `selectCullSubMode` cited usages
+`:6999-7005, 7089-7098`→ def `:5325`, dispatch `:7500`/`:7589`;
+`LibraryGridView.swift:212-236` capture-view wiring →`:3808-3824`;
+`openAssetInLibraryLoupe` →`:6803`. Exact still:
+`CullingKeyCaptureGate.isActive` `CullingKeyCaptureView.swift:12`;
+`GridKeyCaptureView.swift:74-77`. Supersedes prior status: fresh full VM run
+on the current build; all 8 steps green.
 # cull-008-subview-keys-gcb: G/C/B switch Cull subviews; grid Return/G/Esc jump to and from the loupe
 
 **What this covers**: as a photographer switching between the three Cull
