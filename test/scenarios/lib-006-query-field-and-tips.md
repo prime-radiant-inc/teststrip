@@ -145,3 +145,46 @@ stay visible — and Esc #2 (empty field) clears the active filters.
 Unit-tested in `LibraryGridChromeTests`
 (`testTypingInQueryFieldDraftLeavesCommittedFilterChipsVisible`,
 `testEscapeStageOneClearsDraftOnlyThenStageTwoClearsFilters`).
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789363641`, `launch smoke`, 24 assets): Steps 1-6 and 8 PASS;
+**Step 7 FAILS — product defect.**
+
+- **Step 2 PASS**: the field's `AXPlaceholderValue` is exactly `Search photos,
+  people, places, or rating:3 camera:… ` (the card is correct); its
+  `AXDescription` is `Search Catalog`; the leading `AXMenuButton` `Add filter`
+  (help `Add a filter`) is present.
+- **Step 3 PASS**: typed `pick` + Return → header `6 photos` (== SQL PICKS 6)
+  and a `Pick` chip (`Remove filter Pick`).
+- **Step 4 PASS**: retyped `pick`, pressed the magnifier (`AXButton` help
+  `Search`) → same `6 photos` + `Pick` chip. Return and the icon are equivalent
+  submit paths.
+- **Step 5 PASS**: pressed the info-circle (`AXButton` help `Search tips and
+  filter tokens`) → popover with `Search tips`.
+- **Step 6 PASS**: all **8** token-group rows render verbatim, plus the trailing
+  repeat-person hint — exactly
+  `Self.searchTokenTips`' count and text (source read: count is 8).
+- **Step 7 FAIL**: from the Cull lens, `⌘F` **does switch to the Grid lens**
+  (Grid lens `Selected`) but **does not give the query field keyboard focus** —
+  typed characters do not land (field `AXValue` unchanged) and the app's
+  `AXFocusedUIElement` stays an `AXGroup` even 3 s later. A second `⌘F` while
+  *already* in Grid does focus the field (typed text lands; `AXFocusedUIElement`
+  = the `Search Catalog` field).
+  **Root cause**: `AppModel.requestFocusSearch()` (`AppModel.swift:2754-2759`)
+  calls `selectLens(.grid)` and bumps `focusSearchRequestToken` in the same
+  action, so when invoked from a lens that does not show the field (Cull), the
+  freshly-shown Grid view's `.onChange(of: focusSearchRequestToken)`
+  (`LibraryGridView.swift:3711-3713`) never observes a change and
+  `focusSearchField()` (setting `@FocusState isQueryFieldFocused`, `:159`) never
+  runs. From Grid the shortcut works, which isolates the defect to the
+  lens-switch leg.
+- **Step 8 PASS**: in the Grid lens the menu item reads **disabled**; in the Cull
+  Loupe it reads **enabled** and pressing `s` cycles the scope (chip
+  `Cull filter: Unrated`).
+
+### Stale / observability notes
+- Step 8's menu item title is `Cycle Filter (s)` (lowercase), not
+  `Cycle Filter (S)` as the card writes it.
+- Minor citation drift: `queryTokenField` `:625-739`→`:627`;
+  `submitQueryTokenField` `:686-695`→`:688`; `searchTipsPopover` `:697-728`→
+  `:699`; `requestFocusSearch` `AppModel.swift:2543-2548`→`:2754`.

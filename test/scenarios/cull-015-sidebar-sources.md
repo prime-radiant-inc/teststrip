@@ -213,3 +213,46 @@ group structure describe current code. The 2026-08-06 SP-D0 note above (on
 `autopilotGhostAssetIDs` replacing `pendingAutopilotProposals`) remains
 historically accurate but describes a predicate on a type that no longer
 exists either. Needs a fresh VM run.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789361569`, `launch smoke`, 24 assets): Steps 1-6 PASS; step 7
+untestable on this fixture.**
+- Step 1: `find --contains "AI Suggestions"` not-found on the bare launch. PASS.
+- Step 2: SQL ground truth from `SmartCollection.query`'s real predicates —
+  picks 6, needsEvaluation 24, rejects 5, fiveStars 4, needsKeywords 0,
+  facesFound 0, ocrFound 0, providerFailures 0 (potentialPicks/likelyIssues 0,
+  no evaluation signals). Rendered rows (AXButton description→value):
+  `Picks`=6, `Not analyzed yet`=24, `Rejects`=5, `5 Stars`=4; the six
+  zero-count collections are absent entirely. PASS.
+- Step 3: pressed `Rejects` → grid = `smoke-0,smoke-5,smoke-10,smoke-15,
+  smoke-20` ("5 photos"), identical to the SQL rejects set. PASS.
+- Step 4: seeded a `test-provider` `evaluation_failures` row for `smoke-0` and
+  relaunched the same catalog → `Analysis Failures` renders count 1 as the
+  last fixed-order row (Picks→Not analyzed yet→Rejects→5 Stars→Analysis
+  Failures) before Sets. Selecting it from the Cull lens fell back to Grid
+  (Grid lens `Selected`, grid = `smoke-0` only, "1 photo"); the Cull switcher
+  segment is `Not selected` with AXHelp `Nothing here is cullable`. PASS.
+  **Stale assertion**: the card's `--label "Cull"` must be
+  `--label "Cull lens"` (that is the segment's AXDescription; the AXHelp is
+  exact).
+- Step 5: with provider failures present and no ghosts, `AI Suggestions` was
+  absent; after seeding a `metadata_json` ghost (`smoke-1` flag=pick +
+  `aiUnconfirmedFields:["flag"]`) and relaunching, `AI Suggestions` rendered
+  count 1 after `Analysis Failures` and before Sets. PASS.
+- Step 6: **driver deviation** — the section-header `+ New from search…` add
+  button vends no separate AX element (its `accessibilityLabel` folds into the
+  `Smart Collections` `AXHeading`'s help), so the same `requestSaveSearch()`
+  path was driven via the result header's `Save` AXMenuButton → `Save Search…`.
+  Created `asset_sets` row `105F353E-…` name `Analysis Failures`, membership
+  `{"dynamic":{"_0":{"predicates":[{"evaluationFailure":{}}]}}}` (isDynamic),
+  rendering in Smart Collections (`Smart collection, 1`) after the fixed 10 +
+  AI Suggestions and before Sets; Sets still holds only `Smoke Picks`. PASS.
+- Step 7: untestable on `--smoke` (Picks/Not analyzed yet are always nonzero);
+  the `if !smartRows.isEmpty` gate is unit-covered. Documented, not fabricated.
+
+Stale citations (symbols alive, behaviour as described): `selectSidebarRow`
+`AppModel.swift:4867-4877`→`:5220`; `applySmartCollection` `:11560-11570`→
+`:6131`; `applyAutopilotSuggestionsScope` `:10213-10238`→`:10950`;
+`SmartCollection.presentation` `:620-644`→`:700`; `SmartCollection.query`
+`:646-674`→`:731`; `UnifiedSidebarPresentation.sections` `:122-243`→`:127`;
+`smartCollectionOrder` `:106-109` exact.

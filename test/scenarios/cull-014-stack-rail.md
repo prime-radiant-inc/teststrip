@@ -375,3 +375,40 @@ finding, the structural (tie-independent) unreachability of "Keep
 recommended N" against any `burst`-shaped stack, the Escape-exits-workspace
 gotcha, and the session-resume recovery path. Full run report:
 `.superpowers/card-runs/cull-014-run.md`.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `burst-1789361199`, `launch burst`, 18 assets): Steps 1-6 all PASS.**
+- Step 1: §1's rail precondition held — `ax find --role AXButton --contains
+  "Stack frame 1"` matched on the Cull lens (⌘1).
+- Step 2 (fixture gap reconfirmed): ⇧⌘E "Evaluate Visible" → 40
+  `evaluation_signals` covering the stack members; stack 1 (`smoke-0–2`,
+  `Frame 1 of 3`) shows the tie banner `too close to call — 2·3` and no cell
+  reports `Recommended`. No frame is recommended on `burst`, exactly as the
+  Sharp edges predict.
+- Step 3: the primary button read `Keep frame 1 · cut 2` pre-press; pressing it
+  wrote `smoke-0` `reject→pick` and `smoke-1`/`smoke-2` `NULL→reject` — the
+  **selected** frame, not a recommended one, and `cut 2` == the 2 siblings
+  changed. PASS.
+- Step 4: a single ⌘Z reverted the whole triple (`smoke-0→reject`,
+  `smoke-1/2→NULL`) with stack 2 (`smoke-3–6`) untouched. PASS.
+- Step 5: the ellipsis `AXMenuButton` (`--help "More stack actions"`, label
+  `More`) opened a menu listing exactly `Keep top 2` / `Keep all 4` (no
+  `Keep recommended`, per the structural gap). On stack 2 (`smoke-3–6`) it kept
+  `smoke-4`+`smoke-5` and rejected `smoke-3`+`smoke-6`, exactly the hand-computed
+  `CullingQualityScore` top-2 (`smoke-5` 58.49, `smoke-4` 55.70 > `smoke-6`
+  54.55, `smoke-3` 52.75), regardless of the frame selected beforehand. PASS.
+- Step 6: each stack member has its own cell (stack 2 = 4 cells; stacks 1 and 3
+  = 3 cells == membership) and every cell carries the `SOFT` flaw badge
+  (18/18; no flaw-free counter-example exists on this fixture); zero
+  `Recommended` cells anywhere. PASS on cell-count/flaw-badge;
+  `✦`-placement remains a confirmed fixture gap.
+
+Stale citations (symbols alive, behaviour exactly as described; the file has
+grown since the 2026-07-28 re-sweep): `cullingStackRail`
+`LibraryGridView.swift:4697-4796`→`:5089`; `cullStackRailCell` `:4830-4900`→
+`:5222`; `cullStackRailDecisionOverlay` `:4905-4922`→`:5298`;
+`keepSelectedStackFrame` `:5065-5070`→`:5459`; `performCullingStackAction`
+`:5086-5096`→`:5480`; `CullingStackRailPresentation` `:6326-6500`→`:6730`;
+`rankedAction` `:6532-6572`→`:6957`; `CullingStackAction` `:6575-6580`→`:7000`;
+`compareDecisionBadges` `:5980-5990`→`:6363`. `CullingQualityScore.qualityScore`
+(`Sources/TeststripCore/Evaluation/CullingQualityScore.swift:35`) exact.

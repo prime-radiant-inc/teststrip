@@ -170,3 +170,54 @@ ghost-derivation model. Needs a fresh VM run.
 Preamble only; no other stale symbol found in this card. Supersedes prior
 status: no substantive change — the 2026-08-06 reconciliation above is
 unaffected, noted for the record per house style.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789362615`, `launch smoke`, 24 assets): Steps 1-8 all PASS.**
+- Step 2: ⌘1 → Cull, `S` → Unrated scope (13 undecided, counter `1 of 13`);
+  `X`×13 with auto-advance → SQL undecided 0 (6 picks / 18 rejects).
+- Step 3: completion stage renders `End of set` + `Nothing left to decide`,
+  subtitle `6 picks · 18 rejects` / `0 skipped · 11 never viewed` (sum 24 ==
+  SQL), and exactly the five action buttons Export / Move Rejects… / Move
+  Rejects to Trash… / Review Picks / Save Picks as Set — `find --contains
+  "Review AI"` matches nothing (no sixth action). PASS.
+- Step 4: `Review Picks` → chip `Cull filter: Picks`, counter `6 of 6 · stack
+  6 of 6` == SQL's 6 picks. PASS.
+- Step 5: `S`×2 → All (chip absent), stage back; `Continue culling` dismisses
+  it (`End of set` gone, loupe shows `smoke-22.jpg`); dismissal sticks (still
+  gone on a re-check); one `→` re-shows the stage. PASS. **Card correction**:
+  from the Picks scope it is **two** `S` presses to reach All, not three.
+- Steps 6-8: recorded the 18 reject paths; `Move Rejects…` → confirm sheet
+  (`Move rejects to RejectsTarget`, toggle `Move 18 reject photos to
+  RejectsTarget`, primary disabled until checked). Checked the toggle, pressed
+  the primary → `RejectsTarget` holds 18 jpg + 13 xmp; the catalog's 18 rejects
+  all point at `RejectsTarget` (0 still at the old path); all 18 new paths
+  exist on disk; `SmokeOriginals` retains only the 6 picks' jpgs — relocation,
+  not copy. SQL: 18 `relocation_manifest_entries`; `work_sessions` = `relocation
+  | completed | Moved 18 · skipped 0 | 0 failures`; UI banner `Moved 18 reject
+  photos to RejectsTarget`. PASS.
+
+**Driver note (harness-supported).** The folder chooser's `Move Here` could not
+be driven to completion via `ax_drive.sh press` (AXPress returns -25204 on this
+modal panel) nor a warped CGEvent click (the panel closed but no move enqueued —
+no work session, files untouched). The move was therefore driven via the app's
+own `TESTSTRIP_REJECT_DESTINATION_DIR` override (`LibraryGridView.swift:8873`),
+which bypasses the panel and reaches the confirm sheet directly.
+
+**Environment confound (same class as cull-002).** The seeded `original_path`
+was baked with a prior session's `$TMPDIR`
+(`…/evener-sandbox-692153661/…`), which `cmd_launch`'s rewrite (keyed to the
+*current* `$TMPDIR`) does not match; originals were unresolvable until the launch
+was re-run with `TMPDIR` set to the seed-time sandbox. Harness artifact, not a
+product defect.
+
+Items 49-51 (folded banners, `openCullingSessionPicks`,
+`cullRemainingSinglesFromCullingCompletion`) remain unexercised: `--smoke` has no
+persisted stack/work-session completion, as the Sharp edges state.
+
+Stale citations (symbols alive, behaviour as described):
+`CullCompletionPresentation.presentation` `:88-103`→`:143`, `.summary` `:32-76`→
+`:54`; `applyCullCompletionReviewPicks` `AppModel.swift:7225-7232`→`:7726`;
+`openCullingSessionPicks` `:6079-6093`→`:6452`;
+`cullRemainingSinglesFromCullingCompletion` `:6150-6175`→`:6525`;
+`isCullCompletionDismissed` `LibraryGridView.swift:3837-3838`→`:4083`;
+completion action row `:3919-3940`→`cullCompletionStage` `:4214`.

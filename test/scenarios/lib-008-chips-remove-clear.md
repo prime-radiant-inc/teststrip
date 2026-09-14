@@ -125,3 +125,35 @@ fixed the citation. No step or assertion in this card depended on the old
 name. Supersedes prior status: no substantive change to any assertion — the
 NOT RUN status and the LEDGER's separately-tracked "Verified" history are
 otherwise unaffected, noted for the record per house style.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789363976`, `launch smoke`, 24 assets): Steps 1-8 all PASS.**
+- Step 2: fresh launch — no chips (`Remove filter` not-found), no `Clear
+  filters` button, scope `24 photos`. PASS.
+- Steps 3-4: `rating:3` + Return → `12 photos · Rating >= 3` (== SQL
+  RATING3PLUS 12) + a `Rating >= 3` chip; Add-filter menu (AXMenuButton
+  `Add filter`) → `Pick` → `3 photos · Rating >= 3 + Pick`, two chips
+  (`Rating >= 3`, `Pick`), both with **no** subtitle, and `Clear filters`
+  appears. PASS.
+- Step 5: rendered intersection 3 == SQL `rating>=3 AND flag='pick'` = 3. PASS.
+- Step 6: pressed `Remove filter Rating >= 3` → that chip removed, `Pick`
+  retained, scope `6 photos · Pick` (== SQL PICKS 6) — per-property removal
+  confirmed. PASS.
+- Step 7: `rating:4 sunset` + Return → chips `Rating >= 4` (no subtitle),
+  `Pick`, and `Search: sunset (Not a filter — matching file names and photo
+  text)`. `find --contains "Not a filter"` matches **exactly once**, on the
+  free-text residual chip, not the structured `Rating >= 4` one. PASS.
+- Step 8: `Clear filters` → scope `24 photos` (== TOTAL), chips gone, the
+  button gone (`hasActiveFilters` false again). PASS.
+
+Stale citations (symbols alive, behaviour exactly as described):
+`hasActiveLibraryFilters` `AppModel.swift:3245-3247`→`:3540`;
+`isPlainSearchFallback` set site `:3275-3280`→`:3572`; `ActiveLibraryFilterRow`
+`:998-1002`→`:1069`; minor drift `activeFilterChips`
+`LibraryGridView.swift:1180-1235`→`:1181`, `filterChip` `:1201-1235`→`:1202`,
+`Clear filters` `:901-909`→`:902`. `LibraryQueryToken.remove`
+`LibraryQueryTokenField.swift:235` and `legacyRows` `:398` present as cited.
+
+Not separately re-driven: the dedupe-vs-legacy-rows identity path (no legacy
+`ActiveLibraryFilterRow` coexists with a structured token on this fixture); the
+card's Steps do not exercise it.

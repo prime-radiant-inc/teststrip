@@ -181,3 +181,47 @@ described `AppModel.buildSidebarSections()` at line 2031 and
 `SidebarView.swift:17-30,142-186` — all superseded by the unified shell. The
 "Excluded unified-shell journey debt" note that was at the bottom of the
 old card is now resolved by this rewrite.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789363253`, `launch smoke`, 24 assets): Tested-Fail — Steps 3,
+5, 6, 7 PASS; Step 2 PARTIAL; Step 4 FAIL as written; Step 8 unrunnable.**
+
+Confirmed against the live sidebar (`AXButton`/`AXHeading` description→value):
+- **Step 3 PASS**: `All Photos` = 24.
+- **Step 5 PASS**: `Smart Collections` header present; rows `Picks` 6 /
+  `Not analyzed yet` 24 / `Rejects` 5 / `5 Stars` 4; Potential Picks, Likely
+  Issues, Needs Keywords, Faces Found, OCR Found, Analysis Failures all absent.
+- **Step 6 PASS**: `Sets` header present; sole row `Smoke Picks` (`Manual set,
+  8`), enabled/pressable.
+- **Step 7 PASS**: `Folders` header present; sole row `SmokeOriginals` (…, 24),
+  enabled; no `Expand SmokeOriginals` chevron.
+- **Step 2 PARTIAL**: observed order is **Library → Smart Collections → Sets →
+  Folders → Selection**. `Imports` is **absent**; `Selection` is **present**
+  (value 1) — both the opposite of the card.
+- **Step 4 FAIL as written**: the `Imports` section does not render.
+- **Step 8 unrunnable** (no live import), as the card allows.
+
+### Root cause (stale card premise, not a product defect)
+`--smoke` (`TeststripBench seed-app-catalog` — the same seeder host
+`build_and_run.sh --smoke` uses) creates **0 `work_sessions`** rows (verified on
+the VM seed template: `SELECT count(*) FROM work_sessions` = 0).
+`UnifiedSidebarPresentation.sections` builds the Imports section solely from
+completed `.ingest` work sessions (`AppModel.refreshImportSourceSummaries` →
+`workSessions(kind: .ingest, statuses: [.completed])`), so with no session the
+section is correctly omitted. The card's Pre-state claim "one import session" is
+therefore stale for the current seeder.
+
+`Selection` renders because the fresh grid auto-selects `smoke-0` (AX value
+`Selected, Flagged Reject, …`) → `selectionCount == 1`; the card's "no selection
+in fresh smoke" premise is likewise stale.
+
+### Stale citations / driver notes
+- **Stale SQL**: the Pre-state uses `WHERE flag = 'pick'` / `rating = 5`, but
+  `assets` has no `flag`/`rating` columns (both live in `metadata_json`); those
+  literals error `no such column`. Use `json_extract(metadata_json,'$.flag')`.
+- The Smart Collections / Sets header add buttons (`+ New from search…`, `New
+  Set from Selection…`) are not separate AX elements — their
+  `accessibilityLabel` folds into the section `AXHeading`'s AXHelp and is not
+  independently AX-pressable.
+- `UnifiedSidebarPresentation.sections` still resolves at `:127` and
+  `smartCollectionOrder` at `:106-109` (both as cited in the card).
