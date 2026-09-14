@@ -25,9 +25,10 @@ the `TeststripBench` executable target (`Sources/TeststripBench/main.swift`,
 - Note the CLI takes **positional arguments**, not flags — there is no
   `--catalog-path`. Each seed subcommand's directory/count args are
   positional per `BenchmarkCommand.parse()` (`Sources/TeststripBench/BenchmarkCommand.swift`
-  lines 76–105): `seed-geo-fixtures <dir> [count=12]`,
-  `seed-dup-fixtures <dir>`, `seed-app-catalog <app-support-dir> [count=24]`,
-  `seed-sample-catalog <app-support-dir> <photo-dir>`. All directory
+  lines 30–145): `seed-geo-fixtures <dir> [count=12]` (line 84),
+  `seed-dup-fixtures <dir>` (line 97), `seed-app-catalog <app-support-dir>
+  [count=24]` (line 101), `seed-sample-catalog <app-support-dir> <photo-dir>`
+  (line 135). All directory
   arguments default to the current working directory if omitted — always
   pass them explicitly to stay inside `$D`.
 - `seed-sample-catalog` needs a real photo directory as its second argument;
@@ -100,25 +101,30 @@ the `TeststripBench` executable target (`Sources/TeststripBench/main.swift`,
   TeststripBench seed app catalog
   application support: <D>/appsupport
   count: 6
+  evaluation fixtures: none
   seed app catalog: <elapsed>s
   catalog: <D>/appsupport/Teststrip/catalog.sqlite
   preview cache: <D>/appsupport/Teststrip/Previews
   source images: 6
   catalog assets: 6
-  cached previews: 24
-  benchmark-summary	{"benchmark":"seed_app_catalog","count":6,"measurements":{"seed_app_catalog":<elapsed>},"metrics":{"cached_previews":24,"catalog_assets":6,"source_images":6}}
+  cached previews: 12
+  benchmark-summary	{"benchmark":"seed_app_catalog","count":6,"measurements":{"seed_app_catalog":<elapsed>},"metrics":{"cached_previews":12,"catalog_assets":6,"source_images":6}}
   ```
-  (24 cached previews = 6 assets × 4 preview levels: micro/grid/medium/large,
-  per `SmokeCatalogSeeder.renderedLevels`.) Step 5's `.tables` query lists
-  (captured live): `asset_sets`, `assets`,
-  `catalog_meta`, `dismissed_face_assets`, `dismissed_faces`,
+  (12 cached previews = 6 assets × 2 preview levels, per
+  `SmokeCatalogSeeder.renderedLevels` = `[.grid, .large]` —
+  `PreviewCache.physicalFile` maps micro/grid → `grid.heic` and medium/large
+  → `large.heic`, so those two logical levels are two physical files per
+  asset.) Step 5's `.tables` query lists (captured live 2026-09-13 — 21
+  tables): `asset_sets`, `assets`, `catalog_meta`,
+  `contact_reference_faces`, `dismissed_face_assets`, `dismissed_faces`,
   `evaluation_failures`, `evaluation_signals`, `face_observations`,
   `geocode_queue`, `metadata_sync_state`, `people`, `person_assets`,
   `person_faces`, `place_cache`, `preview_generation_queue`,
-  `relocation_manifest_entries`, `source_roots`, `work_sessions` (full
-  catalog schema from `CatalogDatabase.migrate()`, not just an `assets`
-  table). **Fails if** `SELECT count(*) FROM assets` != `6`, contradicting
-  the printed `catalog assets: 6`.
+  `rejected_face_people`, `relocation_manifest_entries`, `removed_ai_labels`,
+  `source_roots`, `work_sessions` (full catalog schema from
+  `CatalogDatabase.migrate()`, not just an `assets` table). **Fails if**
+  `SELECT count(*) FROM assets` != `6`, contradicting the printed
+  `catalog assets: 6`.
 - Step 4: exit `0`, stdout:
   ```
   TeststripBench seed sample catalog
@@ -129,16 +135,16 @@ the `TeststripBench` executable target (`Sources/TeststripBench/main.swift`,
   preview cache: <D>/appsupport2/Teststrip/Previews
   source images: 12
   catalog assets: 12
-  cached previews: 24
-  benchmark-summary	{"benchmark":"seed_sample_catalog","count":0,"measurements":{"seed_sample_catalog":<elapsed>},"metrics":{"cached_previews":24,"catalog_assets":12,"source_images":12}}
+  cached previews: 12
+  benchmark-summary	{"benchmark":"seed_sample_catalog","count":0,"measurements":{"seed_sample_catalog":<elapsed>},"metrics":{"cached_previews":12,"catalog_assets":12,"source_images":12}}
   ```
   (12 = the JPEG count in `loc-free-to-use`, the `.xmp` sidecar is not a
-  separate asset; 24 cached previews here is a coincidence of this fixture
-  set producing 2 preview levels × 12 assets, not the same 4-level scheme as
-  `seed-app-catalog` — `SampleCatalogSeeder` uses `.generateImmediately`
-  preview policy via `LibraryImportService`, a different code path from
-  `SmokeCatalogSeeder`.) Step 5's third query: `12`. **Fails if**
-  `catalog assets` != `12` or the command errors with `sample photo
+  separate asset; 12 cached previews = 12 assets × 1 physical file —
+  `LibraryImportService.importPreviewLevels` is `[.grid]`, so
+  `.generateImmediately` writes one `grid.heic` per asset via
+  `LibraryImportService`, a different code path from `SmokeCatalogSeeder`'s
+  two-level `[.grid, .large]` render.) Step 5's third query: `12`. **Fails
+  if** `catalog assets` != `12` or the command errors with `sample photo
   directory does not exist`.
 - Both `seed-app-catalog` and `seed-sample-catalog` **refuse to seed over an
   existing catalog** — rerunning step 3 or step 4 with the same
@@ -164,7 +170,7 @@ touched (bench seeds write to an arbitrary caller-chosen path, not the
 - The CLI has **no help/usage text and no flag validation** — an unknown
   first argument (e.g. a typo'd subcommand name) silently falls through to
   `BenchmarkCommand.parse()`'s final `return .catalogScale(count: Int(firstArgument) ?? catalogBaselineCount)`
-  (line 106), which runs the 500k-row `catalog-baseline` benchmark instead
+  (line 143), which runs the 500k-row `catalog-baseline` benchmark instead
   of failing loudly. A mistyped subcommand name looks like a hang, not an
   error — if a card seems to be running "slow," check the exact spelling
   before assuming a real perf problem.
@@ -178,11 +184,14 @@ touched (bench seeds write to an arbitrary caller-chosen path, not the
   guard means these are one-shot per destination directory — a card that
   wants a fresh catalog on every run must pass a fresh `mktemp -d` path each
   time, not reuse a fixed scratch location.
-- `seed-real-corpus-catalog` (a third catalog-seeding subcommand visible in
-  `BenchmarkCommand.parse()`, line 90) exists alongside these four but was
+- `seed-real-corpus-catalog` (a catalog-seeding subcommand visible in
+  `BenchmarkCommand.parse()`, line 127) exists alongside these four but was
   out of scope for this card per the task brief; it follows the same
   positional-arg/no-overwrite pattern as `seed-sample-catalog` if a future
-  card needs it.
+  card needs it. Two more seeders have since joined `parse()` out of this
+  card's scope: `seed-face-stack-fixtures <dir> <source-photo-dir>`
+  (line 89) and `seed-burst-catalog <app-support-dir> [fixtures...]`
+  (line 115).
 
 ## Run status
 **Reconciled 2026-08-06 (Task 9, SP-D0 ghost derivation)**: removed
@@ -192,3 +201,31 @@ longer includes it. Supersedes prior status: LEDGER records this card
 `Tested-Pass`, but that result was captured against a schema that included
 `autopilot_proposals` — not valid evidence for the current table list.
 Needs a fresh host CLI run to re-capture `.tables`.
+
+**Verified 2026-09-13 (host m4.local, macOS 26.5.2 / Darwin 25.5.0, main
+checkout @ 6c3df364, no GUI)**: built `swift build --product TeststripBench
+-c debug` and ran all four subcommands against a `mktemp -d` scratch root.
+- Step 1 matched exactly: 8 files `GEO_0000..0007.jpg`, `gps-bearing
+  fixtures: 4`, Eiffel `48.8584/2.2945`.
+- Step 2 matched exactly: card1 = 4 frames, card2 = 6; all four shared
+  `FRAME_*.jpg` byte-identical to their card2 counterparts (`cmp -s`), two
+  `NEW_*.jpg`.
+- Steps 3–4 matched except the preview count: both print `cached previews:
+  12` (and `cached_previews: 12` in `benchmark-summary`), not the 24 this
+  card captured — corrected above, along with the mechanism (smoke = 6×2
+  levels `[.grid, .large]`; sample = 12×1 file, `importPreviewLevels =
+  [.grid]`). Step 3 stdout also now carries an `evaluation fixtures: none`
+  line (added since the last capture; `Sources/TeststripBench/main.swift:445`).
+- Step 5 `.tables` re-captured: **21 tables** — the card's inventory was
+  missing `contact_reference_faces`, `rejected_face_people`,
+  `removed_ai_labels` (added above). `SELECT count(*) FROM assets` returned
+  `6` (appsupport) and `12` (appsupport2), matching the printed
+  `catalog assets`.
+- Negative case confirmed for both: re-running the seed prints
+  `refusing to seed smoke catalog over existing catalog: <path>` /
+  `refusing to seed sample catalog over existing catalog: <path>` and exits
+  `133` (SIGABRT via `fatalError`, as the LEDGER note predicted).
+- Card citations to `BenchmarkCommand.parse()` corrected: `76–105`→`30–145`
+  (per-command: geo 84, dup 97, app-catalog 101, sample 135), unknown-arg
+  fallback `106`→`143`, `seed-real-corpus-catalog` `90`→`127`;
+  `GeoFixtureSeeder.run()` `34–56` remains correct.

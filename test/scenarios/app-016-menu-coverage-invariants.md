@@ -3,10 +3,10 @@
 **What this covers**: menus are Teststrip's system of record — every culling
 shortcut, lens, Cull sub-mode, inspector section, zoom, file, and
 move-rejects/updates action must have a menu item, pinned by
-`AppMenuCoveragePresentation` (`Sources/TeststripApp/main.swift:93-139`)
+`AppMenuCoveragePresentation` (`Sources/TeststripApp/main.swift:96-142`)
 against the underlying action-producing enums. Re-anchored on
-`AppMenuCoveragePresentation.lensActionIDs` (`:94`, `LibraryLens.allCases`'s
-six titles) and `.cullSubModeMenuModes` (`:99`, the four transient Cull
+`AppMenuCoveragePresentation.lensActionIDs` (`:97`, `LibraryLens.allCases`'s
+six titles) and `.cullSubModeMenuModes` (`:102`, the four transient Cull
 sub-modes) — the successors to the pre-unified-shell `workspaceActionIDs`/
 `subViewMenuModes` this card used to cite, both deleted by this push.
 
@@ -84,7 +84,7 @@ None (read-only test run).
   regression, not a design choice — every non-monitor-only item must have
   one.
 - The six `LensCommands` items (⌘1–⌘6) DO carry a real `.keyboardShortcut`
-  (`main.swift:173`) — they are not subject to the double-fire hazard the
+  (`main.swift:176`) — they are not subject to the double-fire hazard the
   bullet above describes, because there is no in-view key monitor
   independently owning digit keys the way there is for P/X/ratings. Don't
   conflate the two key-advertising strategies when reading `main.swift`.
@@ -118,3 +118,18 @@ re-verified against source before now and would fail step 2 outright if
 followed literally. Needs a fresh run (`swift test --filter
 MenuCoveragePresentationTests`) — not VM-bound, so this one can run headless
 whenever picked up.
+
+**Verified 2026-09-13 (host m4.local, macOS 26.5.2 / Darwin 25.5.0, main
+checkout @ 6c3df364, no GUI launched)**: ran
+`swift test --filter MenuCoveragePresentationTests` →
+`Executed 11 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds`
+(the summary repeats for the suite, `TeststripPackageTests.xctest`, and
+`Selected tests` roll-ups); 0 warnings/errors in the filtered output. Step 3's
+four literals all present: `Import Folder…` (`main.swift:120`), `Export…`
+(`:123`), `Move Rejects…` (`:134`), `Check for Updates…` (`:141`). The card's
+cited roster and count of 11 are correct — only the presentation-layer line
+anchors had drifted, corrected above (`:93-139`→`:96-142`, `lensActionIDs`
+`:94`→`:97`, `cullSubModeMenuModes` `:99`→`:102`, LensCommands
+`.keyboardShortcut` `:173`→`:176`). `menuKeyboardShortcut` (`main.swift:575`)
+still returns `nil`, so the Sharp-edges note about Culling items advertising
+their key in the title rather than a real shortcut remains accurate.

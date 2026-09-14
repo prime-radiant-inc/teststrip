@@ -137,3 +137,40 @@ this card's cleanup.
   not-fully-offline network could retry for a while before failing loudly
   rather than cleanly SKIPping — the offline preflight in this card's Steps
   3 only prevents the *fully offline* case, not partial connectivity.
+
+## Run status
+**Verified 2026-09-13 (host m4.local, macOS 26.5.2 / Darwin 25.5.0, main
+checkout @ 6c3df364, no GUI)**: network was up (preflight passed), so the full
+card ran.
+- Step 1 (`--print-config`): exit 0, stdout exactly
+  `manifest=/Users/jesse/git/projects/teststrip/sample-data/wordpress-photo-directory.tsv`,
+  `destination=.../sample-data/photos/wordpress-photo-directory`, `limit=0`.
+- Step 2 (`--print-config --limit 5`): same paths, `limit=5`.
+- Step 3: preflight passed (`network up`), so steps 4–6 ran.
+- Step 4 (fresh `--limit 2` into a `mktemp -d` destination): exit 0,
+  `downloaded wordpress-4926a47ed9.jpg` + `downloaded wordpress-7566a27d81.jpg`,
+  summary `total=2 downloaded=2 kept=0`; both md5s match the manifest rows.
+- Step 5 (idempotent re-run): exit 0, `kept` × 2, summary
+  `total=2 downloaded=0 kept=2` — `verify_file()` md5 gating confirmed.
+- Step 6 (`download_face_model.sh`): exit 0. The `.mlpackage.zip` was **not**
+  cached locally, so this one forced a real 120 MB fetch (no dry-run exists);
+  the manifest's `expected_md5`/`expected_size` verified it. Stdout:
+  `downloaded auraface-v1.mlpackage.zip` →
+  `sample photos ready: destination=.../sample-data/models total=1 downloaded=1 kept=0`,
+  then `up to date: arcface-w600k-r50.mlmodelc` / `up to date:
+  auraface-v1.mlmodelc` (the fresh extract preserves the zip's original July
+  mtimes, so `compile_face_models.sh` correctly reported up-to-date rather than
+  recompiling), final line
+  `face model ready: /Users/jesse/git/projects/teststrip/sample-data/models/auraface-v1.mlpackage`.
+  `auraface-v1.mlpackage` and `auraface-v1.mlmodelc` both exist as directories.
+- Manifest URL independently re-confirmed:
+  `curl -sIL https://github.com/prime-radiant-inc/teststrip/releases/download/models-v1/auraface-v1.mlpackage.zip`
+  → `HTTP/2 200`, `content-length: 120416404`, matching the manifest's recorded
+  size; the old `REPLACE-ME.example.com` placeholder is indeed gone.
+- **Stale-comment finding (not fixed here)**: `sample-data/face-recognition-model.tsv:5-6`
+  still carries `TODO(host): upload auraface-v1.mlpackage.zip to a stable URL
+  and replace the placeholder below` above the now-real URL — the comment is
+  stale even though the URL is correct.
+- Cleanup: the `mktemp -d` step-4/5 destination was `rm -rf`'d;
+  `sample-data/models/*` (gitignored) was intentionally left in place per the
+  card's Cleanup note.
