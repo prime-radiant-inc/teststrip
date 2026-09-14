@@ -19,6 +19,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # The AuraFace Core ML model is NOT committed (sample-data/models is
+      # gitignored), so a fresh CI checkout has no model and the assembled
+      # bundle would silently ship without on-device face recognition — which
+      # is what v0.1.0..v0.3.0 did. Fetch + compile it before packaging.
+      - name: Fetch Face Model
+        run: |
+          set -euo pipefail
+          bash script/download_face_model.sh
+
       - name: Setup Signing Keychain
         env:
           DEVELOPER_ID_APPLICATION_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
@@ -60,6 +69,16 @@ jobs:
           bash script/package_release.sh --sign-only --identity "$TESTSTRIP_SIGNING_IDENTITY"
 
           APP_BUNDLE="$(pwd)/dist/$APP_NAME.app"
+
+          # Refuse to publish a release whose bundle is missing the face model.
+          # Assembly only *warns* when the model is absent (so dev builds still
+          # work), which is how the first three releases shipped without it.
+          FACE_MODEL="$APP_BUNDLE/Contents/Resources/auraface-v1.mlmodelc"
+          if [[ ! -d "$FACE_MODEL" ]]; then
+            echo "error: $FACE_MODEL is missing — refusing to publish a release without the face model" >&2
+            exit 1
+          fi
+
           echo "app_path=$APP_BUNDLE" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
