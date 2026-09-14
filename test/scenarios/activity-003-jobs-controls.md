@@ -61,9 +61,15 @@ test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
    ```bash
    BEFORE_INGEST_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='ingest';")
    script/vm_scenario_run.sh ax press --role AXButton --label "Import Path"
-   script/vm_scenario_run.sh ax wait --role AXTextField --label "Folder path"
-   script/vm_scenario_run.sh ax type --role AXTextField --label "Folder path" --text "/Users/admin/teststrip-vm/fixtures/activity-003-smokebig"
+   # The Import Folder Path sheet's path field vends NO AX label/title/value —
+   # `--label "Folder path"` matches nothing on the current build (verified
+   # 2026-09-14). Focus it with a warped click, then type with System Events:
+   script/vm_scenario_run.sh shell 'swift /tmp/click.swift 500 210'
+   script/vm_scenario_run.sh key 'keystroke "/Users/admin/teststrip-vm/fixtures/activity-003-smokebig"'
    script/vm_scenario_run.sh ax press --role AXButton --label "Review Import"
+   # The auto-read toggle lives inside the sheet's collapsed "Options"
+   # disclosure. Expand it first or no AXCheckBox exists in the tree:
+   script/vm_scenario_run.sh ax press --role AXDisclosureTriangle --label "Options"
    script/vm_scenario_run.sh ax wait --role AXCheckBox --label "Read imported frames automatically"
    script/vm_scenario_run.sh ax press --role AXCheckBox --label "Read imported frames automatically"
    script/vm_scenario_run.sh ax wait --role AXButton --label "Import 130 Photos"
@@ -103,6 +109,15 @@ test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
    If all preview rows drain before this condition, the fixture did not sustain
    the card and the run fails. Do not replace it with a launch race.
 
+   **Measured window (2026-09-14)**: on this VM the 130-photo preview backlog
+   drains in ~3.9s (130→0), so "cached ≥ 40 while pending > 0" holds only from
+   ~t+1.5s to ~t+3.9s after the import press. The poll above must therefore run
+   in the **same shell invocation** immediately after the Import press — a
+   host-side round trip plus the interleaved `assets`/`evaluation_signals`
+   asserts in step 2 pushes the first sample past the window and the condition
+   is never observed. The freeze in step 3 must likewise be pressed within that
+   window (see step 3).
+
 ### 2. Freeze the queue, add one finite evaluation batch, then publish both kinds
 
 3. Open the positive working control and pause the one visible Generate row.
@@ -111,7 +126,7 @@ test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
    new command can dispatch while the queue stays frozen.
 
    ```bash
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax press --help "Activity - working"
    script/vm_scenario_run.sh ax wait --role AXStaticText --label "Generate previews"
    script/vm_scenario_run.sh ax press --role AXButton --help "Pause background work"
    script/vm_scenario_run.sh ax wait --role AXStaticText --label "Queue paused"
@@ -126,7 +141,7 @@ test "$(find "$fixture" -type f -name "*.xmp" | wc -l | tr -d " ")" -eq 0
 
    ```bash
    script/vm_scenario_run.sh ax press --role AXMenuItem --label "Evaluate Matches"
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax press --help "Activity - working"
    script/vm_scenario_run.sh ax wait --role AXStaticText --label "Evaluate photos"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
    ```
@@ -310,11 +325,43 @@ script/vm_scenario_run.sh shell 'rm -rf "$HOME/teststrip-vm/fixtures/activity-00
 
 ## Run status
 
-**Spec'd — NOT RUN (2026-08-10).** No step in this rewritten procedure was
-freshly driven. It replaces the fast pre-rendered `--smoke` window, direct host
-commands, stale per-item/four-row-cap expectations, transient pause text,
-immediate-cancel assumptions, and false preview/evaluation `work_sessions`
-queries with a frozen finite workload and positive publication barriers.
+**Tested-Fail — 2026-09-14, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+multiple `launch empty` runs importing the 130 `smokebig` originals).**
+
+Verified live, with corrections:
+- Step 1 import route is drivable, but the path field has **no AX label** and
+  the auto-read toggle is inside the collapsed **Options** disclosure — both
+  fixed in the card body.
+- Step 2's window is reachable (measured `cached=43 pending=87` at t+2.1s) but
+  only if polled immediately after the Import press; the 130-photo backlog
+  drains in ~3.9s.
+- Step 3's freeze is drivable (pressed Pause with 76-78 preview rows still
+  pending; `Queue paused` + `Generate previews` row held).
+- Step 5's shape was observed once (`Generate previews`=1, `Evaluate photos`=1,
+  `Cancel this work item`=2, `Resume background work`=2) in a run where the
+  Evaluate press did take effect — see the caveat below.
+
+**Blocking defect (step 4)**: `Culling ▸ Evaluate Matches` is disabled for the
+session when the import ran with automatic reads off. Evidence: with 130 assets
+and 130 cached grid previews, `enabled of menu item "Evaluate Matches"` read
+`false` at t+2/5/10/20s after the import while `Run Autopilot` read `true`, and
+the AX press was a no-op (`evaluation_signals` stayed 0). Control: the identical
+sheet-driven import with the toggle left ON read `true/true` and the press
+worked (signals rose). Relaunching the same run also restored `true`. The gate
+was not root-caused to a source line. Caveat: in one earlier auto-read-off run
+the press *did* enqueue ("Queued local reads for 40 photos; 12 cached photos
+remain"), so the disabled state is reproducible but not perfectly stable — it
+may be a staleness bug rather than a hard gate. Either way steps 4-9 cannot be
+trusted until it is fixed.
+
+Card corrections applied live: (1) expand the Options disclosure before the
+auto-read checkbox; (2) the folder-path field is unlabeled (warped click +
+System Events keystroke); (3) match the working toolbar control on `--help`
+alone (it vends as `AXBusyIndicator`); (4) the preview-freeze window is ~2.4s
+and must be polled in the same shell; (5) after resume the preview row retires
+in ~2s, so the step-7 capture must be a single traversal.
+
+Historical evidence remains historical:
 
 Historical evidence remains historical:
 

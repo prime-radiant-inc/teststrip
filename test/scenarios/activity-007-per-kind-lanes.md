@@ -73,9 +73,15 @@ inside the VM wrapper.
    ```bash
    BEFORE_INGEST_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='ingest';")
    script/vm_scenario_run.sh ax press --role AXButton --label "Import Path"
-   script/vm_scenario_run.sh ax wait --role AXTextField --label "Folder path"
-   script/vm_scenario_run.sh ax type --role AXTextField --label "Folder path" --text "/Users/admin/teststrip-vm/fixtures/activity-007-smokebig"
+   # The Import Folder Path sheet's path field vends NO AX label/title/value —
+   # `--label "Folder path"` matches nothing on the current build (verified
+   # 2026-09-14). Focus it with a warped click, then type with System Events:
+   script/vm_scenario_run.sh shell 'swift /tmp/click.swift 500 210'
+   script/vm_scenario_run.sh key 'keystroke "/Users/admin/teststrip-vm/fixtures/activity-007-smokebig"'
    script/vm_scenario_run.sh ax press --role AXButton --label "Review Import"
+   # The auto-read toggle lives inside the sheet's collapsed "Options"
+   # disclosure. Expand it first or no AXCheckBox exists in the tree:
+   script/vm_scenario_run.sh ax press --role AXDisclosureTriangle --label "Options"
    script/vm_scenario_run.sh ax wait --role AXCheckBox --label "Read imported frames automatically"
    script/vm_scenario_run.sh ax press --role AXCheckBox --label "Read imported frames automatically"
    script/vm_scenario_run.sh ax wait --role AXButton --label "Import 130 Photos"
@@ -115,6 +121,12 @@ inside the VM wrapper.
    If all preview rows drain before this condition, the fixture did not sustain
    the card and the run fails. Do not replace it with a launch race.
 
+   **Measured window (2026-09-14)**: the 130-photo preview backlog drains in
+   ~3.9s on this VM, so "cached ≥ 40 while pending > 0" holds only from ~t+1.5s
+   to ~t+3.9s after the Import press. Poll in the **same shell invocation**
+   immediately after the press — a host round trip plus the interleaved
+   `assets`/`evaluation_signals` asserts otherwise lands past the window.
+
 ### 2. Freeze the queue, add one finite evaluation batch, then publish both kinds
 
 3. Open the positive working control and pause the one visible Generate row.
@@ -123,7 +135,7 @@ inside the VM wrapper.
    new command can dispatch while the queue stays frozen.
 
    ```bash
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax press --help "Activity - working"
    script/vm_scenario_run.sh ax wait --role AXStaticText --label "Generate previews"
    script/vm_scenario_run.sh ax press --role AXButton --help "Pause background work"
    script/vm_scenario_run.sh ax wait --role AXStaticText --label "Queue paused"
@@ -138,7 +150,7 @@ inside the VM wrapper.
 
    ```bash
    script/vm_scenario_run.sh ax press --role AXMenuItem --label "Evaluate Matches"
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax press --help "Activity - working"
    script/vm_scenario_run.sh ax wait --role AXStaticText --label "Evaluate photos"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Queue paused"
    ```
@@ -383,11 +395,43 @@ The fresh `empty` run is disposable. Do not delete or mutate the synced
 
 ## Run status
 
-**Spec'd — NOT RUN (2026-08-10).** This 130-original, fresh-`empty`,
-publication-barrier procedure has not been driven. It replaces the old host
-`jesse-pictures` dependency, fixed-delay sampling, direct host commands,
-automatic import evaluation, immediate-row-removal assumptions, and unsupported
-preview/evaluation `work_sessions` assertions.
+**Tested-Fail — 2026-09-14, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `empty-1789385171`, `launch empty`, 130 `smokebig` originals imported).**
+
+- Pre-state and steps 1-3 PASS as driven: the import route works (after the two
+  mechanical card fixes below), the preview window was met (`cached=43
+  pending=87` at t+2.1s), and the freeze landed (`Queue paused`, 20 preview rows
+  held).
+- **Step 4 BLOCKED**: after the auto-read-off import, `Culling ▸ Evaluate
+  Matches` read `AXEnabled = false` (`Run Autopilot` read `true`) and the press
+  was a no-op — `evaluation_signals` stayed 0 and no `Evaluate photos` row
+  published. This is the same product-coupling defect as
+  `activity-003-jobs-controls.md`: turning off automatic reads disables the
+  manual Evaluate commands for the session. With the toggle ON the same import
+  leaves them enabled.
+- Because step 4 cannot bind the finite evaluation kind, the lane-overlap
+  (step 8), row-scoped Cancel (step 9), one-Cancel/sibling-continues (step 10),
+  idle (step 11), and `evaluation_signals > 0` (step 12) legs are not driven.
+- **Step 12's confirm-before-write invariants DID pass independently** while
+  frozen: `assets = 130`, `people = 0`, `person_assets = 0`, zero `.xmp` files
+  in the imported folder, and the 130-original checksum record matched exactly
+  (`CHECKSUMS_STABLE`). The card's own `evaluation_signals > 0` line is the only
+  step-12 assertion blocked.
+- Supporting evidence for the per-kind publication the card targets: in a
+  related run (`activity-003`, same fixture) both `Generate previews` and
+  `Evaluate photos` rows *did* publish in one snapshot with `Cancel this work
+  item` × 2 and `Resume background work` × 2 — so the per-kind aggregation
+  itself renders; the defect is the manual-evaluate gate, not the grouping.
+
+Card corrections applied live: (1) the Import Folder Path field has **no AX
+label** (`--label "Folder path"` never matches); (2) the auto-read toggle sits
+in the collapsed **Options** disclosure and must be expanded first; (3) the
+working toolbar control vends as `AXBusyIndicator` (match `--help` alone); (4)
+the preview backlog drains in ~3.9s, so step 2's window is ~2.4s and must be
+polled in the same shell as the Import press. Runner deviation (disclosed): no
+`sync` (VM pre-synced; parent forbade).
+
+Historical dated partial evidence is preserved, not promoted:
 
 Historical dated partial evidence is preserved, not promoted:
 

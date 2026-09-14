@@ -77,8 +77,8 @@ fixture paths.
 
    ```bash
    script/vm_scenario_run.sh shell '$HOME/teststrip-vm/script/submit_import_path.sh Teststrip $HOME/teststrip-vm/fixtures/activity-001-smokebig'
-   script/vm_scenario_run.sh ax wait --role AXButton --help "Activity - working"
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax wait --help "Activity - working"
+   script/vm_scenario_run.sh ax press --help "Activity - working"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Activity"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Import photos" \
      || script/vm_scenario_run.sh ax find --role AXStaticText --label "Generate previews" \
@@ -158,7 +158,7 @@ fixture paths.
    script/vm_scenario_run.sh ax find --role AXStaticText --label "XMP Conflicts"
    script/vm_scenario_run.sh ax press --role AXButton --label "activity-001-conflict-target"
    script/vm_scenario_run.sh ax wait --role AXWindow --contains "Teststrip – Grid"
-   script/vm_scenario_run.sh ax find --role AXButton --help "Remove XMP Conflicts filter"
+   script/vm_scenario_run.sh ax find --role AXButton --help "Remove filter XMP Conflicts"
    script/vm_scenario_run.sh ax find --role AXButton --label "smoke-0.jpg" --contains "Selected"
    ```
 
@@ -203,14 +203,53 @@ script/vm_scenario_run.sh shell 'rm -rf "$HOME/teststrip-vm/fixtures/activity-00
   claim that a missing `.xmp` is a naturally detected conflict.
 - Receipts may coexist with `No active work`, and an idle worker may coexist
   with the idle toolbar. Neither is active work or a problem.
+- **The Activity toolbar control changes AX role while working.** Idle it vends
+  as `AXButton` (help `Activity`); while a published snapshot is active it vends
+  as `AXBusyIndicator` (help `Activity - working`, desc `Activity`) because the
+  label becomes a circular `ProgressView`. Match the working state on `--help`
+  alone (`ax find --help "Activity - working"`); `--role AXButton` never matches
+  it. Verified live 2026-09-14.
+- The grid's conflict-scope removal control is `AXHelp`/desc
+  **`Remove filter XMP Conflicts`** (x≈177, y≈150), not `Remove XMP Conflicts
+  filter`. Verified live 2026-09-14.
 
 ## Run status
 
-**Spec'd — NOT RUN (2026-08-10).** The current procedure has not been run in
-the Tart VM. This repair replaces direct host commands, the pre-rendered-smoke
-launch race, fixed-delay publication assumptions, and the obsolete claim that
-no UI rescan exists. It makes every external operation VM-contained and uses
-positive published controls as state barriers.
+**Verified — 2026-09-14, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `empty-1789381853`, `launch empty`, 130 `smokebig` originals imported).**
+Steps 1-3 and 4-6 all PASS as driven, with two card corrections (below).
+
+- Step 1 (idle): `ax find --role AXButton --help "Activity"` matched; popover
+  showed `No active work`; `Activity`/`XMP Conflicts` static texts absent
+  (both exit 1). PASS.
+- Step 2 (working): the 130-original import sustains a real published working
+  window (~14s from first asset to preview-queue drain, timed live). The working
+  control was observed as **`AXBusyIndicator`, desc `Activity`, help
+  `Activity - working`** (not `AXButton` — correction #1); pressing it opened the
+  popover with the `Activity` header and the live `Evaluate photos` / `Queued`
+  kind row (the card's `||` fallback branch — the import row had already
+  transitioned to evaluation by the time the popover was opened). PASS.
+- Step 3 (return to idle): exact `AXButton` help `Activity` returned (attempt 0),
+  SQL `assets` = 130, popover showed `Worker idle` + `Stop idle worker`, and the
+  active `Activity` header was absent. PASS.
+- Steps 4-5 (one problem badge): card-owned `conflict` row inserted for
+  `smoke-0` (`metadata_sync_state`, sidecar_path
+  `.../activity-001-conflict-target.xmp`); same-run relaunch surfaced
+  `Activity - 1 problem`. PASS.
+- Step 6 (deep link): from the People lens (⌘6), pressing the conflict row
+  (`AXButton` desc `activity-001-conflict-target`) landed the window on
+  `Teststrip – Grid`, scope chip `XMP Conflicts, 1 photo · XMP Conflicts`, the
+  `AXButton` help `Remove filter XMP Conflicts` (correction #2), and the
+  `smoke-0.jpg` cell value `Selected, batch selected`. PASS.
+
+Card corrections applied: (1) working-state match on `--help` alone (role is
+`AXBusyIndicator`); (2) filter-removal help is `Remove filter XMP Conflicts`.
+Runner deviation (disclosed): `sync empty smokebig` was skipped because this
+batch's VM was pre-synced and the parent forbade `sync`; the already-synced
+`isolated/smokebig` originals were copied as the card's fixture. No behavior
+under test depends on the sync step.
+
+Historical evidence is preserved but is not current execution evidence:
 
 Historical evidence is preserved but is not current execution evidence:
 

@@ -30,9 +30,13 @@ script/vm_scenario_run.sh ax wait-vended Teststrip
 ```
 
 Create one adjustable cancellation fixture and six distinct receipt fixtures
-inside the VM. The large folder uses hard links so it is cheap to grow. Each
-receipt folder has one distinct supported JPEG and one reproducible skipped
-file:
+inside the VM. **The cancellable folder must contain byte-distinct files, not
+hard links**: hard links share one inode, so the importer's content-hash dedup
+collapses them to a single asset; the ingest session then drains in ~1s and no
+Cancel can be driven (measured live 2026-09-14). Each cancellable file is a
+full-size JPEG copy with a unique trailing byte run — ImageIO ignores bytes
+after the EOI marker, so all 8000 remain decodable and distinct. Each receipt
+folder has one distinct supported JPEG and one reproducible skipped file:
 
 ```bash
 script/vm_scenario_run.sh shell '
@@ -45,8 +49,9 @@ test "$#" -ge 7
 
 source_photo=$1
 index=1
-while [ "$index" -le 5000 ]; do
-    ln "$source_photo" "$fixture/cancellable/frame-$index.jpg"
+while [ "$index" -le 8000 ]; do
+    cp "$source_photo" "$fixture/cancellable/frame-$index.jpg"
+    printf "TR%08d" "$index" >> "$fixture/cancellable/frame-$index.jpg"
     index=$((index + 1))
 done
 
@@ -96,7 +101,7 @@ The empty catalog makes every receipt count attributable to this card. The
 2. Open the working Activity popover. Assert the real active row and action:
 
    ```bash
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working"
+   script/vm_scenario_run.sh ax press --help "Activity - working"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Activity"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Import photos"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Running"
@@ -167,14 +172,14 @@ The empty catalog makes every receipt count attributable to this card. The
    its receipt must expose all current actions:
 
    ```bash
-   script/vm_scenario_run.sh ax press --role AXButton --help "Activity - working" \
+   script/vm_scenario_run.sh ax press --help "Activity - working" \
      || script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Import photos"
    ! script/vm_scenario_run.sh ax find --role AXButton --help "Cancel import"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "1 file skipped"
-   script/vm_scenario_run.sh ax find --role AXLink --label "Review issues"
-   script/vm_scenario_run.sh ax find --role AXLink --label "Start culling"
+   script/vm_scenario_run.sh ax find --role AXButton --label "Review issues"
+   script/vm_scenario_run.sh ax find --role AXButton --label "Start culling"
    script/vm_scenario_run.sh key 'key code 53'
    ```
 
@@ -224,8 +229,8 @@ The empty catalog makes every receipt count attributable to this card. The
 
    script/vm_scenario_run.sh ax find --role AXButton --help "Activity"
    script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
-   REVIEW_LINK_COUNT=$(script/vm_scenario_run.sh ax find --role AXLink --label "Review issues" | awk '$0 == "Review issues" { count += 1 } END { print count + 0 }')
-   START_LINK_COUNT=$(script/vm_scenario_run.sh ax find --role AXLink --label "Start culling" | awk '$0 == "Start culling" { count += 1 } END { print count + 0 }')
+   REVIEW_LINK_COUNT=$(script/vm_scenario_run.sh ax find --role AXButton --label "Review issues" | awk '$0 == "Review issues" { count += 1 } END { print count + 0 }')
+   START_LINK_COUNT=$(script/vm_scenario_run.sh ax find --role AXButton --label "Start culling" | awk '$0 == "Start culling" { count += 1 } END { print count + 0 }')
    test "$REVIEW_LINK_COUNT" -eq 5
    test "$START_LINK_COUNT" -eq 5
    ! script/vm_scenario_run.sh ax find --role AXStaticText --contains "receipt-1"
@@ -241,7 +246,7 @@ The empty catalog makes every receipt count attributable to this card. The
    opens the exact one-issue sheet. Dismiss it through the exact Done button:
 
    ```bash
-   script/vm_scenario_run.sh ax press --role AXLink --label "Review issues"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Review issues"
    ! script/vm_scenario_run.sh ax find --role AXStaticText --label "Recent Imports"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "1 Import Issue"
    script/vm_scenario_run.sh ax find --role AXStaticText --label "Skipped notes-6.txt"
@@ -256,7 +261,7 @@ The empty catalog makes every receipt count attributable to this card. The
     ```bash
     BEFORE_CULL_ROWID=$(script/vm_scenario_run.sh sql empty "SELECT COALESCE(MAX(rowid), 0) FROM work_sessions WHERE kind='culling';")
     script/vm_scenario_run.sh ax press --role AXButton --help "Activity"
-    script/vm_scenario_run.sh ax press --role AXLink --label "Start culling"
+    script/vm_scenario_run.sh ax press --role AXButton --label "Start culling"
 
     attempt=0
     NEW_CULL_ID=
@@ -269,7 +274,7 @@ The empty catalog makes every receipt count attributable to this card. The
     test -n "$NEW_CULL_ID"
     test "$(script/vm_scenario_run.sh sql empty "SELECT COUNT(*) FROM work_sessions WHERE kind='culling' AND rowid > $BEFORE_CULL_ROWID;")" -eq 1
     script/vm_scenario_run.sh ax find --role AXWindow --contains "Teststrip – Loupe"
-    script/vm_scenario_run.sh ax find --label "Scope" --contains "✓ 0 · ✕ 0 · 1 left"
+    script/vm_scenario_run.sh ax find --label "Scope" --contains "Imported 1 photo from receipt-6 (1 file skipped) Cull Input, 1 photo · ✓ 0 · ✕ 0 · 0 left"
     ```
 
 ## Expected
@@ -305,29 +310,64 @@ fixture this card owns.
 
 ## Sharp edges
 
-- The cancellation fixture starts at 5,000 hard links because the import row
-  can drain before an AX walk. Increase that number and restart Part A if the
-  bound session reaches terminal first. That is a fixture adjustment, not
-  evidence of a paused or cancellable row.
+- The cancellation fixture is 8,000 byte-distinct full-size JPEG copies
+  (~3.3 GB). It must be distinct files: hard links (the former fixture) share an
+  inode, so dedup collapses them and the ingest session drains in ~1s
+  (measured live 2026-09-14). 1,000 distinct copies still drained in ~1.1s;
+  8,000 gave a ~4s window in which the ingest row, its `Running` label, and its
+  Cancel control were all caught and driven. Increase the count and restart
+  Part A from a fresh `launch empty` if the bound session still reaches terminal
+  first — a fixture adjustment, not evidence of a paused or cancellable row.
+  Do not shrink the files to widen the window: a 20,000-file tiny-JPEG fixture
+  failed the import outright with `IOServiceMatchingfailed for:
+  AppleM2ScalerParavirtDriver`.
 - A cancelled session is persisted history but is not a completed-import
   receipt. For dispatched work, the request waits for the worker's natural
   terminal; the active row disappears on the following coalesced publication.
 - The `.txt` file is a supported scanner test fixture for the
   `skippedSourceFile` path. Preview or backup failures are outside this card.
-- `Start culling` was live-proven as `AXLink` by `import-011`. `Review issues`
-  uses the same SwiftUI `.buttonStyle(.link)`, so this procedure specifies
-  `AXLink`, but its rendered role and action remain pending this card's fresh
-  VM run. The sheet's Done control is source-backed as an `AXButton`.
+- The Cull-input scope line for the Start-culling handoff reads
+  `Imported 1 photo from receipt-6 (1 file skipped) Cull Input, 1 photo · ✓ 0 ·
+  ✕ 0 · 0 left` while the same frame's HUD cluster reads `0 picks, 0 rejects,
+  1 left` — the two "left" values disagree for the identical 1-photo input.
+  Recorded as observed 2026-09-14; the card asserts the scope line verbatim.
+- **Both receipt actions render as `AXButton`, not `AXLink`.** Live-verified
+  2026-09-14: `Review issues` and `Start culling` (`ActivityCenterView`'s
+  `.buttonStyle(.bordered)`) both vend role `AXButton` with the label as their
+  accessibility description; `--role AXLink` matches neither. `import-011`'s
+  earlier `AXLink` reading does not hold on the current build. The sheet's Done
+  control is an `AXButton`. The ingest kind row's Cancel control is `AXButton`
+  help `Cancel import` (label/desc `Close`, the SF Symbol default — match on
+  `--help`).
 
 ## Run status
 
-**Spec'd — NOT RUN (2026-08-10).** This repair
-replaces two non-executable premises: a completed or cancelled ingest is not
-an active kind row, and unsupported `.txt` files are a proven import issue
-fixture. The procedure now binds every action to a new persisted row and
-separates cancellation, receipt retention, issue review, badge, and culling
-proofs. No Activity UI leg has ever been driven; no VM leg was driven during
-this docs repair.
+**Verified — 2026-09-14, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`;
+Part A run dir `empty-1789382800`, Part B `empty-1789382877`, both `launch
+empty`).** All steps PASS as driven, with fixture/role corrections below.
+
+- Part A (live ingest Cancel): with the corrected 8,000-distinct-file fixture,
+  the working popover showed the `Import photos` row + `Running` label and the
+  `AXButton` help `Cancel import`; pressing it finalized the bound session as
+  `cancelled` (4.1s), the status stayed `cancelled` on re-read, and both the
+  `Import photos` row and the Cancel control were absent after the next
+  publication. PASS.
+- Part B (receipts): six imports, each persisted `1:1` counts and exactly one
+  `skippedSourceFile` issue; the popover then showed `Recent Imports`, the
+  `1 file skipped` detail, and 5 `Review issues` + 5 `Start culling` controls
+  (receipt-1 dropped, receipt-2..6 present); pressing the newest `Review issues`
+  closed the popover and opened `1 Import Issue` / `Skipped notes-6.txt`, and
+  `Done` dismissed it; `Start culling` created exactly one new `culling`
+  session and the window became `Teststrip – Loupe`. PASS.
+
+Corrections applied live: (1) the cancellable fixture must be byte-distinct
+files (hard links dedup to one asset and drain in ~1s); (2) the working
+toolbar control is matched on `--help` alone (it vends as `AXBusyIndicator`, not
+`AXButton`); (3) `Review issues`/`Start culling` are `AXButton`, not `AXLink`;
+(4) the Cull-input scope line's verbatim text. No `sync` was run (VM
+pre-synced; parent forbade it) — the already-synced `faces` photos and
+`isolated/empty` seed were used. Part A's cancelled run was discarded by a
+fresh `launch empty` for Part B.
 
 Historical evidence is preserved:
 

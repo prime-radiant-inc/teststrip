@@ -299,10 +299,33 @@ script/vm_scenario_run.sh shell 'rm -rf "$HOME/teststrip-vm/fixtures/activity-00
 
 ## Run status
 
-**Spec'd — NOT RUN (2026-08-10).** The executable procedure has been repaired
-against current source and schema, but no UI or VM leg has ever run. The old
-LEDGER `Tested-Fail` label was not supported by a driven failure and is
-corrected to this truthful pre-test state.
+**Verified — 2026-09-14, Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`,
+run dir `smoke-1789384655`, `launch smoke`, 24 assets).** All 10 steps PASS.
+Part A quiet floor: SQL active/unavailable/conflict/provider-failure all 0, and
+the idle popover showed `No active work` with `Activity`/`Sources`/`XMP
+Conflicts`/`Queue paused` all absent. Part B: `smoke-0` pointed at a unique
+nonexistent path with `availability='missing'` → `Activity - 1 problem` with
+`Sources`/`Missing Originals`/`Missing`/`Refresh source availability` and no
+`XMP Conflicts`; an owned `smoke-1` conflict then composed to `Activity - 2
+problems` with both sections and the `activity-004-smoke-1.jpg` row. Part C: the
+restored (still `missing`) path plus the real `Refresh source availability`
+action moved `smoke-0` `missing`→`online` (attempt 0), `Sources` cleared, the
+`XMP Conflicts` section and row remained at `Activity - 1 problem`; deleting the
+owned conflict and relaunching returned the exact quiet floor (two stable
+samples).
+
+Runner deviations (disclosed, no card body change needed):
+- `sync smoke` was skipped (this batch's VM was pre-synced; the parent forbade
+  `sync`) — the already-synced `isolated/smoke` seed was launched instead.
+- The README-known `smoke` fixture staleness applied: the baked `original_path`
+  pointed at a prior session's host `$TMPDIR`, which `cmd_launch`'s prefix
+  rewrite does not match, so the originals were unresolvable. All 24
+  `original_path`s (and their `fingerprint_json` mtime/size) were repaired
+  VM-side to the run-dir `SmokeOriginals/` copies before the run, and the run
+  was relaunched; this is what makes Part C's `missing`→`online` Refresh
+  meaningful. No card assertion was weakened.
+- All AX strings the card asserts matched on this build; no stale citation was
+  found in the body.
 
 Historical evidence is preserved:
 
