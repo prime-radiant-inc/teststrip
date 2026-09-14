@@ -80,6 +80,85 @@ final class FaceGroupReviewTests: XCTestCase {
         XCTAssertTrue(try repository.personFaces(assetID: incoming.id).isEmpty)
     }
 
+    /// A new cluster's suggestion id is derived from its representative face,
+    /// so removing that face (the first tile) promotes a new representative and
+    /// re-keys the group. The open review sheet must follow the shrunk group
+    /// rather than fall back to the "nothing left to review" completion state
+    /// while faces remain.
+    func testRemovingTheRepresentativeFaceFollowsTheReclusteredGroup() throws {
+        let (model, _, faces) = try makeClusterModel(named: "review-follow-cluster", faceCount: 4)
+        model.refreshPeopleFaceSuggestions()
+        let opened = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+        XCTAssertEqual(opened.faceIDs, faces)
+        XCTAssertEqual(opened.representativeFace, faces[0])
+        let openedID = opened.id
+        let openedFaces = opened.faceIDs
+        XCTAssertEqual(model.faceGroupReview(for: opened).tiles.count, 4)
+
+        try model.removeFaceFromReviewGroup(opened, faceID: opened.representativeFace)
+
+        // The cluster re-keyed to its new representative face...
+        XCTAssertFalse(model.peopleFaceSuggestions.contains { $0.id == openedID })
+        // ...but the open sheet resolves to the shrunk group, not completion.
+        let followed = try XCTUnwrap(
+            model.faceGroupReviewSuggestion(id: openedID, openedFaceIDs: openedFaces)
+        )
+        XCTAssertEqual(followed.kind, .newPerson)
+        XCTAssertEqual(followed.faceIDs, Array(openedFaces.dropFirst()))
+        XCTAssertEqual(model.faceGroupReview(for: followed).tiles.count, 3)
+    }
+
+    /// The mirror of the bug: once the group genuinely has no faces left (a
+    /// two-face cluster pruned to a single ungroupable face), the sheet must
+    /// report completion.
+    func testFaceGroupReviewResolverReportsCompletionOnceTheGroupIsGone() throws {
+        let (model, _, faces) = try makeClusterModel(named: "review-cluster-gone", faceCount: 2)
+        model.refreshPeopleFaceSuggestions()
+        let opened = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+        XCTAssertEqual(opened.faceIDs, faces)
+
+        try model.removeFaceFromReviewGroup(opened, faceID: faces[0])
+
+        XCTAssertNil(
+            model.faceGroupReviewSuggestion(id: opened.id, openedFaceIDs: opened.faceIDs),
+            "a single remaining face is no longer a group, so the sheet completes"
+        )
+    }
+
+    /// Builds a model with one new-person cluster of `faceCount` faces, one
+    /// face per asset, whose embeddings sit close enough to group.
+    private func makeClusterModel(
+        named name: String,
+        faceCount: Int
+    ) throws -> (model: AppModel, repository: CatalogRepository, faces: [FaceID]) {
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let assets = (0..<faceCount).map { index in
+            makeAsset(id: "\(name)-\(index)", path: "/Photos/Cluster/\(name)-\(index).jpg")
+        }
+        let embeddings: [[Double]] = [[1, 0, 0], [0.99, 0.1, 0], [0.98, -0.1, 0], [0.99, 0.05, 0.05]]
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: name,
+            assets: assets
+        ) { repository in
+            for (index, asset) in assets.enumerated() {
+                try repository.replaceFaceObservations(
+                    assetID: asset.id,
+                    provenance: provenance,
+                    with: [CatalogFaceObservation(
+                        assetID: asset.id,
+                        faceIndex: 0,
+                        boundingBox: FaceBoundingBox(x: 0.10, y: 0.10, width: 0.2, height: 0.2),
+                        captureQuality: 0.9,
+                        embedding: embeddings[index % embeddings.count],
+                        provenance: provenance
+                    )]
+                )
+            }
+        }
+        let faces = assets.map { FaceID(assetID: $0.id, faceIndex: 0) }
+        return (model, repository, faces)
+    }
+
     // MARK: - Test support (mirrors PeopleFaceSuggestionRejectionTests)
 
     private func makeFaceSuggestionModel(

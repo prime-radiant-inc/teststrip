@@ -3995,7 +3995,16 @@ public final class AppModel {
     public func peopleScopeAssetIDs() throws -> [AssetID]? {
         guard let catalog else { return nil }
         guard selectedExplicitAssetIDs != nil || currentLibraryQuery() != nil else { return nil }
-        return try currentAssetScopeIDs(repository: catalog.repository)
+        // A face-signal review-queue source (`.evaluationKind(.faceCount)` /
+        // `.evaluationKind(.faceQuality)`) excludes assets that already belong
+        // to a person, so a plain scoped read would drop exactly the confirmed
+        // people the People lens exists to show. Widen those predicates to
+        // "carries the face signal" for this scope, matching how the lens' own
+        // face-signal counts already treat named photos.
+        return try currentAssetScopeIDs(
+            repository: catalog.repository,
+            includingAssignedFaceAssets: true
+        )
     }
 
     private func currentSourceScopePredicates() -> [SetQuery.Predicate] {
@@ -4497,6 +4506,38 @@ public final class AppModel {
             refreshCatalogEvaluationKindSummaries()
             refreshPeopleFaceSuggestions()
         }
+    }
+
+    /// Resolves the live suggestion behind an open review sheet. Matching by id
+    /// first keeps the sheet pinned to the group the user opened. A new
+    /// cluster's id is derived from its representative face, so removing that
+    /// face promotes a new representative and re-keys the cluster; in that case
+    /// follow the suggestion that shares the most faces with the group the user
+    /// opened, so the sheet shows the shrinking group instead of a premature
+    /// "nothing left to review". Returns nil only when no remaining group
+    /// intersects the opened faces (the group is genuinely gone).
+    func faceGroupReviewSuggestion(id: String, openedFaceIDs: [FaceID]) -> PeopleFaceSuggestion? {
+        if let exact = peopleFaceSuggestions.first(where: { $0.id == id }) {
+            return exact
+        }
+        let opened = Set(openedFaceIDs)
+        guard !opened.isEmpty else { return nil }
+        var best: (suggestion: PeopleFaceSuggestion, overlap: Int)?
+        for suggestion in peopleFaceSuggestions {
+            var overlap = 0
+            for faceID in suggestion.faceIDs where opened.contains(faceID) {
+                overlap += 1
+            }
+            guard overlap > 0 else { continue }
+            guard let current = best else {
+                best = (suggestion, overlap)
+                continue
+            }
+            if overlap > current.overlap || (overlap == current.overlap && suggestion.id < current.suggestion.id) {
+                best = (suggestion, overlap)
+            }
+        }
+        return best?.suggestion
     }
 
     private static func peopleFaceSuggestions(
@@ -13794,7 +13835,8 @@ public final class AppModel {
     // hidden JPEG must still get evaluated.
     private func currentAssetScopeIDs(
         repository: CatalogRepository,
-        includeBondedSecondaries: Bool = false
+        includeBondedSecondaries: Bool = false,
+        includingAssignedFaceAssets: Bool = false
     ) throws -> [AssetID] {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             // A manual/snapshot AssetSet's membership_json can retain a
@@ -13806,7 +13848,11 @@ public final class AppModel {
             return try repository.assetIDs(ids: explicitAssetIDs)
         }
         if let query = currentLibraryQuery() {
-            return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
+            return try repository.assetIDs(
+                matching: query,
+                includeBondedSecondaries: includeBondedSecondaries,
+                includingAssignedFaceAssets: includingAssignedFaceAssets
+            )
         }
         return try repository.assetIDs(includeBondedSecondaries: includeBondedSecondaries)
     }

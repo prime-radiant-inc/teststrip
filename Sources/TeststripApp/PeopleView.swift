@@ -76,7 +76,7 @@ struct PeopleView: View {
             nameSuggestionSheet(suggestion)
         }
         .sheet(item: $reviewingGroup) { group in
-            faceGroupReviewSheet(group.id)
+            faceGroupReviewSheet(group)
         }
         .liveMockupPlaceholder(.peopleSidebar)
     }
@@ -400,13 +400,14 @@ struct PeopleView: View {
     }
 
     private func openFaceGroupReview(_ card: PeopleFaceSuggestionCard) {
-        reviewingGroup = ReviewingFaceGroup(id: card.id)
+        reviewingGroup = ReviewingFaceGroup(id: card.id, openedFaceIDs: card.suggestion.faceIDs)
     }
 
-    private func faceGroupReviewSheet(_ suggestionID: String) -> some View {
+    private func faceGroupReviewSheet(_ group: ReviewingFaceGroup) -> some View {
         FaceGroupReviewView(
             model: model,
-            suggestionID: suggestionID,
+            suggestionID: group.id,
+            openedFaceIDs: group.openedFaceIDs,
             confirm: { suggestion in
                 do {
                     try model.confirmPeopleFaceSuggestion(suggestion)
@@ -578,6 +579,9 @@ struct PeopleView: View {
 /// re-reads the live suggestion.
 struct ReviewingFaceGroup: Identifiable, Equatable {
     var id: String
+    /// The group's faces at open time, so the review sheet can follow a new
+    /// cluster across the re-key that removing its representative face causes.
+    var openedFaceIDs: [FaceID]
 }
 
 struct PeoplePresentation: Equatable {

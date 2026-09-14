@@ -10,6 +10,10 @@ import TeststripCore
 struct FaceGroupReviewView: View {
     var model: AppModel
     var suggestionID: String
+    /// The faces the group held when the sheet was opened. Used to follow a
+    /// new cluster as removing its representative face re-keys it, so the sheet
+    /// keeps showing the shrinking group rather than a stale id lookup.
+    var openedFaceIDs: [FaceID]
     /// One-tap confirm for a matched person.
     var confirm: (PeopleFaceSuggestion) -> Void
     /// Confirm for a new cluster, with the name the user typed in the review's
@@ -21,7 +25,7 @@ struct FaceGroupReviewView: View {
     @State private var query = ""
 
     private var suggestion: PeopleFaceSuggestion? {
-        model.peopleFaceSuggestions.first { $0.id == suggestionID }
+        model.faceGroupReviewSuggestion(id: suggestionID, openedFaceIDs: openedFaceIDs)
     }
 
     var body: some View {

@@ -77,6 +77,53 @@ final class PeopleSourceScopingTests: XCTestCase {
         XCTAssertEqual(Set(model.peopleInCurrentSource.map(\.name)), Set(["Ada", "Grace"]))
     }
 
+    /// Navigating into the "Review faces" queue writes a `.faceCount` search as
+    /// the current source. That predicate deliberately excludes assets already
+    /// linked to a person, so a plain scoped read would drop every confirmed
+    /// person on return — the People lens must still list them (the catalog is
+    /// correct; only the lens' derived state was losing them).
+    func testPeopleScopeKeepsConfirmedPeopleWhenScopedToAFaceReviewQueue() throws {
+        let confirmedA = makeAsset(id: "people-queue-confirmed-a", path: "/Photos/Queue/a.jpg")
+        let confirmedB = makeAsset(id: "people-queue-confirmed-b", path: "/Photos/Queue/b.jpg")
+        let unassigned = makeAsset(id: "people-queue-unassigned", path: "/Photos/Queue/c.jpg")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "people-queue-scope",
+            assets: [confirmedA, confirmedB, unassigned]
+        ) { repository in
+            try repository.upsertPerson(id: "person-test-b", name: "Test Person B")
+            try repository.assignFaces(
+                [
+                    FaceID(assetID: confirmedA.id, faceIndex: 0),
+                    FaceID(assetID: confirmedB.id, faceIndex: 0)
+                ],
+                toPersonID: "person-test-b"
+            )
+            try repository.recordEvaluationSignals(
+                self.faceSignals(assetID: confirmedA.id)
+                    + self.faceSignals(assetID: confirmedB.id)
+                    + self.faceSignals(assetID: unassigned.id)
+            )
+        }
+        model.selectLens(.people)
+
+        // "Review faces" drills into the queue's grid...
+        try model.selectPeopleSignal(.faceCount)
+        // ...and coming back to People must still show the confirmed person.
+        model.selectLens(.people)
+        model.refreshPeopleFaceSuggestions()
+
+        XCTAssertEqual(
+            model.selectedSource.kind,
+            .search(SetQuery(predicates: [.evaluationKind(.faceCount)]))
+        )
+        XCTAssertEqual(model.peopleInCurrentSource.map(\.name), ["Test Person B"])
+        XCTAssertEqual(
+            try model.peopleScopeAssetIDs(),
+            [confirmedA.id, confirmedB.id, unassigned.id],
+            "the lens scope keeps the named person's assets alongside the unassigned review queue"
+        )
+    }
+
     func testSelectingFaceReviewOverAllPhotosRoutesToTheGlobalGridQuery() throws {
         let fixture = try makeFaceSignalFixture(named: "people-review-all-photos")
         fixture.model.selectLens(.people)
