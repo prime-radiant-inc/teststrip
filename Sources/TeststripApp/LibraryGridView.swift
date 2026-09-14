@@ -479,6 +479,10 @@ struct LibraryGridView: View {
             activityToolbarIcon(presentation)
         }
         .help(activityToolbarHelp(presentation))
+        // Without an explicit label the icon-only bell announced the raw SF
+        // Symbol name ("Notifications"), not the Activity Center the app's own
+        // help text and menu call it.
+        .accessibilityLabel("Activity")
         .popover(isPresented: Binding(
             get: { model.isActivityCenterPresented },
             set: { model.isActivityCenterPresented = $0 }
@@ -544,7 +548,7 @@ struct LibraryGridView: View {
                 .buttonStyle(.plain)
                 .disabled(!availability.isEnabled)
                 .help(availability.disabledReason ?? availability.lens.title)
-                .accessibilityLabel(availability.lens.title)
+                .accessibilityLabel(LensSwitcherAccessibility.segmentLabel(for: availability.lens))
                 .accessibilityValue(model.selectedLens == availability.lens ? "Selected" : "Not selected")
             }
         }
@@ -3089,6 +3093,12 @@ struct LibraryGridView: View {
         if model.selectedAssetID != assetID {
             suppressedSelectionScrollAssetID = assetID.rawValue
         }
+        // A click in the content area hands keyboard focus back to the grid
+        // key surface. The grid/culling monitors now yield while another
+        // control owns the keyboard (see `KeyMonitorFocusPolicy`), so without
+        // this a click after tabbing into the sidebar would select the photo
+        // but leave the arrow keys bound to the sidebar outline.
+        gridFocusRequest += 1
         model.select(assetID)
     }
 
@@ -7874,6 +7884,19 @@ enum ComparePreviewRequestID {
             model.selectedAssetID?.rawValue ?? "",
             model.selectedAssetID.map { String(model.previewCacheGeneration(for: $0)) } ?? "0"
         ].joined(separator: "\n")
+    }
+}
+
+/// Accessible names for the lens switcher's segments.
+///
+/// A segment's visible title is otherwise reused verbatim by a toolbar action
+/// button — "Cull" is both a lens and the Cull action button — so an
+/// assistive-technology user tabbing the toolbar heard the same name twice
+/// with nothing to tell the two apart. Qualifying the lens keeps the visible
+/// title while making the accessible name unique within the toolbar.
+enum LensSwitcherAccessibility {
+    static func segmentLabel(for lens: LibraryLens) -> String {
+        "\(lens.title) lens"
     }
 }
 

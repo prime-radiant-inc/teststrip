@@ -181,7 +181,21 @@ final class GridKeyCaptureNSView: NSView {
     var onCommand: ((GridKeyCommand) -> Void)?
     private var localKeyMonitor: Any?
 
+    // The view is a 1×1 key sink, not a control. It must be able to hold first
+    // responder so `makeFirstResponder` can pull focus off the search field and
+    // route arrows/ratings into the grid, but it must NOT be a Tab stop: a
+    // keyboard user tabbing through the window was landing on an unnamed,
+    // unlabeled group here that announced nothing and did nothing.
+    // `canBecomeKeyView` governs only the key-view (Tab) loop —
+    // programmatic `makeFirstResponder` still works.
     override var acceptsFirstResponder: Bool { true }
+
+    override var canBecomeKeyView: Bool { false }
+
+    // Belt-and-braces with SwiftUI's `.accessibilityHidden(true)`: an AppKit
+    // view that accepts first responder can still surface as an empty AX group
+    // in some trees, so refuse to be an accessibility element outright.
+    override func isAccessibilityElement() -> Bool { false }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -209,7 +223,7 @@ final class GridKeyCaptureNSView: NSView {
         firstResponder: NSResponder?
     ) -> NSEvent? {
         guard eventTargetsWindow(event, targetWindowNumber: targetWindowNumber, targetWindowIsKey: targetWindowIsKey),
-              !firstResponder.isTextEditor,
+              !KeyMonitorFocusPolicy.shouldYield(firstResponder: firstResponder),
               let command = command(for: event) else {
             return event
         }
@@ -305,15 +319,4 @@ private enum GridMacKeyCode {
     static let upArrow: UInt16 = 126
     static let home: UInt16 = 115
     static let end: UInt16 = 119
-}
-
-private extension Optional where Wrapped == NSResponder {
-    var isTextEditor: Bool {
-        switch self {
-        case .some(let responder):
-            return responder is NSTextView
-        case .none:
-            return false
-        }
-    }
 }
