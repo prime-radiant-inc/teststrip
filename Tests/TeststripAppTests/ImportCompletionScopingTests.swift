@@ -58,7 +58,7 @@ final class ImportCompletionScopingTests: XCTestCase {
 
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { factoryPaths, _, _, _, _, _ in
+            importTaskFactory: { factoryPaths, _, _, _, _ in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: factoryPaths)
                     try backgroundCatalog.repository.upsert(upsertedAsset)

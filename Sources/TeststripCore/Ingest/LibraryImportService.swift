@@ -135,7 +135,6 @@ public struct LibraryImportService: Sendable {
         previewPolicy: LibraryImportPreviewPolicy,
         duplicateHandling: DuplicateHandling = .importAll,
         selectedFiles: Set<URL>? = nil,
-        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try importAssets(
@@ -147,7 +146,6 @@ public struct LibraryImportService: Sendable {
             repository: repository,
             previewPolicy: previewPolicy,
             selectedFiles: selectedFiles,
-            preIngestThumbnailCache: preIngestThumbnailCache,
             progress: progress
         )
     }
@@ -161,7 +159,6 @@ public struct LibraryImportService: Sendable {
         previewPolicy: LibraryImportPreviewPolicy,
         duplicateHandling: DuplicateHandling = .importAll,
         selectedFiles: Set<URL>? = nil,
-        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try importAssets(
@@ -179,7 +176,6 @@ public struct LibraryImportService: Sendable {
             repository: repository,
             previewPolicy: previewPolicy,
             selectedFiles: selectedFiles,
-            preIngestThumbnailCache: preIngestThumbnailCache,
             progress: progress
         )
     }
@@ -193,7 +189,6 @@ public struct LibraryImportService: Sendable {
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
         selectedFiles: Set<URL>? = nil,
-        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler?
     ) throws -> LibraryImportResult {
         let _signpost = DevSignpost.begin("importAssets")
@@ -420,7 +415,6 @@ public struct LibraryImportService: Sendable {
         let previewResult = try generatePreviews(
             for: previewItems,
             repository: repository,
-            preIngestThumbnailCache: preIngestThumbnailCache,
             progress: progress
         )
         return LibraryImportResult(
@@ -452,7 +446,6 @@ public struct LibraryImportService: Sendable {
     private func generatePreviews(
         for items: [PreviewGenerationItem],
         repository: CatalogRepository,
-        preIngestThumbnailCache: PreIngestThumbnailCache? = nil,
         progress: LibraryImportProgressHandler?
     ) throws -> LibraryPreviewGenerationResult {
         var generatedCount = 0

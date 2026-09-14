@@ -172,15 +172,13 @@ public struct WorkerCommandExecutor {
 
     public func execute(_ command: WorkerCommand, progress: LibraryImportProgressHandler? = nil) throws -> WorkerCommandResult {
         switch command {
-        case .importFolder(let root, let duplicateHandling, let selectedFiles, let preIngestThumbnails):
-            let cache = preIngestThumbnails.map { PreIngestThumbnailCache(directoryURL: $0) }
+        case .importFolder(let root, let duplicateHandling, let selectedFiles, _):
             let result = try importService.addFolderInPlace(
                 root,
                 repository: repository,
                 previewPolicy: .deferGeneration,
                 duplicateHandling: duplicateHandling,
                 selectedFiles: selectedFiles,
-                preIngestThumbnailCache: cache,
                 progress: progress
             )
             return .completedImport(
@@ -191,8 +189,7 @@ public struct WorkerCommandExecutor {
                 skippedSourceFileCount: result.skippedSourceFileCount,
                 skippedSourceFiles: result.skippedSourceFiles
             )
-        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination, let duplicateHandling, let selectedFiles, let preIngestThumbnails):
-            let cache = preIngestThumbnails.map { PreIngestThumbnailCache(directoryURL: $0) }
+        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination, let duplicateHandling, let selectedFiles, _):
             let result = try importService.copyFromCard(
                 source: source,
                 destinationRoot: destinationRoot,
@@ -202,7 +199,6 @@ public struct WorkerCommandExecutor {
                 previewPolicy: .deferGeneration,
                 duplicateHandling: duplicateHandling,
                 selectedFiles: selectedFiles,
-                preIngestThumbnailCache: cache,
                 progress: progress
             )
             return .completedImport(
