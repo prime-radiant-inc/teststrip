@@ -667,7 +667,7 @@ private struct SaveAssetSetSheet: View {
                     .textFieldStyle(.roundedBorder)
             },
             options: {
-                Toggle("Starred", isOn: $starred)
+                Toggle("Pin to Top", isOn: $starred)
             }
         )
     }

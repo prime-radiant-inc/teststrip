@@ -5724,8 +5724,8 @@ public final class AppModel {
             actions.append(
                 SidebarRowContextAction(
                     kind: .toggleAssetSetStarred(id),
-                    title: assetSet.starred ? "Remove Star" : "Star Set",
-                    systemImage: assetSet.starred ? "star.slash" : "star"
+                    title: assetSet.starred ? "Unpin Set" : "Pin Set",
+                    systemImage: assetSet.starred ? "pin.slash" : "pin"
                 )
             )
             actions.append(SidebarRowContextAction(
@@ -5739,13 +5739,13 @@ public final class AppModel {
             if canToggleWorkSessionStarred(row), let activity = workActivity(id: id) {
                 actions.append(SidebarRowContextAction(
                     kind: .toggleWorkSessionStarred(id),
-                    title: activity.starred ? "Remove Star" : "Star Work",
-                    systemImage: activity.starred ? "star.slash" : "star"
+                    title: activity.starred ? "Remove Bookmark" : "Bookmark Session",
+                    systemImage: activity.starred ? "bookmark.slash" : "bookmark"
                 ))
             }
             // An import row's verbs. `importSourceSummaries` is the unbounded
             // completed-ingest list, so every import keeps them — not just the
-            // ten most recent work sessions the star action is limited to.
+            // ten most recent work sessions the bookmark action is limited to.
             if importSourceSummaries.contains(where: { $0.sessionID == id }) {
                 actions.append(SidebarRowContextAction(
                     kind: .cullImportStacks(id),

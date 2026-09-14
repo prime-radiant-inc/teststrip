@@ -270,11 +270,11 @@ final class LiveMockupPlaceholderTests: XCTestCase {
     // ledger entries are still tracked in the copilot/search-focused tests
     // above.
 
-    func testWorkHistoryLedgerTracksRecentAndStarredWorkWithoutEmptyRows() throws {
+    func testWorkHistoryLedgerTracksRecentAndBookmarkedWorkWithoutEmptyRows() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "work.history" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Recent"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("starred"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("bookmarked"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("when activities exist"))
     }
 }

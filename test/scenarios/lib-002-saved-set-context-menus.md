@@ -4,7 +4,7 @@
 `AppModel.sidebarContextActions(for:)`, `AppModel.swift:5351-5423`) — plain
 rows (All Photographs, folders, review queues, etc.) get an empty menu; a
 saved-set row gets Rename/Duplicate/Freeze Snapshot (dynamic sets
-only)/Star/Delete; an eligible ordinary work-session row gets a star toggle,
+only)/Pin/Delete; an eligible ordinary work-session row gets a bookmark toggle,
 while an eligible import work-session row adds Cull stacks, Evaluate import,
 and Manual Compare over the import after that toggle; the
 Rename/Duplicate/Freeze sheets have the expected default text and
@@ -51,18 +51,18 @@ BLOCKED-TOOLING status.
 3. Right-click the manual saved-set row. Assert the menu contains, in order:
    "Rename Set" (pencil), "Duplicate Set..." (plus.square.on.square),
    **no** "Freeze Snapshot..." (manual sets aren't dynamic —
-   `AppModel.swift:5370-5376` gates it on `case .dynamic`), "Star Set" (star,
+   `AppModel.swift:5370-5376` gates it on `case .dynamic`), "Pin Set" (pin,
    since unstarred by default), "Delete Set..." (trash) —
    `AppModel.swift:5353-5389`.
 4. Right-click the dynamic saved-set row. Assert the menu additionally
    contains "Freeze Snapshot..." (camera.aperture) between Duplicate and
-   Star.
+   Pin.
 5. Right-click an eligible import work-session row (e.g. "Recent Import", if
-   seeded by the smoke import). Assert the menu contains, in order: "Star
-   Work" (or "Remove Star" if already starred), "Cull stacks", "Evaluate
+   seeded by the smoke import). Assert the menu contains, in order: "Bookmark
+   Session" (or "Remove Bookmark" if already bookmarked), "Cull stacks", "Evaluate
    import", and "Manual Compare over the import" —
    `AppModel.swift:5390-5419`. Separately right-click an eligible ordinary
-   non-import work-session row and assert it contains only the star toggle.
+   non-import work-session row and assert it contains only the bookmark toggle.
    Neither row has a separate remove/unpin action; see Sharp edges.
 6. Click "Rename Set" on the manual set. Assert a sheet titled "Rename Set"
    appears (`SidebarView.swift:586-604`, now built on `SheetScaffold`)
@@ -87,9 +87,9 @@ BLOCKED-TOOLING status.
    query to a fixed ID list) — cross-check against
    `SELECT count(*) FROM assets WHERE <the same query predicate>` at the time
    of freezing.
-9. Click "Star Set" on the (now-unstarred) manual set. Assert
+9. Click "Pin Set" on the (now-unstarred) manual set. Assert
    `asset_sets.starred` flips to 1 in `$DB`, the row's tone changes (see
-   Expected), and the context menu's action label flips to "Remove Star" on
+   Expected), and the context menu's action label flips to "Unpin Set" on
    a re-open.
 10. Click "Delete Set..." on any saved set. Assert a
     `confirmationDialog` titled "Delete Set?" appears with a "Delete Set"
@@ -109,9 +109,9 @@ BLOCKED-TOOLING status.
 - Step 3/4: exact action sets per row kind, with Freeze Snapshot present iff
   `membership` is `.dynamic`. **Fails if** Freeze Snapshot appears on the
   manual set, or is missing on the dynamic set, or actions are out of order.
-- Step 5: the eligible import row has the star toggle followed by Cull
+- Step 5: the eligible import row has the bookmark toggle followed by Cull
   stacks, Evaluate import, and Manual Compare over the import; the eligible
-  ordinary non-import row has only the star toggle. Neither has a distinct
+  ordinary non-import row has only the bookmark toggle. Neither has a distinct
   remove/unpin action. **Fails if** either action set or the import action
   order differs from `AppModel.swift:5390-5419`.
 - Step 6: blank name disables Rename; confirmed rename persists to
@@ -124,7 +124,7 @@ BLOCKED-TOOLING status.
   `snapshot`-kind set with the query's matched IDs at that moment. **Fails
   if** the frozen set is still `dynamic` (i.e. re-evaluates live instead of
   being pinned) — that would defeat the point of "freezing."
-- Step 9: starring flips `asset_sets.starred` and the menu label. **Fails if**
+- Step 9: pinning flips `asset_sets.starred` and the menu label. **Fails if**
   the catalog value doesn't change or the label doesn't flip on reopen.
 - Step 10: dialog copy matches exactly (word-for-word, including the
   original bytes/XMP reassurance); confirming deletes the `asset_sets` row
@@ -164,10 +164,10 @@ future unit-level regression test wants the equivalent coverage.
 ## Sharp edges
 - **No separate remove/unpin action for work sessions exists in the model.**
   `AppModel.sidebarContextActions(for:)`'s `.workSession` case
-  (`AppModel.swift:5390-5419`) adds the star toggle for an eligible work
+  (`AppModel.swift:5390-5419`) adds the bookmark toggle for an eligible work
   session, then adds Cull stacks, Evaluate import, and Manual Compare only
-  when that row is an import. An ordinary non-import row ends after the star
-  toggle; "Remove Star" is the starred toggle label, not a row-removal action.
+  when that row is an import. An ordinary non-import row ends after the bookmark
+  toggle; "Remove Bookmark" is the bookmarked toggle label, not a row-removal action.
 - **Duplicate saved-set row identity when starred** — see the same finding
   written up in `lib-001-sidebar-sections.md`'s Sharp edges: a starred
   saved-set row renders with the identical `SidebarRow.id` in both the
