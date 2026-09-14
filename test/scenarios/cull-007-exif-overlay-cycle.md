@@ -112,3 +112,26 @@ UNRUN — needs human-present execution per test/scenarios/README.md.
 `LibraryLens`, same as it selected Cull under the old `Workspace` enum).
 Preamble only; no other stale symbol found in this card. Supersedes prior
 status: no prior run evidence exists to invalidate (still UNRUN).
+
+**VERIFIED 2026-09-13 — driven live in the Tart VM (`teststrip-e2e`) via
+`script/vm_scenario_run.sh`**, run dir `smoke-1789358936` (`launch smoke`).
+Asset `smoke-0` (`technical_metadata_json`: SmokeCam 1, 35mm, ISO 100, 1200×800).
+All five steps PASS:
+- Step 2 (`.off`): no `AXStaticText` matching `ISO` or `SmokeCam`.
+- Step 3 (`I` → exposure): line `Teststrip SmokeCam 1 · 35mm · ISO 100` present
+  (`SmokeCam` + `ISO` both match); `1200` absent — the full-only field is
+  correctly withheld.
+- Step 4 (`I` → full, additive): `1200 × 800` appears while the exposure line
+  persists; a capture-date line `Jan 1, 2024 at 12:00 AM` also appears. No GPS
+  line, as the card predicts for `--smoke`.
+- Step 5 (`I` → off): `ISO`, `SmokeCam` and `1200 × 800` all absent — the
+  three-state cycle wraps cleanly back to `.off`.
+
+**Stale line-number citations** (all symbols live and the behaviour matched the
+card verbatim, so this does not affect the PASS): `ExifOverlayLevel` :431-442→
+:513; the `I` dispatch :7082-7083→:7583; key mapping :231→:289; the loupe
+metadata strip :5035-5043→:5430; `LoupeExifOverlayPresentation` :9000-9042→
+:9529; `LoupeExifSummaryPresentation` :8958-8996→:9485.
+
+The GPS-line branch of `.full` remains unexercisable on `--smoke` (the seeder
+sets no lat/lon), as the card's Sharp edges already document.

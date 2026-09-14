@@ -143,3 +143,37 @@ same pass). Still needs a fresh VM run.
 `LibraryLens`, same as it selected Cull under the old `Workspace` enum).
 Preamble only; no other stale symbol found in this card. Supersedes prior
 status: no prior run evidence exists to invalidate (still UNRUN).
+
+**VERIFIED 2026-09-13 — driven live in the Tart VM (`teststrip-e2e`) via
+`script/vm_scenario_run.sh`**, run dir `smoke-1789358528` (`launch smoke`, 24
+assets). SQL baseline: unrated 13, picks 6, rejects 5, all 24. Steps 1–8 all
+PASS; the scope cycle is `All → Unrated → Picks → Rejects → All` and a fifth `S`
+reproduced step 4 exactly (clean loop, no drift).
+- Step 4 (`S` → Unrated): toast `Scope: Unrated only`; chip AX `Cull filter:
+  Unrated`; counter `1 of 13 · stack 1 of 13` (=13); HUD cluster `0 picks, 0
+  rejects, 13 left`. SELECTED0 `smoke-0` (flag `reject`) fell out of scope and
+  reselection landed on `smoke-1` (flag NULL) — in-scope, no blank loupe.
+- Step 5 (`S` → Picks): toast `Scope: Picks only`; chip `Cull filter: Picks`;
+  counter `1 of 6`; reselected `smoke-3` (`pick`).
+- Step 6 (`S` → Rejects): toast `Scope: Rejects only`; chip `Cull filter:
+  Rejects`; counter `2 of 5`; reselected `smoke-5` (`reject`).
+- Step 7 (`S` → All): toast `Scope: All frames`; counter `6 of 24` (=24); the
+  selection was provably unchanged (`smoke-5` stayed on stage — no spurious
+  reselect on `.all`).
+- Step 8 (`S` → Unrated): toast/chip/counter identical to step 4 (13),
+  reselected `smoke-4` (NULL).
+
+**Stale assertion (steps 1 and 7)**: the card says the HUD "scope chip" reads
+`All` / wraps back to `All`. It does not: `CullHUDPresentation.showsScopeChip {
+scope != .all }` (`Sources/TeststripApp/CullHUDPresentation.swift:44`) hides the
+chip at `All`, confirmed live — `ax find --contains "Cull filter"` returned no
+match at `All` and matched at every scoped-down state. The persistent bar the
+card may be thinking of is the separate `scopeLine` element (AX label `Scope`),
+which is always present. Assert the counter / HUD cluster at `All`, not a chip.
+
+The persona-8 "silent mode change" UX defect is **resolved**: the scope-change
+toast is present and correctly names the new scope on every press.
+
+Not exercised on this fixture: the empty-scope case (Dana/Marcus's "blank loupe
+with no scope label") — `--smoke`'s Unrated/Picks/Rejects are all non-empty, so
+this card can't reach it.

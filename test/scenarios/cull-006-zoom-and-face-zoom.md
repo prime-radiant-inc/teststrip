@@ -123,3 +123,38 @@ prose still says "People-workspace clustering pipeline" as an informal name
 for the face-clustering feature, not a citation of any `Workspace` symbol —
 left as-is; People is now a lens, but this card never asserts against that
 naming.)
+
+**TESTED-FAIL 2026-09-13 — driven live in the Tart VM (`teststrip-e2e`) via
+`script/vm_scenario_run.sh`**, run dirs `faces-1789358675` + `faces-1789358830`
+(`launch faces`, 11 assets; originals resolve in the VM).
+
+- **Steps 1–3 PASS.** Opened the loupe on `commons-glenn-official.jpg` (Grid tile
+  click → ⌘1).
+  - `z` changed the window render — screenshots `/tmp/z0.png` vs `/tmp/z1.png`
+    hash differently (`fe572707…` vs `ff5965b7…`).
+  - A second `z` restored the fit render **byte-identically**: `shasum z0 == z2`
+    (`fe572707f06be90da87d41f8b3baa14f370b7a5a`). So the toggle is real and
+    exactly reversible.
+  - **Stronger AX cross-check** (from this card's own Sharp edges): with the
+    loupe unzoomed, `B` → A/B compare shows the header button `Zoom 1:1`; after
+    `z` (zoomed) the same button reads `Fit`. So `z` provably flips the shared
+    `model.loupeZoomFocus` — a text assertion, not just a screenshot diff.
+- **Step 4 PARTIAL.** The Close-Ups panel (`accessibilityLabel "Face close-ups"`)
+  *does* appear for `commons-armstrong-gemini8.jpg`, but it reports **1** face,
+  not the card's predicted 2 — one `Face` crop cell and `CLOSE-UPS` header `1`.
+- **Steps 5–7 NOT EXERCISED (fixture gap).** Sweeping **all 11** `faces` frames,
+  every frame reports exactly 1 detected face (a single `Face` crop cell and
+  `CLOSE-UPS` header `1`). There is therefore no ≥2-face frame on which to
+  exercise Z-cycling (face → a *different* face → wrap back). On the single-face
+  frame, `z` (centered 1:1) and shift-`Z` (face zoom) render **byte-identically**
+  (`shasum fz == fz2`, `7bd4cda0…`), so even the "zoom to the nearest face" leg
+  is indistinguishable from the centered fallback here.
+
+Per this card's own Sharp edges ("pick a different multi-face fixture from the
+manifest rather than asserting on nothing"), items 22/23 stay **BLOCKED** until a
+frame with ≥2 detectable faces exists. Item 21 (the 1:1 toggle) is verified.
+
+Worth watching (not asserted as a defect): CoreImage detects only 1 face on
+*every* seeded frame, including the nominally two-person
+`commons-armstrong-gemini8` — the `faces` manifest may simply not exercise
+multi-face detection well.

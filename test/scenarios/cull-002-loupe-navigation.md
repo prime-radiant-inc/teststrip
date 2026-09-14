@@ -206,3 +206,45 @@ references were removed — commit 3b33f0fb deleted the pager
 `assetPageSize`/`loadedAssetWindowSize`) and the Load More/Previous buttons;
 the whole catalog loads at once now. The non-destructive invariant step is
 renumbered 7 → was 8. No other change to the navigation assertions.
+
+**TESTED-FAIL 2026-09-13 — driven live in the Tart VM (`teststrip-e2e`) via
+`script/vm_scenario_run.sh`**, run dirs `smoke-1789357851` (+ probe
+`smoke-1789358057`), `launch smoke`.
+- **Steps 1–3 PASS.** ⌘1 lands in the Cull loupe ("Frame 1 of 24"). The scope was
+  already "All" (HUD cluster AX label "6 picks, 5 rejects, 13 left"), so no `S`
+  press was needed. `Space` advanced `smoke-0` (Frame 1) → `smoke-1` (Frame 2).
+- **Steps 4–6 FAIL as written.** On the all-singleton `--smoke` catalog the card
+  asserts Right/Left/Down/Up are a "designed no-op", but every arrow moves the
+  selection by exactly one asset. Measured from `smoke-2` / "Frame 3 of 24":
+  - Right → `smoke-3` / Frame 4
+  - Left  → `smoke-2` / Frame 3
+  - Down  → `smoke-3` / Frame 4
+  - Up    → `smoke-2` / Frame 3
+
+  This is **deliberate, not a regression** — the source says so:
+  - `AppModel.selectCullingStack` walks `cullingStopSequence()` with the comment
+    "every stop — bursts and standalones — in capture order … Before T7.5 this
+    used `cullingStacks()` directly, so standalone stops were skipped on mixed
+    batches and every key was a dead no-op on all-singles batches."
+  - `AppModel.moveSelectionWithinCurrentCullingStack` explicitly falls back for a
+    standalone frame: "Standalone frame (no stack to navigate within): fall back
+    to stop-to-stop advance through the deck rather than going dead."
+
+  So the card's Steps 4–6 and their Expected bullets describe **pre-T7.5**
+  behavior and need rewriting to the current mapping (they can no longer be
+  asserted as no-ops).
+- **Step 7 FAIL** (with an environment confound). The sidecar half holds —
+  `find <originals> -name '*.xmp'` = **0** — but the pending-sync half does not:
+  after pure navigation `metadata_sync_state` holds **2** rows with
+  `status='pending'` (`smoke-1`, `smoke-2`), one per visited asset. The card's
+  query is also stale: the column is `status`, not `state`.
+  - **Confound**: the seeded smoke catalog's `original_path` was baked with a
+    *prior* agent session's `$TMPDIR`
+    (`/private/var/folders/43/…/evener-sandbox-692153661/teststrip-vm-seeds/smoke/…`),
+    but `cmd_launch` rewrites the prefix using the *current* `$TMPDIR`
+    (`evener-sandbox-3109152076`), so the path never matched and originals are
+    unresolvable in the VM. The worker's selection-triggered XMP check
+    (`AppModel.selectAssetID` → `enqueueMetadataSyncCheck`) then fails its
+    sidecar write and records the row pending
+    (`WorkerCommandExecutor.swift:551`). No `.xmp` is actually written.
+  A clean fixture is needed before this step can carry a product verdict.

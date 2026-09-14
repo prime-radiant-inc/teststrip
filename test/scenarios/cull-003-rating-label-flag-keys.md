@@ -157,3 +157,40 @@ execution per test/scenarios/README.md.
 `LibraryLens`, same as it selected Cull under the old `Workspace` enum).
 Preamble only; no other stale symbol found in this card. Supersedes prior
 status: no prior run evidence exists to invalidate (still UNRUN).
+
+**VERIFIED 2026-09-13 — driven live in the Tart VM (`teststrip-e2e`) via
+`script/vm_scenario_run.sh`**, run dir `smoke-1789358250` (`launch smoke`, 24
+assets). Steps 1–10 all PASS, catalog ground truth sampled after every gesture.
+- Steps 3–4: `3` on `smoke-0` → `rating=3`, toast `★ smoke-0.jpg rated 3 — ⌘Z
+  undoes`; `0` on `smoke-1` → rating cleared, toast `○ smoke-1.jpg cleared
+  rating — ⌘Z undoes`. Auto-advance went exactly +1 each time.
+- Steps 5–7: `6/7/8/9` on `smoke-2..5` → `red/yellow/green/blue`; `v` on
+  `smoke-6` → `purple` (toast `● smoke-6.jpg purple label — ⌘Z undoes`);
+  re-select `smoke-6` (Left) + `-` → label NULL (toast `○ smoke-6.jpg cleared
+  label — ⌘Z undoes`).
+- Step 8: `P` `smoke-7`→`pick` (`✓ smoke-7.jpg picked`), `X` `smoke-8`→`reject`
+  (`✕ smoke-8.jpg rejected`), `P` then `U` on `smoke-9`→NULL (`○ smoke-9.jpg
+  cleared flag — ⌘Z undoes`).
+- Step 9: `cleared flag` toast present immediately after the keystroke, absent
+  after 3 s.
+- Step 10: 14 ⌘Z presses produced **12 real reversals**, each reverting exactly
+  one field on exactly one asset in exact reverse order; after them the state of
+  all 12 touched assets equals the seed baseline. The two keystrokes that did not
+  each produce an undo entry (`P` on `smoke-9`, already `pick`; `U` on
+  `smoke-11`) were no-op writes — exactly the trap the card's Sharp-edge note
+  describes. No alerts/sheets throughout.
+
+**Stale line-number citations** (symbols live and behave as described, so this
+does not affect the PASS): `applyCullingShortcut` :6999-7106→:7498;
+`applyCullingCommandAndAdvance` :7282-7312→:7824;
+`setRatingForSelectedAsset` :7709-7721→:8375;
+`setColorLabelForSelectedAsset` :7773-7777→:8439;
+`setFlagForSelectedAsset` :7723-7751→:8389;
+`cullingMetadataDecisionText` :7330-7344→:7884;
+`showDecisionToastThenFade` :4447-4462→:4832; `init(key:)` mapping
+:187-241→~:243-291. `CullDecisionToastPresentation` :83 is still exact.
+
+**Environment caveat** (not a finding against this card): the seeded catalog's
+`original_path` is stale (a prior agent session's `$TMPDIR`), so worker sidecar
+syncs fail; every assertion this card makes is against catalog `metadata_json`,
+which is unaffected.

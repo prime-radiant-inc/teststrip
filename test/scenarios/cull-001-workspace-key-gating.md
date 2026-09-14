@@ -162,3 +162,28 @@ grid"/"Library Loupe"/"workspace switcher" with "Grid lens"/"Loupe lens"/
 UNRUN note cited a `workspace:`-labeled gate signature that no longer
 compiles; nothing about that non-run carries forward, since the very
 function signature it described has changed. Needs a fresh VM run.
+
+**VERIFIED 2026-09-13 — driven live in the Tart VM (`teststrip-e2e`) via
+`script/vm_scenario_run.sh`**, run dir `smoke-1789357627` (`launch smoke`, fresh
+isolated catalog; 24 assets, 13 unflagged baseline). Every step PASSed:
+- Step 1: ⌘2 → Grid lens (window title `Teststrip – Grid`).
+- Steps 2–3: selected `smoke-1.jpg` (AXButton) and pressed `P`; SQL
+  `SELECT json_extract(metadata_json,'$.flag') FROM assets WHERE id='smoke-1'`
+  → `pick`. Confirms P *does* flag in the Grid lens's plain `.grid`.
+- Step 4: ⌘3 → Loupe lens, `Right` to `smoke-2.jpg`, pressed `P`; SQL flag for
+  `smoke-2` stayed NULL — the Loupe lens drops P as `GridKeyCommand.isAllowed`
+  documents (no leak).
+- Step 5: ⌘1 → Cull lens confirmed by chrome: it shows "Culling Progress" /
+  "Start Cull Run" and has **zero** `AXTextField`s.
+- Step 6: `ax find --role AXTextField --contains "Search photos"` → no match in
+  Cull; cross-checked the negative is meaningful — the same query in the Loupe
+  lens *does* match. **Stale citation**: the card quotes the placeholder as
+  `"Search photos, people, places, or rating:3 camera:… "`; the current build's
+  placeholder is `"Search Catalog"`. The category-level assertion (no text field
+  in Cull) still holds.
+- Step 7: `Return` in the Cull loupe on stackless `--smoke`; `smoke-2`'s flag
+  stayed NULL (designed no-op; positive stack coverage is cull-004).
+
+Driver note: the console window title read `Teststrip – Loupe` while the Cull
+lens was active (its default sub-mode), so the title alone is not a reliable
+Cull-lens indicator — assert the lens by its chrome / search-field presence.
