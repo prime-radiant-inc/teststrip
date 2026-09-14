@@ -14,6 +14,10 @@ struct PeopleView: View {
     @State private var reviewingGroup: ReviewingFaceGroup?
     @State private var queueFocusedIndex = 0
     @State private var keyCaptureFocusRequest = 0
+    // Review cards Esc-dismissed this session. A review card is a derived
+    // queue summary with no catalog row of its own, so dismissal is view
+    // state: the card leaves the queue rather than being written anywhere.
+    @State private var dismissedReviewCardIDs: Set<String> = []
 
     private var presentation: PeoplePresentation {
         PeoplePresentation(model: model)
@@ -25,9 +29,13 @@ struct PeopleView: View {
     private var queuePresentation: PeopleQueuePresentation {
         PeopleQueuePresentation(
             suggestionCards: populatedSuggestionCards,
-            reviewCards: presentation.reviewCards,
+            reviewCards: visibleReviewCards,
             focusedIndex: queueFocusedIndex
         )
+    }
+
+    private var visibleReviewCards: [PeopleReviewCard] {
+        presentation.reviewCards.filter { !dismissedReviewCardIDs.contains($0.id) }
     }
 
     // PeoplePresentation is value-only; contact reference lookup still needs
@@ -125,6 +133,8 @@ struct PeopleView: View {
             } catch {
                 model.errorMessage = error.localizedDescription
             }
+        case .dismissReview(let card):
+            dismissedReviewCardIDs.insert(card.id)
         case .none:
             break
         }
@@ -146,6 +156,7 @@ struct PeopleView: View {
             HStack(spacing: 7) {
                 Image(systemName: DesignGlyph.ai.symbolName)
                     .foregroundStyle(.orange)
+                    .accessibilityLabel(AITentativeAccessibility.unconfirmedMarkerLabel)
                 Text(presentation.reviewStripTitle)
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
@@ -172,13 +183,19 @@ struct PeopleView: View {
 
             if !presentation.suggestionCards.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
-                    ForEach(populatedSuggestionCards) { card in
-                        faceSuggestionCard(card, isFocused: isQueueFocused(cardID: card.id))
+                    let suggestions = populatedSuggestionCards
+                    ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, card in
+                        faceSuggestionCard(
+                            card,
+                            index: index,
+                            total: suggestions.count,
+                            isFocused: isQueueFocused(cardID: card.id)
+                        )
                     }
                 }
             }
 
-            if presentation.reviewCards.isEmpty {
+            if visibleReviewCards.isEmpty {
                 Text(presentation.faceReviewEmptyPrompt)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -187,7 +204,7 @@ struct PeopleView: View {
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
-                    ForEach(presentation.reviewCards) { card in
+                    ForEach(visibleReviewCards) { card in
                         Button {
                             applyConfirmAction(card.reviewAction)
                         } label: {
@@ -319,7 +336,12 @@ struct PeopleView: View {
     // at every face in the group large and zoomed before naming (review-first),
     // rather than confirming a whole group from one tiny crop. Confirm/Name
     // live inside the review surface now; the card keeps only Review + Dismiss.
-    private func faceSuggestionCard(_ card: PeopleFaceSuggestionCard, isFocused: Bool) -> some View {
+    private func faceSuggestionCard(
+        _ card: PeopleFaceSuggestionCard,
+        index: Int,
+        total: Int,
+        isFocused: Bool
+    ) -> some View {
         HStack(spacing: 12) {
             Button {
                 openFaceGroupReview(card)
@@ -353,6 +375,12 @@ struct PeopleView: View {
             }
             .buttonStyle(.plain)
             .help(card.isOneTapConfirm ? "Review this group before confirming \(card.confirmActionTitle)" : "Review these faces before naming them")
+            // Two suggestion cards otherwise announce the same children
+            // ("Contacts", "Review"), leaving them indistinguishable to
+            // assistive tech; the ordinal keeps each card addressable.
+            .accessibilityLabel(
+                PeopleFaceSuggestionCard.accessibleLabel(for: card, index: index, total: total)
+            )
 
             Button {
                 dismissFaceSuggestion(card)
@@ -363,6 +391,7 @@ struct PeopleView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help("Dismiss this face group")
+            .accessibilityLabel("Dismiss \(card.title)")
         }
         .padding(12)
         .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
@@ -665,13 +694,14 @@ struct PeoplePresentation: Equatable {
     }
 
     var headerSummary: String {
+        let peopleText = Self.peopleCountDescription(namedPeople.count)
         if !namedPeople.isEmpty {
-            return "\(namedPeople.count) people · \(photosWithFaceSignals) photos with face signals"
+            return "\(peopleText) · \(photosWithFaceSignals) photos with face signals"
         }
         if photosWithFaceSignals > 0 {
-            return "0 people · \(photosWithFaceSignals) photos with face signals"
+            return "\(peopleText) · \(photosWithFaceSignals) photos with face signals"
         }
-        return "0 people · \(totalAssetCount) photos"
+        return "\(peopleText) · \(totalAssetCount) photos"
     }
 
     var statusTitle: String {
@@ -844,6 +874,11 @@ struct PeoplePresentation: Equatable {
     private static func photoCountDescription(_ count: Int) -> String {
         count == 1 ? "1 photo" : "\(count) photos"
     }
+
+    /// "1 people" is not English: singular/plural agree with the count.
+    private static func peopleCountDescription(_ count: Int) -> String {
+        count == 1 ? "1 person" : "\(count) people"
+    }
 }
 
 struct PeopleSignalRow: Equatable, Identifiable {
@@ -892,6 +927,13 @@ struct PeopleFaceSuggestionCard: Equatable, Identifiable {
     var suggestion: PeopleFaceSuggestion
     var referencePhotoURL: URL? = nil
     var referenceBoundingBox: FaceBoundingBox? = nil
+
+    /// The accessible name for this card in the focus queue. Title and counts
+    /// alone collide for two identical new-person groups, so the card's
+    /// position in the queue is included to keep every card distinguishable.
+    static func accessibleLabel(for card: PeopleFaceSuggestionCard, index: Int, total: Int) -> String {
+        "\(card.title), \(card.countText), group \(index + 1) of \(total)"
+    }
 }
 
 struct PeopleReviewCard: Equatable, Identifiable {

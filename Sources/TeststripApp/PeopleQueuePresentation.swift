@@ -75,30 +75,24 @@ struct PeopleQueuePresentation: Equatable {
         }
     }
 
-    /// What Esc should do to the focused card: dismiss it when dismissal is
-    /// possible (suggestion cards), otherwise nothing — Esc never writes.
+    /// What Esc should do to the focused card: dismiss it. Suggestion cards
+    /// dismiss through the model; review cards are dismissed from the People
+    /// queue by the view. Esc never writes on its own.
     func dismissAction() -> PeopleQueueDismissAction {
         guard let focusedCard else { return .none }
         switch focusedCard.kind {
         case .suggestion(let card):
             return .dismissSuggestion(card.suggestion)
-        case .review:
-            return .none
+        case .review(let card):
+            return .dismissReview(card)
         }
     }
 
-    /// Focus after Esc: a review card has nothing to dismiss, so Esc
-    /// advances focus to the next card (wrapping) rather than doing
-    /// nothing. A suggestion card's Esc is handled by `dismissAction()`
-    /// (which removes it), so focus itself does not need to move here.
+    /// Focus after Esc: the focused card is removed by `dismissAction()`
+    /// (suggestion from the model, review from the queue), so the next card
+    /// shifts into the same slot and focus itself does not move here.
     func focusAfterEscape() -> PeopleQueuePresentation {
-        guard let focusedCard else { return self }
-        switch focusedCard.kind {
-        case .suggestion:
-            return self
-        case .review:
-            return movingFocus(.next)
-        }
+        self
     }
 }
 
@@ -111,5 +105,6 @@ enum PeopleQueueConfirmAction: Equatable {
 
 enum PeopleQueueDismissAction: Equatable {
     case dismissSuggestion(PeopleFaceSuggestion)
+    case dismissReview(PeopleReviewCard)
     case none
 }

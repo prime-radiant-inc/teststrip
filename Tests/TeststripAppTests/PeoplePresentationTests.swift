@@ -20,6 +20,19 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.namedPeople.map(\.countText), ["2 confirmed photos", "1 confirmed photo"])
     }
 
+    // "1 people" is not English (a live review caught it in the People lens).
+    func testHeaderSummaryUsesSingularPersonForOneNamedPerson() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 10,
+            namedPeople: [CatalogPerson(id: "person-maya", name: "Maya", assetCount: 3)],
+            evaluationSummaries: [
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 3)
+            ]
+        )
+
+        XCTAssertEqual(presentation.headerSummary, "1 person · 3 photos with face signals")
+    }
+
     func testKeepsScopedNamedPeopleSeparateFromCatalogWideMergeCandidates() {
         let adaFace = PersonKeyFace(
             assetID: AssetID(rawValue: "ada-face"),

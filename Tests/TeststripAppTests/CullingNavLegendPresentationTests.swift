@@ -8,12 +8,31 @@ final class CullingNavLegendPresentationTests: XCTestCase {
     func testLegendShowsBaseNavigationWithoutStack() {
         let presentation = CullingNavLegendPresentation(isStackActive: false)
 
-        XCTAssertEqual(presentation.legendText, "← → / H L navigate · Space advances · Z 1:1")
+        XCTAssertEqual(
+            presentation.legendText,
+            "← → / H L navigate · Space advances · P pick · X reject · U unflag · 0–5 rate · S filter · Z 1:1"
+        )
     }
 
     func testLegendAddsStackNavigationWhenStackIsActive() {
         let presentation = CullingNavLegendPresentation(isStackActive: true)
 
-        XCTAssertEqual(presentation.legendText, "← → / H L navigate · Space advances · Z 1:1 · ↑↓ / J K stacks · ↵ accept best")
+        XCTAssertEqual(
+            presentation.legendText,
+            "← → / H L navigate · Space advances · P pick · X reject · U unflag · 0–5 rate · S filter · Z 1:1 · ↑↓ / J K stacks · ↵ accept best"
+        )
+    }
+
+    // The always-visible legend must name the core culling decisions, not just
+    // navigation — the ? keymap already carried them but was not discoverable.
+    func testLegendNamesFlagRatingAndFilterKeys() {
+        let presentation = CullingNavLegendPresentation(isStackActive: false)
+
+        for fragment in ["P pick", "X reject", "U unflag", "0–5 rate", "S filter"] {
+            XCTAssertTrue(
+                presentation.legendText.contains(fragment),
+                "legend must include \(fragment)"
+            )
+        }
     }
 }
