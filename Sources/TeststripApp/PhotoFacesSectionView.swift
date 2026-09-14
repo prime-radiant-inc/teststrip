@@ -63,6 +63,9 @@ struct PhotoFacesSectionView: View {
                 Image(systemName: DesignGlyph.ai.symbolName)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
+                    // Expose the tentative (origin=ai, unconfirmed) state to
+                    // assistive tech; the ✨ alone announces only its symbol.
+                    .accessibilityLabel(AITentativeAccessibility.unconfirmedMarkerLabel)
             }
             Text(row.state.displayLabel)
                 .font(.caption.weight(.semibold))

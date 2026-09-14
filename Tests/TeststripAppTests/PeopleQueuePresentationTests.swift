@@ -127,29 +127,29 @@ final class PeopleQueuePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.dismissAction(), .dismissSuggestion(suggestionCard("a").suggestion))
     }
 
-    func testDismissActionOnReviewCardIsANoOp() {
+    // Jesse's decision: Esc on a focused review card dismisses the card, the
+    // same as a suggestion card — it is not "clear selection" and not "leave
+    // the review".
+    func testDismissActionOnReviewCardDismissesIt() {
         let presentation = PeopleQueuePresentation(
             suggestionCards: [],
             reviewCards: [reviewCard("unnamed-faces")]
         )
 
-        XCTAssertEqual(presentation.dismissAction(), .none)
+        XCTAssertEqual(presentation.dismissAction(), .dismissReview(reviewCard("unnamed-faces")))
     }
 
-    func testEscapeOnFocusedReviewCardAdvancesFocusToNextCardWrapping() {
+    // Dismissal removes the focused card from the queue, so the next card
+    // shifts into its slot and Esc itself must not also advance focus.
+    func testEscapeOnFocusedReviewCardDoesNotMoveFocus() {
         let presentation = PeopleQueuePresentation(
             suggestionCards: [],
             reviewCards: [reviewCard("unnamed-faces"), reviewCard("face-quality")],
             focusedIndex: 0
         )
 
-        let advanced = presentation.focusAfterEscape()
-
-        XCTAssertEqual(advanced.focusedIndex, 1)
-
-        // Wraps back to 0 from the last card.
-        let wrapped = advanced.focusAfterEscape()
-        XCTAssertEqual(wrapped.focusedIndex, 0)
+        XCTAssertEqual(presentation.focusAfterEscape().focusedIndex, 0)
+        XCTAssertEqual(presentation.dismissAction(), .dismissReview(reviewCard("unnamed-faces")))
     }
 
     func testEscapeOnFocusedSuggestionCardDoesNotMoveFocus() {

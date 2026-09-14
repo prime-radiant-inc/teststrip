@@ -119,10 +119,19 @@ struct ImportSelectionView: View {
                     Text("Duplicates").tag(ImportSelectionFilter.duplicates)
                 }
                 .pickerStyle(.segmented)
+                .accessibilityLabel(ImportSheetAccessibility.filterLabel)
+                .accessibilityIdentifier(ImportSheetAccessibility.filterIdentifier)
                 Spacer()
                 Text("\(model.selectedCount) of \(model.entries.count) selected")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(
+                        ImportSheetAccessibility.countSummaryLabel(
+                            selectedCount: model.selectedCount,
+                            totalCount: model.entries.count
+                        )
+                    )
+                    .accessibilityIdentifier(ImportSheetAccessibility.countIdentifier)
             }
             .padding(12)
 
@@ -144,25 +153,36 @@ struct ImportSelectionView: View {
                 }
                 .padding(12)
             }
+            .accessibilityLabel(ImportSheetAccessibility.gridLabel)
+            .accessibilityIdentifier(ImportSheetAccessibility.gridIdentifier)
 
             Divider()
 
             // Footer
             HStack {
                 Button("Select All") { model.selectAll() }
+                    .accessibilityIdentifier(ImportSheetAccessibility.selectAllIdentifier)
                 Button("Select None") { model.selectNone() }
+                    .accessibilityIdentifier(ImportSheetAccessibility.selectNoneIdentifier)
                 Spacer()
                 Button("Cancel", action: onCancel)
                     .buttonStyle(.plain)
-                Button("Import \(model.selectedCount) Photos") {
+                    .accessibilityIdentifier(ImportSheetAccessibility.cancelIdentifier)
+                Button(ImportSheetAccessibility.importButtonLabel(selectedCount: model.selectedCount)) {
                     onConfirm(model.selectedURLs)
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.selectedURLs.isEmpty)
+                .accessibilityIdentifier(ImportSheetAccessibility.importIdentifier)
             }
             .padding(12)
         }
         .frame(width: 800, height: 600)
+        // A real, named AX container so the sheet is reachable by assistive
+        // tech and automation (the live pass found no AXSheet/AXWindow).
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(ImportSheetAccessibility.sheetLabel)
+        .accessibilityIdentifier(ImportSheetAccessibility.sheetIdentifier)
         .onChange(of: duplicateURLs) { _, newURLs in
             model.duplicateURLs = newURLs
         }
@@ -217,7 +237,11 @@ private struct ThumbnailCell: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(entry.url.lastPathComponent)
+        .accessibilityLabel(ImportSheetAccessibility.cellLabel(filename: entry.url.lastPathComponent))
+        .accessibilityValue(
+            ImportSheetAccessibility.cellValue(isSelected: isSelected, isDuplicate: isDuplicate)
+        )
+        .accessibilityIdentifier(ImportSheetAccessibility.cellIdentifier(filename: entry.url.lastPathComponent))
         .onAppear { onAppear() }
     }
 }

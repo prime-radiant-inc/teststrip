@@ -1103,6 +1103,10 @@ struct InspectorView: View {
                 Image(systemName: DesignGlyph.ai.symbolName)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
+                    // The ✨ is the only visual cue that this keyword is an
+                    // unconfirmed AI suggestion; without a name it is an
+                    // invisible-to-AT decoration.
+                    .accessibilityLabel(AITentativeAccessibility.unconfirmedMarkerLabel)
             }
             Text(chip.keyword)
                 .lineLimit(1)
@@ -1159,6 +1163,7 @@ struct InspectorView: View {
             Image(systemName: DesignGlyph.ai.symbolName)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.orange)
+                .accessibilityLabel(AITentativeAccessibility.unconfirmedMarkerLabel)
             Text("AI-suggested caption")
                 .font(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(.orange)

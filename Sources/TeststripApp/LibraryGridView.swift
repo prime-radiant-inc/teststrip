@@ -562,6 +562,9 @@ struct LibraryGridView: View {
             Image(systemName: "square.grid.3x3")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                // Decorative: without this the raw symbol ("square.grid.3x3")
+                // is its own AX element, naming the control by its glyph.
+                .accessibilityHidden(true)
             Slider(
                 value: Binding(
                     get: { gridLayout.thumbnailWidth },
@@ -578,8 +581,11 @@ struct LibraryGridView: View {
             Image(systemName: "rectangle.grid.1x2")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
         .help("Thumbnail size: \(gridLayout.accessibilityValue)")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(GridChromeAccessibility.thumbnailSizeLabel)
     }
 
     private var thumbnailDensityControl: some View {
@@ -873,6 +879,7 @@ struct LibraryGridView: View {
                         canRetry: model.canRetryPendingMetadataSyncInCurrentScope
                     ))
                     .help("Retry pending metadata sync in current results")
+                    .accessibilityLabel(GridChromeAccessibility.retryMetadataSyncLabel)
                 }
 
                 Button {
@@ -883,6 +890,7 @@ struct LibraryGridView: View {
                 .buttonStyle(.borderless)
                 .disabled(!model.canRefreshVisibleAssetAvailability)
                 .help("Refresh source status")
+                .accessibilityLabel(GridChromeAccessibility.refreshSourceStatusLabel)
 
                 if hasActiveFilters {
                     Button {
@@ -892,6 +900,10 @@ struct LibraryGridView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Clear filters")
+                    // Without this the raw `xmark.circle` symbol names the
+                    // control "Close" in the AX tree (a live probe matched the
+                    // "Clear filters" help to an element described "Close").
+                    .accessibilityLabel(GridChromeAccessibility.clearFiltersLabel)
                 }
 
             }
@@ -976,7 +988,10 @@ struct LibraryGridView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-        .help("Add \(token.display) filter")
+        // Suggestion chips and active-filter chips share one "Add filter X" /
+        // "Remove filter X" vocabulary (name and help agree).
+        .help(GridChromeAccessibility.filterChipAddLabel(for: token.display))
+        .accessibilityLabel(GridChromeAccessibility.filterChipAddLabel(for: token.display))
     }
 
     private func saveMenu(_ actions: [LibraryResultHeaderPresentation.SaveAction]) -> some View {
@@ -1215,10 +1230,14 @@ struct LibraryGridView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(
             subtitle == nil
-                ? "Remove filter \(title)"
-                : "Remove filter \(title) (\(subtitle ?? ""))"
+                ? GridChromeAccessibility.filterChipRemoveLabel(for: title)
+                : "\(GridChromeAccessibility.filterChipRemoveLabel(for: title)) (\(subtitle ?? ""))"
         )
-        .help("Remove \(title) filter")
+        .help(
+            subtitle == nil
+                ? GridChromeAccessibility.filterChipRemoveLabel(for: title)
+                : "\(GridChromeAccessibility.filterChipRemoveLabel(for: title)) (\(subtitle ?? ""))"
+        )
     }
 
     private var batchMetadataPopover: some View {
@@ -2201,6 +2220,10 @@ struct LibraryGridView: View {
                         .foregroundStyle(.secondary)
                     TextField("Name", text: $name)
                         .textFieldStyle(.roundedBorder)
+                        // A bare TextField whose only string is a placeholder
+                        // surfaces an empty AX title; name it explicitly.
+                        .accessibilityLabel(GridChromeAccessibility.smartCollectionNameLabel)
+                        .accessibilityIdentifier(GridChromeAccessibility.smartCollectionNameIdentifier)
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -2283,6 +2306,8 @@ struct LibraryGridView: View {
                         .onSubmit {
                             applyRuleText()
                         }
+                        .accessibilityLabel(GridChromeAccessibility.smartCollectionRuleLabel)
+                        .accessibilityIdentifier(GridChromeAccessibility.smartCollectionRuleIdentifier)
                     Button {
                         applyRuleText()
                     } label: {
@@ -6609,7 +6634,17 @@ struct CullingNavLegendPresentation: Equatable {
     var legendText: String
 
     init(isStackActive: Bool) {
-        var segments = ["← → / H L navigate", "Space advances", "Z 1:1"]
+        // The Culling menu and the ? keymap document every key; this is the
+        // always-visible legend, so it must carry the core culling decisions
+        // (flag, rating, filter) and not just navigation.
+        var segments = [
+            "← → / H L navigate",
+            "Space advances",
+            "P pick · X reject · U unflag",
+            "0–5 rate",
+            "S filter",
+            "Z 1:1"
+        ]
         if isStackActive {
             segments.append("↑↓ / J K stacks")
             segments.append("↵ accept best")
