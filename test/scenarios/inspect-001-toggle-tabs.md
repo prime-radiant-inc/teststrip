@@ -221,3 +221,21 @@ run dir `smoke-1789365732`, plus scoping dirs `smoke-1789365855/6125/6184/6215`,
 unconditionally `true`, `LibraryGridView.swift:8823-8826`) — a signature drift from
 this card's `:8291-8293` no-arg citation, but not the cause. Crash `.ips` files are
 retained in the VM at `~/Library/Logs/DiagnosticReports/`.
+
+#### Crash forensics (2026-09-14, parent)
+
+The fault is a **layout re-entrancy**, not a bad value: `NSHostingView.SizeConstraints.update(from:)`
+sets a constraint constant, which re-enters `-[_NSConstraintBasedLayoutHostingView
+constraintsDidChangeInEngine:]` → `AppKitPlatformViewHost._layoutMetricsInvalidatedForHostedView()`
+→ `enqueueLayoutInvalidation()` → `Update.dispatchActions()` → `NSHostingView.requestUpdate(after:)`
+→ `-[NSView setNeedsUpdateConstraints:]` → `-[NSWindow _postWindowNeedsUpdateConstraints]`,
+which throws while the display cycle is already updating constraints. Same top frames in all five reports.
+
+**Not reproduced on demand.** A dedicated fix attempt (~60 repetitions, current and ancestor
+build) and a further 6 repetitions by the parent with the exact repro above left the app alive
+with no new crash reports. So the trigger is **state- or timing-dependent**, and no fix was
+shipped — a guard written against an unreproduced cause cannot be validated.
+
+If you pick this up: reproduce first (the run dirs that crashed were
+`smoke-1789365732` and the scoping runs `smoke-1789365855/6125/6184/6215`; the five `.ips`
+are the evidence), then fix the re-entrancy — do not add a bare guard around the inspector.
