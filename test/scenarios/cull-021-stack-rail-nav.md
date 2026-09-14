@@ -493,3 +493,36 @@ Per-step tally:
 
 No app code was changed or needs to be; this run's fixes are entirely to
 this card's Source citations and two assertion designs (steps 11 and 13).
+
+## Run status — VM e2e 2026-09-14
+
+**Verified — driven live, all 14 steps passed.** Tart VM `teststrip-e2e`,
+`launch burst` (run dir `burst-1789378147`, 18 assets). Highlights: the rail
+(`Stack 1 of 4` / `Frame 1 of 3`); no `Recommended`/flaw chip pre-evaluation;
+`shift-cmd-E` evaluated all 18; **no chip is `Recommended`** (stack 1 ties) with
+`SOFT` on every frame, independently confirmed by computing
+`CullingStackRecommendation.normalizedQualityRead` from raw signals (stack 1:
+smoke-0 0.21146 / smoke-1 0.23306 / smoke-2 0.24898 -> leaders within 0.03 =
+[smoke-1, smoke-2]); `Down`/`Up` move one frame within the stack with no wrap;
+`Right` landed `smoke-3` (stack 2 first tied leader), `Left` landed **`smoke-1`
+(Frame 2 of 3)** — the card's documented non-frame-1 tie landing, reproduced
+exactly; rail-cell click loupes the frame; browsing wrote no flags (only the
+legitimate sync-on-selection `.xmp`s); `Return` promoted `smoke-0` and one
+`cmd-Z` reverted the three writes.
+
+- **Stale Step 1:** the card says "cycle scope to 'All' with `S`". A fresh
+  `AppModel` already defaults to `cullScope = .all` (`AppModel.swift:2109`), and
+  `S` therefore cycles away to Unrated first; the runner must **not** press `S`.
+- No rail/HUD counter disagreement and no navigation dead-end — the recent
+  `reanchorSelectionIntoScopeIfNeeded`/`scopedCullingStacks` fix shows no
+  regression on this fixture.
+- Env repair: seeded `original_path` pointed at a prior session's TMPDIR;
+  repointed to the run dir's `Teststrip/SmokeOriginals` (harness-intended).
+
+**Stale citations:** `cullingStackRail` :4697-4796 -> :5096; `cullStackRailCell`
+:4830-4900 -> :5229; `stackChipAccessibilityValue` :4929-4938 -> :5329;
+`CullingStackRailPresentation` :6326-6573 -> :6737; `selectNextCandidateInStack`
+:7547-7553 -> :8227; `moveSelectionWithinCurrentCullingStack` :7555-7574 ->
+:8235; `selectCullingStack` :7623-7665 -> :8305;
+`recommendedStackLandingAssetID` :7676-7679 -> :8359;
+`promoteCurrentFrameAndRejectSiblings` :6754-6810 -> :7268.

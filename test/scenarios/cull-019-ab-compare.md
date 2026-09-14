@@ -173,3 +173,27 @@ semantics) verified by source read on 2026-07-09; no SQL dry-run yet.
 Preamble only; the assertions were not affected — no other stale symbol
 found in this card. Supersedes prior status: no prior run evidence exists to
 invalidate (still UNRUN).
+
+## Run status — VM e2e 2026-09-14
+
+**Tested-Fail (Testability).** LIVE RUN, `launch smoke` (run dir
+`smoke-1789377896`, 24 assets). All 9 steps driven; the product behaviour
+passed live (panes + `Comparing smoke-1 vs smoke-2`; filmstrip `Set as
+contender (B)`; `Anchor (A)` clears the override; synced-zoom label
+`Zoom 1:1`->`Fit` with **two** `Loupe zoom` HUDs; `Keep A · Reject B` writes
+`smoke-1=pick`/`smoke-2=reject` (+2 flagged); one `cmd-Z` clears both; 1-photo
+scope shows both notices with no keep bar).
+
+- **Step 7's `find --contains "Kept"` is not satisfiable in the A/B view.** The
+  status message (`AppModel.swift:6901`) renders only in the library `footer`
+  (`LibraryGridView.swift:2782-2788`, gated by the chrome policy), which is not
+  rendered while A/B is active; the AX tree exposed no `Kept` text on immediate
+  poll. The ground-truth pick/reject is the load-bearing check and passed.
+- Bare `b` registers only in the **Cull** lens; pressing it in the Grid lens is
+  a no-op, so Step 9's "re-enter A/B (`b`)" must be issued from Cull.
+
+**Stale citations:** `ABComparePresentation` :6262-6324 -> :6673;
+`resolveContender` :6290-6312 -> :6701; `ABCompareView` :6809-7057 -> :7241;
+`abFilmstripTile` :7003-7031 -> :7435; `singleFrameNotice` :6950-6959 -> :7382;
+`keepABFrame` AppModel :6377-6388 -> :6891; `applyCompareFlags` :6466-6510 ->
+:6980; `toggleLoupeZoom` :6850-6853 -> :7754; `loupeZoomFocus` :2083 -> :2225.

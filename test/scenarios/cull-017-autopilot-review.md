@@ -363,3 +363,44 @@ directly above marked the whole card reconciled without checking Step 6 —
 that clearance did not cover Step 6's dead symbols, wrong AX label, or the
 line-citation drift found here; this note is what actually clears them.
 Needs a fresh VM run.
+
+## Run status — VM e2e 2026-09-14
+
+**Tested-Fail (Documentation).** LIVE RUN, Tart VM `teststrip-e2e`, `launch smoke`
+(run dirs `smoke-1789377336` / `smoke-1789376678`) plus a generated 4-frame
+import. The load-bearing auto-apply-with-provenance legs all passed live
+(armed-import flag ghosts tentative with 0 sidecars; grid badges match the
+ghost; partial `Commit N` scoping confirmed exactly the selection; `Commit all`
+confirmed the rest; one `cmd-Z` reverted the last group). Four card defects:
+
+1. **Step 1's arm control does not exist.** There is no `AXCheckBox "Autopilot"`.
+   The live control is the Culling menu Toggle `AXMenuItem "Auto-cull After
+   Import"` (persists `AppModel.autopilotEnabled`; verified 0->1 via
+   `defaults read com.teststrip.app`).
+2. **Step 6 requires the Grid lens.** `autopilotReviewToolbar`
+   (`LibraryGridView.swift:2476-2477`) renders only inside the Grid lens's
+   `assetGrid`. Pressing the sidebar `AI Suggestions` row from the **Cull** lens
+   narrows scope to `AI Suggestions, N photos` but shows no `Reviewing N
+   proposals` chrome; `cmd-2` is required.
+3. **Steps 5 and 10 are mutually exclusive as ordered.** Step 5's banner
+   Dismiss clears the only surface carrying `Undo all`; Step 10's
+   `press --contains "Undo all"` is then unreachable (only `Undo Metadata
+   Change` remains).
+4. **Step 2's fixture is structurally insufficient.** Seeded JPEGs carry no EXIF
+   capture time and `AutopilotProposalPlanner` proposes pick/reject only inside a
+   detected multi-frame stack, so the stated 4-distinct-JPEG import yields zero
+   flag ghosts. The run used a generated import with EXIF `DateTimeOriginal` 1s
+   apart to reach the stack-bearing armed path.
+
+**Stale citations** (symbols alive, lines drifted): `runAutopilot` :9638-9686 ->
+:10780; `applyTentativeAutopilotProposals` :9699-9746 -> :10841;
+`dismissAutopilotRunSummary` :9804-9806 -> :10946; `commitAutopilotProposals`
+:9865-9897 -> :11008; `dismissAutopilotProposals` :9911-9930 -> :11054;
+`beginAutopilotReview` :10204-10207 -> :10959; `applyAutopilotSuggestionsScope`
+:10213-10238 -> :10968; `AutopilotBadgePresentation` :3518-3530 -> :3866;
+`AutopilotBannerView` :3556-3603 -> :3904; `AssetGridCellAccessibilityValue`
+:7576 -> :8749.
+
+**Environment repair:** the seeded `original_path` pointed at a prior session's
+TMPDIR; repointed to the run dir's `Teststrip/SmokeOriginals` (the harness's
+intended post-launch state) before driving.

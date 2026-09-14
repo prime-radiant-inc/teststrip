@@ -430,3 +430,30 @@ PASS-WITH-CARD-FIXES run above is unaffected — it never depended on this
 citation's parameter name — but the citation itself was wrong at the time
 of that run and is fixed now, not retroactively re-verified against that
 run's build.
+
+## Run status — VM e2e 2026-09-14
+
+**Verified — both legs driven live, all 10 steps passed.** Tart VM
+`teststrip-e2e`.
+
+- **Leg A (`launch burst`, `burst-1789378147`):** `J` walked the stack
+  smoke-3..smoke-6 with the title unchanged; `J` at the last frame was a no-op;
+  `K` walked back; raw arrows produced byte-identical targets; `L` crossed to
+  `Stack 3 of 4` landing `smoke-8` (first tied leader, computed); `H` returned
+  landing `smoke-3`.
+- **Leg B (`launch smoke`, `smoke-1789378445`):** rail `Standalone`, no
+  `Stack frame 2`; `J` and `L` each advance one asset per keypress in catalog
+  order and `K`/`H` walk back, arrows identical; `L` stops at `smoke-23` with no
+  wrap. Step 10: `P` advances under default auto-advance; the `A` toast reads
+  exactly `Auto-advance off` / `Auto-advance on`; `X` does not advance while off;
+  `P` advances again once re-enabled.
+
+- **Stale Steps 1/7:** both say press `S` to reach "All frames". A fresh
+  instance already defaults to `.all` and `S` cycles to Unrated instead; run
+  without `S` (the absent `Cull filter` chip confirmed `.all` on both legs).
+
+**Stale citations:** `cullAutoAdvanceEnabled` AppModel :2113 -> :2289;
+`toggleCullAutoAdvance` :7166-7178 -> :7685;
+`moveSelectionWithinCurrentCullingStack` :7555-7574 -> :8235;
+`selectCullingStack` :7623-7665 -> :8305; `recommendedStackLandingAssetID`
+:7676-7679 -> :8359.

@@ -264,3 +264,36 @@ corrected to `lens ==` and the line range to `:12-14`, re-verified directly
 against `CullingKeyCaptureView.swift`. Supersedes prior status: this card
 has no prior run evidence to invalidate (still UNRUN); the fix only affects
 what a future runner would read as ground truth.
+
+## Run status — VM e2e 2026-09-14
+
+**Tested-Fail (Documentation).** LIVE RUN, `launch smoke` (run dir
+`smoke-1789377639`, 24 assets). All 10 steps driven; every load-bearing
+assertion passed live (header texts; no write on open; `Evaluate Compare`
+gating + 65 signals with no metadata write; contenders round-trip; `X` reject +
+set shrink; group pick+rejects with one-`cmd-Z` revert; `P` writes pick —
+culling monitor live in Compare; `Return` no-op; `Choose manually` created the
+manual-cull work session and wrote no flags). Card drift:
+
+- **Contenders toggle is now "Top 4 contenders"** (title + help) and
+  contenders-only rendered **4** tiles, not "top 3 / at most 3".
+  `contenderCount` is still 3 (`LibraryGridView.swift:5918`) but
+  `contenderLimit = max(contenderCount, tiedLeaderLastRank+1)` (`:5995`) expands
+  on a too-close-to-call tie (this fixture ties).
+- **Step 7's item-59 help string is stale after Step 4's evaluation.** When a
+  recommended frame != primary, the primary action becomes
+  `Keep top signal N · reject M` with help `Marks the top signal frame as
+  Pick...` (`groupActionText`/`groupActionHelp`, `:6119-6137`). The run drove the
+  live ranked action and confirmed the same one-gesture-write / one-`cmd-Z`
+  contract.
+- Step 7's `cmd-Z` the step-6 reject first to restore a clean set` does **not**
+  restore set membership — `smoke-4`'s flag cleared but the set stayed 7 frames.
+
+**Stale citations:** `CompareSurveyPresentation` :5513-5907 -> :5914;
+`CompareSurveyActionPresentation` :5909-5938 -> :6310; `CompareDecisionBadge`
+:5940-5961 -> :6341; `CompareFocusMetric` :6030-6046 -> :6431;
+`keepComparePrimaryAndRejectAlternates` AppModel :6356-6365 -> :6870;
+`beginManualCullingFromCompareSet` :5272-5330 -> :5659; `compareAssets`
+:6312-6328 -> :6826; `refillCompareSetAfterReject` :7723-7771 -> :8441;
+`setFlagForSelectedAsset` :7709-7721 -> :8407; `CompareRefillOrdering`
+:354-372 -> :437.

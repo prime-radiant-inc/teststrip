@@ -514,3 +514,45 @@ Preamble only; no other stale symbol found in this card (its
 `CullingKeyCaptureGate`). Supersedes prior status: no substantive change —
 the PASS-WITH-CARD-FIXES evidence above is unaffected, noted for the record
 per house style.
+
+## Run status — VM e2e 2026-09-14
+
+**Verified (Documentation note) — Steps 1-6 driven live and passed.** Tart VM
+`teststrip-e2e`, `launch burst` (run dir `burst-1789378584`). The Pre-state was
+applied by patching the **launched run's** catalog (`smoke-7` -> confirmed reject
+plus a tentative `aiUnconfirmedFields=["flag"]` marker) rather than mutating the
+shared local template, so there is no session-wide side effect.
+
+- Step 1 baseline exact; 0 `metadata_sync_state`; 0 `.xmp`; scope All.
+- Step 2: `Return` on confirmed-reject `smoke-0` -> toast verbatim
+  `Kept smoke-0.jpg (was X) · rejected 2 · cmd-Z undoes`; `smoke-0=pick`,
+  `smoke-1/2=reject`.
+- Step 4: `Return` on `smoke-8` -> toast verbatim
+  `Kept smoke-8.jpg · rejected 1 · kept your pick of smoke-9.jpg · cmd-Z undoes`;
+  `smoke-7` tentative->confirmed (marker cleared, gen 1->2), `smoke-8=pick`
+  (gen->2), **`smoke-9` gen unchanged (no-op guard held)**; sidecars
+  `smoke-7.jpg.xmp` `ts:Pick="reject"`, `smoke-8.jpg.xmp` `ts:Pick="pick"`.
+- Step 5: one `cmd-Z` restored `smoke-7` to tentative (`reject|1`),
+  `smoke-8` to NULL, left `smoke-9` and the earlier Step-2 group untouched.
+- Step 6: standalone `smoke-16` `Return` -> exact informational toast
+  `No stack to promote — P picks this frame`, flag NULL, `SUM(catalog_generation)`
+  25 == 25.
+- Step 7 remains **not executable** against this fixture (`smoke`/`burst`
+  pre-render `.large`, so `previewURL(for:levels:[.large])` is never nil at
+  launch); `cull-027-blaze-through-prefetch.md` covers the armed-commit leg live.
+
+**Documentation note on Step 4:** its literal Expected "fails if a
+`metadata_sync_state`/`.xmp` artifact exists for `smoke-9`" is confounded by the
+documented sync-on-selection behaviour (cull-021 Step 13). An `.xmp` and a
+`synced` row do exist for `smoke-9`, but the run's own navigation selected it and
+its sidecar content matches its pre-existing confirmed value
+(`ts:Pick="pick"`) with `catalog_generation` unchanged — a legitimate sync of
+baseline metadata, not a commit write. Recommend re-scoping Step 4 the way
+cull-021 Step 13 was re-scoped.
+
+**Stale citations:** `promoteCurrentFrameAndRejectSiblings` :6754-6810 -> :7268;
+`singleFrameStackFeedback` :6860-6868 -> :7377; `promoteDecisionFeedback`
+:6890-6918 -> :7407; `applyCullingStackDecision` :6941-6990 -> :7458;
+`recordMetadataChangeGroup` :8441-8446 -> :9159; `undoMetadataChange`
+:8448-8455 -> :9166; `applyMetadataSnapshot` :8888-8902 -> :9612;
+`syncMetadataSidecar` :8904-8944 -> :9629.
