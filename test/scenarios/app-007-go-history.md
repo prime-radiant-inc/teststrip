@@ -77,3 +77,45 @@ example. Re-verified `NavigationCommands`'s line range
 prior run evidence exists on this card at all — it never had a `## Run
 status` section before this note; the fixes only affect what a future
 runner would read as ground truth.
+
+## Run status
+**LIVE RUN 2026-09-14, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, run dir
+`smoke-1789374443`, `launch smoke`, 24 assets): Steps 1-7 all PASS.
+
+- **Step 2 (gating at launch)**: System Events one-pass Go-menu read → `Back || enabled=false ||
+  cmd=[ || mods=1`, `Forward || enabled=false || cmd=] || mods=1` (`mods=1` = ⇧, so the items
+  render ⇧⌘[ / ⇧⌘]). Both disabled on the fresh launch; no error banner on a no-op Back press.
+- **Step 3 (build history)**: three distinct sidebar rows driven by `ax press --role AXButton
+  --label ...` (rows vend title-less `AXButton`s whose `AXDescription` is the row name). Identifying
+  chrome = the `AXStaticText` `desc=Scope` line at the top of the result area:
+  `All Photos, 24 photos` → `Rejects, 5 photos · Reject` → `Smoke Picks, 8 photos · Smoke Picks`.
+  Go menu after the third click: `Back enabled=true / Forward enabled=false`.
+- **Step 4 (Back)**: `⇧⌘[` → `Rejects, 5 photos · Reject` (exactly the previous row); Go menu
+  `Forward` now `enabled=true`. Second `⇧⌘[` → `All Photos, 24 photos` (the row before that).
+  Each hop lands on exactly the adjacent entry.
+- **Step 5 (Forward)**: `⇧⌘]` once → `Rejects, 5 photos · Reject` (the middle scope re-renders).
+- **Step 6 (new nav clears forward)**: after Back×2 we were at `All Photos` with `Forward` enabled;
+  clicking a *different* row `SmokeOriginals` → scope `SmokeOriginals, 24 photos · Folder:
+  SmokeOriginals`, Go menu `Forward enabled=false` / `Back enabled=true`. Stale forward history is
+  discarded.
+- **Step 7 (bottom of the stack)**: repeated `⇧⌘[` walked the full back stack
+  (`SmokeOriginals → Rejects → All Photos → Picks`) and at the oldest entry (`Picks, 6 photos ·
+  Pick`) `Back` reads `enabled=false`; four further `⇧⌘[` presses are no-ops — the view stays on
+  `Picks` and `Back` stays disabled. No `AXSheet`/`AXAlert`/error text appeared at any point
+  (gate prevents underflow rather than erroring).
+
+**Sharp-edge answers (observed, not guessed)**:
+- **Lens switches do NOT push history.** From the oldest entry (`Back` disabled, `Forward` enabled),
+  `⌘3` (Loupe) then `⌘2` (Grid) left the Go menu unchanged (`Back disabled / Forward enabled`) and
+  the source at `Picks`. History tracks `LibrarySource` selections only.
+- **The launch-default source is not pushed.** A fresh launch starts on `All Photos` with an empty
+  back stack; the very first click to another row pushes nothing (back stack stays empty until the
+  *second* distinct selection). Confirmed by a clean walk: from the launch state, clicking `Picks`
+  then `Smoke Picks` left a 1-deep back stack (`Back` disabled after the first `⇧⌘[`), whereas a
+  later 3-row sequence (`All Photos → Rejects → Smoke Picks`) produced the expected 2-deep stack.
+  This matches the "root of the stack is the launch state" reading of `canNavigateBack`.
+
+**Stale citations** (symbols alive, behaviour exactly as described): `NavigationCommands`
+`main.swift:299-333` → `:311-330`; `AppModel.swift` `navigationBackStack`/
+`navigationForwardStack` `:2069-2070` → `:2204-2205` (`canNavigateBack` `:5366`,
+`canNavigateForward` `:5369`).

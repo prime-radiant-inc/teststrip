@@ -124,3 +124,60 @@ referenced a workspace directly, so only this one citation changed.
 Supersedes prior status: the 2026-08-06 ghost-derivation reconciliation
 above is unaffected by this correction — it never depended on footer
 visibility — but still needs a fresh VM run per its own text.
+
+## Run status
+**LIVE RUN 2026-09-14, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`): `smoke` run
+dir `smoke-1789375602` (steps 2, 3-positive, 4, 5), `burst` run dir `burst-1789375720` (step 6),
+`empty` run dir `empty-1789375779` (step 3-negative). All steps verified live.
+
+- **Step 2 (menu inventory, item 42)** — one-pass System Events read of the `Culling` menu on a
+  fresh `smoke` launch. Actual composition, in order:
+  `Find Best Shots` (cmd=`B`, mods=1 → ⇧⌘B) · `Run Autopilot` (no key) · **divider** ·
+  `Evaluate Photo` (no key) · `Evaluate Visible` (cmd=`E`, mods=1 → ⇧⌘E) · `Evaluate Matches`
+  (no key) · `Move Rejects…` · **`Move Rejects to Trash…`** · `Auto-cull After Import` ·
+  **divider** · then the culling-shortcut sections (`Previous/Next Frame in Stack (↑ / K, ↓ / J)`,
+  `Previous/Next Stack (← / H, → / L)`, `Promote Frame & Reject Siblings (⏎)`, ratings 0-5, labels,
+  flags, zoom/EXIF/faces/key-map, filters, `Keep A · Reject B`).
+  **Double-fire guard holds**: the only two menu *key equivalents* are ⇧⌘B and ⇧⌘E; every
+  culling-shortcut item carries its key **only in its title** (`AXMenuItemCmdChar` = missing,
+  `mods=8` = no command), so no bare arrow/Return is menu-bound.
+  *Card drift*: the card's list omits `Move Rejects to Trash…` (added with the Trash feature,
+  `app-017`); everything the card names is present in the order it names them.
+- **Step 3 (evaluate gating)** — the positive control is on `smoke`: the grid auto-selects
+  `smoke-0` on launch and the seed ships cached previews, so `Evaluate Photo/Visible/Matches` read
+  `enabled=true`. The negative control (the card's "no selection") is not reachable on `smoke`
+  (clicking empty grid space does not clear the selection), so it was driven on `empty`
+  (`empty-1789375779`, 0 assets): `Evaluate Photo`, `Evaluate Visible`, `Evaluate Matches`,
+  `Find Best Shots`, and `Run Autopilot` all read `enabled=false` (no selection/no previews);
+  `Auto-cull After Import` stays enabled (a preference toggle, not asset-gated). The
+  "preview-not-yet-cached" window is unobserved (the seed ships previews) — noted per the card's
+  own Sharp edges.
+- **Step 4 (Run Autopilot on an unevaluated scope, item 39)** — on a fresh `smoke` launch
+  (`evaluation_signals` = 0), Culling ▸ Run Autopilot set the status
+  **"Autopilot: no evaluated photos in view to run on"** (footer `AXStaticText`); the ghost count
+  stayed 0 and the pick-bearing rows stayed at their baseline 6. Re-confirmed identically on a
+  fresh `burst` launch.
+- **Step 5 (Evaluate Visible, item 40)** — ⇧⌘E on `smoke`: the toolbar `Activity` button went to
+  `help="Activity - working"` and `evaluation_signals` grew 0 → 191 (63 mid-run, then 173 → 191,
+  Activity back to idle). On `burst`: 0 → 143.
+- **Step 6 (Run Autopilot on an evaluated scope)** — **driven on `burst`, not `smoke`: the card's
+  Pre-state (`smoke`) structurally cannot produce flag ghosts.** On `smoke`, after ⇧⌘E completed
+  (191 signals), Run Autopilot reported `Autopilot reviewed 0 frames` /
+  `No clear cuts to propose — 33 keyword suggestions ready to review` — 0 keep/cut proposals
+  because `smoke` has no stacks to rank (`AutopilotProposalPlanner` ranks within stacks; the same
+  flat-library condition that makes `potentialPicks` 0), so `metadata_json.flag` ghosts never
+  appear. On `burst` (18 assets, 4 burst stacks), after ⇧⌘E (143 signals), Run Autopilot reported
+  **`Autopilot reviewed 14 frames` / `4 keepers · 10 rejects · dupes→stacks`**, and the ghosts are
+  live and provisional exactly as the card specifies:
+  - `aiUnconfirmedFields` is exactly `["flag"]` on every ghost; 7 assets carry a tentative flag
+    (`smoke-2` → `pick`; `smoke-1/4/7/8/11/13` → `reject`) — the other proposals targeted assets
+    that already carried a confirmed flag and were correctly skipped.
+  - The grid cells render the badge via the cell's `AXValue`: `…, Autopilot proposes keep` /
+    `…, Autopilot proposes cut` (the AX tree vends the composed phrase, not the literal `KEEP`/
+    `CUT` glyph strings `AutopilotBadgePresentation.badge(for:)` returns).
+  - **Zero `.xmp` sidecars exist** for any ghosted asset (`find … -name '*.xmp' | wc -l` = 0) —
+    the tentative verdict has not touched the portable projection.
+
+**Stale citations**: `CullingCommands` `main.swift:408-532` → `:438` (`sections` consumed at
+`:493-508`); `menuKeyboardShortcut` `:575`; `LensChromePolicy.showsFooter`/`showsBrowseChrome`
+`LibraryGridView.swift:8264-8286` → `:8801`/`:8818`.

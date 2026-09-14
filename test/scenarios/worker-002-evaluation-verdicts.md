@@ -125,3 +125,50 @@ bullet even before this branch) was corrected to "driven by the ghost's own
 value, gone the moment the flag is confirmed." Supersedes prior status: the
 2026-07-10 SQL-grounded citations quote the dropped table's schema — not
 valid evidence for this revision. Needs a fresh VM run.
+
+## Run status
+**LIVE RUN 2026-09-14, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`): `smoke` run dir
+`smoke-1789375828` (steps 1-6), `burst` run dir `burst-1789375720` (step 7). Steps 1/2/3/4/6 PASS,
+**step 7 PASS (on `burst`)**, **step 5 BLOCKED — no observable ground truth** (recorded
+`Tested-Fail` / Testability).
+
+- **Step 1 (baseline)**: fresh `smoke` → `evaluation_signals` = `0 | 0` (`count(*)` /
+  `count(DISTINCT asset_id)`), `work_sessions` = 0.
+- **Step 2 (pick an unevaluated asset)**: `SELECT id FROM assets WHERE id NOT IN (SELECT asset_id
+  FROM evaluation_signals) LIMIT 1` → `smoke-0` (no import needed).
+- **Step 3 (trigger evaluation)**: the card's per-asset "Evaluate" AXButton does **not** exist —
+  there is no `--help "Evaluate"` control in the Grid/Loupe/Inspector; the only Evaluate commands are
+  the `Culling` menu items (`Evaluate Photo` = selection, `Evaluate Visible` ⇧⌘E, `Evaluate
+  Matches`). Driven via **⇧⌘E** (Evaluate Visible), which evaluates `smoke-0`. Post-run,
+  `smoke-0` carries 7 `evaluation_signals` and every one of the 24 assets has ≥1 signal.
+- **Step 4 (second trigger while in-flight)**: `⇧⌘E` issued twice back-to-back, ~0.2 s apart, so the
+  second dispatch lands while the first pass is still running (Activity `working` throughout).
+- **Step 5 (assert no duplicate work item) — BLOCKED.** The card's SQL
+  (`work_sessions WHERE id = 'evaluation-<id>-apple-vision'`) returns **zero rows** — not one, not
+  two. Evaluation work items are **not persisted to `work_sessions` at all**: the dedup guard lives
+  in `requestEvaluation`'s in-memory `currentBackgroundWorkQueue`
+  (`AppModel.swift:10697-10722` — `itemID = "evaluation-\(assetID)-\(provider)"`, early-return when
+  an active item with that id exists), and `work_sessions` only ever receives `import-…`/ingest rows
+  (confirmed: the `empty`-import run has exactly one row, `import-<uuid> | ingest | completed`).
+  So the card's step-5 observation method has no backing table and its Expected/`fails if` cannot be
+  evaluated as written. Supporting (non-discriminating) evidence that the double trigger did not
+  double-run: `evaluation_signals` has **0** duplicate `(asset_id, kind)` groups and totals 191
+  (a single 24-asset pass). Suggested card fix: assert the dedup through the in-memory queue's
+  observable proxy (or add the recognition items to `work_sessions`), not a `work_sessions` query.
+- **Step 6 (evaluation completes)**: polled `SELECT count(*) FROM evaluation_signals WHERE
+  asset_id='smoke-0'` → **7** (> 0), Activity back to idle.
+- **Step 7 (surface the verdict) — PASS on `burst`, not `smoke`.** On `smoke` autopilot proposes no
+  keep/cut (no stacks to rank), so no badge is producible (see app-012). On `burst`, after ⇧⌘E
+  (143 signals) Run Autopilot produced `4 keepers · 10 rejects`; the ghosted cells render their
+  badge in the cell's `AXValue` — `smoke-2`: `Not selected, Flagged Pick, Rating 2, Label Green,
+  4 keywords, Autopilot proposes keep`, and the catalog cross-check agrees:
+  `SELECT json_extract(metadata_json,'$.flag'), json_extract(metadata_json,'$.aiUnconfirmedFields')
+  FROM assets WHERE id='smoke-2'` → `pick | ["flag"]`. The badge text is vended as the composed
+  phrase `Autopilot proposes keep`/`cut`, not the literal `KEEP`/`CUT` strings
+  (`AutopilotBadgePresentation.badge(for:)`, `LibraryGridView.swift:3866`), and the flag is still
+  AI-unconfirmed — the card does not commit, so this is correct.
+
+**Stale citations**: `requestEvaluation` `AppModel.swift:9942-9973` → `:10697-10722`;
+`scheduleImportAutoEvaluationIfEnabled` `:10486-10500` → `:11242`;
+`runImportAutopilotIfArmedAndResolved` `:10505-10513` → `:11261`;
+`AutopilotBadgePresentation` `LibraryGridView.swift:3518-3531` → `:3866`.

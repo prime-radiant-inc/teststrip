@@ -106,3 +106,67 @@ the assertions were not affected. Supersedes prior status: no prior status
 note existed on this card; there is no earlier evidence to invalidate, but
 any prior unlogged run pressed a key that no longer does anything — needs a
 fresh VM run.
+
+## Run status
+**LIVE RUN 2026-09-14, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`): main run dir
+`smoke-1789375062` (`launch smoke`), step-6 run dir `empty-1789375281` (`launch empty`).
+Steps 2, 3, 4, 4b, 5, 6 all PASS (step 1 is only `wait-vended` + ⌘2).
+
+**Environment repair (disclosed)**: the seeded `smoke` catalog bakes `original_path` rooted at a
+*prior* agent session's `$TMPDIR` (`…/evener-sandbox-2656074910/teststrip-vm-seeds/smoke/…`), but
+`cmd_launch`'s prefix rewrite matches the *current* `$TMPDIR` — so the rewrite no-ops and every
+original is unresolvable in the VM. Because step 4's sidecar leg writes next to the real originals,
+the run dir's `original_path` was repointed at the fresh run dir and `fingerprint_json`
+mtime/size re-derived VM-side (the same repair `cmd_launch` intends). All sidecar/hash evidence
+below is from the repaired catalog.
+
+- **Step 2 (open via ⌥⌘M)**: sheet opened from the keyboard alone — title `Batch Metadata`, count
+  line `24 visible photos`, `AXRadioGroup "Batch selection"` with segments `Selected` / `Visible` /
+  `All Matches`, four text fields (`Keywords` / `Caption` / `Creator` / `Copyright` placeholders),
+  default scope `Visible` (primary button `Apply to Visible Batch`).
+- **Step 3 (Selected scope writes only the selection)**: closed the sheet, click + shift-click
+  selected `smoke-0` + `smoke-1` (`AXValue` = `Selected, batch selected` / `Not selected, batch
+  selected`), reopened (⌥⌘M) → count line `2 selected photos`, scope `Selected`, primary button
+  `Apply to Selected Batch`. Typed `scenario-kw` into the Keywords field, applied.
+- **Step 4 (ground truth: exactly 2)**: `SELECT count(*) … LIKE '%scenario-kw%'` = **2**
+  (`smoke-0`, `smoke-1`); exactly **2** `.xmp` sidecars exist in `SmokeOriginals/` (baseline: 0)
+  and both contain `scenario-kw`; `smoke-2` has none; md5 of `smoke-0`/`smoke-1`/`smoke-2`
+  originals unchanged (`e8018a9f…`, `af889295…`, `b0767689…` == pre-apply baseline).
+- **Step 4b (blank-means-leave-alone, persona-6)**: set Preferences ▸ Default byline Creator =
+  `Pref Creator` / Copyright = `Pref Copyright` (non-empty). Gave `smoke-1` a distinct creator
+  `Real Provenance` via the inspector (`⌘I` → Creator field → `Apply Creator`; catalog confirmed
+  `…"creator":"Real Provenance"`). Reopened ⌥⌘M: the batch sheet's **Creator** field
+  `AXPlaceholderValue` = `Pref CreatorPref Creator` with `AXValue` **empty**, **Copyright**
+  `AXPlaceholderValue` = `Pref CopyrightPref Copyright` with `AXValue` **empty** — the defaults
+  render only as placeholder text, never as field values (the aed1dbbe fix). Applied a keyword-only
+  pass (`scenario-kw2`, nothing else touched) over `smoke-0`+`smoke-1`: `scenario-kw2` landed on
+  exactly those 2 rows; `smoke-1`'s `creator` still reads `Real Provenance`, `copyright` still null
+  — the keyword-only pass did **not** stamp the preference defaults over per-photo provenance.
+- **Step 5 (all-catalog confirmation gate)**: with no filters active, scope `All Matches` renders
+  `24 matching photos` and the confirmation affordance
+  `AXCheckBox "Confirm applying metadata to all 24 catalog photos."` plus primary button
+  `Apply to All Matches`. Confirmed **inert until checked**: with a keyword present and the box
+  *unchecked*, the Apply button's `AXEnabled` = **false**; checked (`AXValue`=1), `AXEnabled` =
+  **true** (…and with no fields filled it is disabled regardless — "nothing to write"). Cancelled
+  (Esc) without applying: `scenario-kw` count still **2**, `scenario-gate` count **0** — an
+  unconfirmed all-catalog pass wrote nothing.
+- **Step 6 (gating, item 30)**: `launch empty` (0 assets) → Metadata menu one-pass read:
+  `Batch Metadata… || enabled=false` (`Check Sidecars for Changes || enabled=false` too). The item
+  is correctly disabled on an empty catalog.
+
+**Card-accuracy notes (not product defects)**:
+- The card calls the third scope segment "current-scope titles per `BatchScopeMode`"; the actual
+  title is **`All Matches`** (`BatchScopeMode.currentScope.title`, `LibraryGridView.swift:5746-5766`).
+- "Selected" in the batch sheet counts the grid **batch selection**, not a lone clicked tile: a
+  plain single click on one thumbnail leaves the sheet at scope `Visible` / `0 selected photos`,
+  while click + shift-click yields `2 selected photos`. The step-4b "one selected photo" wording
+  was therefore exercised as the click+shift 2-asset selection, with the invariant asserted on
+  `smoke-1` (the one carrying `Real Provenance`).
+- The doubled prefs value (`Pref CreatorPref Creator`) is a driver artifact of the physical
+  click-then-`keystroke` sequence in the off-screen Settings pane, not a product behaviour; it only
+  needed to be *non-empty* per the card.
+
+**Stale citations**: `MetadataActionCommands` `main.swift:335-354` → `:365`; `requestBatchMetadataSheet`
+`AppModel.swift:2530-2536` → `:2745`; `batchMetadataPopover` gate `LibraryGridView.swift:1238-1345`
+→ `:1256`; `BatchScopeMode`/`BatchMetadataDraft` `:3128-3193`/`:5345-5362` →
+`BatchMetadataDraft:5672`, `BatchScopeMode:5746`, `requiresAllCatalogConfirmation` gate `:5809`/`:5848`.

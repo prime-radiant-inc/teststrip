@@ -203,3 +203,68 @@ null" expectation looks like it contradicts Steps 6/8/9 and the auto-apply-
 with-provenance invariant — see the new Sharp edges bullet above. Pre-
 existing, not caused by SP-D0; unresolved by any live run so far. The next
 live run must settle which side is right before either is trusted.
+
+## Run status
+**LIVE RUN 2026-09-14, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, run dir
+`smoke-1789375947`, `launch smoke`, typed-path import of a 4-frame folder `/tmp/impstack`).
+**Step 2 and step 3 PASS; the armed import path (steps 4/6/8) produced no proposals, so step 7's
+negative passes vacuously and cannot be trusted; step 9 PASS.** Recorded `Tested-Fail` / Functional.
+
+**Fixture note**: the card points at `seed-dup-fixtures`' `card2`; `/tmp/impstack` was used instead —
+4 copies of the `facestack` seeder's re-stamped `stack-{1,2,3,4}-*.jpg` (a real, evaluable import
+folder with nominally time-adjacent frames). All `original_path`-scoped queries below filter
+`LIKE '%/impstack/%'` rather than `'%/card2/%'`.
+
+- **Step 2 (typed-path import sheet)**: `Import Path` toolbar button (help "Import a folder by typed
+  path (dev/automation)") → focused path field → `/tmp/impstack` → `Review Import`. The
+  confirmation sheet (`AXSheet`) reports `imp2`-style summary, `3 recognized photo files`… here
+  `4 recognized photo files`, and primary button **`Import 4 Photos`**.
+- **Step 3 (toggle, item 16) — PASS.** Expand the `Options` `AXDisclosureTriangle`; it reveals three
+  `AXCheckBox`es: `Import new photos only`, `Read imported frames automatically`, and the exact
+  label **`Autopilot cull after reading`** (help: "Once the imported reads finish, Autopilot
+  proposes keeps and cuts for review. Proposals stay provisional; nothing is written until you
+  commit."). Observed states:
+  - **default off**: `Autopilot cull after reading` `AXValue` = 0 on open.
+  - **read-gated disabled**: with `Read imported frames automatically` = 0, Autopilot is
+    `AXEnabled=false`; turning Read on flips it to `AXEnabled=true` (both directions observed
+    live). Source: `.disabled(!d.evaluateAfterImport)` (`LibraryGridView.swift:1956-1980`).
+  - Armed both (`Read`=1, `Autopilot`=1) and pressed `Import 4 Photos`; the import completed
+    (`work_sessions` row `import-9784…|ingest|completed`, catalog 24 → 28 assets).
+- **Step 4/5 (armed run + imported IDs)**: imported IDs
+  `4FF3A23D-…` (`stack-3-two-faces.jpg`), `07AF0FDC-…` (`stack-4-noface.jpg`),
+  `17A32BD9-…` (`stack-1-face.jpg`), `F90F64C4-…` (`stack-2-face.jpg`).
+- **Step 6/8 (armed-run scope + provisional) — NOT DELIVERED.** After import, **no imported asset
+  carried any `flag` ghost** and 11 s+24 s of polling showed the app idle. One imported asset,
+  `stack-3-two-faces.jpg`, was left with **zero `evaluation_signals`** (sidebar `Not analyzed yet`
+  = 25, i.e. the 24 seed assets + this one) while the other three were read (8/13/14 signals) and
+  got a promoted `caption`. `runImportAutopilotIfArmedAndResolved` (`AppModel.swift:11261-11270`)
+  returns early while **any** armed ID is still in `pendingImportEvaluationAssetIDs`; an asset
+  leaves that set only when `enqueueImportEvaluationsForCachedPreviews` finds its preview cached
+  (`:11280-11292`). So the armed run is **silently gated to never fire** for this import. A manual
+  Culling ▸ Evaluate Photo on `stack-3` immediately produced **13** signals, and a manual
+  Culling ▸ Run Autopilot over the same scope immediately reported
+  **`Autopilot reviewed 3 frames` / `2 keepers · 1 rejects · dupes→stacks`** — i.e. the proposals the
+  armed path owed the user. This is a **probable Functional defect**: an imported asset's read can
+  be left unresolved, permanently deferring the armed "Autopilot cull after reading" run.
+- **Step 7 (pre-commit negative) — FAILS as written; the contradiction is now resolved
+  empirically.** The manual autopilot wrote tentative flags **straight into `metadata_json`**:
+  `stack-4` → `pick`, `stack-1` → `reject`, `stack-2` → `pick`, each tagged
+  `aiUnconfirmedFields=["flag"]`, with **zero `.xmp` sidecars** next to the `/tmp/impstack`
+  originals. So Steps 6/8/9 are right and Step 7's expectation (`"flag":null` before commit) is
+  wrong: the auto-apply-with-provenance model writes the tentative `flag` immediately and marks it
+  unconfirmed. Step 7's "fails if any imported asset's flag changed before commit" is therefore a
+  false-negative assertion as written; the invariant it should assert is that the flag is
+  *unconfirmed* (`aiUnconfirmedFields` contains `flag`) and no sidecar exists — both hold.
+- **Step 9 (commit) — PASS.** Open the sidebar `AI Suggestions` source (row value 3; scope
+  `AI Suggestions, 3 photos`, `Reviewing 3 proposals`, `Commit all 3`) and `Commit all 3`:
+  the three ghosts became **confirmed** flags (`aiUnconfirmedFields` no longer contains `flag` for
+  them; `stack-2` retains `["caption"]`), and **three `.xmp` sidecars** appeared next to the
+  originals — the commit gesture is wired, so step 7's negative is not vacuously true because
+  commit is broken. (Scope line still reads `AI Suggestions, 3 photos` after the set emptied —
+  the same stale-scope chrome seen in app-011.)
+
+**Stale citations**: `runImportAutopilotIfArmedAndResolved` `AppModel.swift:10505-10513` → `:11261`;
+`runArmedImportAutopilot` `:10515-10526` → `:11271`; `applyTentativeAutopilotProposals`
+`:10086-10133` → `:10841`; `commitAutopilotProposals` `:10252-10284` → `:11008`; `runAutopilot`
+`:10025-10073` → `:10780`; the toggle labels `LibraryGridView.swift:1939/1956`, `.disabled`
+`:1976-1980`.
