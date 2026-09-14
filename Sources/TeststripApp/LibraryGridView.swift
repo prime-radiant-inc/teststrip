@@ -633,6 +633,13 @@ struct LibraryGridView: View {
             ))
             .textFieldStyle(.plain)
             .focused($isQueryFieldFocused)
+            // A ⌘F from a lens without browse chrome switches to Grid and bumps
+            // the focus token in the same update, before this field is mounted,
+            // so that first bump is dropped. Consume the pending request here,
+            // once the field is on screen, so the caret actually lands.
+            .onAppear {
+                model.consumePendingSearchFocus()
+            }
             .onSubmit {
                 submitQueryTokenField()
             }
