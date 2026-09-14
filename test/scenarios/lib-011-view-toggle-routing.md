@@ -130,3 +130,25 @@ cull sub-modes were peers on one picker. Supersedes prior status: the
 2026-07-10 NOT RUN note verified `librarySubViewToggle` and its 5 tags by
 source read — that control no longer exists, so nothing about its prior
 non-run carries forward as evidence for this revision. Needs a fresh VM run.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, run
+dir `smoke-1789364410`, `launch smoke`, 24 assets): Steps 1-9 all PASS, with one
+stale citation.
+- Step 2: the switcher holds exactly six buttons in declaration order. **The live
+  AX labels are `Cull lens`/`Grid lens`/`Loupe lens`/`Timeline lens`/`Map lens`/
+  `People lens`, not the bare `Cull`/`Grid`/… this card asserts.** The qualification
+  is intentional: `LensSwitcherAccessibility.segmentLabel` (`LibraryGridView.swift:
+  7932-7934`) appends " lens" so the lens `Cull` is distinguishable from the
+  toolbar Cull action button, which is a *second* bare `Cull` AXButton (that is why
+  `find --label Cull` matches while `find --label Grid` does not). Card body should
+  be updated to the qualified labels; the functional assertion (six buttons, correct
+  set and order, no drift) holds.
+- Steps 3-8: ⌘2 grid (3 `AXScrollArea`, all 24 cells reachable), ⌘3 Loupe lens
+  (single-photo, no grid cells), ⌘4 Timeline (`CATALOG TIMELINE`,
+  `24 photos across 1 day`), ⌘5 Map (`Teststrip – Map`, `No geotagged frames yet`,
+  `TOP LOCATIONS` — smoke has no GPS), ⌘6 People (`ALL PEOPLE`,
+  `No confirmed people yet`), ⌘2 back to a 24-cell grid.
+- Step 9: ⌘1 lands on the Cull `.loupe` sub-mode (HUD `6 picks, 5 rejects, 13 left`,
+  `1 of 24 · stack 1 of 24`, window subtitle `Loupe`); `g`→cullGrid (grid, no HUD),
+  `c`→compare (`Survey Compare`, `Compare set`, `8 frames`), `b`→A/B (`A/B`,
+  `Comparing smoke-0 vs smoke-1`). `Cull lens` read Selected throughout.

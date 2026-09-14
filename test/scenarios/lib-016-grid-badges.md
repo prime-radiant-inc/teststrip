@@ -161,3 +161,29 @@ points at hand-seeding `metadata_json` directly or at
 pre-state. Supersedes prior status: this card was already NOT RUN, so there
 is no prior PASS to invalidate — noted for the record per house style.
 Needs a fresh VM run.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, run
+dir `smoke-1789365487`, `launch smoke`, 24 assets): Steps 2-5 PASS; Step 6
+unreachable (fixture, as this card predicts).
+- Step 2: SQL-rated-3 = {smoke-3, 9, 15, 21}; exactly those four cells' AXValue
+  contains `Rating 3`.
+- Step 3: plain click `smoke-3` → `Selected`. Window-PNG pixel scan of the tile's
+  mid row: left/right orange border runs of 6 px at scale 2 = **3 pt**, RGB
+  (255,146,48) = `Color.orange` — matches `lineWidth: 3`.
+- Step 4: ⌘-click `smoke-4` → its AXValue reads `Not selected, batch selected`
+  while `smoke-3` stays `Selected, …`; `smoke-4`'s border runs are 4 px = **2 pt**,
+  RGB (213,127,49) = dimmer (`.opacity(0.72)`); unselected `smoke-2` shows no border
+  run at all (EmptyView). The batch badge's `Batch selected` semantics ride in the
+  collapsed cell's AXValue.
+- Step 5: all 24 cells' AXValue contains `2 keywords`, matching SQL (every smoke
+  asset's keywords are `["smoke","batch-0"]`).
+- Step 6: **not observed** — the fresh run dir already contains
+  `Teststrip/Previews/` (24 dirs) copied from the seed template, so no cell lacks a
+  preview and there is no `Preview queued`/`Building preview` element. Honest
+  fixture gap. Availability and KEEP/CUT badges remain Sharp-edge fixture gaps.
+
+Evidence: window PNG `lib016-badges.png` (3264x1768) plus an `axborder.swift` pixel
+run measurement — borders are not AX-queryable, so this is the pixel half the card
+asks for. Stale citations: the card's chrome line ranges drift; symbols verified —
+`AssetGridMetadataBadgePresentation` now `:8681`, `AssetGridCellAccessibilityValue`
+`:8749`.

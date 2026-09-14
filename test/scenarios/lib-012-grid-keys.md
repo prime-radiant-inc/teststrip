@@ -126,3 +126,32 @@ session to execute Steps 1-10.
 a terminology-only fix, no assertion or citation changed. Supersedes prior
 status: this card was already NOT RUN, so there is no prior PASS to
 invalidate — noted for the record per house style.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, run
+dir `smoke-1789364950`, `launch smoke`, 24 assets): Steps 1-10 all PASS.
+- Step 2: plain click `smoke-0` → AXValue `Selected`.
+- Step 3: `Right` → `smoke-1`. Step 4: `Down` → `smoke-9` (live column count 8).
+- Step 5: `End` → `smoke-23`; `Home` → `smoke-0`.
+- Step 6: `3` on `smoke-0` → SQL rating `3` (baseline `0`), and a `.xmp` sidecar
+  written (`smoke-0.jpg.xmp`, 773 B).
+- Step 7: `p` on `smoke-1` → `pick`; `u` → cleared. Step 8: `x` on `smoke-2` →
+  `reject`.
+- Steps 9-10: `Return`, then `Space` → loupe (`Frame 3 of 24`, `Esc: Grid`); `Esc`
+  → grid.
+
+Stale citations (symbols alive): `assetSelectionAccessibilityValue`
+`LibraryGridView.swift:6582-6586`→`:8080` (applied at `:8071`); `gridColumnCount`
+`:113`→`:112`; `LibraryGridColumnCount.columns` `:3651`→`GridKeyCaptureView.swift:147`.
+
+**Driver**: the card's Sharp edge (no arrow/key verb) stands — arrows and keys were
+sent via `vm_scenario_run.sh key` (`osascript` key codes / keystrokes), and the plain
+grid click with a one-off warped CGEvent helper (warp + `mouseMoved`, then a
+`flagsChanged` clear), after reconfirming `ax_drive.sh press --modifiers` misses grid
+tiles.
+
+**Environment**: the launcher's `original_path` prefix rewrite
+(`vm_scenario_run.sh cmd_launch`) compares against the *current* host `$TMPDIR`; the
+synced seed template was baked under an earlier session's TMPDIR, so the rewrite
+no-ops and every original is unresolvable in the VM. Repaired VM-side (repoint to the
+fresh run dir + re-derive fingerprints from the copied files) before the sidecar leg;
+without it the Step 6 sidecar would be fixture-confounded, as cull-002 records.

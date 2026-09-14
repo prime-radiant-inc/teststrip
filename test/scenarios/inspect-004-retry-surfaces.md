@@ -179,3 +179,36 @@ opens the inspector — the inspector renders over whichever lens is current.
 Supersedes prior status: no prior status note addressed this line; the
 BLOCKED-CONSOLE/2026-07-11 evidence above is unaffected on its own terms
 (it never reached the AX steps) but still needs a fresh VM run.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, run
+dir `smoke-1789366279`, `launch smoke`, 24 assets): Steps 1-11 driven and PASS, with
+one fixture augmentation.
+
+**Preview leg (Info):** this card's plain synthetic `preview_generation_queue` row is
+**drained on the next launch** — startup preview recovery regenerates the preview and
+`CatalogRepository.markPreviewGenerated` deletes the row — so the alert never renders
+from Step 2's recipe alone (also tried with an unreadable original and with the cached
+`grid.jpg` removed; still drained). With a genuinely unregenerable asset
+(`rm -rf $RUN/Teststrip/Previews/smoke-0` + `chmod 000` the original + the synthetic
+row) the row persists at launch:
+- Step 4 PASS: alert `Preview retry pending` with
+  `Grid preview failed after 3 attempts: “smoke-0.jpg” couldn’t be copied because you
+  don’t have permission to access …`, and exactly one `Retry` button.
+- Steps 5-6 PASS: AXPress `Retry` → SQL `attempt_count` **3→4** and
+  `last_attempted_at` **1789366750.27→1789366773.15** — re-queued and re-attempted
+  (fails again, so the row persists; provably not byte-identical).
+
+**Provider leg (AI):** quit + insert
+`evaluation_failures('smoke-0','apple-vision',…)` + relaunch:
+- Step 9 PASS: `Analysis retry needed`, `apple-vision failed: synthetic provider error
+  for inspect-004`, `Retry apple-vision` (exact provider in the label).
+- Steps 10-11 PASS: AXPress `Retry apple-vision` → `evaluation_failures` count **0**.
+
+Notes: Step 2 should record that the worker drains a regenerable failure row, so the
+alert needs a genuinely unregenerable original (or a refresh trigger) to persist.
+Observation, not scored: the `Analysis retry needed` alert remains on screen after the
+provider row is cleared (`selectedProviderFailures` refreshes only at catalog-reload
+points — this card's own Sharp edge (b)). Step 8's ⌥⌘3 is unnecessary for AX presence
+(the stacked inspector is non-lazy). The inspector's Retry buttons can sit below the
+window's visible area (AX y > window bottom), so AXPress (which ignores position) was
+used rather than a point click.

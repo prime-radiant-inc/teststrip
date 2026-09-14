@@ -73,3 +73,24 @@ so that half of the prior citation still holds, but the entry key and the
 enclosing-concept language do not. Needs a fresh VM run — still
 BLOCKED-CONSOLE-equivalent until run in the Tart VM per
 `test/scenarios/README.md`.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, run
+dir `smoke-1789365165`, `launch smoke`, 24 assets): Steps 1-3 and 5 PASS; **Step 4
+FAILS as written** (stale premise, see below).
+- Steps 1-2: ⌘3 → Loupe lens Selected, single-photo loupe (`smoke-0.jpg`,
+  `Frame 1 of 24`), no grid cells.
+- Step 3: no cull chrome — `Stack frame`, the HUD `picks,` cluster, the `stack`
+  counter, and the pick/reject/`Rate N` help controls are all absent. Positive
+  control in the Cull lens (⌘1): `Stack frame 1`, `6 picks, 5 rejects, 13 left`,
+  `1 of 24 · stack 1 of 24`. (Note the card's suggested `Rate 1`-style probe is
+  stale — the loupe carries no rating/pick controls at all; they live in the
+  inspector, so cull chrome must be probed by the stack rail / HUD cluster.)
+- **Step 4 fails:** `Esc` in the Loupe lens does **not** stay — it switches to the
+  **Grid lens** (`Grid lens` Selected, window `Grid`). This is deliberate, not a
+  regression: `GridKeyCaptureView.isAllowed(in: .libraryLoupe)` allows
+  `.returnToGrid` (`GridKeyCaptureView.swift:104-106`) →
+  `applyGridKeyCommand(.returnToGrid)` → `returnToLibraryGrid()`
+  (`AppModel.swift:7246-7247`), and the loupe nav bar literally renders `Esc: Grid`
+  (`LibraryGridView.swift:4354`). Rewrite Step 4 to assert the Esc→Grid transition.
+- Step 5: session restore PASS — selected `smoke-2`, ⌘Q, relaunched against the same
+  run dir → back in the Loupe lens on `smoke-2` (`Frame 3 of 24`).

@@ -195,3 +195,29 @@ correct it. Everything else in the 2026-07-13 reconciliation (the stacked-sectio
 inspector, ⌥⌘1-3 as scroll-not-select, the Cull-shows-inspector-directly
 fix) is unaffected by this push and remains valid evidence pending a fresh
 run. Needs a fresh VM run.
+
+**LIVE RUN 2026-09-13, Tart VM `teststrip-e2e`** (`script/vm_scenario_run.sh`, first
+run dir `smoke-1789365732`, plus scoping dirs `smoke-1789365855/6125/6184/6215`,
+`launch smoke`, 24 assets): Step 1 PASS; **Step 2 crashes the app.**
+- Step 1: a fresh launch is Grid; ⌘1 → Cull `.loupe`, stack rail present, inspector
+  hidden.
+- **Step 2 FAILS — ⌘I with the Cull lens in its `.loupe` sub-mode ABORTS Teststrip.**
+  Uncaught Objective-C exception during the AppKit display-cycle constraint update →
+  SIGABRT. Reproduced **5x** (crash reports
+  `Teststrip-2026-09-14-060348/060500/060722/060806/060913.ips`), identical
+  `lastExceptionBacktrace`: `__exceptionPreprocess` → AppKit
+  `-[NSWindow _postWindowNeedsUpdateConstraints]` → SwiftUI
+  `NSHostingView.SizeConstraints.update(from:)` → CoreAutoLayout
+  `-[NSLayoutConstraint setConstant:]` → `-[NSView updateConstraintsForSubtreeIfNeeded]`
+  → `__NSWindowGetDisplayCycleObserverForUpdateConstraints_block_invoke`;
+  `asi: abort() called`; termination `Abort trap: 6`.
+- Scope: ⌘I does **not** crash from the Grid lens, the Loupe lens (⌘3), or the Cull
+  grid sub-mode (`g`) — the crash is specific to the Cull `.loupe` route + inspector.
+  So it is invoked by exactly the "Cull shows the inspector directly, no
+  auto-switch to Library" behaviour this card exists to verify.
+- Steps 3-10 not reached.
+
+`showsInspector` is now `LensChromePolicy.showsInspector(_ view:)` (still
+unconditionally `true`, `LibraryGridView.swift:8823-8826`) — a signature drift from
+this card's `:8291-8293` no-arg citation, but not the cause. Crash `.ips` files are
+retained in the VM at `~/Library/Logs/DiagnosticReports/`.
