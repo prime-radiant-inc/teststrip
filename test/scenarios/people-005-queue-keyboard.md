@@ -79,3 +79,35 @@ top-level `LibraryLens` cases, keyed ⌘6, not ⌘3 (`LibraryLens.keyEquivalent`
 `LibraryLens.swift:44-51`). Preamble only; the queue-keyboard/confirm-before-
 write assertions don't depend on how People was reached. Supersedes prior
 status: no prior run evidence exists to invalidate (still BLOCKED-CONSOLE).
+
+
+## Run status — 2026-09-14, Tart VM `teststrip-e2e` (batch 5): VERIFIED
+
+`launch faces` run dir `faces-1789371522`, Scan for Faces drained (2 suggestion
+cards). Steps 1-7 PASS, taking the card's name-routing branch (the only branch
+a fresh scan produces).
+
+- Steps 3/5: `person_assets` = 0 before any gesture — arrowing to focus writes
+  nothing.
+- Step 6: Return on the focused card opened the **Name Face Group** sheet
+  (subtitle "Groups this face group's 4 faces across 4 photos under a new
+  named person.") with `person_assets` still 0 — routing is not writing.
+  Typing `Test Person` + Return created exactly one `people` row and 4
+  `person_assets` rows for that group; the other suggestion group stayed
+  unconfirmed.
+- Step 7: the People canvas then showed `Test Person / 4 confirmed photos`
+  and the header `1 person · 7 photos with face signals`.
+
+### Corrections found while driving
+
+- **The sheet's field selector is stale.** `--contains "Person name"` no
+  longer matches: `PersonAutocompleteField` uses `TextField("Name", …)` and
+  its placeholder is not exposed in the AX tree at all (title/description/
+  value/placeholder all empty). Target the field with `--role AXTextField`.
+- The card's step-7 phrase "exactly one new `people` row" is a typo — the
+  write is one `people` row plus N `person_assets` rows.
+- Bare Return in the sheet works because `PersonAutocompleteField`'s
+  `.onKeyPress(.return)` activates the focused autocomplete row (create-new
+  when the query matches no candidate) — **not** via `SheetScaffold`'s
+  default-action button; `SheetScaffold.swift:100-108` documents bare Return
+  as consumed by the focused field editor.

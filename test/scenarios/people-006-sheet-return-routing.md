@@ -60,3 +60,29 @@ top-level `LibraryLens` cases, keyed ⌘6, not ⌘3 (`LibraryLens.keyEquivalent`
 `LibraryLens.swift:44-51`). Preamble only; the sheet-vs-queue Return-routing
 assertions don't depend on how People was reached. Supersedes prior status:
 no prior run evidence exists to invalidate (still BLOCKED-CONSOLE).
+
+
+## Run status — 2026-09-14, Tart VM `teststrip-e2e` (batch 5): VERIFIED
+
+`launch faces` run dir `faces-1789371655`, Scan for Faces drained. Steps 1-5
+PASS.
+
+- **Step 2's trigger is stale.** `ax press --role AXButton --help "Name this
+  face group"` no longer exists (exit 1). The "Name Face Group" sheet is now
+  opened by pressing Return on the focused name-routing suggestion card
+  (queue confirm → `PeopleQueueConfirmAction.nameSuggestion` → the sheet,
+  `PeopleView.swift:98-126`); the run was driven that way.
+- Steps 3-5: while the sheet was open `person_assets` read 0. Typing
+  `Route Person` + Return created exactly one `people` row with 4
+  `person_assets` (its own group only). The second suggestion group remained
+  unconfirmed (`group 1 of 1` after), and **no second sheet reopened** — so
+  Return reached only the sheet's create action, not the queue's confirm.
+
+### Note on the routing concern
+
+The queue's focused card is now a *suggestion group*, not a person card, so a
+hypothetical double-fire would route to a no-write action anyway (queue
+confirm on a new-person card re-opens the naming sheet). The discriminating
+observation — exactly one create and an untouched second group — held live.
+The card's `task-21-report.md` static-trace premise predates the current
+`Add name`/queue surface.

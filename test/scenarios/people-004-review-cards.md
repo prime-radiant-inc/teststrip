@@ -120,3 +120,38 @@ in this path. Rewrote Step 5 accordingly. Supersedes prior status: no prior
 run evidence exists to
 invalidate (still BLOCKED-CONSOLE); the citation/routing-mechanism fixes
 only affect what a future runner would read as ground truth.
+
+
+## Run status — 2026-09-14, Tart VM `teststrip-e2e` (batch 5): VERIFIED
+
+`launch faces` run dir `faces-1789371392`, Scan for Faces drained
+(FC=11, FQ=11). Steps 1-5 PASS; step 6 NOT exercised (see below).
+
+- Step 3: both review cards present, matching `FC > 0` / `FQ > 0`.
+- Step 4: each card's count text is `11 photos`, equal to its kind's
+  distinct-asset count.
+- Step 5: pressing the card (`--help "Review faces"`) selected the **Grid**
+  lens with a `Remove filter Faces Found` chip; pressing
+  `--help "Review quality"` added `Remove filter Face Quality`.
+
+### Corrections found while driving
+
+- **Step 3's role is stale.** The cards are not `AXStaticText`; each is an
+  `AXButton` whose child texts are concatenated into one label:
+  `"11 photos, Review faces, Unnamed faces"` and
+  `"11 photos, Review quality, Face quality checks"`. The card's
+  `--role AXStaticText --contains …` fails (exit 1); use role-less
+  `--contains`.
+- **Step 6's fallback is wrong as written.** It says a `Scan for Faces`-only
+  run "yields `faceCount` — never `faceQuality`". Live, `Scan for Faces`
+  (apple-vision only) emits `faceCount`, `faceQuality`, `object`, `ocrText`
+  *and* `visualSimilarity` (`GROUP BY kind, provider` → all `apple-vision`),
+  so the single-populated-card disabled state is not producible that way.
+  Step 6 remains unexercised (the card itself calls it a fallback).
+- Routing source citations: `reviewCards` is now `PeopleView.swift:799-822`
+  (not `:762-789`); `selectPeopleSignal` is `AppModel.swift:12210-12216`.
+- Observation: `selectPeopleSignal` appends to the current People-lens source
+  scope, so driving both cards back-to-back stacks `Faces Found` +
+  `Face Quality`. Harmless here (all 11 assets carry both signals) but the
+  step-5 "exactly that kind's assets" assertion is non-discriminating on this
+  fixture.

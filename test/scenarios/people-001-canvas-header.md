@@ -100,3 +100,40 @@ top-level `LibraryLens` cases, keyed ⌘6, not ⌘3 (`LibraryLens.keyEquivalent`
 header-math and empty-state-copy assertions don't depend on how People was
 reached. Supersedes prior status: no prior run evidence exists to invalidate
 (still BLOCKED-CONSOLE).
+
+
+## Run status — 2026-09-14, Tart VM `teststrip-e2e` (batch 5): VERIFIED
+
+Driven via `script/vm_scenario_run.sh` (`launch faces` run dir `faces-1789371392`;
+`launch empty` run dir `empty-1789371259`) with the face scan triggered from
+**People ▸ Scan for Faces** and allowed to drain.
+
+- Steps 1-4 PASS. Ground truth after the scan: `people`=0, `faceCount`=11
+  distinct assets, `faceQuality`=11. The header rendered exactly
+  `0 people · 11 photos with face signals` — `max(FC,FQ)`=11, **not** the sum
+  22 — so the view still matches `PeoplePresentation.init`.
+- Step 6 PASS on the empty catalog: the review-strip detail read verbatim
+  "These photos haven’t been scanned for faces yet. Scan for faces to see
+  who’s in your photos.", the face-actions status read verbatim "Confirm a
+  suggested group, name faces yourself, or merge people. Nothing is saved
+  until you confirm.", the header read `0 people · 0 photos`, and all four
+  banned terms (`evaluation`, `review queues`, `deferred`, `face-box`) were
+  absent (`ax find --contains` exit 1 for each).
+- Step 5: the review/suggestion strip and the **ALL PEOPLE** panel are both
+  present. The "tap a named person card" leg is not exercisable on a fresh
+  scan (no named person); it was driven live in this batch's `people-008` run.
+
+### Corrections found while driving
+
+- `Sources/TeststripApp/PeoplePresentation.swift` no longer exists — the type
+  moved into `PeopleView.swift:616-882`; `headerSummary` is now `:696-705`.
+- `headerSummary`'s first two branches are byte-identical, so the card's
+  "P == 0 but max > 0" branch is not behaviorally distinct.
+- **`M = max(FC,FQ)` holds only pre-confirmation.** After confirming 4 assets
+  the header read `1 person · 7 photos with face signals` while
+  `evaluation_signals` still held 11/11 for both kinds: the summary feeding
+  `photosWithFaceSignals` excludes `faceCount`/`faceQuality` signals for any
+  asset that has a `person_assets` or `dismissed_face_assets` row
+  (`CatalogRepository.evaluationKindSummaries`, `CatalogRepository.swift:2540-2570`).
+  A runner reading raw `evaluation_signals` will see the documented math only
+  while nothing is confirmed or dismissed.

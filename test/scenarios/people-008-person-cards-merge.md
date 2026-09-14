@@ -145,3 +145,43 @@ toggle any more (`LibraryLens.keyEquivalent`, `LibraryLens.swift:44-51`).
 Preamble only; the person-card count/merge-gating/navigation assertions
 don't depend on how People was reached. Supersedes prior status: no prior
 run evidence exists to invalidate (still BLOCKED-CONSOLE).
+
+
+## Run status — 2026-09-14, Tart VM `teststrip-e2e` (batch 5): VERIFIED
+
+`launch faces` run dir `faces-1789371745` (merge legs) and `faces-1789371908`
+(duplicate-name probe). Steps 2-7 driven.
+
+- Step 2: the "Alpha Person" card read count text `1 confirmed photo`
+  (singular); the duplicate-name probe later rendered `2 confirmed photos`.
+- Step 3: no merge control with a single confirmed person.
+- Step 4: each card exposes an `AXMenuButton` titled `Merge`. Alpha's menu
+  lists `Merge into Beta Person`; Beta's lists `Merge into Alpha Person`
+  (driven via a one-off nth-match AX helper). Neither lists itself.
+- Step 5: `people` 2 → 1, the Alpha row is deleted, and Beta's `person_assets`
+  is 1 + 1 = 2.
+- Step 6: a CGEvent click on the Beta card body navigated to the Grid scoped to
+  `Remove filter Person: Beta Person`, rendering exactly the 2 assets in SQL
+  `person_assets` for Beta.
+- Step 7 (probe): two confirms of the identical name `Same Name` produced
+  **one** `people` row with 2 `person_assets` and one UI card
+  (`Same Name / 2 confirmed photos`) — the second confirm attached to the
+  existing person, refuting the card's inferred two-row outcome.
+
+### Corrections found while driving
+
+- The person card is an `HStack` with `.onTapGesture`, not a `Button`:
+  `AXPress` does **not** fire a SwiftUI `onTapGesture`. The tap legs need a
+  warped CGEvent click (`ax_drive.sh` has no plain-click verb), which is what
+  this run used.
+- The merge control vends as `AXMenuButton` titled `Merge` with no AXHelp —
+  not an `AXMenu` / `arrow.triangle.merge`.
+- Step 5's `person_faces` repoint spot-check is vacuous under this card's own
+  Name-Selection seeding: no `person_faces` rows exist, so the check reads 0
+  both before and after the merge.
+- Step 7's inference is **stale**: `confirmSelectedAssetsAsPerson` resolves an
+  exact trimmed case-insensitive name match first (`AppModel.swift:3944`), so a
+  duplicate name attaches rather than minting a second row. This confirms
+  live the LEDGER's "duplicate rows since FIXED by 93415485".
+- Observation: the Name Selection subtitle still reads "…under a **new** named
+  person" even when the confirm will attach to an existing person.

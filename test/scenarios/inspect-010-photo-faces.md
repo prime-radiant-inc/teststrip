@@ -399,3 +399,69 @@ gestures, and box-tracking geometry are all lens-agnostic mechanisms; only
 the surrounding chrome/routing vocabulary was stale. Supersedes prior
 status: no prior run evidence exists to invalidate (still NOT RUN); the fix
 only affects what a future runner would read as ground truth.
+
+
+## Run status — 2026-09-14, Tart VM `teststrip-e2e` (batch 5): TESTED-FAIL
+
+Two `launch faces` runs (`faces-1789371986`, `faces-1789372614`) with the
+AuraFace model present and face scanning drained
+(`face_observations` = 11). Driven via `script/vm_scenario_run.sh`, with real
+keystrokes for the naming popover and in-VM Vision OCR for the visual legs.
+
+**PASS:** steps 1-5, 7, 8-9, 10-13, 20-21.
+
+- Steps 1-3: a grid tile opened in the loupe (Cull chrome `Frame 7 of 11`);
+  ⌘I opened the inspector **without leaving Cull**; all four headers
+  `Info`/`Describe`/`AI`/`People` were present simultaneously.
+- Steps 4-5: `face_observations` for `commons-glenn-official.jpg` = 1; its
+  People row read `Unnamed`.
+- Step 7: `person_faces` / `rejected_face_people` = 0.
+- Steps 10-13: `Add name` → naming popover → `Buzz Aldrin` / `John Glenn`
+  wrote exactly **1** `person_faces` row for that face index, joined to the new
+  `people` row; the row flipped to `Buzz Aldrin ✓` / `John Glenn ✓`. The write
+  happened only on the confirming Return — `person_faces` stayed 0 while the
+  popover was merely open.
+- Steps 20-21: `Remove` on the confirmed row flipped it back to `Unnamed` and
+  dropped `person_faces` for that asset to 0.
+- Step 24: originals remain mtime 2026-07-07 (untouched); no `.xmp` mtime
+  changed today.
+
+**FAIL — step 15 (root cause, not a distance miss).** After confirming
+`commons-glenn-official.jpg` as "John Glenn", opening a *different* Glenn photo
+(`commons-glenn-1962.jpg`) left its People row `Unnamed` (checked twice, incl.
+a re-open). The inspector's `.suggested` state is derived from `person_faces`
+rows with `origin != 'user'` (`AppModel.photoFacesPresentation`,
+`AppModel.swift:4353-4359`), **not** from `peopleFaceSuggestions` — so the
+clustering suggestion (which the People canvas *does* render as
+`Is this John Glenn?, 3 faces · 3 photos`) is never projected as a `guess:`
+row without a persisted `origin='ai'` assignment. Steps 16-19 are therefore
+blocked.
+
+### Corrections found while driving
+
+- **Step 10's mechanism is gone.** `Add name` is no longer a `Menu` with a
+  `New person…` item; it is a plain Button opening a `PersonAutocompleteField`
+  **popover** (`PhotoFacesSectionView.swift:107-132`). That popover is **not
+  vendable in the AX tree at all** — no new window, no new `AXTextField`. The
+  only way to drive it is real keystrokes after `AXPress`, and it only presents
+  when the inspector is scrolled so the button is on-screen.
+- **Step 17's reject affordance is renamed.** There is no `Not <name>` button;
+  a `.suggested` row now shows `Confirm` and `Remove`, and `Remove` calls
+  `removePerson(forFaceRow:)` → `rejectFaceSuggestion`
+  (`AppModel.swift:4447-4456`).
+- **Step 6 is AX-unverifiable.** The loupe face box *is* rendered and labelled
+  (`Unnamed` drawn over the image, confirmed by in-VM OCR), but it is not in
+  the AX tree — it is absorbed by the loupe image's `Zoom to 100%` AXButton.
+  The row↔box label equality can only be checked by OCR/screenshot.
+- **Step 25 is stale** per the card's own Sharp edges (800pt → the current
+  `AppWindowLayoutMetrics.minimumWidth` is 1000pt for every lens); not driven.
+- **Step 22's open question is answered**: `person_assets` for
+  `commons-glenn-official.jpg` reads **0** after Remove, not 1 — current
+  `unassignFaces` conditionally deletes the `person_assets` row after the last
+  face is removed. The card's "expect it to still read 1" text is stale.
+- Steps 26-27 (box placement / resize geometry) were not driven beyond
+  confirming the box renders over the letterboxed image.
+
+Defect type: **Documentation** (steps 10/15/17/25 describe an affordance or
+data source that no longer exists), plus one genuine testability gap (the
+naming popover and the loupe face boxes are invisible to AX).
