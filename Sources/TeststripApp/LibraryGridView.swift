@@ -4812,11 +4812,17 @@ private struct LoupeView: View {
     }
 
     private func showDecisionToastThenFade() async {
-        guard model.lastCullingMetadataDecision != nil else {
+        guard let feedback = model.lastCullingMetadataDecision else {
             isDecisionToastVisible = false
             return
         }
         isDecisionToastVisible = true
+        // A "nothing happened" notice (Return's standalone no-op, the render
+        // gate, a scope/mode toggle) must stay up until the next cull action
+        // clears or replaces it — a 2s toast that's already gone when the
+        // user looks reads as a broken key, not an explained no-op. Real
+        // decisions keep the echo-and-fade window.
+        guard feedback.autoFades else { return }
         try? await Task.sleep(for: .seconds(2))
         guard !Task.isCancelled else { return }
         if accessibilityReduceMotion {

@@ -407,6 +407,28 @@ public enum CullAutoAdvanceOrdering {
         }
         return nil
     }
+
+    /// Forward-only variant for `U` (clear flag). Clearing un-sets the frame
+    /// you are on, so the wrapping search above would then see the earliest
+    /// undecided sibling first and teleport the selection *backward* to it —
+    /// across frames the user already passed (live review: `U` on the last
+    /// frame of a `burst` stack jumped to frame 1). A clear may only ever
+    /// advance forward; `nil` means "no undecided sibling ahead — leave the
+    /// stack toward the next stop", exactly like deciding the last frame.
+    public static func nextUndecidedSiblingForward(
+        stackAssetIDs: [AssetID],
+        after index: Int,
+        isUndecided: (AssetID) -> Bool
+    ) -> AssetID? {
+        var candidate = index + 1
+        while stackAssetIDs.indices.contains(candidate) {
+            if isUndecided(stackAssetIDs[candidate]) {
+                return stackAssetIDs[candidate]
+            }
+            candidate += 1
+        }
+        return nil
+    }
 }
 
 /// Pure ordering for Compare refill (Task 18): when a frame is rejected out
@@ -1905,6 +1927,15 @@ public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
         if case .rating = command { return true }
         return false
     }
+
+    /// Whether the decision toast may auto-fade on its 2s timer. A real
+    /// decision (something was written, ⌘Z undoes it) echoes and fades; a
+    /// notice that *no* metadata changed — Return's standalone no-op, the
+    /// render gate, a scope/mode toggle — must stay up until the next cull
+    /// action replaces or clears it. A fleeting "nothing happened" toast
+    /// reads as a broken key rather than an explained no-op (live review:
+    /// Return on a `burst` fixture's singles).
+    public var autoFades: Bool { !isInformational }
 }
 
 public enum AutopilotScope: Equatable, Sendable {
@@ -7814,13 +7845,25 @@ public final class AppModel {
         if let originalSelection,
            let stackAssetIDs,
            let currentIndex = stackAssetIDs.firstIndex(of: originalSelection) {
-            if let nextUndecidedID = CullAutoAdvanceOrdering.nextUndecidedAssetID(
-                stackAssetIDs: stackAssetIDs,
-                after: currentIndex,
-                isUndecided: { assetID in
-                    assetIndexByID[assetID].map { assets[$0] }?.metadata.confirmedProjection.flag == nil
-                }
-            ) {
+            let isUndecided: (AssetID) -> Bool = { assetID in
+                self.assetIndexByID[assetID].map { self.assets[$0] }?.metadata.confirmedProjection.flag == nil
+            }
+            // `U` may only advance forward: clearing un-sets the current
+            // frame, and the wrapping search would then teleport backward to
+            // the earliest undecided sibling. Every other decision (P/X,
+            // rating, label) keeps the burst-collapsing wrap.
+            let nextUndecidedID = command == .clearFlag
+                ? CullAutoAdvanceOrdering.nextUndecidedSiblingForward(
+                    stackAssetIDs: stackAssetIDs,
+                    after: currentIndex,
+                    isUndecided: isUndecided
+                )
+                : CullAutoAdvanceOrdering.nextUndecidedAssetID(
+                    stackAssetIDs: stackAssetIDs,
+                    after: currentIndex,
+                    isUndecided: isUndecided
+                )
+            if let nextUndecidedID {
                 selectAssetID(nextUndecidedID)
             } else {
                 try selectNextStackForCulling()
