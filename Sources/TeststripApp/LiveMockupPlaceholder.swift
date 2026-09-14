@@ -179,8 +179,8 @@ public enum LiveMockupPlaceholders {
     public static let workHistory = LiveMockupPlaceholder(
         id: "work.history",
         title: "Work history",
-        intendedBehavior: "Navigate recent and starred culling, collecting, searching, sorting, and editing sessions.",
-        currentFallback: "Recent and starred work-session sidebar rows are catalog-backed when activities exist, and work-session reopen prefers the output set when a session has one; richer history search and editing are not built."
+        intendedBehavior: "Navigate recent and bookmarked culling, collecting, searching, sorting, and editing sessions.",
+        currentFallback: "Recent and bookmarked work-session sidebar rows are catalog-backed when activities exist, and work-session reopen prefers the output set when a session has one; richer history search and editing are not built."
     )
 
     public static let all: [LiveMockupPlaceholder] = [

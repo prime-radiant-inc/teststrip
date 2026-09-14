@@ -2159,7 +2159,7 @@ struct LibraryGridView: View {
                 TextField("Name", text: $name)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 240)
-                Toggle("Starred", isOn: $starred)
+                Toggle("Pin to Top", isOn: $starred)
                 HStack {
                     Spacer()
                     Button("Cancel") {
@@ -2248,7 +2248,7 @@ struct LibraryGridView: View {
                 }
 
                 suggestedTemplates
-                Toggle("Starred", isOn: $starred)
+                Toggle("Pin to Top", isOn: $starred)
                 Spacer(minLength: 0)
             }
             .padding(16)

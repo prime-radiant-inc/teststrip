@@ -7874,8 +7874,8 @@ final class AppModelTests: XCTestCase {
             .toggleAssetSetStarred(savedSet.id),
             .deleteAssetSet(savedSet.id)
         ])
-        XCTAssertEqual(actions.map(\.title), ["Rename Set", "Duplicate Set...", "Freeze Snapshot...", "Star Set", "Delete Set..."])
-        XCTAssertEqual(actions.map(\.systemImage), ["pencil", "plus.square.on.square", "camera.aperture", "star", "trash"])
+        XCTAssertEqual(actions.map(\.title), ["Rename Set", "Duplicate Set...", "Freeze Snapshot...", "Pin Set", "Delete Set..."])
+        XCTAssertEqual(actions.map(\.systemImage), ["pencil", "plus.square.on.square", "camera.aperture", "pin", "trash"])
     }
 
     func testSidebarContextActionsDoNotExposeFreezeForManualSavedSets() throws {
@@ -9293,8 +9293,8 @@ final class AppModelTests: XCTestCase {
         var action = try XCTUnwrap(model.sidebarContextActions(for: recentRow).first)
 
         XCTAssertEqual(action.kind, .toggleWorkSessionStarred(session.id))
-        XCTAssertEqual(action.title, "Star Work")
-        XCTAssertEqual(action.systemImage, "star")
+        XCTAssertEqual(action.title, "Bookmark Session")
+        XCTAssertEqual(action.systemImage, "bookmark")
 
         try model.performSidebarContextAction(action)
 
@@ -9302,8 +9302,8 @@ final class AppModelTests: XCTestCase {
         let starredRow = try XCTUnwrap(starredWorkCollectionRows(model).first)
         action = try XCTUnwrap(model.sidebarContextActions(for: starredRow).first)
         XCTAssertEqual(action.kind, .toggleWorkSessionStarred(session.id))
-        XCTAssertEqual(action.title, "Remove Star")
-        XCTAssertEqual(action.systemImage, "star.slash")
+        XCTAssertEqual(action.title, "Remove Bookmark")
+        XCTAssertEqual(action.systemImage, "bookmark.slash")
     }
 
     func testSelectingWorkSessionAppliesSessionQueryScope() throws {
@@ -9538,8 +9538,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarContextActions(for: row), [
             SidebarRowContextAction(
                 kind: .toggleWorkSessionStarred(searchOnlySession.id),
-                title: "Star Work",
-                systemImage: "star"
+                title: "Bookmark Session",
+                systemImage: "bookmark"
             )
         ])
     }
@@ -9581,8 +9581,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(actions, [
             SidebarRowContextAction(
                 kind: .toggleWorkSessionStarred(searchOnlySession.id),
-                title: "Remove Star",
-                systemImage: "star.slash"
+                title: "Remove Bookmark",
+                systemImage: "bookmark.slash"
             )
         ])
 
@@ -9600,8 +9600,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(actions, [
             SidebarRowContextAction(
                 kind: .toggleWorkSessionStarred(searchOnlySession.id),
-                title: "Star Work",
-                systemImage: "star"
+                title: "Bookmark Session",
+                systemImage: "bookmark"
             )
         ])
         XCTAssertFalse(try repository.session(id: searchOnlySession.id).starred)
@@ -9619,8 +9619,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarContextActions(for: row), [
             SidebarRowContextAction(
                 kind: .toggleWorkSessionStarred(searchOnlySession.id),
-                title: "Remove Star",
-                systemImage: "star.slash"
+                title: "Remove Bookmark",
+                systemImage: "bookmark.slash"
             )
         ])
     }

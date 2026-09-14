@@ -29,7 +29,7 @@ view `:771-824`, `dismissToast`/`showToastThenFade` `:826-844`),
 (`ImportChildKind` `:5-39`), `Sources/TeststripApp/AppModel.swift`
 (`isCurrentSessionActivity` `:14401-14407`, `applyImportChild` `:5120-5173`,
 `requestImportIssueReview` `:2619-2622`, `sidebarContextActions(for:)`
-`:5351-5423`, with the work-session star toggle
+`:5351-5423`, with the work-session bookmark toggle
 at `:5392-5397` and import verbs at `:5402-5418`, `beginStackCulling`
 `:5212-5269`, `startCullingImport` `:5201-5207`, `cullingInputSetID`
 `:13648-13673`), `Sources/TeststripApp/LibraryGridView.swift`
@@ -331,11 +331,11 @@ reproducible).
     ```bash
     script/vm_scenario_run.sh ax press --role AXButton --label "$CARD1_ROW_TITLE" --button right
     ```
-    Assert the menu offers exactly four current items: the star toggle
-    (`Star Work` when unstarred, `Remove Star` when starred), `Cull stacks`,
+    Assert the menu offers exactly four current items: the bookmark toggle
+    (`Bookmark Session` when unbookmarked, `Remove Bookmark` when bookmarked), `Cull stacks`,
     `Evaluate import`, and `Manual Compare over the import` — with no extras
     (`AppModel.sidebarContextActions(for:)`, `AppModel.swift:5351-5423`,
-    specifically the star toggle at `:5392-5397` and the three import verbs at
+    specifically the bookmark toggle at `:5392-5397` and the three import verbs at
     `:5402-5418`). Press `Cull stacks` (`beginStackCulling`, `:5212-5269`) and
     assert per-stack
     `work-stack-` sets exist if CARD1's frames landed within the stack
@@ -471,7 +471,7 @@ reproducible).
   aren't both listed, or if the exact sheet `Done` action does not close it
   before the diagnostic-source assertion and subsequent steps.
 - Step 10: **fails if** the context menu does not contain exactly the current
-  star toggle plus the three import verbs (four items total), offers any
+  bookmark toggle plus the three import verbs (four items total), offers any
   extras, or if pressing `Cull stacks` neither creates
   `work-stack-` sets NOR falls back to the documented no-stacks path.
 - Step 11: **fails if** the second identical-files import's toast doesn't
@@ -716,9 +716,10 @@ summary.newPhotoCount > 0` with `newPhotoCount == 0`.
   session binding remain pending the fresh run required above.
 - **Step 10's "exactly three items" assertion was wrong in the version
   driven.** The menu vended four: `Star Work`, `Cull stacks`, `Evaluate
-  import`, `Manual Compare over the import`. `Star Work` was deliberate; the
-  then-cited range simply started below the star branch. The executable step
-  above now requires the current star toggle (`Star Work`/`Remove Star`) plus
+  import`, `Manual Compare over the import`. The work-session toggle (since
+  renamed `Bookmark Session`/`Remove Bookmark`) was deliberate; the
+  then-cited range simply started below the toggle branch. The executable step
+  above now requires the current bookmark toggle (`Bookmark Session`/`Remove Bookmark`) plus
   the three import verbs, and nothing else, anchored at the current
   `AppModel.sidebarContextActions(for:)` symbols.
 - **Step 12's discriminator SQL was malformed in the version driven.**
