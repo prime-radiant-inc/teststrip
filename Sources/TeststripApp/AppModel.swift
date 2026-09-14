@@ -7226,8 +7226,11 @@ public final class AppModel {
 
     public func promoteCurrentFrameAndRejectSiblings() throws {
         guard let selectedAssetID else { return }
+        // Scoped, to match `selectedCullingStackScope` (the rail's membership):
+        // promoting in a filtered pass must only touch the visible siblings,
+        // never a frame the filter hid.
         let isInMultiFrameStack = selectedWorkStackAssetIDs?.contains(selectedAssetID) == true
-            || cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) })
+            || scopedCullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) })
         // Item 4: Return on a frame with no siblings used to silently do
         // nothing at all — three presses read as the app hanging. Show
         // decision feedback instead; no metadata write happens (there are no
@@ -7859,11 +7862,39 @@ public final class AppModel {
         }
     }
 
+    /// Cull navigation must never strand the selection outside the visible
+    /// (scope-filtered) set: applying a decision without auto-advance leaves
+    /// the frame selected even after its flag stops it matching the filter, and
+    /// every navigation key then has no visible neighbor to move to. Before a
+    /// navigation arm does its own move, snap a stranded selection back to the
+    /// nearest frame the filter still shows. Returns true when it moved the
+    /// selection, so the caller skips its own move (the keypress's job was to
+    /// get back into the set). Returns false when nothing is visible to snap
+    /// to, leaving the arm's normal no-op behavior in place.
+    @discardableResult
+    private func reanchorSelectionIntoScopeIfNeeded() -> Bool {
+        guard let selectedAssetID,
+              let index = assetIndexByID[selectedAssetID],
+              !cullScope.matches(assets[index].metadata.flag) else {
+            return false
+        }
+        guard let target = CullScopeOrdering.selectionAfterScopeChange(
+            assets: assets,
+            scope: cullScope,
+            currentSelection: selectedAssetID
+        ) else {
+            return false
+        }
+        selectAssetID(target)
+        return true
+    }
+
     private func selectNextAssetForCulling() throws {
         guard !assets.isEmpty else {
             selectAssetID(nil)
             return
         }
+        if reanchorSelectionIntoScopeIfNeeded() { return }
         guard let selectedAssetID,
               let index = assetIndexByID[selectedAssetID] else {
             selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
@@ -7917,6 +7948,16 @@ public final class AppModel {
         return computed
     }
 
+    /// The multi-frame stacks of the currently visible (scope-filtered) set.
+    /// Reuses the cached unfiltered partition at `.all`; otherwise rebuilds
+    /// from the scoped assets so the partition matches exactly what the run
+    /// strip shows (`allCullingStacks(for: filteredAssets)`).
+    private func scopedCullingStacks() -> [AssetStack] {
+        guard cullScope != .all else { return cullingStacks() }
+        return allCullingStacks(for: CullScopeOrdering.filteredAssets(assets, scope: cullScope))
+            .filter { $0.assetIDs.count > 1 }
+    }
+
     /// Cached full stack partition (including singletons) for the current
     /// asset set. Used by `computeSelectedCullingStackScope` so every asset
     /// — not just multi-frame stack members — gets a non-nil scope. This
@@ -7937,7 +7978,11 @@ public final class AppModel {
     /// a full stack recomputation on every body evaluation when the selected
     /// asset is a standalone (singleton) frame.
     public func cachedAllCullingStacksForPresentation() -> [AssetStack] {
-        cachedAllCullingStacks()
+        guard cullScope != .all else { return cachedAllCullingStacks() }
+        // Scoped: the rail must not fall back to the unfiltered partition, or
+        // a frame whose burst-mates are all out of scope would render as a
+        // multi-frame stack with the wrong "Stack N of M".
+        return allCullingStacks(for: CullScopeOrdering.filteredAssets(assets, scope: cullScope))
     }
 
     /// The full auto-grouped stack partition (including singleton stacks) for
@@ -7957,13 +8002,17 @@ public final class AppModel {
     // is the STOP — every multi-frame stack AND every standalone photo, each
     // a stop in its own right (tutorial.md §1/§4). This is exactly
     // `allCullingStacks(for:)`'s full partition (singleton stacks included),
-    // reused under a name that matches the navigation vocabulary. Only the
-    // navigation arms (`selectCullingStack`) consume this — `cullingStacks()`
-    // (multi-frame only) stays the source for `selectedCullingStackScope`,
-    // the rail, HUD "Stack S of Σ" counts, and the Return/rail commit path,
+    // restricted to the visible (scope-filtered) assets, reused under a name
+    // that matches the navigation vocabulary. `selectCullingStack` (←/→, H/L)
+    // and the cull prefetch window consume this; `scopedCullingStacks()`
+    // (multi-frame only, same scope filter) is the source for
+    // `selectedCullingStackScope`, the rail, and the Return/rail commit path,
     // which legitimately describe *bursts* specifically.
     private func cullingStopSequence() -> [AssetStack] {
-        allCullingStacks(for: assets)
+        // ←/→ (and H/L) must walk the currently visible stops, not the whole
+        // deck: a stop with no in-scope frame would strand the selection
+        // outside the filter and dead-end every navigation key.
+        allCullingStacks(for: CullScopeOrdering.filteredAssets(assets, scope: cullScope))
     }
 
     public func selectedCullingStackEvaluationSignals() -> [AssetID: [EvaluationSignal]] {
@@ -8070,7 +8119,11 @@ public final class AppModel {
             )
         }
         guard let selectedAssetID else { return nil }
-        let stacks = cullingStacks()
+        // The rail's "Stack N of M" and within-stack navigation must agree
+        // with the run strip's scope-filtered counter, so they read the
+        // visible (scope-filtered) multi-frame partition, not the unfiltered
+        // `cullingStacks()`.
+        let stacks = scopedCullingStacks()
         guard let stackIndex = stacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
             return nil
         }
@@ -8165,7 +8218,9 @@ public final class AppModel {
             stack = AssetStack(assetIDs: selectedWorkStackAssetIDs)
             nextAssetID = nil
         } else {
-            let stacks = cullingStacks()
+            // Same scoped partition the rail displays, so the membership
+            // Return writes can never diverge from what the rail showed.
+            let stacks = scopedCullingStacks()
             stack = stacks.first { $0.assetIDs.contains(selectedAssetID) }
             nextAssetID = stack.map(nextAssetID(after:)) ?? nil
         }
@@ -8195,6 +8250,7 @@ public final class AppModel {
     // `cullingStacks()` directly, so standalone stops were skipped on mixed
     // batches and every key was a dead no-op on all-singles batches.
     private func selectCullingStack(_ direction: CullingStackNavigationDirection) {
+        if reanchorSelectionIntoScopeIfNeeded() { return }
         let indexedStacks = cullingStopSequence().compactMap { stack -> IndexedCullingStack? in
             let stackAssetIDs = Set(stack.assetIDs)
             guard let firstIndex = assets.firstIndex(where: { stackAssetIDs.contains($0.id) }),
@@ -8270,6 +8326,7 @@ public final class AppModel {
             selectAssetID(nil)
             return
         }
+        if reanchorSelectionIntoScopeIfNeeded() { return }
         guard let selectedAssetID,
               let index = assetIndexByID[selectedAssetID] else {
             selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
