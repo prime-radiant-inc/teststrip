@@ -140,3 +140,9 @@ title bar reads "<catalog> — Grid/Loupe/…". Transient save-confirmation
 status messages now auto-clear after 4s (`scheduleTransientStatusMessage
 AutoClear`; ongoing "…"-suffixed work messages are exempt), unit-tested.
 Live title-bar verification on the VM pending.
+
+## Run status — 2026-09-14 (live VM run, batch 6)
+
+**Verified** on the Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`, run dir `smoke-1789373011`, `launch smoke`, 24 assets, main@5644c66f). Steps 1-5,7 PASS: one window (`count of windows`=1, unchanged by ⌘N); sidebar `AXOutline` + detail `AXScrollArea`; isolated catalog live with 24 assets while the VM's real catalog mtime was unchanged; AXTitle `Teststrip – Grid` (= `catalogDisplayName` "Teststrip" + " – Grid" subtitle); forced dark under a Light system appearance (screenshot mean luminance 45.9, toolbar 0.0, sidebar 17.2, 78% pixels <64); corrupt-header relaunch exits 133 with `Fatal error: Unable to open Teststrip catalog: file is not a database`.
+
+**Step 6 is stale as written.** Its observable proxy — a Sparkle `SU*` defaults key appearing after launch — cannot hold on an isolated launch: `UpdateCheckPolicy` (`Updater.swift:36-48`) deliberately disables Sparkle automatic checks whenever `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` is set, and a grep of the app domain for SULastCheckTime / SUHasLaunchedBefore / SUFeedURL finds nothing. `_ = Updater.shared` is still constructed eagerly (`main.swift:30`) and Info.plist still carries SUFeedURL / SUPublicEDKey / SUEnableAutomaticChecks, so the eager-start intent is intact; the step should assert on a non-isolated launch or be reworded. Minor citation drift: the frame is `main.swift:46-48`, not `:44-47`.

@@ -152,3 +152,14 @@ claim became false only once this push made People a lens. Any prior
 LEDGER `Tested-Fail` result for this card is unrelated to both of these
 (a script/card drift on a different surface per the note it carried) and
 remains uninformative either way. Needs a fresh VM run.
+
+## Run status — 2026-09-14 (live VM run, batch 6)
+
+**Tested-Fail** on the Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`, `launch smoke`, main@5644c66f). **Step 2 FAIL (stale script + card), Steps 3-5 PASS.**
+
+- Step 2: `verify_ux_simplification_chrome.sh` exits 1 — `FAIL: 'Find Best Shots' control not present in toolbar`.
+- Step 3 PASS via the current route, Culling ▸ Find Best Shots (⇧⌘B): scope `All Photos, 24 photos` → `Picks, 6 photos · Pick`, `evaluation_signals` 0→65, no bare "0 keepers".
+- Step 4 PASS: exactly six switcher lenses and no `Review`/`Places` switcher button; the only `Search` AXButton is the search-bar magnifier (x=920), not a segment.
+- Step 5 PASS: Grid shows the search token field, Export, the Import menu, More, and the footer; Cull and People show none of them; ⌘I opens the inspector **in place** in both lenses (Cull stays selected and its inspector "Describe" section toggles 1→0→1 on repeated ⌘I; People stays selected and its inspector panel appears).
+
+**Root cause is an app-intended relocation, not a regression.** "Find Best Shots" moved out of the toolbar into the **Culling menu** (⇧⌘B) by spec §2b (`LibraryGridView.swift:336-341`; `main.swift:434-446`), and the collapsed Import menu now vends as an `AXMenuButton` titled **"Download"** (help "Import photos from a folder or a memory card"), not an AXButton labeled "Import". The old jargon (Copilot) and the three-Imports tangle are gone and the marquee action still exists — but `verify_ux_simplification_chrome.sh` assertions 1-2 and this card's Steps 2/3/5 selectors are stale. Fix = update the script (under `script/`, outside this batch's edit scope) and the card's Steps. The script's other two assertions (no top-level Import Folder / Import Card; no "Copilot") still hold.

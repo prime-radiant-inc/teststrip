@@ -87,3 +87,14 @@ Supersedes prior status: the prior BLOCKED-CONSOLE note's source citation
 code this push deleted — that citation, and any future run against the old
 two/three-floor premise, would fail step 2 immediately by looking for a
 function signature that doesn't exist. Needs a fresh VM run.
+
+## Run status — 2026-09-14 (live VM run, batch 6)
+
+**Tested-Fail** on the Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`, run dirs `smoke-1789373142` + a 1024pt probe, `launch smoke`, 24 assets, main@5644c66f). Steps 2, 4, 5 PASS; **Step 3 FAIL.**
+
+- Step 2 (Grid, 1000pt): content `AXSplitGroup` exactly x=0..1000; zero elements overflow the right edge, zero negative origins, no `AXScrollBar`; token field (x=338 w=573) and the lens switcher (x=414 w=290) all inside.
+- Step 4 (People, 1000pt): content 0..1000; zero overflow / negative origins.
+- Step 5: requesting 900pt in Grid, Cull, and People each leaves `size of window 1` at `1000, 772` — the `minWidth` clamp holds in all three lenses.
+- **Step 3 FAIL — the Cull lens's chrome does not fit the 1000pt floor.** At the 1000pt window the Cull content is **1108pt** wide and centered: `AXSplitGroup` x=-54 w=1108 (x=-54..1054), the sidebar `AXOutline` x=-46 (46pt clipped off the window's left edge; its rows sit at x=-30), and both the Culling Progress indicator and the bottom nav legend reach x=1040 — 40pt past the window's right edge. Stable after a 5s settle, and reproduced at the widest the display allows: at a 1024pt window the Cull content is still 1108 (x=-42..1066), so it is an intrinsic content minimum, not a transient. The Cull minimum (~1108 ≈ sidebar 220 + detail ~888) exceeds `AppWindowLayoutMetrics.minimumWidth` (1000, `main.swift:9`).
+
+This was the first live run of the resize legs (the card's own Sharp edges note they had never run live). Environment: the VM display is 1024 wide, so the window sits at its 1000pt floor; assertions used AX frames, not pixels.

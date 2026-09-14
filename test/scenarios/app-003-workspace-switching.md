@@ -41,3 +41,7 @@ content predates this push entirely and describes a control
 (`AppModel.selectWorkspace`) that no longer compiles. No further run is
 possible or needed for this file; verification of the replacement contract
 lives in `app-019-lens-shell.md`, which needs a fresh VM run.
+
+## Run status — 2026-09-14 (live VM run, batch 6)
+
+**Stub verified accurate** 2026-09-14 (main@5644c66f, static only — this card has no steps left to drive). `grep -rn "enum Workspace / selectWorkspace" Sources/` returns nothing; `LibraryLens` has exactly cull/grid/loupe/timeline/map/people (`LibraryLens.swift:10-16`); `defaultViewMode` `.cull -> .loupe` at `LibraryLens.swift:47-49`; the toolbar `lensSwitcher` is at `LibraryGridView.swift:531`. The pointer to `app-019-lens-shell.md` resolves, and no behavior claim is wrong. Minor citation drift only: the stub cites `LibraryLens.swift:58-67` (really `:47-49`) and `LibraryGridView.swift:528-555` (really `:531`). No further run of this card is possible or needed; the replacement contract is verified in `app-019-lens-shell.md`.

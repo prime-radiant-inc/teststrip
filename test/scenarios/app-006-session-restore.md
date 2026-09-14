@@ -180,3 +180,17 @@ prior revision's `SessionRestoreState` v1 field list (`selectedView`, no
 `source`, no `lens`) and its legacy-rawValue steps describe a schema and a
 decode path this push replaced outright — any run against that structure
 tested code that no longer exists. Needs a fresh VM run.
+
+## Run status — 2026-09-14 (live VM run, batch 6)
+
+**Verified** on the Tart VM `teststrip-e2e` (`script/vm_scenario_run.sh`, same-run-dir relaunch via `open -n --env`, main@5644c66f). **Steps 1-9 all PASS.**
+
+- Step 4 (blob for run `smoke-1789374047`): key `SessionRestoreState./Users/admin/teststrip-vm/run/smoke-1789374047/Teststrip` (path-suffixed), `"version":2`, `"lens":"timeline"`, `"librarySearchText":"smoke-1"`, `"sortOption":"filename"`, `"selectedAssetID":{"rawValue":"smoke-17"}`.
+- Step 5 (relaunch the same run dir): Timeline lens Selected, scope `All Photos, 11 photos · Search: smoke-1`, sort `Filename — A to Z`, smoke-17 Selected.
+- Step 6: quit in Cull (idle) **and** quit at `Frame 11 of 11` after advancing — both relaunch in **Grid** on the same source (search preserved); the rule is unconditional.
+- Step 7: rewrote the blob `version` to 1 → clean-default relaunch (Grid, All Photos 24, default sort), no crash.
+- Step 8: truncated the JSON body to half → identical clean default, no crash.
+- Step 9: imported a 3-file `/tmp/imp2` (sips-resized, new content), quit **while the "Import complete" toast was still up**, relaunched → no toast across 4s; the sidebar lists `Imported 3 photos from imp2` and `Imported 11 photos from faces`, and the Activity bell's "Recent Imports" receipt shows the faces import. No persona-7 zombie.
+- Item 26: `AppModel.autopilotEnabled` / `defaultCreator` / `defaultCopyright` persist under their own keys, distinct from the SessionRestoreState key.
+
+**Card-accuracy note (not a defect):** a **token** query like `rating:3` commits as a *filter* (`minimumRatingFilter:3`, `librarySearchText:""`), not as search text; a committed **free-text** query (`smoke-1`) is what lands in `librarySearchText`. Uncommitted text left in the field does not persist. So Step 2's `rating:3` example does not exercise the `librarySearchText` assertion it is meant to — use free text. Step 5's "the token field shows the query" is also loose: on restore the committed free text renders as the scope line `Search: smoke-1` (the raw field itself is empty).
