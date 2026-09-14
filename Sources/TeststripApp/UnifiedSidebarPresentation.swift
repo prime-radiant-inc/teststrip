@@ -376,3 +376,55 @@ public enum UnifiedSidebarPresentation {
         }
     }
 }
+
+/// The sidebar's selection model, shared by `SidebarView`'s selectable `List`
+/// and its tests. The `List` needs a stable, `Hashable` selection value per
+/// row — `SidebarRow.id` — and the two directions of the mapping between that
+/// value and the model's scrolled-to `LibrarySource`.
+///
+/// Both directions are pure: the view's selection `Binding` reads through
+/// `rowID(for:in:)` and writes through `row(forID:in:)`. Folders, Saved Sets,
+/// Smart Collections, and Work rows all resolve by `LibrarySource.kind`
+/// equality (`LibrarySource.==` ignores the display title on purpose), so two
+/// rows that name the same set of photos can never disagree about which is
+/// highlighted.
+public enum SidebarSelection {
+    /// The id of the row that scopes the library to `source`, or nil when no
+    /// sidebar row names it (e.g. a bare text search).
+    public static func rowID(for source: LibrarySource, in sections: [SidebarSection]) -> String? {
+        for section in sections {
+            if let row = section.rows.first(where: { $0.target == source }) {
+                return row.id
+            }
+        }
+        return nil
+    }
+
+    /// The row with `id`, or nil when the id no longer names a rendered row
+    /// (the catalog changed under a stale selection).
+    public static func row(forID id: String, in sections: [SidebarSection]) -> SidebarRow? {
+        for section in sections {
+            if let row = section.rows.first(where: { $0.id == id }) {
+                return row
+            }
+        }
+        return nil
+    }
+
+    /// Cull's "Stacks · Auto-Grouped" rows are a run surface rather than source
+    /// rows, so they carry no `SidebarRow`; their selection tags are namespaced
+    /// to keep them from colliding with a real row id.
+    public static let cullStackRowIDPrefix = "cull-stack-"
+
+    public static func cullStackRowID(forSetID setID: AssetSetID) -> String {
+        cullStackRowIDPrefix + setID.rawValue
+    }
+
+    /// The `AssetSetID` behind a cull-stack selection tag, or nil when `id`
+    /// names a source row instead.
+    public static func cullStackSetID(fromRowID id: String) -> AssetSetID? {
+        guard id.hasPrefix(cullStackRowIDPrefix) else { return nil }
+        let rawValue = String(id.dropFirst(cullStackRowIDPrefix.count))
+        return rawValue.isEmpty ? nil : AssetSetID(rawValue: rawValue)
+    }
+}

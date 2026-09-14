@@ -47,4 +47,28 @@ final class KeyMonitorForwardingTests: XCTestCase {
             event
         )
     }
+
+    // MARK: - KeyMonitorFocusPolicy
+
+    // Nothing focused (or a plain content view) still belongs to the grid: the
+    // monitor keeps consuming, which is how arrow keys move the grid after a
+    // click in the content area.
+    func testMonitorOwnsKeysWhenNoControlHasFocus() {
+        XCTAssertFalse(KeyMonitorFocusPolicy.shouldYield(firstResponder: nil))
+        XCTAssertFalse(KeyMonitorFocusPolicy.shouldYield(firstResponder: NSView()))
+    }
+
+    // The sidebar's SwiftUI List is backed by an NSOutlineView (an NSTableView
+    // subclass). Its arrow keys must reach the outline, which is the whole
+    // point of the fix: before this the window-wide monitor ate every Down/Up
+    // no matter where focus was.
+    func testMonitorYieldsWhenAListOwnsFocus() {
+        XCTAssertTrue(KeyMonitorFocusPolicy.shouldYield(firstResponder: NSTableView()))
+        XCTAssertTrue(KeyMonitorFocusPolicy.shouldYield(firstResponder: NSOutlineView()))
+    }
+
+    // The query field's field editor still owns its keystrokes.
+    func testMonitorYieldsWhenATextEditorOwnsFocus() {
+        XCTAssertTrue(KeyMonitorFocusPolicy.shouldYield(firstResponder: NSTextView()))
+    }
 }

@@ -22,11 +22,23 @@ struct SidebarView: View {
     private static let smartCollectionsSectionTitle = UnifiedSidebarPresentation.smartCollectionsSectionTitle
 
     var body: some View {
-        List {
+        // A `selection:` binding is what makes the sidebar a real source list:
+        // it gives the `AXOutline` a selected-rows model, so ⌃Tab/Tab can land
+        // on the outline and Down/Up walk the sections and rows (and announce
+        // each row's label) instead of the outline being a dead, mouse-only
+        // target. The binding reads the model's scrolled-to source and writes
+        // back through `selectSidebarRow`, so keyboard selection and mouse
+        // clicks land in exactly the same place.
+        List(selection: sidebarSelection) {
             ForEach(model.sidebarSections) { section in
                 Section {
                     ForEach(section.rows) { row in
                         sidebarRowContent(row)
+                            .tag(row.id)
+                            // Rows with no target (the running-import narration
+                            // and "All imports…") are not scopes to select; keep
+                            // them in the list but out of the selection model.
+                            .selectionDisabled(!row.isSelectable)
                             .contextMenu {
                                 sidebarContextMenu(for: row)
                             }
@@ -49,6 +61,7 @@ struct SidebarView: View {
                     Section("Stacks · Auto-Grouped") {
                         ForEach(stackEntries) { entry in
                             stackRow(entry)
+                                .tag(SidebarSelection.cullStackRowID(forSetID: entry.setID))
                         }
                     }
                 }
@@ -232,6 +245,32 @@ struct SidebarView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    /// The `List`'s selection value. Reading maps the model's scrolled-to
+    /// source to its row id, so programmatic navigation (⌘F, back/forward,
+    /// a deep link) moves the highlight with it. Writing maps a selected row
+    /// id back to its row and applies the same `selectSidebarRow` path a mouse
+    /// click takes — keyboard and pointer land in one place.
+    private var sidebarSelection: Binding<String?> {
+        Binding(
+            get: {
+                SidebarSelection.rowID(for: model.selectedSource, in: model.sidebarSections)
+            },
+            set: { newValue in
+                guard let newValue else { return }
+                if let setID = SidebarSelection.cullStackSetID(fromRowID: newValue) {
+                    do {
+                        try model.selectCullingStackSet(id: setID)
+                    } catch {
+                        model.errorMessage = error.localizedDescription
+                    }
+                    return
+                }
+                guard let row = SidebarSelection.row(forID: newValue, in: model.sidebarSections) else { return }
+                select(row)
+            }
+        )
     }
 
     // Folders-sidebar tree rows need an expand/collapse control that's

@@ -51,7 +51,15 @@ final class CullingKeyCaptureNSView: NSView {
     var onShortcut: ((CullingShortcut) -> Void)?
     private var localKeyMonitor: Any?
 
+    // Same contract as `GridKeyCaptureNSView`: a 1×1 key sink that can hold
+    // first responder programmatically but is never a Tab stop and never an
+    // accessibility element (an unnamed focusable group announced nothing when
+    // focus landed on it).
     override var acceptsFirstResponder: Bool { true }
+
+    override var canBecomeKeyView: Bool { false }
+
+    override func isAccessibilityElement() -> Bool { false }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -80,7 +88,7 @@ final class CullingKeyCaptureNSView: NSView {
     ) -> NSEvent? {
         guard isActive,
               eventTargetsWindow(event, targetWindowNumber: targetWindowNumber, targetWindowIsKey: targetWindowIsKey),
-              !firstResponder.isTextEditor else {
+              !KeyMonitorFocusPolicy.shouldYield(firstResponder: firstResponder) else {
             return event
         }
         // Esc is a modal-trap escape hatch scoped to .compare/.abCompare
@@ -190,15 +198,4 @@ private enum MacKeyCode {
     static let rightArrow: UInt16 = 124
     static let downArrow: UInt16 = 125
     static let upArrow: UInt16 = 126
-}
-
-private extension Optional where Wrapped == NSResponder {
-    var isTextEditor: Bool {
-        switch self {
-        case .some(let responder):
-            return responder is NSTextView
-        case .none:
-            return false
-        }
-    }
 }

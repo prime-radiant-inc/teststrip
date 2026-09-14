@@ -69,7 +69,7 @@ final class PeopleKeyCaptureNSView: NSView {
     ) -> NSEvent? {
         guard isActive,
               eventTargetsWindow(event, targetWindowNumber: targetWindowNumber, targetWindowIsKey: targetWindowIsKey),
-              !firstResponder.isTextEditor,
+              !KeyMonitorFocusPolicy.shouldYield(firstResponder: firstResponder),
               let command = PeopleQueueCommand(event: event) else {
             return event
         }
@@ -134,15 +134,4 @@ private enum PeopleMacKeyCode {
     static let escape: UInt16 = 53
     static let leftArrow: UInt16 = 123
     static let rightArrow: UInt16 = 124
-}
-
-private extension Optional where Wrapped == NSResponder {
-    var isTextEditor: Bool {
-        switch self {
-        case .some(let responder):
-            return responder is NSTextView
-        case .none:
-            return false
-        }
-    }
 }
